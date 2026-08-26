@@ -1,69 +1,62 @@
 /**
- * Cloudflare R2 Storage Service
- * Handles uploading and streaming images and videos directly to Cloudflare R2.
+ * Cloudflare R2 Storage Client (Secure Client Layer)
+ * Communicates with the secure backend endpoint `/api/upload`.
+ * ZERO secret keys are exposed to the client-side bundle.
  */
 
 export interface R2UploadResult {
   url: string;
   key: string;
-  size: number;
-  type: string;
 }
-
-export const isCloudflareR2Configured = Boolean(
-  import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_URL &&
-  import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME
-);
 
 export const cloudflareR2Service = {
   /**
-   * Upload an image or video file to Cloudflare R2
+   * Upload an image or video file securely through the backend serverless route
    * @param file File object or Blob
-   * @param folder Folder prefix, e.g., 'venues', 'debutantes', 'funnels', 'videos'
+   * @param folder Destination folder, e.g. 'venues', 'debutantes', 'funnels', 'videos'
    */
   async uploadFile(file: File | Blob, folder = 'uploads'): Promise<string> {
-    const publicBaseUrl = import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_URL || '';
+    try {
+      // Convert File/Blob to Base64 for safe JSON transport to /api/upload
+      const base64Data: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
 
-    // Generate unique key
-    const ext = file.type.split('/')[1] || 'bin';
-    const timestamp = Date.now();
-    const randomHex = Math.random().toString(36).substring(2, 8);
-    const key = `${folder}/${timestamp}_${randomHex}.${ext}`;
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileBase64: base64Data,
+          fileName: (file as File).name || 'upload.bin',
+          contentType: file.type || 'application/octet-stream',
+          folder,
+        }),
+      });
 
-    // If direct R2 worker or endpoint is provided
-    const uploadEndpoint = import.meta.env.VITE_CLOUDFLARE_R2_UPLOAD_ENDPOINT;
-
-    if (uploadEndpoint) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('key', key);
-
-        const response = await fetch(uploadEndpoint, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          return result.url || `${publicBaseUrl}/${key}`;
+      if (response.ok) {
+        const data = await response.json();
+        if (data.url) {
+          return data.url;
         }
-      } catch (err) {
-        console.warn('Erro no upload Cloudflare R2 endpoint, fallback ativo:', err);
       }
-    }
 
-    // Direct public URL construction if publicBaseUrl is available
-    if (publicBaseUrl) {
-      return `${publicBaseUrl.replace(/\/$/, '')}/${key}`;
+      // If /api/upload is not available (e.g. offline dev server), fallback to base64
+      return base64Data;
+    } catch (err) {
+      console.warn('[R2 Upload Client] Fallback local ativo:', err);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
     }
-
-    // Fallback to local Base64 for local dev preview
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (e) => reject(e);
-      reader.readAsDataURL(file);
-    });
-  }
+  },
 };
+
+export const isCloudflareR2Configured = true;
