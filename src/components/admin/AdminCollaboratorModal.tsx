@@ -20,6 +20,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('123456');
   const [role, setRole] = useState<AdminRole>('crm');
   const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -30,6 +31,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName(collaboratorToEdit.name);
       setEmail(collaboratorToEdit.email);
       setPhone(collaboratorToEdit.phone || '');
+      setPassword(collaboratorToEdit.password || '••••••••');
       setRole(collaboratorToEdit.role);
       const vIds = collaboratorToEdit.venueIds || (collaboratorToEdit.venueId && collaboratorToEdit.venueId !== 'all' ? [collaboratorToEdit.venueId] : venues.map(v => v.id));
       setSelectedVenueIds(vIds);
@@ -39,6 +41,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName('');
       setEmail('');
       setPhone('');
+      setPassword('123456');
       setRole('crm');
       setSelectedVenueIds(venues.map(v => v.id));
       setAvatarUrl('');
@@ -64,6 +67,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
         active,
+        password: password !== '••••••••' ? password : collaboratorToEdit.password,
       });
     } else {
       addCollaborator({
@@ -75,6 +79,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
         active,
+        isFirstAccess: true,
+        password: password || '123456',
       });
     }
 
@@ -243,6 +249,26 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                   }}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Senha Temporária Inicial */}
+          <div>
+            <label style={labelStyle}>
+              Senha Temporária Inicial * (Será alterada no 1º acesso)
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                required
+                placeholder="Ex: 123456"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
+              Ao realizar o primeiro login, o colaborador será obrigado a cadastrar sua senha pessoal definitiva.
             </div>
           </div>
 

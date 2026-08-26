@@ -14,6 +14,7 @@ import { AdminLoginView } from './AdminLoginView';
 import { AdminVenueModal } from './AdminVenueModal';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminSettingsModal } from './AdminSettingsModal';
+import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { Menu, X, Building2 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -839,6 +840,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
       />
+
+      {currentUser?.isFirstAccess && (
+        <AdminFirstAccessModal onComplete={() => {}} />
+      )}
 
       <style>{`
         @media (max-width: 900px) {

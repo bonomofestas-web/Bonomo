@@ -12,6 +12,8 @@ export type AdminRole = 'master' | 'admin' | 'crm' | 'sdr' | 'closer';
 
 export type ThemeMode = 'dark' | 'light';
 
+export const APP_VERSION = '1.0.1 (Beta)';
+
 export interface AdminUser {
   id: string;
   name: string;
@@ -21,6 +23,7 @@ export interface AdminUser {
   venueIds?: string[]; // IDs das casas que tem acesso (vazio ou master = todas)
   phone?: string;
   theme?: ThemeMode;
+  isFirstAccess?: boolean;
 }
 
 export interface Collaborator {
@@ -33,6 +36,8 @@ export interface Collaborator {
   avatarUrl?: string;
   phone?: string;
   active: boolean;
+  isFirstAccess?: boolean;
+  password?: string;
   createdAt: string;
 }
 

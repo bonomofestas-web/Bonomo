@@ -9,6 +9,7 @@ import {
   ShieldCheck, Star, ShoppingBag, Music, Camera
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { APP_VERSION } from '../../types/admin';
 
 export type AdminTabType = 
   | 'home'
@@ -755,6 +756,19 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <LogOut size={15} />
             </button>
           </div>
+        </div>
+
+        {/* System Version Footer */}
+        <div style={{
+          textAlign: 'center',
+          paddingTop: '8px',
+          fontSize: '0.65rem',
+          color: 'rgba(212, 175, 55, 0.75)',
+          fontFamily: "'Cinzel', serif",
+          letterSpacing: '1px',
+          fontWeight: 700,
+        }}>
+          Versão {APP_VERSION}
         </div>
       </div>
     </aside>

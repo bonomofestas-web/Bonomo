@@ -211,6 +211,26 @@ const RootAppRouter: React.FC = () => {
   const activeDeb = getDebutanteBySlug(currentDebutanteSlug) || debutantes[0];
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
+  // Dynamic Favicon and Document Title
+  React.useEffect(() => {
+    let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+
+    if (viewMode === 'admin') {
+      document.title = 'Bonomo Festas • Painel de Gestão & CRM';
+      link.href = '/favicon.svg';
+    } else {
+      const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
+      const venueName = activeVenue ? activeVenue.name : 'Bonomo Festas';
+      document.title = `${debTitle} | ${venueName}`;
+      link.href = activeVenue?.logoUrl || '/favicon.svg';
+    }
+  }, [viewMode, activeDeb, activeVenue]);
+
   const handleOpenDebutanteApp = (slug?: string) => {
     if (slug) {
       setCurrentDebutanteSlug(slug);
