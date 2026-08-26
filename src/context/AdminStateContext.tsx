@@ -664,6 +664,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
+
+    // Sincronizar em tempo real com o Supabase
+    if (activeId && updatedUser) {
+      collaboratorService.upsert({
+        id: activeId,
+        name: (updatedUser as AdminUser).name,
+        email: (updatedUser as AdminUser).email,
+        avatarUrl: (updatedUser as AdminUser).avatarUrl,
+        phone: (updatedUser as AdminUser).phone,
+      });
+
+      if (isSupabaseConfigured) {
+        supabase.auth.updateUser({
+          data: {
+            name: (updatedUser as AdminUser).name,
+            avatar_url: (updatedUser as AdminUser).avatarUrl,
+            phone: (updatedUser as AdminUser).phone,
+          }
+        }).catch(err => console.warn('Falha ao atualizar metadata no Supabase Auth:', err));
+      }
+    }
   };
 
   // ── Collaborators CRUD ──────────────────────────────────────────────────────

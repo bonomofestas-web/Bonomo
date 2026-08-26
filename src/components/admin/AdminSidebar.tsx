@@ -99,6 +99,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const visibleFunnels = useMemo(() => {
     return funnels.filter(funnel => {
+      if (!funnel.isPinned) return false;
       if (!activeVenueId) return true;
       return funnel.venueId === activeVenueId || funnel.venueId === 'all';
     });
@@ -424,7 +425,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               alignItems: 'center',
               gap: '4px',
             }}>
-              <span>Funis Ativos</span>
+              <span>Funis Fixados</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {visibleFunnels.map(funnel => {
