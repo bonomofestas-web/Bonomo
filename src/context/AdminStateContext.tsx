@@ -51,25 +51,19 @@ const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
 
 const DEFAULT_COLLABORATORS: Collaborator[] = [
   {
-    id: 'collab_master_1',
-    name: 'Carlos Bonomo',
-    email: 'diretoria@bonomofestas.com.br',
+    id: 'collab_dev_master',
+    name: 'Dev Master',
+    email: 'dev@bonomoapp.com',
     role: 'master',
     venueId: 'all',
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-    phone: '(21) 99999-8888',
+    phone: '(21) 99999-9999',
     active: true,
     createdAt: '2026-01-01',
   }
 ];
 
-const DEFAULT_ADMIN_USER: AdminUser = {
-  id: 'collab_master_1',
-  name: 'Carlos Bonomo',
-  email: 'diretoria@bonomofestas.com.br',
-  role: 'master',
-  avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-};
+const DEFAULT_ADMIN_USER: AdminUser | null = null;
 
 // 100% clean — Zero mock venues in production. User registers their own venues.
 const DEFAULT_VENUES: Venue[] = [];
@@ -482,7 +476,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Auth Methods ────────────────────────────────────────────────────────────
 
   const login = (email: string, _pass: string): boolean => {
-    const foundCollab = collaborators.find(c => c.email.toLowerCase() === email.trim().toLowerCase());
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // Check registered collaborators
+    const foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
     if (foundCollab) {
       const user: AdminUser = {
         id: foundCollab.id,
@@ -498,9 +495,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return true;
     }
-    const user: AdminUser = { ...DEFAULT_ADMIN_USER, email: email.trim() };
-    setCurrentUser(user);
-    return true;
+
+    // Dev Master Test Account (dev@bonomoapp.com or dev@bonomofestas.com)
+    if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'dev@bonomofestas.com') {
+      const devUser: AdminUser = {
+        id: 'collab_dev_master',
+        name: 'Dev Master',
+        email: cleanEmail,
+        role: 'master',
+        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+        venueIds: [],
+      };
+      setCurrentUser(devUser);
+      return true;
+    }
+
+    return false;
   };
 
   const logout = () => {

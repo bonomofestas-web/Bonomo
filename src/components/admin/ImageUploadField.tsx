@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Upload, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { cloudflareR2Service, isCloudflareR2Configured } from '../../lib/cloudflareR2';
 
 interface ImageUploadFieldProps {
   label: string;
@@ -9,6 +10,7 @@ interface ImageUploadFieldProps {
   helperText?: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
   previewHeight?: string;
+  folder?: string;
 }
 
 export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
@@ -19,9 +21,11 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   helperText,
   aspectRatio = '16:9',
   previewHeight = '120px',
+  folder = 'images',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
 
@@ -79,9 +83,22 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
       return;
     }
 
-    const compressedBase64 = await compressImage(file);
-    if (compressedBase64) {
-      onChange(compressedBase64);
+    setIsUploading(true);
+    try {
+      if (isCloudflareR2Configured) {
+        const r2Url = await cloudflareR2Service.uploadFile(file, folder);
+        if (r2Url) {
+          onChange(r2Url);
+          return;
+        }
+      }
+
+      const compressedBase64 = await compressImage(file);
+      if (compressedBase64) {
+        onChange(compressedBase64);
+      }
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -251,13 +268,13 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isUploading && fileInputRef.current?.click()}
           style={{
             border: `1.5px dashed ${isDragging ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
             borderRadius: '12px',
             padding: '16px',
             textAlign: 'center',
-            cursor: 'pointer',
+            cursor: isUploading ? 'wait' : 'pointer',
             background: isDragging ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
             transition: 'all 0.15s ease',
             display: 'flex',
@@ -267,13 +284,24 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
             gap: '6px',
           }}
         >
-          <ImageIcon size={22} color="var(--adm-text-muted)" />
-          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
-            {placeholder || 'Clique para selecionar ou arraste uma foto'}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-            JPG, PNG ou WebP • Proporção {aspectRatio} recomendada
-          </div>
+          {isUploading ? (
+            <>
+              <Loader2 size={22} className="animate-spin" color="var(--adm-accent)" />
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-accent)' }}>
+                Enviando arquivo...
+              </div>
+            </>
+          ) : (
+            <>
+              <ImageIcon size={22} color="var(--adm-text-muted)" />
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
+                {placeholder || 'Clique para selecionar ou arraste uma foto'}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                JPG, PNG ou WebP • Proporção {aspectRatio} recomendada
+              </div>
+            </>
+          )}
         </div>
       )}
 

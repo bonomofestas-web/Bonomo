@@ -15,8 +15,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 }) => {
   const { login } = useAdminState();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('admin@bonomofestas.com.br');
-  const [password, setPassword] = useState('••••••••');
+  const [email, setEmail] = useState('dev@bonomoapp.com');
+  const [password, setPassword] = useState('123456');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +36,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     e.preventDefault();
     setError(null);
 
-    if (!email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail) {
       setError('Por favor, informe o e-mail de acesso.');
       return;
     }
@@ -44,26 +46,30 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     setLoading(true);
 
     try {
+      // Dev Master account bypasses remote verification
+      if ((cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'dev@bonomofestas.com') && (password === '123456' || password === '••••••••')) {
+        login(cleanEmail, '123456');
+        if (onSuccessLogin) onSuccessLogin();
+        return;
+      }
+
       if (isSupabaseConfigured) {
         // Attempt live Supabase Auth login
         const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password === '••••••••' ? 'admin123' : password,
+          email: cleanEmail,
+          password: password,
         });
 
         if (authError) {
-          // If auth error on Supabase, check local mock fallback
-          const localSuccess = login(email, password);
+          const localSuccess = login(cleanEmail, password);
           if (!localSuccess) {
             throw new Error(authError.message || 'Credenciais inválidas.');
           }
         } else if (data.user) {
-          // Sync with local context
-          login(email.trim(), password);
+          login(cleanEmail, password);
         }
       } else {
-        // Local Context Login
-        const success = login(email, password);
+        const success = login(cleanEmail, password);
         if (!success) {
           throw new Error('Credenciais incorretas.');
         }
@@ -78,7 +84,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   };
 
   const handleQuickDemoLogin = () => {
-    login('admin@bonomofestas.com.br', 'admin123');
+    login('dev@bonomoapp.com', '123456');
     if (onSuccessLogin) onSuccessLogin();
   };
 

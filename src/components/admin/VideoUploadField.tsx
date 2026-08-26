@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Upload, Video, Play, Pause, Film } from 'lucide-react';
 import { saveMediaFile, resolveMediaUrl } from '../../utils/mediaStorage';
+import { cloudflareR2Service, isCloudflareR2Configured } from '../../lib/cloudflareR2';
 
 interface VideoUploadFieldProps {
   label: string;
@@ -54,13 +55,22 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
     setIsUploading(true);
 
     try {
+      if (isCloudflareR2Configured) {
+        const r2Url = await cloudflareR2Service.uploadFile(file, 'videos');
+        if (r2Url) {
+          onChange(r2Url, file.name);
+          setIsUploading(false);
+          return;
+        }
+      }
+
       // Save safely into IndexedDB to never crash localStorage
       const mediaKey = await saveMediaFile(file, 'video');
       onChange(mediaKey, file.name);
       setIsUploading(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[VideoUpload] Error processing video:', err);
-      setUploadError('Erro ao processar o vídeo no navegador.');
+      setUploadError(err.message || 'Erro ao processar o vídeo.');
       setIsUploading(false);
     }
   };
