@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Crown, Lock, Mail, ArrowRight, Sparkles, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Sparkles, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminForgotPasswordModal } from './AdminForgotPasswordModal';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -43,7 +43,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       }
 
       if (isSupabaseConfigured) {
-        // Attempt live Supabase Auth login
         const { data, error: authError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: password,
@@ -89,13 +88,68 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       position: 'relative',
     }}>
       {/* ── DESKTOP & MOBILE SPLIT CONTAINER ─────────────────────────────────── */}
-      <div style={{
+      <div className="login-wrapper" style={{
         display: 'flex',
         width: '100%',
         minHeight: '100vh',
       }}>
-        {/* LEFT COLUMN: AUTH FORM (Full width on mobile, 45% on desktop) */}
-        <div style={{
+        {/* MOBILE TOP BANNER (Visible only on mobile screen <= 860px) */}
+        <div className="login-mobile-header" style={{
+          display: 'none',
+          position: 'relative',
+          width: '100%',
+          height: '240px',
+          backgroundImage: `url('/debutante_staircase.jpg')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 30%',
+          borderBottomLeftRadius: '32px',
+          borderBottomRightRadius: '32px',
+          overflow: 'hidden',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
+        }}>
+          {/* Gradient Overlay */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(8,6,11,0.3) 0%, rgba(8,6,11,0.85) 100%)',
+          }} />
+
+          {/* Logo & Title on mobile top */}
+          <div style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '24px',
+            right: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            zIndex: 2,
+          }}>
+            <img
+              src="/logo_bonomo_gold.png"
+              alt="Bonomo Festas"
+              style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: '12px',
+                objectFit: 'cover',
+                border: '1.5px solid rgba(212, 175, 55, 0.6)',
+                boxShadow: '0 4px 16px rgba(212, 175, 55, 0.3)',
+              }}
+            />
+            <div>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: 800, color: '#FFF' }}>
+                Bonomo Festas
+              </div>
+              <div style={{ fontFamily: "'Cinzel', serif", fontSize: '0.66rem', color: '#D4AF37', letterSpacing: '1.5px' }}>
+                PORTAL EXCLUSIVO
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FORM CONTAINER (Full width on mobile, 45% on desktop) */}
+        <div className="login-form-pane" style={{
           flex: '1 1 500px',
           maxWidth: '560px',
           background: 'linear-gradient(180deg, #100D15 0%, #08060A 100%)',
@@ -108,26 +162,26 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           zIndex: 2,
           position: 'relative',
         }}>
-          {/* Top Brand Area */}
+          {/* Top Brand Area (Desktop) */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
-              <div style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 6px 20px rgba(212, 175, 55, 0.35)',
-              }}>
-                <Crown size={26} color="#000" />
-              </div>
+            <div className="login-desktop-brand" style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
+              <img
+                src="/logo_bonomo_gold.png"
+                alt="Bonomo Festas"
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '14px',
+                  objectFit: 'cover',
+                  border: '1.5px solid rgba(212, 175, 55, 0.5)',
+                  boxShadow: '0 6px 20px rgba(212, 175, 55, 0.35)',
+                }}
+              />
 
               <div>
                 <h1 style={{
                   fontFamily: "'Playfair Display', Georgia, serif",
-                  fontSize: '1.4rem',
+                  fontSize: '1.45rem',
                   fontWeight: 800,
                   color: '#FFF',
                   margin: 0,
@@ -157,7 +211,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 color: '#FFFFFF',
                 margin: '0 0 6px 0',
               }}>
-                Acesso ao Sistema
+                Welcome Back!
               </h2>
               <p style={{
                 fontSize: '0.84rem',
@@ -165,7 +219,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 margin: 0,
                 lineHeight: '1.5',
               }}>
-                Informe suas credenciais corporativas para gerenciar casas, leads e debutantes.
+                Continue sua jornada no ecossistema de eventos mais sofisticado do país.
               </p>
             </div>
 
@@ -225,7 +279,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     }}
                     onFocus={(e) => {
                       e.currentTarget.style.borderColor = '#D4AF37';
-                      e.currentTarget.style.boxShadow = '0 0 12px rgba(212, 175, 55, 0.25)';
+                      e.currentTarget.style.boxShadow = '0 0 14px rgba(212, 175, 55, 0.3)';
                     }}
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.3)';
@@ -289,7 +343,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     }}
                     onFocus={(e) => {
                       e.currentTarget.style.borderColor = '#D4AF37';
-                      e.currentTarget.style.boxShadow = '0 0 12px rgba(212, 175, 55, 0.25)';
+                      e.currentTarget.style.boxShadow = '0 0 14px rgba(212, 175, 55, 0.3)';
                     }}
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.3)';
@@ -397,8 +451,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: LUXURY IMMERSIVE VISUAL (Hidden on small mobile, visible on tablet/desktop) */}
-        <div style={{
+        {/* RIGHT COLUMN: LUXURY IMMERSIVE VISUAL (Real Debutante Staircase Photo) */}
+        <div className="login-visual-pane" style={{
           flex: '1 1 500px',
           position: 'relative',
           background: '#0A080E',
@@ -413,17 +467,17 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           <div style={{
             position: 'absolute',
             inset: 0,
-            backgroundImage: `url('https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&auto=format&fit=crop&q=85')`,
+            backgroundImage: `url('/debutante_staircase.jpg')`,
             backgroundSize: 'cover',
-            backgroundPosition: 'center 25%',
-            filter: 'brightness(0.72) contrast(1.15)',
+            backgroundPosition: 'center center',
+            filter: 'brightness(0.82) contrast(1.1)',
           }} />
 
           {/* Ambient Dark Gradient Overlays */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(180deg, rgba(8,6,11,0.4) 0%, rgba(8,6,11,0.2) 40%, rgba(8,6,11,0.92) 100%)',
+            background: 'linear-gradient(180deg, rgba(8,6,11,0.3) 0%, rgba(8,6,11,0.15) 40%, rgba(8,6,11,0.92) 100%)',
           }} />
 
           {/* Golden Ambient Radial Spotlight */}
@@ -434,18 +488,18 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             width: '400px',
             height: '400px',
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(212,175,55,0.18) 0%, rgba(0,0,0,0) 70%)',
+            background: 'radial-gradient(circle, rgba(212,175,55,0.2) 0%, rgba(0,0,0,0) 70%)',
             pointerEvents: 'none',
           }} />
 
           {/* Text Overlay Content */}
-          <div style={{ position: 'relative', zIndex: 2, maxWidth: '520px' }}>
+          <div style={{ position: 'relative', zIndex: 2, maxWidth: '540px' }}>
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              background: 'rgba(212, 175, 55, 0.15)',
-              border: '1px solid rgba(212, 175, 55, 0.4)',
+              gap: '8px',
+              background: 'rgba(212, 175, 55, 0.18)',
+              border: '1px solid rgba(212, 175, 55, 0.5)',
               borderRadius: '20px',
               padding: '6px 14px',
               fontSize: '0.72rem',
@@ -455,7 +509,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               letterSpacing: '1.5px',
               marginBottom: '16px',
             }}>
-              <Crown size={13} color="#D4AF37" />
+              <img src="/logo_bonomo_gold.png" alt="B" style={{ width: 14, height: 14, borderRadius: 3 }} />
               <span>ALTA GASTRONOMIA & EVENTOS DE GALA</span>
             </div>
 
@@ -466,7 +520,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               color: '#FFFFFF',
               lineHeight: '1.25',
               margin: '0 0 12px 0',
-              textShadow: '0 4px 20px rgba(0,0,0,0.8)',
+              textShadow: '0 4px 24px rgba(0,0,0,0.9)',
             }}>
               Transformando sonhos de 15 anos em momentos inesquecíveis.
             </h2>
@@ -476,7 +530,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               color: '#D1CBBF',
               lineHeight: '1.6',
               margin: 0,
-              textShadow: '0 2px 10px rgba(0,0,0,0.8)',
+              textShadow: '0 2px 12px rgba(0,0,0,0.9)',
             }}>
               Gestão integrada de espaços, captação automatizada de indicações e experiência exclusiva para debutantes e famílias.
             </p>
@@ -488,6 +542,29 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       {showForgotModal && (
         <AdminForgotPasswordModal onClose={() => setShowForgotModal(false)} />
       )}
+
+      {/* Responsive Styles */}
+      <style>{`
+        @media (max-width: 860px) {
+          .login-wrapper {
+            flex-direction: column !important;
+          }
+          .login-visual-pane {
+            display: none !important;
+          }
+          .login-mobile-header {
+            display: block !important;
+          }
+          .login-desktop-brand {
+            display: none !important;
+          }
+          .login-form-pane {
+            max-width: 100% !important;
+            border-right: none !important;
+            padding: 24px 20px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

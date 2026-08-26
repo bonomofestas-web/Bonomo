@@ -182,8 +182,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   return (
     <aside style={{
       width: '270px',
-      background: 'var(--adm-bg-sidebar)',
-      borderRight: '1px solid var(--adm-border)',
+      background: '#0B090E',
+      borderRight: '1px solid rgba(212, 175, 55, 0.18)',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
@@ -194,6 +194,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       overflowY: 'auto',
       zIndex: 50,
       fontFamily: "'Plus Jakarta Sans', sans-serif",
+      color: '#FFFFFF',
     }}>
       {/* Brand Header */}
       <div style={{
@@ -201,28 +202,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         alignItems: 'center',
         gap: '12px',
         paddingBottom: '20px',
-        borderBottom: '1px solid var(--adm-border)',
+        borderBottom: '1px solid rgba(212, 175, 55, 0.18)',
         marginBottom: '18px',
       }}>
-        <div style={{
-          width: '42px',
-          height: '42px',
-          borderRadius: '12px',
-          background: 'linear-gradient(135deg, #1B1C2A 0%, #0A0A10 100%)',
-          border: '1px solid rgba(212, 175, 55, 0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          flexShrink: 0,
-        }}>
-          <Crown size={22} color="#D4AF37" />
-        </div>
+        <img
+          src="/logo_bonomo_gold.png"
+          alt="Bonomo Festas"
+          style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            objectFit: 'cover',
+            border: '1.5px solid rgba(212, 175, 55, 0.5)',
+            boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)',
+            flexShrink: 0,
+          }}
+        />
         <div style={{ minWidth: 0 }}>
           <div style={{
             fontSize: '1.05rem',
             fontWeight: 800,
-            color: 'var(--adm-text-title)',
+            color: '#FFFFFF',
             letterSpacing: '-0.3px',
             lineHeight: 1.2,
           }}>
@@ -230,7 +230,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
           <div style={{
             fontSize: '0.68rem',
-            color: 'var(--adm-accent)',
+            color: '#D4AF37',
             fontWeight: 700,
             letterSpacing: '0.5px',
             textTransform: 'uppercase',
