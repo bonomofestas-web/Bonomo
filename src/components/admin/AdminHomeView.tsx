@@ -339,7 +339,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       </div>
 
       {/* ── 2-COLUMN MAIN WORKSPACE: TASKS (LEFT) & DAY AGENDA (RIGHT) ── */}
-      <div style={{
+      <div className="admin-home-grid" style={{
         display: 'grid',
         gridTemplateColumns: '1.1fr 1fr',
         gap: '24px',
@@ -1081,6 +1081,15 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
         itemName={taskToDelete?.title || taskToDelete?.description}
         message={taskToDelete ? `Tem certeza que deseja apagar a tarefa "${taskToDelete.title || taskToDelete.description}"? Esta ação não poderá ser desfeita.` : undefined}
       />
+
+      <style>{`
+        @media (max-width: 900px) {
+          .admin-home-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 };

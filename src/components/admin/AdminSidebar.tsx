@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  Calendar, LogOut, Crown, Gift, CheckSquare,
-  Shield, Layers, ChevronRight, Settings, TrendingUp,
-  ChevronDown, Globe, Check, Pin, Megaphone, Handshake,
+  LogOut, Gift, CheckSquare,
+  ChevronRight, Settings,
+  ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
-  ShieldCheck, Star, ShoppingBag, Music, Camera
+  ShieldCheck, Star, ShoppingBag, Music, Camera, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION } from '../../types/admin';
@@ -27,6 +27,8 @@ interface AdminSidebarProps {
   activeFunnelId?: string | null;
   onSelectTab: (tab: AdminTabType, funnelId?: string | null) => void;
   onOpenSettings?: () => void;
+  onCloseMobile?: () => void;
+  isMobileOverlay?: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -42,6 +44,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeFunnelId,
   onSelectTab,
   onOpenSettings,
+  onCloseMobile,
+  isMobileOverlay = false,
 }) => {
   const { 
     currentUser, 
@@ -76,72 +80,56 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'crm', label: 'Funil Comercial', icon: <Target size={18} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
   ];
 
-  // Venue-specific sub-items (Ordered strictly: Aniversariantes -> Prêmios & Benefícios -> Jornadas & Metas -> Compromissos)
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={18} />, roles: ['master', 'admin', 'crm'] },
-    { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={18} />, roles: ['master', 'admin'] },
-    { id: 'templates', label: 'Jornadas & Metas', icon: <Layers size={18} />, roles: ['master', 'admin'] },
-    { id: 'appointments', label: 'Compromissos / Degustações', icon: <Calendar size={18} />, roles: ['master', 'admin'] },
+    { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={18} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'templates', label: 'Jornadas & Metas', icon: <Target size={18} />, roles: ['master', 'admin'] },
   ];
 
-  // Gestão Master (Section 3)
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'collaborators', label: 'Colaboradores', icon: <Shield size={18} />, roles: ['master', 'admin'] },
+    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={18} />, roles: ['master'] },
     { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={18} />, roles: ['master'] },
   ];
 
-  const visibleGlobal = globalItems.filter(item => item.roles.includes(userRole));
-  const visibleVenueItems = venueItems.filter(item => item.roles.includes(userRole));
-  const visibleMasterItems = masterItems.filter(item => item.roles.includes(userRole));
+  const allowedVenues = useMemo(() => {
+    if (userRole === 'master') return venues;
+    if (!currentUser?.venueIds || currentUser.venueIds.length === 0) return venues;
+    return venues.filter(v => currentUser.venueIds?.includes(v.id));
+  }, [venues, currentUser, userRole]);
 
-  // Allowed venues for user
-  const userAllowedVenueIds = useMemo(() => {
-    if (!currentUser || currentUser.role === 'master') return null;
-    return currentUser.venueIds && currentUser.venueIds.length > 0 ? currentUser.venueIds : [];
-  }, [currentUser]);
-
-  // Pinned funnels for the active user/venue
-  const pinnedFunnels = useMemo(() => {
-    return (funnels || []).filter(f => {
-      if (!f.isPinned) return false;
-      if (activeVenueId && f.venueId !== activeVenueId) return false;
-      if (userAllowedVenueIds !== null && userAllowedVenueIds.length > 0 && !userAllowedVenueIds.includes(f.venueId)) return false;
-      return true;
+  const visibleFunnels = useMemo(() => {
+    return funnels.filter(funnel => {
+      if (!activeVenueId) return true;
+      return funnel.venueId === activeVenueId || funnel.venueId === 'all';
     });
-  }, [funnels, activeVenueId, userAllowedVenueIds]);
+  }, [funnels, activeVenueId]);
 
-  const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
+  const renderSidebarFunnelIcon = (iconName: string, size = 15, color = '#D4AF37') => {
     switch (iconName) {
-      case 'crown': return <Crown size={size} color={color} />;
-      case 'megaphone': return <Megaphone size={size} color={color} />;
-      case 'handshake': return <Handshake size={size} color={color} />;
       case 'sparkles': return <Sparkles size={size} color={color} />;
       case 'flame': return <Flame size={size} color={color} />;
       case 'zap': return <Zap size={size} color={color} />;
-      case 'dollar': return <DollarSign size={size} color={color} />;
+      case 'dollar-sign': return <DollarSign size={size} color={color} />;
       case 'rocket': return <Rocket size={size} color={color} />;
       case 'heart': return <Heart size={size} color={color} />;
       case 'trophy': return <Trophy size={size} color={color} />;
       case 'radio': return <Radio size={size} color={color} />;
-      case 'phone': return <PhoneCall size={size} color={color} />;
-      case 'message': return <MessageSquare size={size} color={color} />;
-      case 'gift': return <Gift size={size} color={color} />;
+      case 'phone-call': return <PhoneCall size={size} color={color} />;
+      case 'message-square': return <MessageSquare size={size} color={color} />;
       case 'compass': return <Compass size={size} color={color} />;
-      case 'shield': return <ShieldCheck size={size} color={color} />;
+      case 'shield-check': return <ShieldCheck size={size} color={color} />;
       case 'star': return <Star size={size} color={color} />;
-      case 'shop': return <ShoppingBag size={size} color={color} />;
+      case 'shopping-bag': return <ShoppingBag size={size} color={color} />;
       case 'music': return <Music size={size} color={color} />;
       case 'camera': return <Camera size={size} color={color} />;
       default: return <Target size={size} color={color} />;
     }
   };
 
-  // Allowed venues for switcher:
-  // For master: all venues
-  // For admin (manager): user's assigned venueIds
-  const allowedVenues = userRole === 'master' 
-    ? venues 
-    : venues.filter(v => (currentUser?.venueIds || []).includes(v.id));
+  const handleTabClick = (tabId: AdminTabType, funnelId?: string | null) => {
+    onSelectTab(tabId, funnelId);
+    if (onCloseMobile) onCloseMobile();
+  };
 
   const renderNavButton = (item: { id: AdminTabType; label: string; icon: React.ReactNode }, isSubItem = false) => {
     const isActive = activeTab === item.id;
@@ -149,7 +137,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       <button
         key={item.id}
         type="button"
-        onClick={() => onSelectTab(item.id, null)}
+        onClick={() => handleTabClick(item.id, null)}
         style={{
           width: '100%',
           display: 'flex',
@@ -157,69 +145,98 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           gap: '12px',
           padding: isSubItem ? '9px 12px 9px 18px' : '10px 14px',
           borderRadius: '12px',
-          background: isActive ? 'var(--adm-accent-bg)' : 'transparent',
-          border: isActive ? '1px solid var(--adm-accent)' : '1px solid transparent',
-          color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-body)',
-          fontWeight: isActive ? 800 : 600,
+          background: isActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
+          border: isActive ? '1px solid #D4AF37' : '1px solid transparent',
+          color: isActive ? '#D4AF37' : '#FFFFFF',
+          fontWeight: isActive ? 700 : 500,
           fontSize: isSubItem ? '0.82rem' : '0.86rem',
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'all 0.15s ease',
-          boxShadow: isActive ? '0 0 16px rgba(212, 175, 55, 0.12)' : 'none',
         }}
       >
-        <span style={{ color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-muted)', display: 'flex' }}>
+        <span style={{ color: isActive ? '#D4AF37' : '#9E988D', display: 'flex' }}>
           {item.icon}
         </span>
         <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {item.label}
         </span>
-        {isActive && <ChevronRight size={14} color="var(--adm-accent)" />}
+        {isActive && <ChevronRight size={14} color="#D4AF37" />}
       </button>
     );
   };
 
   return (
     <aside style={{
-      width: '270px',
+      width: isMobileOverlay ? '100vw' : '270px',
       background: '#0B090E',
-      borderRight: '1px solid rgba(212, 175, 55, 0.15)',
+      borderRight: isMobileOverlay ? 'none' : '1px solid rgba(212, 175, 55, 0.15)',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
-      position: 'sticky',
+      position: isMobileOverlay ? 'fixed' : 'sticky',
       top: 0,
-      padding: '24px 16px',
+      left: 0,
+      right: isMobileOverlay ? 0 : undefined,
+      bottom: isMobileOverlay ? 0 : undefined,
+      padding: isMobileOverlay ? '24px 20px 32px 20px' : '24px 16px',
       boxSizing: 'border-box',
       overflowY: 'auto',
-      zIndex: 50,
+      zIndex: isMobileOverlay ? 9999 : 50,
       fontFamily: "'Poppins', sans-serif",
       color: '#FFFFFF',
     }}>
-      {/* Brand Header with Horizontal Logo */}
+      {/* Brand Header with Big Horizontal Logo and Mobile Close Button */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         paddingBottom: '20px',
         borderBottom: '1px solid rgba(212, 175, 55, 0.15)',
         marginBottom: '18px',
+        position: 'relative',
       }}>
-        <img
-          src="/logo_horizontal.png"
-          alt="Bonomo Festas"
-          style={{
-            width: '100%',
-            maxWidth: '190px',
-            height: 'auto',
-            maxHeight: '44px',
-            objectFit: 'contain',
-            display: 'block',
-          }}
-        />
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <img
+            src="/logo_horizontal.png"
+            alt="Bonomo Festas"
+            style={{
+              width: '100%',
+              maxWidth: '220px',
+              height: 'auto',
+              maxHeight: '52px',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+
+        {isMobileOverlay && onCloseMobile && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            style={{
+              position: 'absolute',
+              right: '0px',
+              top: '4px',
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#FFFFFF',
+              borderRadius: '50%',
+              width: '36px',
+              height: '36px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
-      {/* Luxury Custom Venue Switcher Popover */}
+      {/* Luxury Custom Venue Switcher Popover (Solid Dark in all modes) */}
       {(userRole === 'master' || allowedVenues.length > 1) && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '16px' }}>
           <button
@@ -227,10 +244,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             onClick={() => setIsVenueDropdownOpen(v => !v)}
             style={{
               width: '100%',
-              background: isVenueDropdownOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-              border: `1px solid ${isVenueDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+              background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.14)' : '#141118',
+              border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
               borderRadius: '14px',
-              padding: '8px 10px',
+              padding: '10px 12px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -238,10 +255,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               gap: '8px',
               textAlign: 'left',
               transition: 'all 0.15s ease',
-              boxShadow: isVenueDropdownOpen ? '0 0 16px rgba(212, 175, 55, 0.2)' : 'none',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
               {/* Logo / Badge */}
               <div style={{
                 width: 28,
@@ -266,18 +282,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
               {/* Text */}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.1 }}>
+                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#9E988D', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.1 }}>
                   Unidade Selecionada
                 </div>
-                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {activeVenue ? activeVenue.name : 'Visão Global (Todas)'}
                 </div>
               </div>
             </div>
 
             <ChevronDown
-              size={13}
-              color="var(--adm-text-muted)"
+              size={14}
+              color="#9E988D"
               style={{
                 transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none',
                 transition: 'transform 0.2s ease',
@@ -294,26 +310,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               left: 0,
               right: 0,
               zIndex: 1000,
-              background: 'var(--adm-bg-card)',
-              border: '1.5px solid rgba(212, 175, 55, 0.4)',
+              background: '#120F17',
+              border: '1.5px solid rgba(212, 175, 55, 0.35)',
               borderRadius: '16px',
               padding: '6px',
-              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(212, 175, 55, 0.15)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
+              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.8)',
               display: 'flex',
               flexDirection: 'column',
               gap: '3px',
               maxHeight: '300px',
               overflowY: 'auto',
-              animation: 'fadeIn 0.15s ease-out',
             }}>
-              {/* Header inside dropdown */}
-              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '4px 8px 2px', letterSpacing: '0.5px' }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#9E988D', textTransform: 'uppercase', padding: '4px 8px 2px', letterSpacing: '0.5px' }}>
                 Casas de Festa
               </div>
 
-              {/* Option 1: Visão Global */}
               {userRole === 'master' && (
                 <button
                   type="button"
@@ -323,51 +334,25 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   }}
                   style={{
                     width: '100%',
-                    background: !activeVenueId ? 'var(--adm-accent-bg)' : 'transparent',
-                    border: !activeVenueId ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                    background: !activeVenueId ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
+                    border: !activeVenueId ? '1px solid #D4AF37' : '1px solid transparent',
                     borderRadius: '10px',
                     padding: '8px 10px',
+                    color: !activeVenueId ? '#D4AF37' : '#FFFFFF',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
                     gap: '8px',
-                    cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.12s ease',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <div style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '6px',
-                      background: 'rgba(212, 175, 55, 0.15)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      <Globe size={13} color="#D4AF37" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                        Visão Global
-                      </div>
-                      <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
-                        Todas as unidades
-                      </div>
-                    </div>
-                  </div>
-                  {!activeVenueId && <Check size={13} color="#D4AF37" strokeWidth={2.5} />}
+                  <Globe size={14} color="#D4AF37" />
+                  <span>Visão Global (Todas)</span>
                 </button>
               )}
 
-              {/* Divider */}
-              {userRole === 'master' && (
-                <div style={{ height: 1, background: 'var(--adm-border)', margin: '2px 0' }} />
-              )}
-
-              {/* Venues Options */}
               {allowedVenues.map(v => {
                 const isSelected = activeVenueId === v.id;
                 return (
@@ -380,48 +365,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     }}
                     style={{
                       width: '100%',
-                      background: isSelected ? 'var(--adm-accent-bg)' : 'transparent',
-                      border: isSelected ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                      background: isSelected ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
+                      border: isSelected ? '1px solid #D4AF37' : '1px solid transparent',
                       borderRadius: '10px',
                       padding: '8px 10px',
+                      color: isSelected ? '#D4AF37' : '#FFFFFF',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
                       gap: '8px',
-                      cursor: 'pointer',
                       textAlign: 'left',
-                      transition: 'all 0.12s ease',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                      {v.logoUrl ? (
-                        <img src={v.logoUrl} alt={v.name} style={{ width: 24, height: 24, borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }} />
-                      ) : (
-                        <div style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: '6px',
-                          background: 'rgba(212, 175, 55, 0.12)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          <Building2 size={13} color="#D4AF37" />
-                        </div>
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {v.name}
-                        </div>
-                        {v.address && (
-                          <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {v.address}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {isSelected && <Check size={13} color="#D4AF37" strokeWidth={2.5} />}
+                    <Building2 size={14} color="#D4AF37" />
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.name}</span>
                   </button>
                 );
               })}
@@ -431,13 +390,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       )}
 
       {/* Navigation Sections */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-        {/* Section 1: Workspace */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Section 1: Workspace Global */}
         <div>
           <div style={{
             fontSize: '0.66rem',
             fontWeight: 800,
-            color: 'var(--adm-text-muted)',
+            color: '#9E988D',
             textTransform: 'uppercase',
             letterSpacing: '0.8px',
             paddingLeft: '10px',
@@ -445,39 +404,37 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           }}>
             Workspace
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {visibleGlobal.map(item => renderNavButton(item, false))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {globalItems.map(item => renderNavButton(item))}
           </div>
         </div>
 
-        {/* Section: Funis Fixados (Exibida APENAS quando há funis fixados) */}
-        {pinnedFunnels.length > 0 && (
+        {/* Dynamic Funnel Sub-Items */}
+        {visibleFunnels.length > 0 && (
           <div>
             <div style={{
               fontSize: '0.66rem',
               fontWeight: 800,
-              color: 'var(--adm-accent)',
+              color: '#D4AF37',
               textTransform: 'uppercase',
               letterSpacing: '0.8px',
               paddingLeft: '10px',
               marginBottom: '8px',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
             }}>
-              <Pin size={11} color="var(--adm-accent)" />
-              <span>Funis</span>
+              <span>Funis Ativos</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {pinnedFunnels.map(funnel => {
+              {visibleFunnels.map(funnel => {
                 const isFunnelActive = activeTab === 'crm' && activeFunnelId === funnel.id;
                 const venue = venues.find(v => v.id === funnel.venueId);
-
                 return (
                   <button
                     key={funnel.id}
                     type="button"
-                    onClick={() => onSelectTab('crm', funnel.id)}
+                    onClick={() => handleTabClick('crm', funnel.id)}
                     title={`Acessar ${funnel.name} (${venue?.name || ''})`}
                     style={{
                       width: '100%',
@@ -486,24 +443,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       gap: '10px',
                       padding: '8px 12px',
                       borderRadius: '12px',
-                      background: isFunnelActive ? 'var(--adm-accent-bg)' : 'transparent',
-                      border: isFunnelActive ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                      color: isFunnelActive ? 'var(--adm-accent)' : 'var(--adm-text-body)',
-                      fontWeight: isFunnelActive ? 800 : 600,
+                      background: isFunnelActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
+                      border: isFunnelActive ? '1px solid #D4AF37' : '1px solid transparent',
+                      color: isFunnelActive ? '#D4AF37' : '#FFFFFF',
+                      fontWeight: isFunnelActive ? 700 : 500,
                       fontSize: '0.82rem',
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'all 0.15s ease',
-                      boxShadow: isFunnelActive ? '0 0 16px rgba(212, 175, 55, 0.12)' : 'none',
                     }}
                   >
-                    {/* Funnel Icon or Custom Image Thumbnail */}
                     <div style={{
                       width: '24px',
                       height: '24px',
                       borderRadius: '7px',
-                      background: `${funnel.badgeColor || '#3B82F6'}18`,
-                      border: `1px solid ${funnel.badgeColor || '#3B82F6'}35`,
+                      background: `${funnel.badgeColor || '#D4AF37'}18`,
+                      border: `1px solid ${funnel.badgeColor || '#D4AF37'}35`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -513,7 +468,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       {funnel.customImageUrl ? (
                         <img src={funnel.customImageUrl} alt={funnel.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       ) : (
-                        renderSidebarFunnelIcon(funnel.icon || 'target', 13, funnel.badgeColor || '#3B82F6')
+                        renderSidebarFunnelIcon(funnel.icon || 'target', 13, funnel.badgeColor || '#D4AF37')
                       )}
                     </div>
 
@@ -522,13 +477,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                         {funnel.name}
                       </div>
                       {venue && !activeVenueId && (
-                        <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '0.62rem', color: '#9E988D', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {venue.name}
                         </div>
                       )}
                     </div>
 
-                    {isFunnelActive && <ChevronRight size={13} color="var(--adm-accent)" />}
+                    {isFunnelActive && <ChevronRight size={13} color="#D4AF37" />}
                   </button>
                 );
               })}
@@ -541,7 +496,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <div style={{
             fontSize: '0.66rem',
             fontWeight: 800,
-            color: activeVenue ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+            color: '#D4AF37',
             textTransform: 'uppercase',
             letterSpacing: '0.8px',
             paddingLeft: '10px',
@@ -558,7 +513,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--adm-text-muted)',
+                  color: '#9E988D',
                   fontSize: '0.62rem',
                   cursor: 'pointer',
                   padding: 0,
@@ -569,48 +524,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               </button>
             )}
           </div>
-          {venues.length === 0 ? (
-            <div style={{ padding: '4px' }}>
-              <button
-                type="button"
-                onClick={() => onSelectTab('venues')}
-                style={{
-                  width: '100%',
-                  background: 'rgba(212, 175, 55, 0.08)',
-                  border: '1px dashed var(--adm-accent)',
-                  borderRadius: '12px',
-                  padding: '12px 10px',
-                  color: 'var(--adm-accent)',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  lineHeight: 1.35,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <Building2 size={16} />
-                <span>Cadastre uma casa de festa para poder gerenciar</span>
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {visibleVenueItems.map(item => renderNavButton(item, true))}
-            </div>
-          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {venueItems
+              .filter(item => item.roles.includes(userRole))
+              .map(item => renderNavButton(item, true))}
+          </div>
         </div>
 
-        {/* Section 3: Gestão Master (Visible if user has permissions for collaborators or venues) */}
-        {visibleMasterItems.length > 0 && (
+        {/* Section 3: Master Control */}
+        {userRole === 'master' && (
           <div>
             <div style={{
               fontSize: '0.66rem',
               fontWeight: 800,
-              color: 'var(--adm-accent)',
+              color: '#D4AF37',
               textTransform: 'uppercase',
               letterSpacing: '0.8px',
               paddingLeft: '10px',
@@ -618,56 +546,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             }}>
               Gestão Master
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {visibleMasterItems.map(item => renderNavButton(item, false))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {masterItems.map(item => renderNavButton(item))}
             </div>
           </div>
         )}
-      </nav>
+      </div>
 
-      {/* Performance indicator for SDR/Closer */}
-      {(userRole === 'sdr' || userRole === 'closer') && (
-        <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '12px',
-          padding: '10px 12px',
-          marginBottom: '14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}>
-          <div style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '8px',
-            background: 'var(--adm-green-bg)',
-            color: 'var(--adm-green)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <TrendingUp size={15} />
-          </div>
-          <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-              {userRole === 'sdr' ? 'SDR Ativo' : 'Closer Ativo'}
-            </div>
-            <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
-              {userRole === 'sdr' ? 'Seus atendimentos' : 'Suas reuniões e vendas'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Actions: User Info Card */}
+      {/* Bottom Actions: User Info Card (Solid Dark in all modes) */}
       <div style={{
-        borderTop: '1px solid var(--adm-border)',
+        borderTop: '1px solid rgba(212, 175, 55, 0.15)',
         paddingTop: '16px',
+        marginTop: '16px',
       }}>
         <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
+          background: '#141118',
+          border: '1px solid rgba(212, 175, 55, 0.25)',
           borderRadius: '14px',
           padding: '10px 12px',
           display: 'flex',
@@ -682,13 +576,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <img
               src={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
               alt="User"
-              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid var(--adm-accent)', objectFit: 'cover', flexShrink: 0 }}
+              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #D4AF37', objectFit: 'cover', flexShrink: 0 }}
             />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {currentUser?.name || 'Administrador'}
               </div>
-              <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+              <div style={{ fontSize: '0.64rem', color: '#9E988D', textTransform: 'uppercase', fontWeight: 600 }}>
                 {ROLE_LABELS[userRole] || userRole}
               </div>
             </div>
@@ -702,7 +596,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--adm-text-muted)',
+                  color: '#9E988D',
                   cursor: 'pointer',
                   padding: '6px',
                   borderRadius: '6px',
@@ -710,7 +604,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   alignItems: 'center',
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = '#FFFFFF')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#9E988D')}
               >
                 <Settings size={15} />
               </button>
@@ -722,7 +616,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: 'var(--adm-text-muted)',
+                color: '#9E988D',
                 cursor: 'pointer',
                 padding: '6px',
                 borderRadius: '6px',
@@ -730,7 +624,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 alignItems: 'center',
               }}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#9E988D')}
             >
               <LogOut size={15} />
             </button>

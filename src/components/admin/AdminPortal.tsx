@@ -164,32 +164,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         />
       </div>
 
-      {/* Mobile Drawer Overlay */}
+      {/* Mobile Full Screen Menu Overlay */}
       {isMobileSidebarOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.6)',
-          zIndex: 1000,
-          display: 'flex',
-        }}>
-          <AdminSidebar
-            activeTab={activeTab}
-            activeFunnelId={activeFunnelId}
-            onSelectTab={(tab, funnelId) => {
-              handleSelectTab(tab, funnelId);
-              setIsMobileSidebarOpen(false);
-            }}
-            onOpenSettings={() => {
-              setIsMobileSidebarOpen(false);
-              setIsSettingsModalOpen(true);
-            }}
-          />
-          <div 
-            style={{ flex: 1 }} 
-            onClick={() => setIsMobileSidebarOpen(false)}
-          />
-        </div>
+        <AdminSidebar
+          activeTab={activeTab}
+          activeFunnelId={activeFunnelId}
+          onSelectTab={(tab, funnelId) => {
+            handleSelectTab(tab, funnelId);
+            setIsMobileSidebarOpen(false);
+          }}
+          onOpenSettings={() => {
+            setIsMobileSidebarOpen(false);
+            setIsSettingsModalOpen(true);
+          }}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
+          isMobileOverlay={true}
+        />
       )}
 
       {/* Main Content Body */}
@@ -225,7 +215,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           gap: '14px',
         }}>
           {/* Left: Mobile Toggle & Breadcrumb / Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 300px', maxWidth: '600px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 300px', maxWidth: '600px' }}>
             {/* Mobile Hamburger */}
             <button
               className="admin-mobile-menu-btn"
@@ -238,13 +228,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 padding: '8px',
                 cursor: 'pointer',
                 display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
 
+            {/* Mobile Brand Logo in Header */}
+            <div className="admin-mobile-header-logo" style={{ display: 'none', alignItems: 'center' }}>
+              <img
+                src="/logo_horizontal.png"
+                alt="Bonomo"
+                style={{ height: '28px', width: 'auto', objectFit: 'contain' }}
+              />
+            </div>
+
             {/* SaaS Search Capsule & Results Dropdown */}
-            <div style={{ position: 'relative', width: '100%', maxWidth: '380px' }}>
+            <div className="admin-desktop-search" style={{ position: 'relative', width: '100%', maxWidth: '380px' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -850,8 +851,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           .admin-desktop-sidebar {
             display: none !important;
           }
+          .admin-desktop-search {
+            display: none !important;
+          }
+          .admin-mobile-header-logo {
+            display: flex !important;
+          }
           .admin-portal-header {
-            padding: 0 16px !important;
+            padding: 0 14px !important;
           }
           .admin-mobile-menu-btn {
             display: flex !important;

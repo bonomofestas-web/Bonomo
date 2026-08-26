@@ -215,17 +215,28 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               </div>
             </div>
           ) : (
-            /* MOBILE STEP 2: LOGIN FORM */
+            /* MOBILE STEP 2: LOGIN FORM (CENTERED WITH HORIZONTAL LOGO) */
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               minHeight: '100vh',
               padding: '24px 20px',
               boxSizing: 'border-box',
-              justifyContent: 'space-between',
+              justifyContent: 'center',
+              alignItems: 'center',
+              position: 'relative',
             }}>
-              <div>
-                {/* Back Button */}
+              {/* Top Navigation Bar with Back Button and Horizontal Logo */}
+              <div style={{
+                position: 'absolute',
+                top: '20px',
+                left: '20px',
+                right: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                zIndex: 10,
+              }}>
                 <button
                   type="button"
                   onClick={() => setMobileStep('welcome')}
@@ -240,13 +251,28 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    marginBottom: '20px',
                   }}
                 >
                   <ArrowLeft size={18} />
                 </button>
 
-                <div style={{ marginBottom: '24px' }}>
+                <img
+                  src="/logo_horizontal.png"
+                  alt="Bonomo Festas"
+                  style={{
+                    height: '32px',
+                    width: 'auto',
+                    maxWidth: '160px',
+                    objectFit: 'contain',
+                  }}
+                />
+
+                <div style={{ width: '38px' }} />
+              </div>
+
+              {/* Centered Form Wrapper */}
+              <div style={{ width: '100%', maxWidth: '380px', marginTop: '40px' }}>
+                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
                   <h2 style={{ fontSize: '1.65rem', fontWeight: 700, color: '#FFF', margin: '0 0 6px 0' }}>
                     Welcome Back!
                   </h2>
