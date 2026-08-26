@@ -1,0 +1,433 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root {
+  /* Villa Diamond Reference Colors */
+  --primary: #D83D68; /* Radiant Pink */
+  --primary-light: #F5C2CE;
+  --secondary: #E8B4B8;
+  --accent: #C89B3C; /* Champagne Gold */
+  --glow-pink: rgba(216, 61, 104, 0.5);
+  --glow-gold: rgba(200, 155, 60, 0.4);
+  --bg-dark: #0C0510;
+  --bg-sidebar: #0A040E;
+  --bg-card: rgba(22, 11, 30, 0.85);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  
+  --text-main: #FFFFFF;
+  --text-muted: #A397B0;
+  --text-dark: #2A1820;
+  
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 8px;
+  
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0F1018;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #25273C;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3B3E5C;
+}
+
+/* Hide scrollbar utility for smooth horizontal touch swipe */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Glassmorphism Cards */
+.glass-card {
+  background: #1D1226;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  transition: var(--transition-smooth);
+}
+
+/* Milestone Cards State Styles */
+.card-milestone-claimed,
+.card-milestone-completed {
+  background: linear-gradient(135deg, #FBF2D5 0%, #F5E5AD 50%, #E7C975 100%) !important;
+  color: #3D2702 !important;
+  border: 2px solid #DDA84B !important;
+  box-shadow: 0 10px 30px rgba(221, 168, 75, 0.35), inset 0 0 15px rgba(255, 215, 0, 0.25) !important;
+}
+
+.card-milestone-in_progress {
+  background: linear-gradient(135deg, #FFF0F5 0%, #FFE4EE 100%) !important;
+  color: #26171F !important;
+  border: 2.5px solid #FF1493 !important;
+  box-shadow: 0 0 25px rgba(255, 20, 147, 0.45), inset 0 0 20px rgba(255, 20, 147, 0.2) !important;
+}
+
+.card-milestone-locked {
+  background: #D5D0D9 !important;
+  color: #4E4654 !important;
+  border: 1.5px solid #AAA4B0 !important;
+  box-shadow: none !important;
+  opacity: 0.88;
+}
+
+/* Status Badges */
+.badge-claimed {
+  background: linear-gradient(135deg, #DDA84B 0%, #F6D17E 100%) !important;
+  color: #3D2702 !important;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(221, 168, 75, 0.4) !important;
+}
+
+.badge-in_progress {
+  background: linear-gradient(135deg, #FF1493 0%, #FF4D8D 100%) !important;
+  color: #FFFFFF !important;
+  font-weight: 800;
+  box-shadow: 0 0 10px rgba(255, 20, 147, 0.5) !important;
+}
+
+.badge-locked {
+  background: #AAA4B0 !important;
+  color: #3D3743 !important;
+  font-weight: 800;
+}
+
+/* Ticket Voucher Badge */
+.ticket-voucher {
+  background: #EAD4BC;
+  border: 1px solid #D9BA9B;
+  color: #8F6533;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 1.5px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ticket-voucher::before, .ticket-voucher::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  background: #FAF2EA;
+  border-radius: 50%;
+}
+
+.ticket-voucher::before {
+  left: -6px;
+}
+
+.ticket-voucher::after {
+  right: -6px;
+}
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(135deg, #D83D68 0%, #B82850 100%);
+  color: #FFFFFF;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 6px 18px rgba(216, 61, 104, 0.4);
+  transition: var(--transition-smooth);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(216, 61, 104, 0.5);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+  border: 1px solid var(--border-color);
+  padding: 8px 18px;
+  border-radius: 25px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-smooth);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Layout Grid */
+.app-container {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.main-content {
+  padding: 20px 32px 100px 32px;
+  max-width: 1100px;
+  width: 100%;
+}
+
+/* Mobile Frame Container */
+.mobile-frame-container {
+  max-width: 395px;
+  margin: 10px auto;
+  border-radius: 48px;
+  border: 10px solid #1C1522;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 0 2px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  background: var(--bg-dark);
+  position: relative;
+}
+
+@media (max-width: 960px) {
+  .app-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .main-content {
+    padding: 16px 14px 120px 14px;
+  }
+}
+
+/* ========================================================================= */
+/* ADMIN PORTAL SAAS DARK DESIGN SYSTEM (PLUS JAKARTA SANS + SLATE NAVY)     */
+/* ========================================================================= */
+
+.admin-portal {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  letter-spacing: -0.015em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-portal * {
+  font-family: inherit;
+}
+
+/* Dark Theme Variables (Reference SaaS Dark) */
+.admin-theme-dark {
+  --adm-bg-app: #12131C;
+  --adm-bg-sidebar: #0F1018;
+  --adm-bg-header: #0F1018;
+  --adm-bg-card: #1B1C2A;
+  --adm-bg-card-hover: #222436;
+  --adm-bg-input: #161724;
+  --adm-bg-elevated: #232538;
+  --adm-border: #25273C;
+  --adm-border-hover: #3A3D5B;
+  --adm-text-title: #FFFFFF;
+  --adm-text-body: #D1D5E5;
+  --adm-text-muted: #7E84A3;
+  --adm-accent: #6366F1;
+  --adm-accent-hover: #4F46E5;
+  --adm-accent-bg: rgba(99, 102, 241, 0.15);
+  --adm-green: #22C55E;
+  --adm-green-bg: rgba(34, 197, 94, 0.14);
+  --adm-red: #EF4444;
+  --adm-red-bg: rgba(239, 68, 68, 0.14);
+  --adm-cyan: #06B6D4;
+  --adm-cyan-bg: rgba(6, 182, 212, 0.14);
+  --adm-gold: #D4AF37;
+  --adm-gold-bg: rgba(212, 175, 55, 0.15);
+  --adm-table-stripe: #161725;
+  --adm-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Light Theme Variables */
+.admin-theme-light {
+  --adm-bg-app: #F4F6F9;
+  --adm-bg-sidebar: #FFFFFF;
+  --adm-bg-header: #FFFFFF;
+  --adm-bg-card: #FFFFFF;
+  --adm-bg-card-hover: #F8FAFC;
+  --adm-bg-input: #F1F5F9;
+  --adm-bg-elevated: #E2E8F0;
+  --adm-border: #E2E8F0;
+  --adm-border-hover: #CBD5E1;
+  --adm-text-title: #0F172A;
+  --adm-text-body: #334155;
+  --adm-text-muted: #64748B;
+  --adm-accent: #4F46E5;
+  --adm-accent-hover: #4338CA;
+  --adm-accent-bg: rgba(79, 70, 229, 0.1);
+  --adm-green: #16A34A;
+  --adm-green-bg: rgba(22, 163, 74, 0.12);
+  --adm-red: #DC2626;
+  --adm-red-bg: rgba(220, 38, 38, 0.12);
+  --adm-cyan: #0284C7;
+  --adm-cyan-bg: rgba(2, 132, 199, 0.12);
+  --adm-gold: #B45309;
+  --adm-gold-bg: rgba(180, 83, 9, 0.1);
+  --adm-table-stripe: #F8FAFC;
+  --adm-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Modern SaaS Utility Classes */
+.saas-card {
+  background: var(--adm-bg-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--adm-shadow);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.saas-card:hover {
+  border-color: var(--adm-border-hover);
+}
+
+.trend-pill-up {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--adm-green-bg);
+  color: var(--adm-green);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.trend-pill-down {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--adm-red-bg);
+  color: var(--adm-red);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* Corporate Buttons */
+.adm-btn-primary {
+  background: var(--adm-accent);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 18px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.18s ease;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.18);
+}
+
+.adm-btn-primary:hover {
+  background: var(--adm-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.28);
+}
+
+.adm-btn-secondary {
+  background: var(--adm-bg-elevated);
+  color: var(--adm-text-body);
+  border: 1px solid var(--adm-border);
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.adm-btn-secondary:hover {
+  border-color: var(--adm-border-hover);
+  background: var(--adm-bg-card-hover);
+}
+
+/* Corporate Card */
+.adm-card {
+  background: var(--adm-bg-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--adm-shadow);
+  transition: border-color 0.15s ease;
+}
+
+/* Corporate Table */
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  color: var(--adm-text-body);
+}
+
+.adm-table th {
+  background: var(--adm-bg-sidebar);
+  color: var(--adm-text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.6px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--adm-border);
+  text-align: left;
+}
+
+.adm-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.adm-table tbody tr:hover {
+  background: var(--adm-bg-card-hover);
+}
+
