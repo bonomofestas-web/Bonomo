@@ -228,7 +228,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
         boxShadow: 'var(--adm-shadow)',
       }}>
         {/* Left: Personalized Greeting */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="admin-home-greeting" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {currentUser?.avatarUrl ? (
             <img 
               src={currentUser.avatarUrl} 
@@ -274,13 +274,13 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               <span style={{ fontSize: '1.1rem' }}>👋</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: 0 }}>
-              {formattedToday} • Aqui está o seu painel de tarefas e agenda de hoje.
+              {formattedToday} • Painel de tarefas e agenda
             </p>
           </div>
         </div>
 
         {/* Right: Quick Stats & New Task Button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div className="admin-home-stats-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{
             background: 'var(--adm-bg-input)',
             border: '1px solid var(--adm-border)',
@@ -292,7 +292,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Pendentes Hoje
+                Pendentes
               </div>
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: todayTasksCount > 0 ? '#F59E0B' : 'var(--adm-text-title)' }}>
                 {todayTasksCount}
@@ -311,7 +311,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Concluídas Hoje
+                Concluídas
               </div>
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-green)' }}>
                 {completedTodayCount}
@@ -321,7 +321,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
           <button
             onClick={handleOpenNewTask}
-            className="adm-btn-primary"
+            className="adm-btn-primary admin-home-desktop-new-task"
             style={{
               padding: '10px 18px',
               borderRadius: '12px',
@@ -358,6 +358,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           flexDirection: 'column',
           gap: '16px',
           boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
         }}>
           {/* Column Header & Scope Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
@@ -377,6 +379,27 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
                 Minhas Tarefas & Afazeres
               </h2>
+
+              <button
+                type="button"
+                onClick={handleOpenNewTask}
+                title="Criar Nova Tarefa"
+                style={{
+                  background: 'var(--adm-accent-bg)',
+                  border: '1px solid var(--adm-accent)',
+                  color: 'var(--adm-accent)',
+                  borderRadius: '50%',
+                  width: '26px',
+                  height: '26px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  marginLeft: '4px',
+                }}
+              >
+                <Plus size={14} />
+              </button>
             </div>
 
             {/* Scope Pill Toggle */}
@@ -1084,6 +1107,26 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
       <style>{`
         @media (max-width: 900px) {
+          .admin-home-header {
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            gap: 16px !important;
+            padding: 20px 16px !important;
+          }
+          .admin-home-greeting {
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            gap: 10px !important;
+          }
+          .admin-home-stats-actions {
+            justify-content: center !important;
+            width: 100% !important;
+          }
+          .admin-home-desktop-new-task {
+            display: none !important;
+          }
           .admin-home-grid {
             grid-template-columns: 1fr !important;
             gap: 16px !important;

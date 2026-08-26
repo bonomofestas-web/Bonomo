@@ -20,7 +20,8 @@ export type AdminTabType =
   | 'benefits'
   | 'collaborators' 
   | 'templates' 
-  | 'appointments';
+  | 'appointments'
+  | 'settings';
 
 interface AdminSidebarProps {
   activeTab: AdminTabType;
@@ -43,7 +44,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   activeTab,
   activeFunnelId,
   onSelectTab,
-  onOpenSettings,
   onCloseMobile,
   isMobileOverlay = false,
 }) => {
@@ -569,7 +569,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           justifyContent: 'space-between',
         }}>
           <div 
-            onClick={onOpenSettings}
+            onClick={() => handleTabClick('settings')}
             style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1, minWidth: 0 }}
             title="Configurações de Perfil e Tema"
           >
@@ -589,26 +589,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-            {onOpenSettings && (
-              <button
-                onClick={onOpenSettings}
-                title="Configurações & Tema"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#9E988D',
-                  cursor: 'pointer',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#FFFFFF')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#9E988D')}
-              >
-                <Settings size={15} />
-              </button>
-            )}
+            <button
+              onClick={() => handleTabClick('settings')}
+              title="Configurações & Tema"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: activeTab === 'settings' ? '#D4AF37' : '#9E988D',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#FFFFFF')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = activeTab === 'settings' ? '#D4AF37' : '#9E988D')}
+            >
+              <Settings size={15} />
+            </button>
 
             <button
               onClick={logout}

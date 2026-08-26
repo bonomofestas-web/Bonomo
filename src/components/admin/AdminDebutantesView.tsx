@@ -398,27 +398,18 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   </div>
                 </div>
 
-                {/* Exclusive Link Banner */}
+                {/* Quick Link & Sharing Actions Bar */}
                 <div style={{
                   background: 'var(--adm-bg-input)',
                   border: '1px solid var(--adm-border)',
                   borderRadius: '12px',
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   flexWrap: 'wrap',
-                  gap: '10px',
+                  gap: '8px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Link Exclusivo (Sem Login):
-                    </span>
-                    <code style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', background: 'var(--adm-bg-card)', padding: '3px 8px', borderRadius: '6px', border: '1px solid var(--adm-border)' }}>
-                      ?debutante={deb.slug}
-                    </code>
-                  </div>
-
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       onClick={() => handleCopyExclusiveLink(deb.slug)}
@@ -427,7 +418,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         color: '#FFFFFF',
                         border: 'none',
                         borderRadius: '20px',
-                        padding: '6px 14px',
+                        padding: '6px 12px',
                         fontSize: '0.74rem',
                         fontWeight: 800,
                         cursor: 'pointer',
@@ -438,7 +429,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       }}
                     >
                       {isCopied ? <Check size={12} /> : <Share2 size={12} />}
-                      <span>{isCopied ? 'Link Copiado!' : 'Copiar Link'}</span>
+                      <span>{isCopied ? 'Copiado!' : 'Copiar Link'}</span>
                     </button>
 
                     <button
@@ -448,7 +439,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         border: '1px solid #25D366',
                         color: '#25D366',
                         borderRadius: '20px',
-                        padding: '6px 14px',
+                        padding: '6px 12px',
                         fontSize: '0.74rem',
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -461,6 +452,27 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       <span>WhatsApp</span>
                     </button>
                   </div>
+
+                  <button
+                    onClick={() => onOpenDebutanteApp(deb.slug)}
+                    style={{
+                      background: 'var(--adm-accent-bg)',
+                      border: '1px solid var(--adm-border-hover)',
+                      color: 'var(--adm-accent)',
+                      borderRadius: '20px',
+                      padding: '6px 12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <Eye size={12} />
+                    <span>App</span>
+                    <ExternalLink size={10} />
+                  </button>
                 </div>
 
                 {/* Bottom Actions Row */}

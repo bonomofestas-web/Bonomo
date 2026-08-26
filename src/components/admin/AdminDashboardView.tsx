@@ -194,7 +194,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
   const topHeroes = collaborators.filter(c => c.active).slice(0, 4);
 
   return (
-    <div style={{
+    <div className="admin-dashboard-container" style={{
       display: 'flex',
       flexDirection: 'column',
       gap: '24px',
@@ -202,7 +202,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
       maxWidth: '1440px',
       margin: '0 auto',
       animation: 'fadeIn 0.25s ease-out',
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
+      boxSizing: 'border-box',
     }}>
       
       {/* ── Dashboard Title & Breadcrumbs Header ────────────────────────────── */}
@@ -1209,6 +1210,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
         </div>
 
       </div>
+
+      <style>{`
+        @media (max-width: 900px) {
+          .admin-dashboard-container {
+            padding: 16px 12px 60px 12px !important;
+            gap: 16px !important;
+          }
+          .saas-card {
+            padding: 16px !important;
+            border-radius: 16px !important;
+          }
+        }
+      `}</style>
 
     </div>
   );

@@ -103,7 +103,7 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
   };
 
   return (
-    <div style={{
+    <div className="admin-modal-overlay" style={{
       position: 'fixed',
       inset: 0,
       background: 'rgba(0, 0, 0, 0.8)',
@@ -114,9 +114,9 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
       zIndex: 2000,
       padding: '20px',
       animation: 'fadeIn 0.2s ease-out',
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
     }}>
-      <div style={{
+      <div className="admin-modal-content" style={{
         background: 'var(--adm-bg-card)',
         border: '1px solid var(--adm-border)',
         borderRadius: '20px',

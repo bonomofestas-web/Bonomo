@@ -431,3 +431,20 @@ body {
   background: var(--adm-bg-card-hover);
 }
 
+/* Responsive Fullscreen Modals on Mobile */
+@media (max-width: 900px) {
+  .admin-modal-overlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+  .admin-modal-content {
+    max-width: 100vw !important;
+    width: 100vw !important;
+    max-height: 100vh !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    padding: 20px 16px 40px 16px !important;
+  }
+}
+

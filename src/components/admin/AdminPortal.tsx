@@ -15,6 +15,7 @@ import { AdminVenueModal } from './AdminVenueModal';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminSettingsModal } from './AdminSettingsModal';
 import { AdminFirstAccessModal } from './AdminFirstAccessModal';
+import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { Menu, X, Building2 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -40,7 +41,7 @@ const ROLE_COLORS: Record<string, string> = {
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, setTheme, leads, tasks, venues, debutantes, collaborators } = useAdminState();
+  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators } = useAdminState();
   const [activeTab, setActiveTab] = useState<AdminTabType>('home');
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -130,6 +131,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminJourneysConfigView />;
       case 'appointments':
         return <AdminAppointmentsView />;
+      case 'settings':
+        return <AdminUserSettingsView onBack={() => handleSelectTab('home')} />;
       default:
         return (
           <AdminHomeView
@@ -195,35 +198,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         background: 'var(--adm-bg-app)',
         boxSizing: 'border-box',
       }}>
-        {/* Top Header Bar (Sticky & Seamless) */}
+        {/* Top Header Bar (Sticky & Seamless - Always Dark #0B090E) */}
         <header className="admin-portal-header" style={{
           position: 'sticky',
           top: 0,
           width: '100%',
           height: '64px',
           flexShrink: 0,
-          background: 'var(--adm-bg-header)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          borderBottom: '1px solid var(--adm-border)',
-          padding: '0 28px',
+          background: '#0B090E',
+          borderBottom: '1px solid rgba(212, 175, 55, 0.15)',
+          padding: '0 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           zIndex: 40,
           boxSizing: 'border-box',
-          gap: '14px',
+          gap: '12px',
         }}>
-          {/* Left: Mobile Toggle & Breadcrumb / Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 300px', maxWidth: '600px' }}>
+          {/* Left: Mobile Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Mobile Hamburger */}
             <button
               className="admin-mobile-menu-btn"
               onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
               style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                color: 'var(--adm-text-title)',
+                background: '#141118',
+                border: '1px solid rgba(212, 175, 55, 0.25)',
+                color: '#FFFFFF',
                 borderRadius: '8px',
                 padding: '8px',
                 cursor: 'pointer',
@@ -234,18 +235,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             >
               {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
+          </div>
 
-            {/* Mobile Brand Logo in Header */}
-            <div className="admin-mobile-header-logo" style={{ display: 'none', alignItems: 'center' }}>
-              <img
-                src="/logo_horizontal.png"
-                alt="Bonomo"
-                style={{ height: '28px', width: 'auto', objectFit: 'contain' }}
-              />
-            </div>
-
-            {/* SaaS Search Capsule & Results Dropdown */}
-            <div className="admin-desktop-search" style={{ position: 'relative', width: '100%', maxWidth: '380px' }}>
+          {/* Center: SaaS Search Capsule & Results Dropdown */}
+          <div className="admin-header-search" style={{ position: 'relative', width: '100%', maxWidth: '440px', margin: '0 auto' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -490,62 +483,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Right Header Actions (Theme Switcher, Notifications, Profile Switcher Dropdown) */}
+          {/* Right Header Actions (Master Switcher & Notifications Bell) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* 1. Theme Toggle (Sun / Moon Switch) */}
-            <div
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '30px',
-                padding: '4px 8px',
-                gap: '6px',
-                cursor: 'pointer',
-                userSelect: 'none',
-              }}
-              title="Alternar Tema Claro / Escuro"
-            >
-              <span style={{ fontSize: '0.72rem', opacity: theme === 'light' ? 1 : 0.4 }}>☀️</span>
-              <div style={{
-                width: '26px',
-                height: '14px',
-                background: theme === 'dark' ? 'var(--adm-accent)' : '#CBD5E1',
-                borderRadius: '10px',
-                position: 'relative',
-                transition: 'background 0.2s',
-              }}>
-                <div style={{
-                  width: '10px',
-                  height: '10px',
-                  background: '#FFF',
-                  borderRadius: '50%',
-                  position: 'absolute',
-                  top: '2px',
-                  left: theme === 'dark' ? '14px' : '2px',
-                  transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                }} />
-              </div>
-              <span style={{ fontSize: '0.72rem', opacity: theme === 'dark' ? 1 : 0.4 }}>🌙</span>
-            </div>
-
-            {/* 2. Notification Bell & Dropdown */}
+            {/* 1. Notification Bell & Dropdown */}
             <div style={{ position: 'relative' }}>
               <button
                 type="button"
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 style={{
-                  width: '36px',
-                  height: '36px',
+                  width: '38px',
+                  height: '38px',
                   borderRadius: '50%',
-                  background: isNotificationsOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                  border: `1px solid ${isNotificationsOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                  color: isNotificationsOpen ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  background: isNotificationsOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118',
+                  border: `1px solid ${isNotificationsOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
+                  color: isNotificationsOpen ? '#D4AF37' : '#9E988D',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -673,56 +624,57 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               )}
             </div>
 
-            {/* 3. User Profile Pill & Collaborator Switcher Popover */}
-            <div style={{ position: 'relative' }}>
-              <div 
-                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: isProfileMenuOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                  border: `1px solid ${isProfileMenuOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                  borderRadius: '30px',
-                  padding: '3px 12px 3px 4px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {currentUser?.avatarUrl ? (
-                  <img
-                    src={currentUser.avatarUrl}
-                    alt={currentUser.name}
-                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'var(--adm-accent-bg)',
-                    color: 'var(--adm-accent)',
+            {/* 2. User Profile Pill & Collaborator Switcher Popover (Desktop Master Only) */}
+            {userRole === 'master' && (
+              <div className="admin-desktop-collaborator-switcher" style={{ position: 'relative' }}>
+                <div 
+                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                  }}>
-                    {currentUser?.name?.charAt(0) || 'U'}
+                    gap: '8px',
+                    background: isProfileMenuOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118',
+                    border: `1px solid ${isProfileMenuOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
+                    borderRadius: '30px',
+                    padding: '3px 12px 3px 4px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {currentUser?.avatarUrl ? (
+                    <img
+                      src={currentUser.avatarUrl}
+                      alt={currentUser.name}
+                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: 'rgba(212, 175, 55, 0.15)',
+                      color: '#D4AF37',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                    }}>
+                      {currentUser?.name?.charAt(0) || 'U'}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#FFFFFF', lineHeight: 1.1 }}>
+                      {currentUser?.name || 'Gestor'}
+                    </span>
+                    <span style={{ fontSize: '0.62rem', color: roleColor, fontWeight: 700, textTransform: 'uppercase' }}>
+                      {ROLE_LABELS[userRole]}
+                    </span>
                   </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', lineHeight: 1.1 }}>
-                    {currentUser?.name || 'Gestor'}
-                  </span>
-                  <span style={{ fontSize: '0.62rem', color: roleColor, fontWeight: 700, textTransform: 'uppercase' }}>
-                    {ROLE_LABELS[userRole]}
-                  </span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#9E988D', marginLeft: '2px' }}>
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
                 </div>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--adm-text-muted)', marginLeft: '2px' }}>
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
 
               {/* Profile / Collaborator Switcher Dropdown */}
               {isProfileMenuOpen && (
@@ -817,6 +769,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
+          )}
           </div>
         </header>
 
@@ -851,17 +804,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           .admin-desktop-sidebar {
             display: none !important;
           }
-          .admin-desktop-search {
+          .admin-desktop-collaborator-switcher {
             display: none !important;
           }
-          .admin-mobile-header-logo {
-            display: flex !important;
-          }
           .admin-portal-header {
-            padding: 0 14px !important;
+            padding: 0 12px !important;
+            gap: 8px !important;
           }
           .admin-mobile-menu-btn {
             display: flex !important;
+          }
+          .admin-header-search {
+            max-width: 100% !important;
+            margin: 0 !important;
           }
         }
       `}</style>
