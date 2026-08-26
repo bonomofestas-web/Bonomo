@@ -222,12 +222,13 @@ const RootAppRouter: React.FC = () => {
 
     if (viewMode === 'admin') {
       document.title = 'Bonomo Festas • Painel de Gestão & CRM';
-      link.href = '/favicon.svg';
+      link.href = '/favicon.png';
+      link.type = 'image/png';
     } else {
       const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
       const venueName = activeVenue ? activeVenue.name : 'Bonomo Festas';
       document.title = `${debTitle} | ${venueName}`;
-      link.href = activeVenue?.logoUrl || '/favicon.svg';
+      link.href = activeVenue?.logoUrl || '/favicon.png';
     }
   }, [viewMode, activeDeb, activeVenue]);
 

@@ -54,16 +54,16 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
       justifyContent: 'center',
       padding: '20px',
       zIndex: 9999,
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
     }}>
       <div style={{
-        background: 'linear-gradient(145deg, #141118 0%, #0A080E 100%)',
-        border: '1.5px solid rgba(212, 175, 55, 0.45)',
+        background: '#120F17',
+        border: '1px solid rgba(212, 175, 55, 0.3)',
         borderRadius: '24px',
         maxWidth: '440px',
         width: '100%',
         padding: '28px 24px',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.9), 0 0 30px rgba(212, 175, 55, 0.15)',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.9)',
         color: '#FFFFFF',
         position: 'relative',
       }}>

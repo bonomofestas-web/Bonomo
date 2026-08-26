@@ -183,7 +183,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     <aside style={{
       width: '270px',
       background: '#0B090E',
-      borderRight: '1px solid rgba(212, 175, 55, 0.18)',
+      borderRight: '1px solid rgba(212, 175, 55, 0.15)',
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
@@ -193,51 +193,30 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       boxSizing: 'border-box',
       overflowY: 'auto',
       zIndex: 50,
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
       color: '#FFFFFF',
     }}>
-      {/* Brand Header */}
+      {/* Brand Header with Horizontal Logo */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        justifyContent: 'center',
         paddingBottom: '20px',
-        borderBottom: '1px solid rgba(212, 175, 55, 0.18)',
+        borderBottom: '1px solid rgba(212, 175, 55, 0.15)',
         marginBottom: '18px',
       }}>
         <img
-          src="/logo_bonomo_gold.png"
+          src="/logo_horizontal.png"
           alt="Bonomo Festas"
           style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            objectFit: 'cover',
-            border: '1.5px solid rgba(212, 175, 55, 0.5)',
-            boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)',
-            flexShrink: 0,
+            width: '100%',
+            maxWidth: '190px',
+            height: 'auto',
+            maxHeight: '44px',
+            objectFit: 'contain',
+            display: 'block',
           }}
         />
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontSize: '1.05rem',
-            fontWeight: 800,
-            color: '#FFFFFF',
-            letterSpacing: '-0.3px',
-            lineHeight: 1.2,
-          }}>
-            Bonomo Festas
-          </div>
-          <div style={{
-            fontSize: '0.68rem',
-            color: '#D4AF37',
-            fontWeight: 700,
-            letterSpacing: '0.5px',
-            textTransform: 'uppercase',
-          }}>
-            Workspace VIP
-          </div>
-        </div>
       </div>
 
       {/* Luxury Custom Venue Switcher Popover */}

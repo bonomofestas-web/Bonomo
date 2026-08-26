@@ -21,6 +21,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
 
+  // Mobile 2-step navigation state ('welcome' | 'form')
+  const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('welcome');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -83,7 +86,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       background: '#08060B',
       color: '#FFFFFF',
       display: 'flex',
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
       overflowX: 'hidden',
       position: 'relative',
     }}>
@@ -93,133 +96,356 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         width: '100%',
         minHeight: '100vh',
       }}>
-        {/* MOBILE TOP BANNER (Visible only on mobile screen <= 860px) */}
-        <div className="login-mobile-header" style={{
+        {/* ========================================================================= */}
+        {/* MOBILE VIEW (2-STEP FLOW AS IN REFERENCE)                                 */}
+        {/* ========================================================================= */}
+        <div className="login-mobile-only" style={{
           display: 'none',
-          position: 'relative',
           width: '100%',
-          height: '240px',
-          backgroundImage: `url('/debutante_staircase.jpg')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 30%',
-          borderBottomLeftRadius: '32px',
-          borderBottomRightRadius: '32px',
-          overflow: 'hidden',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
+          minHeight: '100vh',
+          background: '#0A080E',
+          flexDirection: 'column',
+          position: 'relative',
         }}>
-          {/* Gradient Overlay */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(180deg, rgba(8,6,11,0.3) 0%, rgba(8,6,11,0.85) 100%)',
-          }} />
+          {mobileStep === 'welcome' ? (
+            /* MOBILE STEP 1: WELCOME SCREEN */
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: '100vh',
+              position: 'relative',
+              justifyContent: 'space-between',
+            }}>
+              {/* Background Debutante Image */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '65%',
+                backgroundImage: `url('/debutante_staircase.jpg')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center 20%',
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'linear-gradient(180deg, rgba(10,8,14,0.4) 0%, rgba(10,8,14,0.2) 40%, rgba(10,8,14,0.95) 100%)',
+                }} />
 
-          {/* Logo & Title on mobile top */}
-          <div style={{
-            position: 'absolute',
-            bottom: '20px',
-            left: '24px',
-            right: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            zIndex: 2,
-          }}>
-            <img
-              src="/logo_bonomo_gold.png"
-              alt="Bonomo Festas"
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                objectFit: 'cover',
-                border: '1.5px solid rgba(212, 175, 55, 0.6)',
-                boxShadow: '0 4px 16px rgba(212, 175, 55, 0.3)',
-              }}
-            />
-            <div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.25rem', fontWeight: 800, color: '#FFF' }}>
-                Bonomo Festas
+                {/* Top Logo */}
+                <div style={{ padding: '24px', position: 'relative', zIndex: 2 }}>
+                  <img
+                    src="/logo_horizontal.png"
+                    alt="Bonomo Festas"
+                    style={{ height: '34px', width: 'auto', objectFit: 'contain' }}
+                  />
+                </div>
+
+                {/* Catchy Title */}
+                <div style={{ position: 'absolute', bottom: '40px', left: '24px', right: '24px', zIndex: 2 }}>
+                  <h2 style={{
+                    fontSize: '1.75rem',
+                    fontWeight: 700,
+                    color: '#FFFFFF',
+                    lineHeight: '1.25',
+                    margin: 0,
+                  }}>
+                    Transformando sonhos em experiências inesquecíveis.
+                  </h2>
+                </div>
               </div>
-              <div style={{ fontFamily: "'Cinzel', serif", fontSize: '0.66rem', color: '#D4AF37', letterSpacing: '1.5px' }}>
-                PORTAL EXCLUSIVO
+
+              {/* Bottom Card */}
+              <div style={{
+                marginTop: 'auto',
+                background: '#120F17',
+                borderTopLeftRadius: '32px',
+                borderTopRightRadius: '32px',
+                border: '1px solid rgba(212, 175, 55, 0.2)',
+                borderBottom: 'none',
+                padding: '32px 24px',
+                zIndex: 3,
+                boxShadow: '0 -10px 40px rgba(0,0,0,0.8)',
+              }}>
+                <p style={{ fontSize: '0.84rem', color: '#9E988D', margin: '0 0 20px 0', lineHeight: '1.5' }}>
+                  Acesse o painel de gestão corporativa e CRM da Bonomo Festas.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileStep('form')}
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '30px',
+                    padding: '14px',
+                    fontSize: '0.9rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  <span>Entrar / Sign In</span>
+                  <ArrowRight size={17} />
+                </button>
+
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                  <button
+                    type="button"
+                    onClick={handleQuickDemoLogin}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#D4AF37',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Acesso Rápido Dev Master (1 Clique)
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* MOBILE STEP 2: LOGIN FORM */
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: '100vh',
+              padding: '24px 20px',
+              boxSizing: 'border-box',
+              justifyContent: 'space-between',
+            }}>
+              <div>
+                {/* Back Button */}
+                <button
+                  type="button"
+                  onClick={() => setMobileStep('welcome')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: '#FFFFFF',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <ArrowLeft size={18} />
+                </button>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '1.65rem', fontWeight: 700, color: '#FFF', margin: '0 0 6px 0' }}>
+                    Welcome Back!
+                  </h2>
+                  <p style={{ fontSize: '0.82rem', color: '#9E988D', margin: 0 }}>
+                    Continue sua jornada no painel de gestão.
+                  </p>
+                </div>
+
+                {error && (
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#F87171',
+                    borderRadius: '12px',
+                    padding: '10px 14px',
+                    fontSize: '0.8rem',
+                    marginBottom: '16px',
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                {/* Form */}
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.74rem', color: '#D4AF37', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                      E-mail Corporativo
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Mail size={16} color="#D4AF37" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="seu.email@bonomofestas.com.br"
+                        style={{
+                          width: '100%',
+                          background: '#120F16',
+                          border: '1px solid rgba(212, 175, 55, 0.3)',
+                          borderRadius: '12px',
+                          padding: '12px 14px 12px 38px',
+                          color: '#FFF',
+                          fontSize: '0.88rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.74rem', color: '#D4AF37', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Senha
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotModal(true)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#9E988D',
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          padding: 0,
+                        }}
+                      >
+                        Esqueceu a senha?
+                      </button>
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                      <Lock size={16} color="#D4AF37" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        style={{
+                          width: '100%',
+                          background: '#120F16',
+                          border: '1px solid rgba(212, 175, 55, 0.3)',
+                          borderRadius: '12px',
+                          padding: '12px 14px 12px 38px',
+                          color: '#FFF',
+                          fontSize: '0.88rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: '30px',
+                      padding: '14px',
+                      fontSize: '0.9rem',
+                      fontWeight: 800,
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      marginTop: '6px',
+                    }}
+                  >
+                    <span>{loading ? 'Entrando...' : 'Entrar no Painel'}</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </form>
+
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                  <button
+                    type="button"
+                    onClick={handleQuickDemoLogin}
+                    style={{
+                      background: 'rgba(212, 175, 55, 0.1)',
+                      border: '1px solid rgba(212, 175, 55, 0.3)',
+                      color: '#E8C98D',
+                      borderRadius: '20px',
+                      padding: '8px 16px',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⚡ Acesso Rápido Dev Master (1 Clique)
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'center', fontSize: '0.7rem', color: '#6B665E', paddingTop: '16px' }}>
+                Bonomo Festas • Versão {APP_VERSION}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* FORM CONTAINER (Full width on mobile, 45% on desktop) */}
-        <div className="login-form-pane" style={{
-          flex: '1 1 500px',
-          maxWidth: '560px',
-          background: 'linear-gradient(180deg, #100D15 0%, #08060A 100%)',
+        {/* ========================================================================= */}
+        {/* DESKTOP SPLIT VIEW (CENTERED FORM ON LEFT, PHOTO ON RIGHT)                */}
+        {/* ========================================================================= */}
+        <div className="login-desktop-form-pane" style={{
+          flex: '1 1 480px',
+          maxWidth: '540px',
+          background: '#0B090E',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
-          padding: '40px 36px',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '48px 40px',
           boxSizing: 'border-box',
           borderRight: '1px solid rgba(212, 175, 55, 0.15)',
           zIndex: 2,
           position: 'relative',
         }}>
-          {/* Top Brand Area (Desktop) */}
-          <div>
-            <div className="login-desktop-brand" style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
+          {/* Centered Inner Container */}
+          <div style={{ width: '100%', maxWidth: '400px' }}>
+            {/* Top Horizontal Logo */}
+            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
               <img
-                src="/logo_bonomo_gold.png"
+                src="/logo_horizontal.png"
                 alt="Bonomo Festas"
                 style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '14px',
-                  objectFit: 'cover',
-                  border: '1.5px solid rgba(212, 175, 55, 0.5)',
-                  boxShadow: '0 6px 20px rgba(212, 175, 55, 0.35)',
+                  width: '100%',
+                  maxWidth: '220px',
+                  height: 'auto',
+                  maxHeight: '48px',
+                  objectFit: 'contain',
+                  display: 'block',
+                  margin: '0 auto',
                 }}
               />
-
-              <div>
-                <h1 style={{
-                  fontFamily: "'Playfair Display', Georgia, serif",
-                  fontSize: '1.45rem',
-                  fontWeight: 800,
-                  color: '#FFF',
-                  margin: 0,
-                  letterSpacing: '0.5px',
-                }}>
-                  Bonomo Festas
-                </h1>
-                <div style={{
-                  fontFamily: "'Cinzel', serif",
-                  fontSize: '0.68rem',
-                  color: '#D4AF37',
-                  fontWeight: 800,
-                  letterSpacing: '2px',
-                  textTransform: 'uppercase',
-                }}>
-                  Painel de Gestão & CRM
-                </div>
-              </div>
             </div>
 
             {/* Title & Subtitle */}
-            <div style={{ marginBottom: '28px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '28px' }}>
               <h2 style={{
-                fontFamily: "'Playfair Display', Georgia, serif",
-                fontSize: '1.85rem',
+                fontSize: '1.6rem',
                 fontWeight: 700,
                 color: '#FFFFFF',
                 margin: '0 0 6px 0',
               }}>
-                Welcome Back!
+                Acesso ao Sistema
               </h2>
               <p style={{
-                fontSize: '0.84rem',
+                fontSize: '0.82rem',
                 color: '#9E988D',
                 margin: 0,
                 lineHeight: '1.5',
               }}>
-                Continue sua jornada no ecossistema de eventos mais sofisticado do país.
+                Informe suas credenciais para gerenciar o ecossistema de eventos.
               </p>
             </div>
 
@@ -228,22 +454,21 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 background: 'rgba(239, 68, 68, 0.12)',
                 border: '1px solid rgba(239, 68, 68, 0.35)',
                 color: '#F87171',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                fontSize: '0.82rem',
-                marginBottom: '20px',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                fontSize: '0.8rem',
+                marginBottom: '18px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
               }}>
-                <AlertCircle size={16} />
+                <AlertCircle size={15} />
                 <span>{error}</span>
               </div>
             )}
 
             {/* Login Form */}
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              {/* E-mail Input */}
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{
                   display: 'block',
@@ -251,14 +476,13 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   color: '#D4AF37',
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  letterSpacing: '1px',
-                  marginBottom: '8px',
-                  fontFamily: "'Cinzel', serif",
+                  letterSpacing: '0.5px',
+                  marginBottom: '6px',
                 }}>
                   E-mail Corporativo
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Mail size={17} color="#D4AF37" style={{ position: 'absolute', left: '14px', top: '14px' }} />
+                  <Mail size={16} color="#D4AF37" style={{ position: 'absolute', left: '14px', top: '13px' }} />
                   <input
                     type="email"
                     required
@@ -267,38 +491,30 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     onChange={(e) => setEmail(e.target.value)}
                     style={{
                       width: '100%',
-                      background: '#141118',
-                      border: '1.5px solid rgba(212, 175, 55, 0.3)',
-                      borderRadius: '12px',
-                      padding: '13px 14px 13px 44px',
+                      background: '#120F16',
+                      border: '1px solid rgba(212, 175, 55, 0.28)',
+                      borderRadius: '10px',
+                      padding: '12px 14px 12px 42px',
                       color: '#FFFFFF',
-                      fontSize: '0.9rem',
+                      fontSize: '0.88rem',
                       outline: 'none',
                       boxSizing: 'border-box',
-                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                      transition: 'border-color 0.2s ease',
                     }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = '#D4AF37';
-                      e.currentTarget.style.boxShadow = '0 0 14px rgba(212, 175, 55, 0.3)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.3)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#D4AF37'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.28)'; }}
                   />
                 </div>
               </div>
 
-              {/* Senha Input */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{
                     fontSize: '0.72rem',
                     color: '#D4AF37',
                     fontWeight: 700,
                     textTransform: 'uppercase',
-                    letterSpacing: '1px',
-                    fontFamily: "'Cinzel', serif",
+                    letterSpacing: '0.5px',
                   }}>
                     Senha de Acesso
                   </label>
@@ -322,7 +538,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 </div>
 
                 <div style={{ position: 'relative' }}>
-                  <Lock size={17} color="#D4AF37" style={{ position: 'absolute', left: '14px', top: '14px' }} />
+                  <Lock size={16} color="#D4AF37" style={{ position: 'absolute', left: '14px', top: '13px' }} />
                   <input
                     type="password"
                     required
@@ -331,29 +547,22 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     onChange={(e) => setPassword(e.target.value)}
                     style={{
                       width: '100%',
-                      background: '#141118',
-                      border: '1.5px solid rgba(212, 175, 55, 0.3)',
-                      borderRadius: '12px',
-                      padding: '13px 14px 13px 44px',
+                      background: '#120F16',
+                      border: '1px solid rgba(212, 175, 55, 0.28)',
+                      borderRadius: '10px',
+                      padding: '12px 14px 12px 42px',
                       color: '#FFFFFF',
-                      fontSize: '0.9rem',
+                      fontSize: '0.88rem',
                       outline: 'none',
                       boxSizing: 'border-box',
-                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                      transition: 'border-color 0.2s ease',
                     }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = '#D4AF37';
-                      e.currentTarget.style.boxShadow = '0 0 14px rgba(212, 175, 55, 0.3)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.3)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#D4AF37'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.28)'; }}
                   />
                 </div>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -361,40 +570,38 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
                   color: '#000',
                   border: 'none',
-                  borderRadius: '35px',
-                  padding: '14px',
-                  fontSize: '0.92rem',
+                  borderRadius: '30px',
+                  padding: '13px',
+                  fontSize: '0.88rem',
                   fontWeight: 800,
                   cursor: loading ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
-                  fontFamily: "'Cinzel', serif",
-                  boxShadow: '0 8px 24px rgba(212, 175, 55, 0.35)',
-                  marginTop: '10px',
+                  marginTop: '8px',
                   opacity: loading ? 0.7 : 1,
-                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                  transition: 'opacity 0.2s ease',
                 }}
               >
                 <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
-                <ArrowRight size={17} />
+                <ArrowRight size={16} />
               </button>
             </form>
 
             {/* Fast 1-Click Demo Login */}
-            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
               <button
                 type="button"
                 onClick={handleQuickDemoLogin}
                 style={{
                   width: '100%',
-                  background: 'rgba(212, 175, 55, 0.1)',
-                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                  background: 'rgba(212, 175, 55, 0.08)',
+                  border: '1px solid rgba(212, 175, 55, 0.3)',
                   color: '#E8C98D',
                   borderRadius: '30px',
-                  padding: '10px',
-                  fontSize: '0.8rem',
+                  padding: '9px',
+                  fontSize: '0.78rem',
                   fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
@@ -403,12 +610,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   gap: '6px',
                 }}
               >
-                <Sparkles size={14} color="#D4AF37" />
+                <Sparkles size={13} color="#D4AF37" />
                 <span>Acesso Rápido Dev Master (1 Clique)</span>
               </button>
 
               {onBackToApp && (
-                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                <div style={{ textAlign: 'center', marginTop: '10px' }}>
                   <button
                     type="button"
                     onClick={onBackToApp}
@@ -416,43 +623,42 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                       background: 'transparent',
                       border: 'none',
                       color: '#9E988D',
-                      fontSize: '0.74rem',
+                      fontSize: '0.72rem',
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
                     }}
                   >
-                    <ArrowLeft size={12} />
+                    <ArrowLeft size={11} />
                     <span>Voltar para a Visão da Debutante</span>
                   </button>
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Footer Security Notice & Version */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '0.72rem',
-            color: '#6B665E',
-            paddingTop: '20px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-            marginTop: '20px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <ShieldCheck size={14} color="#D4AF37" />
-              <span>Ambiente Protegido & Criptografado</span>
+            {/* Footer Security Notice & Version */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.7rem',
+              color: '#6B665E',
+              paddingTop: '16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+              marginTop: '16px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <ShieldCheck size={13} color="#D4AF37" />
+                <span>Ambiente Seguro</span>
+              </div>
+              <div>Versão {APP_VERSION}</div>
             </div>
-
-            <div>{APP_VERSION}</div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: LUXURY IMMERSIVE VISUAL (Real Debutante Staircase Photo) */}
-        <div className="login-visual-pane" style={{
+        {/* RIGHT COLUMN: LUXURY DEBUTANTE STAIRCASE PHOTO */}
+        <div className="login-desktop-visual-pane" style={{
           flex: '1 1 500px',
           position: 'relative',
           background: '#0A080E',
@@ -480,57 +686,42 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             background: 'linear-gradient(180deg, rgba(8,6,11,0.3) 0%, rgba(8,6,11,0.15) 40%, rgba(8,6,11,0.92) 100%)',
           }} />
 
-          {/* Golden Ambient Radial Spotlight */}
-          <div style={{
-            position: 'absolute',
-            bottom: '10%',
-            right: '10%',
-            width: '400px',
-            height: '400px',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(212,175,55,0.2) 0%, rgba(0,0,0,0) 70%)',
-            pointerEvents: 'none',
-          }} />
-
           {/* Text Overlay Content */}
           <div style={{ position: 'relative', zIndex: 2, maxWidth: '540px' }}>
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              background: 'rgba(212, 175, 55, 0.18)',
-              border: '1px solid rgba(212, 175, 55, 0.5)',
+              gap: '6px',
+              background: 'rgba(212, 175, 55, 0.15)',
+              border: '1px solid rgba(212, 175, 55, 0.4)',
               borderRadius: '20px',
-              padding: '6px 14px',
-              fontSize: '0.72rem',
+              padding: '5px 12px',
+              fontSize: '0.7rem',
               color: '#F3E5AB',
               fontWeight: 700,
-              fontFamily: "'Cinzel', serif",
-              letterSpacing: '1.5px',
-              marginBottom: '16px',
+              letterSpacing: '1px',
+              marginBottom: '14px',
             }}>
-              <img src="/logo_bonomo_gold.png" alt="B" style={{ width: 14, height: 14, borderRadius: 3 }} />
               <span>ALTA GASTRONOMIA & EVENTOS DE GALA</span>
             </div>
 
             <h2 style={{
-              fontFamily: "'Playfair Display', Georgia, serif",
-              fontSize: '2.2rem',
+              fontSize: '2rem',
               fontWeight: 800,
               color: '#FFFFFF',
               lineHeight: '1.25',
-              margin: '0 0 12px 0',
-              textShadow: '0 4px 24px rgba(0,0,0,0.9)',
+              margin: '0 0 10px 0',
+              textShadow: '0 3px 18px rgba(0,0,0,0.8)',
             }}>
               Transformando sonhos de 15 anos em momentos inesquecíveis.
             </h2>
 
             <p style={{
-              fontSize: '0.95rem',
+              fontSize: '0.9rem',
               color: '#D1CBBF',
               lineHeight: '1.6',
               margin: 0,
-              textShadow: '0 2px 12px rgba(0,0,0,0.9)',
+              textShadow: '0 2px 10px rgba(0,0,0,0.8)',
             }}>
               Gestão integrada de espaços, captação automatizada de indicações e experiência exclusiva para debutantes e famílias.
             </p>
@@ -546,22 +737,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       {/* Responsive Styles */}
       <style>{`
         @media (max-width: 860px) {
-          .login-wrapper {
-            flex-direction: column !important;
-          }
-          .login-visual-pane {
+          .login-desktop-form-pane,
+          .login-desktop-visual-pane {
             display: none !important;
           }
-          .login-mobile-header {
-            display: block !important;
-          }
-          .login-desktop-brand {
-            display: none !important;
-          }
-          .login-form-pane {
-            max-width: 100% !important;
-            border-right: none !important;
-            padding: 24px 20px !important;
+          .login-mobile-only {
+            display: flex !important;
           }
         }
       `}</style>

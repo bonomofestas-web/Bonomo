@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Crown, Lock, User, Phone, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { Lock, User, Phone, CheckCircle2, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 
@@ -65,44 +65,43 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({ on
       position: 'fixed',
       inset: 0,
       background: 'rgba(5, 4, 8, 0.88)',
-      backdropFilter: 'blur(10px)',
+      backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '20px',
       zIndex: 9999,
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
     }}>
       <div style={{
-        background: 'linear-gradient(145deg, #141118 0%, #0A080E 100%)',
-        border: '1.5px solid rgba(212, 175, 55, 0.45)',
+        background: '#120F17',
+        border: '1px solid rgba(212, 175, 55, 0.3)',
         borderRadius: '24px',
         maxWidth: '500px',
         width: '100%',
         padding: '32px 28px',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.9), 0 0 30px rgba(212, 175, 55, 0.15)',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.9)',
         color: '#FFFFFF',
       }}>
         {/* Header Branding */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div style={{
-            width: '54px',
-            height: '54px',
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 12px auto',
-            boxShadow: '0 6px 20px rgba(212, 175, 55, 0.4)',
-          }}>
-            <Crown size={28} color="#000" />
-          </div>
+          <img
+            src="/logo_horizontal.png"
+            alt="Bonomo Festas"
+            style={{
+              width: '100%',
+              maxWidth: '180px',
+              height: 'auto',
+              maxHeight: '40px',
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto 12px auto',
+            }}
+          />
 
           <h2 style={{
-            fontFamily: "'Playfair Display', Georgia, serif",
-            fontSize: '1.4rem',
-            fontWeight: 800,
+            fontSize: '1.35rem',
+            fontWeight: 700,
             color: '#FFFFFF',
             margin: '0 0 4px 0',
           }}>

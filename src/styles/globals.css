@@ -244,8 +244,8 @@ body {
 /* ========================================================================= */
 
 .admin-portal {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  letter-spacing: -0.015em;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
 }
 
