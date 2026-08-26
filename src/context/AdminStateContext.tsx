@@ -33,6 +33,8 @@ import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
 import { leadService } from '../services/leadService';
 import { debutanteService, taskService } from '../services/debutanteService';
+import { catalogService } from '../services/catalogService';
+import { collaboratorService } from '../services/collaboratorService';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -351,12 +353,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks] = await Promise.all([
+        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip] = await Promise.all([
           venueService.getAll(),
           funnelService.getAll(),
           leadService.getAll(),
           debutanteService.getAll(),
           taskService.getAll(),
+          collaboratorService.getAll(),
+          catalogService.getAllBenefits(),
+          catalogService.getAllVipRewards(),
         ]);
 
         if (isMounted) {
@@ -365,6 +370,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (dbLeads.length > 0) setLeads(dbLeads);
           if (dbDebutantes.length > 0) setDebutantes(dbDebutantes);
           if (dbTasks.length > 0) setTasks(dbTasks);
+          if (dbCollabs.length > 0) setCollaborators(dbCollabs);
+          if (dbBenefits.length > 0) setBenefitsCatalog(dbBenefits);
+          if (dbVip.length > 0) setVipCatalog(dbVip);
         }
       } catch (err) {
         console.warn('Falha na sincronização inicial do Supabase:', err);
@@ -372,6 +380,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     loadLiveSupabaseData();
+
+    // Check and restore Supabase Auth session if active
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (isMounted && session?.user) {
+        const u = session.user;
+        setCurrentUser(prev => {
+          if (prev) return prev;
+          return {
+            id: u.id,
+            name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
+            email: u.email || '',
+            role: (u.user_metadata?.role as any) || 'master',
+            avatarUrl: u.user_metadata?.avatar_url,
+            venueIds: [],
+          };
+        });
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        if (isMounted) setCurrentUser(null);
+      } else if (session?.user && isMounted) {
+        const u = session.user;
+        setCurrentUser({
+          id: u.id,
+          name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
+          email: u.email || '',
+          role: (u.user_metadata?.role as any) || 'master',
+          avatarUrl: u.user_metadata?.avatar_url,
+          venueIds: [],
+        });
+      }
+    });
 
     // Setup Realtime WebSocket Listener
     const realtimeChannel = supabase
@@ -396,11 +438,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await taskService.getAll();
         if (isMounted && updated.length > 0) setTasks(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
+        const updated = await collaboratorService.getAll();
+        if (isMounted && updated.length > 0) setCollaborators(updated);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_catalog_items' }, async () => {
+        const updated = await catalogService.getAllBenefits();
+        if (isMounted && updated.length > 0) setBenefitsCatalog(updated);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vip_reward_catalog_items' }, async () => {
+        const updated = await catalogService.getAllVipRewards();
+        if (isMounted && updated.length > 0) setVipCatalog(updated);
+      })
       .subscribe();
 
     return () => {
       isMounted = false;
       supabase.removeChannel(realtimeChannel);
+      authListener?.subscription?.unsubscribe();
     };
   }, []);
 
@@ -625,6 +680,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
+    collaboratorService.upsert(newCollab);
     return id;
   };
 
@@ -634,6 +690,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
+    collaboratorService.upsert({ id, ...data });
     if (currentUser?.id === id || (currentUser?.role === 'master' && id.includes('master'))) {
       setCurrentUser(prev => {
         if (!prev) return null;
@@ -650,6 +707,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
+    collaboratorService.delete(id);
   };
 
   // ── Venue Methods ───────────────────────────────────────────────────────────
@@ -1649,15 +1707,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_BENEFITS, JSON.stringify(updated));
       return updated;
     });
+    catalogService.upsertBenefit(newItem);
     return id;
   };
 
   const updateBenefitCatalogItem = (id: string, data: Partial<BenefitCatalogItem>) => {
+    let updatedItem: BenefitCatalogItem | undefined;
     setBenefitsCatalog(prev => {
-      const updated = prev.map(b => b.id === id ? { ...b, ...data } : b);
+      const updated = prev.map(b => {
+        if (b.id === id) {
+          updatedItem = { ...b, ...data };
+          return updatedItem;
+        }
+        return b;
+      });
       safeLocalStorageSet(STORAGE_KEY_BENEFITS, JSON.stringify(updated));
       return updated;
     });
+    if (updatedItem) {
+      catalogService.upsertBenefit(updatedItem);
+    }
   };
 
   const deleteBenefitCatalogItem = (id: string) => {
@@ -1666,6 +1735,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_BENEFITS, JSON.stringify(updated));
       return updated;
     });
+    catalogService.deleteBenefit(id);
   };
 
   const addVipCatalogItem = (data: Omit<VipRewardCatalogItem, 'id' | 'createdAt'>): string => {
@@ -1676,15 +1746,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_VIP_CATALOG, JSON.stringify(updated));
       return updated;
     });
+    catalogService.upsertVipReward(newItem);
     return id;
   };
 
   const updateVipCatalogItem = (id: string, data: Partial<VipRewardCatalogItem>) => {
+    let updatedItem: VipRewardCatalogItem | undefined;
     setVipCatalog(prev => {
-      const updated = prev.map(v => v.id === id ? { ...v, ...data } : v);
+      const updated = prev.map(v => {
+        if (v.id === id) {
+          updatedItem = { ...v, ...data };
+          return updatedItem;
+        }
+        return v;
+      });
       safeLocalStorageSet(STORAGE_KEY_VIP_CATALOG, JSON.stringify(updated));
       return updated;
     });
+    if (updatedItem) {
+      catalogService.upsertVipReward(updatedItem);
+    }
   };
 
   const deleteVipCatalogItem = (id: string) => {
@@ -1693,6 +1774,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_VIP_CATALOG, JSON.stringify(updated));
       return updated;
     });
+    catalogService.deleteVipReward(id);
   };
 
   // ── Templates CRUD ───────────────────────────────────────────────────────────
