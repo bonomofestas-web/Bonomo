@@ -53,7 +53,7 @@ const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
 
 const DEFAULT_COLLABORATORS: Collaborator[] = [
   {
-    id: 'collab_dev_master',
+    id: 'a0000000-0000-0000-0000-000000000001',
     name: 'Dev Master',
     email: 'dev@bonomoapp.com',
     role: 'master',
@@ -100,7 +100,7 @@ export interface AdminContextType {
   setTheme: (theme: ThemeMode) => void;
 
   // Auth & Roles
-  login: (email: string, pass: string) => boolean;
+  login: (email: string, pass: string, optUser?: Partial<AdminUser>) => boolean;
   logout: () => void;
   switchUserRoleDemo: (role: AdminRole) => void;
   switchCollaborator: (collab: Collaborator) => void;
@@ -530,18 +530,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── Auth Methods ────────────────────────────────────────────────────────────
 
-  const login = (email: string, _pass: string): boolean => {
+  const login = (email: string, _pass: string, optUser?: Partial<AdminUser>): boolean => {
     const cleanEmail = email.trim().toLowerCase();
     
     // Check registered collaborators
     const foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
     if (foundCollab) {
       const user: AdminUser = {
-        id: foundCollab.id,
-        name: foundCollab.name,
+        id: optUser?.id || foundCollab.id,
+        name: optUser?.name || foundCollab.name,
         email: foundCollab.email,
-        role: foundCollab.role,
-        avatarUrl: foundCollab.avatarUrl,
+        role: (optUser?.role || foundCollab.role) as any,
+        avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
         venueIds: foundCollab.venueId === 'all' ? [] : [foundCollab.venueId],
       };
       setCurrentUser(user);
@@ -551,14 +551,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return true;
     }
 
+    if (optUser && optUser.id) {
+      const user: AdminUser = {
+        id: optUser.id,
+        name: optUser.name || 'Dev Master',
+        email: cleanEmail,
+        role: optUser.role || 'master',
+        avatarUrl: optUser.avatarUrl,
+        venueIds: optUser.venueIds || [],
+      };
+      setCurrentUser(user);
+      return true;
+    }
+
     // Dev Master Test Account (dev@bonomoapp.com or dev@bonomofestas.com)
     if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'dev@bonomofestas.com') {
       const devUser: AdminUser = {
-        id: 'collab_dev_master',
+        id: 'a0000000-0000-0000-0000-000000000001',
         name: 'Dev Master',
         email: cleanEmail,
         role: 'master',
-        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+        avatarUrl: optUser?.avatarUrl,
         venueIds: [],
       };
       setCurrentUser(devUser);

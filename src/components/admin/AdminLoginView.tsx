@@ -38,26 +38,33 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     setLoading(true);
 
     try {
-      // Dev Master account bypass
-      if ((cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'dev@bonomofestas.com') && (password === '123456' || password === '••••••••')) {
-        login(cleanEmail, '123456');
-        if (onSuccessLogin) onSuccessLogin();
-        return;
-      }
-
       if (isSupabaseConfigured) {
+        let authUser: any = null;
         const { data, error: authError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: password,
         });
 
-        if (authError) {
-          const localSuccess = login(cleanEmail, password);
-          if (!localSuccess) {
-            throw new Error(authError.message || 'Credenciais inválidas ou acesso inativo.');
-          }
-        } else if (data.user) {
-          login(cleanEmail, password);
+        if (!authError && data?.user) {
+          authUser = data.user;
+        }
+
+        // Fetch latest collaborator profile from DB
+        const { data: dbCollab } = await supabase
+          .from('collaborators')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+
+        const success = login(cleanEmail, password, {
+          id: authUser?.id || dbCollab?.id,
+          name: dbCollab?.name || authUser?.user_metadata?.name,
+          avatarUrl: dbCollab?.avatar_url || authUser?.user_metadata?.avatar_url,
+          role: dbCollab?.role || authUser?.user_metadata?.role,
+        });
+
+        if (!success && authError) {
+          throw new Error(authError.message || 'Credenciais inválidas ou acesso inativo.');
         }
       } else {
         const success = login(cleanEmail, password);
@@ -74,9 +81,34 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     }
   };
 
-  const handleQuickDemoLogin = () => {
-    login('dev@bonomoapp.com', '123456');
-    if (onSuccessLogin) onSuccessLogin();
+  const handleQuickDemoLogin = async () => {
+    setLoading(true);
+    try {
+      if (isSupabaseConfigured) {
+        await supabase.auth.signInWithPassword({
+          email: 'dev@bonomoapp.com',
+          password: 'password123',
+        }).catch(() => {});
+
+        const { data: dbCollab } = await supabase
+          .from('collaborators')
+          .select('*')
+          .ilike('email', 'dev@bonomoapp.com')
+          .maybeSingle();
+
+        login('dev@bonomoapp.com', '123456', {
+          id: dbCollab?.id || 'a0000000-0000-0000-0000-000000000001',
+          name: dbCollab?.name || 'Dev Master',
+          avatarUrl: dbCollab?.avatar_url,
+          role: 'master',
+        });
+      } else {
+        login('dev@bonomoapp.com', '123456');
+      }
+      if (onSuccessLogin) onSuccessLogin();
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
