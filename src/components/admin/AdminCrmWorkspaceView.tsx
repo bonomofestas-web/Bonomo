@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Send, User, MessageSquare, 
-  Clock, Sparkles, UserPlus, 
-  Inbox, CheckCircle2, Calendar, DollarSign, XCircle,
+  Search, Send, MessageSquare, 
+  Clock, Sparkles, 
+  Inbox, Calendar, DollarSign, XCircle,
   Plus, Trash2, Check, AlertTriangle,
   ClipboardList, AlignLeft
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskModal } from './AdminTaskModal';
+import { AdminLeadInspector } from './AdminLeadInspector';
 import type { Lead, CrmStage, LeadTask } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
@@ -26,10 +27,6 @@ const STAGE_CONFIGS: Record<CrmStage, { label: string; shortLabel: string; color
 };
 
 const STAGE_LIST: CrmStage[] = ['new_lead', 'in_analysis', 'meeting_scheduled', 'contract_signed', 'lost'];
-
-const ROLE_LABELS: Record<string, string> = {
-  master: 'Master', admin: 'Gerente', crm: 'CRM', sdr: 'SDR', closer: 'Closer',
-};
 
 const renderStageIcon = (stage: CrmStage, size = 14) => {
   switch (stage) {
@@ -83,10 +80,9 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   onLeadOpened,
 }) => {
   const { 
-    leads, venues, collaborators, currentUser, activeVenueId,
-    updateLeadStage, validateLead, invalidateLead, closeLeadSaleWithValue, addLeadNote,
-    claimLeadIfUnassigned,
-    assignLeadSdr, assignLeadCloser, removeLeadCloser,
+    leads, collaborators, currentUser, activeVenueId,
+    updateLeadStage, closeLeadSaleWithValue, addLeadNote,
+    claimLeadIfUnassigned, assignLeadSdr,
     completeLeadTask, deleteLeadTask,
   } = useAdminState();
 
@@ -101,8 +97,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   // ── Column 3 state ─────────────────────────────────────────────────────────
   const [noteInput, setNoteInput] = useState('');
   const [activeCol3Tab, setActiveCol3Tab] = useState<'history' | 'tasks'>('history');
-  const [isRejecting, setIsRejecting] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('Contato sem interesse no momento.');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
   // ── Task creation state ────────────────────────────────────────────────────
@@ -149,18 +143,9 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   }, [filteredLeads.length]);
 
   const currentLead = leads.find(l => l.id === selectedLeadId) || filteredLeads[0] || null;
-  const leadVenue = currentLead ? venues.find(v => v.id === currentLead.venueId) : undefined;
-  const sdrCollab = currentLead?.sdrId ? collaborators.find(c => c.id === currentLead.sdrId) : undefined;
-  const closerCollab = currentLead?.closerId ? collaborators.find(c => c.id === currentLead.closerId) : undefined;
-  const isUnassigned = !currentLead?.sdrId && !currentLead?.assignedTo;
-
-  // SDRs and Closers lists strictly filtered by role
-  const sdrList = collaborators.filter(c => c.active && c.role === 'sdr');
-  const closerList = collaborators.filter(c => c.active && c.role === 'closer');
 
   const handleSelectLead = (lead: Lead) => {
     setSelectedLeadId(lead.id);
-    setIsRejecting(false);
     // Auto-claim if unassigned and current user is SDR
     if (!lead.sdrId && (currentUser?.role === 'sdr' || currentUser?.role === 'crm')) {
       claimLeadIfUnassigned(lead.id);
@@ -169,20 +154,21 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
 
   const handleStageChange = (newStage: CrmStage) => {
     if (!currentLead) return;
-    if (newStage === 'lost') { setIsRejecting(true); }
-    else if (newStage === 'contract_signed') { setIsCloseDealModalOpen(true); }
-    else { updateLeadStage(currentLead.id, newStage); setIsRejecting(false); }
+
+    // Auto-claim SDR if unassigned when progressing past new_lead
+    if (newStage !== 'new_lead' && !currentLead.sdrId && currentUser && (currentUser.role === 'sdr' || currentUser.role === 'crm' || currentUser.role === 'admin' || currentUser.role === 'master')) {
+      assignLeadSdr(currentLead.id, currentUser.id);
+    }
+
+    if (newStage === 'contract_signed') { 
+      setIsCloseDealModalOpen(true); 
+    } else { 
+      updateLeadStage(currentLead.id, newStage); 
+    }
   };
 
   const handleConfirmSale = (leadId: string, dealValue: number, packageSold: string, contractDate: string) => {
     closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate);
-  };
-
-  const handleConfirmReject = () => {
-    if (!currentLead) return;
-    updateLeadStage(currentLead.id, 'lost');
-    if (rejectionReason.trim()) addLeadNote(currentLead.id, `Motivo da recusa: ${rejectionReason.trim()}`);
-    setIsRejecting(false);
   };
 
   const handleAddNote = () => {
@@ -206,16 +192,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     borderRadius: '8px', padding: '7px 10px', color: 'var(--adm-text-title)',
     fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box',
     fontFamily: "'Plus Jakarta Sans', sans-serif",
-  };
-
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)',
-    borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: '0.68rem', fontWeight: 800, color: '#D4AF37',
-    textTransform: 'uppercase', letterSpacing: '0.5px',
   };
 
   return (
@@ -349,7 +325,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 2 — FICHA DO LEAD                                              */}
+      {/* COLUNA 2 — INSPEÇÃO & PERFIL DETALHADO DO LEAD                         */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
         borderRight: '1px solid var(--adm-border)',
@@ -363,273 +339,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
             <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Selecione um lead para começar</div>
           </div>
         ) : (
-          <>
-            {/* Fixed Lead Header & WhatsApp Action */}
-            <div style={{ padding: '16px 18px 14px', borderBottom: '1px solid var(--adm-border)', background: 'var(--adm-bg-card)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                <div style={{ width: 44, height: 44, borderRadius: '12px', background: 'var(--adm-accent-bg)', border: '1px solid rgba(212,175,55,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <User size={22} color="#D4AF37" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h2 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: '0 0 2px' }}>
-                    {currentLead.name}
-                  </h2>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <span>{currentLead.phone}</span>
-                    <span>·</span>
-                    <span>{currentLead.age} anos</span>
-                    <span>·</span>
-                    <span>{currentLead.group}</span>
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: '#D4AF37', marginTop: '2px' }}>
-                    Indicada por: <strong>{currentLead.debutanteName}</strong>
-                    {leadVenue && <span style={{ color: 'var(--adm-text-muted)' }}> · {leadVenue.name}</span>}
-                  </div>
-                </div>
-              </div>
-
-              {/* WhatsApp Button */}
-              <button onClick={() => handleWhatsApp(currentLead)} style={{
-                width: '100%', background: 'linear-gradient(135deg, #25D366, #128C7E)', border: 'none',
-                borderRadius: '10px', padding: '9px', color: '#FFF', fontWeight: 800, fontSize: '0.82rem',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: '0 4px 14px rgba(37,211,102,0.3)', fontFamily: "'Plus Jakarta Sans', sans-serif",
-              }}>
-                <Send size={14} />
-                Abrir no WhatsApp
-              </button>
-            </div>
-
-            {/* Scrollable Lead Body (Independent Scroll) */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* ── Status de Qualificação da Indicação ─────────────────────────── */}
-            <div style={{
-              ...cardStyle,
-              background: currentLead.isValidated ? 'rgba(52, 211, 153, 0.08)' : 'var(--adm-bg-card)',
-              borderColor: currentLead.isValidated ? 'rgba(52, 211, 153, 0.35)' : 'var(--adm-border)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: currentLead.isValidated ? '#34D399' : 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Qualificação da Indicação
-                  </span>
-                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 size={14} color={currentLead.isValidated ? '#34D399' : 'var(--adm-text-muted)'} />
-                    <span>{currentLead.isValidated ? 'Indicação Validada' : 'Aguardando Validação'}</span>
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                    Debutante: <strong>{currentLead.debutanteName}</strong>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (currentLead.isValidated) {
-                      invalidateLead(currentLead.id);
-                    } else {
-                      validateLead(currentLead.id);
-                    }
-                  }}
-                  style={{
-                    background: currentLead.isValidated ? 'rgba(239, 68, 68, 0.15)' : 'rgba(52, 211, 153, 0.18)',
-                    color: currentLead.isValidated ? '#EF4444' : '#34D399',
-                    border: `1px solid ${currentLead.isValidated ? 'rgba(239, 68, 68, 0.35)' : 'rgba(52, 211, 153, 0.4)'}`,
-                    borderRadius: '8px',
-                    padding: '7px 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {currentLead.isValidated ? 'Revogar Validação' : 'Validar Lead'}
-                </button>
-              </div>
-            </div>
-
-            {/* ── SDR Responsável ─────────────────────────────────────────── */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={labelStyle}>SDR Responsável</span>
-                {isUnassigned && (
-                  <span style={{ background: 'rgba(245,158,11,0.15)', color: '#FBBF24', padding: '2px 8px', borderRadius: '6px', fontSize: '0.6rem', fontWeight: 800, border: '1px solid rgba(245,158,11,0.3)' }}>
-                    Sem SDR
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {sdrCollab ? (
-                  <>
-                    <AvatarCircle src={sdrCollab.avatarUrl} name={sdrCollab.name} size={34} color="#8B5CF6" />
-                    <div>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{sdrCollab.name}</div>
-                      <div style={{ fontSize: '0.64rem', color: '#8B5CF6', fontWeight: 700 }}>SDR — Captação & Qualificação</div>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-text-muted)' }}>
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(245,158,11,0.1)', border: '1px dashed rgba(245,158,11,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <UserPlus size={16} color="#F59E0B" />
-                    </div>
-                    <span style={{ fontSize: '0.8rem' }}>Nenhum SDR atribuído</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <select
-                  value={currentLead.sdrId || ''}
-                  onChange={(e) => { if (e.target.value) assignLeadSdr(currentLead.id, e.target.value); }}
-                  style={{ ...inputStyle, flex: 1, fontSize: '0.74rem' }}
-                >
-                  <option value="">Selecionar SDR...</option>
-                  {sdrList.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({ROLE_LABELS[c.role]})</option>
-                  ))}
-                </select>
-                {(!currentLead.sdrId && currentUser && (currentUser.role === 'sdr' || currentUser.role === 'crm')) && (
-                  <button onClick={() => claimLeadIfUnassigned(currentLead.id)} style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', color: '#A78BFA', borderRadius: '8px', padding: '6px 10px', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'Inter', sans-serif" }}>
-                    Assumir
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* ── Closer Responsável ──────────────────────────────────────── */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ ...labelStyle, color: '#F97316' }}>Closer Responsável</span>
-                {currentLead.stage !== 'meeting_scheduled' && currentLead.stage !== 'contract_signed' && !currentLead.closerId && (
-                  <span style={{ fontSize: '0.6rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>Disponível na reunião</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {closerCollab ? (
-                  <>
-                    <AvatarCircle src={closerCollab.avatarUrl} name={closerCollab.name} size={34} color="#F97316" />
-                    <div>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{closerCollab.name}</div>
-                      <div style={{ fontSize: '0.64rem', color: '#F97316', fontWeight: 700 }}>Closer — Negociação & Fechamento</div>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-text-muted)' }}>
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(249,115,22,0.08)', border: '1px dashed rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <UserPlus size={16} color="#F97316" />
-                    </div>
-                    <span style={{ fontSize: '0.78rem' }}>Nenhum closer atribuído</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <select
-                  value={currentLead.closerId || ''}
-                  onChange={(e) => { if (e.target.value) assignLeadCloser(currentLead.id, e.target.value); }}
-                  style={{ ...inputStyle, flex: 1, fontSize: '0.74rem' }}
-                >
-                  <option value="">Selecionar Closer...</option>
-                  {closerList.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({ROLE_LABELS[c.role]})</option>
-                  ))}
-                </select>
-                {currentLead.closerId && (
-                  <button onClick={() => removeLeadCloser(currentLead.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#EF4444', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', fontFamily: "'Inter', sans-serif" }}>
-                    <Trash2 size={13} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* ── Etapa do Funil ──────────────────────────────────────────── */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span style={labelStyle}>Etapa do Funil Comercial</span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {STAGE_LIST.map(stg => {
-                  const cfg = STAGE_CONFIGS[stg];
-                  const isCurrent = currentLead.stage === stg;
-                  return (
-                    <button key={stg} onClick={() => handleStageChange(stg)} style={{
-                      background: isCurrent ? cfg.bg : 'transparent',
-                      border: isCurrent ? `1.5px solid ${cfg.border}` : '1px solid var(--adm-border)',
-                      borderRadius: '10px', padding: '8px 12px', color: isCurrent ? cfg.color : 'var(--adm-text-muted)',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                      fontSize: '0.78rem', fontWeight: isCurrent ? 800 : 500, textAlign: 'left',
-                      transition: 'all 0.12s ease', fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}>
-                      {renderStageIcon(stg, 13)}
-                      <span style={{ flex: 1 }}>{cfg.label}</span>
-                      {isCurrent && <Check size={13} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Rejection Form */}
-            {isRejecting && (
-              <div style={{ ...cardStyle, borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.05)' }}>
-                <span style={{ ...labelStyle, color: '#EF4444' }}>Motivo da Recusa</span>
-                <textarea
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => setIsRejecting(false)} style={{ flex: 1, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-muted)', borderRadius: '8px', padding: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem', fontFamily: "'Inter', sans-serif" }}>
-                    Cancelar
-                  </button>
-                  <button onClick={handleConfirmReject} style={{ flex: 1, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#EF4444', borderRadius: '8px', padding: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.78rem', fontFamily: "'Inter', sans-serif" }}>
-                    Confirmar Recusa
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Lead notes */}
-            {currentLead.notes && (
-              <div style={{ ...cardStyle, background: 'var(--adm-accent-bg)', borderColor: 'rgba(212,175,55,0.25)' }}>
-                <span style={labelStyle}>Observações da Indicação</span>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: 1.6 }}>{currentLead.notes}</p>
-              </div>
-            )}
-
-            {/* Histórico de Participantes */}
-            {(currentLead.participants || []).length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={labelStyle}>Equipe que Participou</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {currentLead.participants.map((p, i) => {
-                    const collab = collaborators.find(c => c.id === p.collaboratorId);
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '20px', padding: '4px 10px 4px 6px' }}>
-                        <AvatarCircle src={collab?.avatarUrl || p.collaboratorAvatarUrl} name={p.collaboratorName} size={22} color="#8B5CF6" />
-                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{p.collaboratorName}</span>
-                        <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>{ROLE_LABELS[p.collaboratorRole] || p.collaboratorRole}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Deal Summary if closed */}
-            {currentLead.stage === 'contract_signed' && currentLead.dealValue && (
-              <div style={{ ...cardStyle, background: 'rgba(255,215,0,0.08)', borderColor: 'rgba(255,215,0,0.4)' }}>
-                <span style={{ ...labelStyle, color: '#FFD700' }}>Contrato Fechado</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#FFD700' }}>
-                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentLead.dealValue)}
-                </div>
-                {currentLead.packageSold && (
-                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)' }}>{currentLead.packageSold}</div>
-                )}
-                {currentLead.contractDate && (
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Data: {formatDateShort(currentLead.contractDate)}</div>
-                )}
-              </div>
-            )}
-            </div>
-          </>
+          <AdminLeadInspector
+            lead={currentLead}
+            onWhatsApp={handleWhatsApp}
+            onStageChange={handleStageChange}
+          />
         )}
       </div>
 

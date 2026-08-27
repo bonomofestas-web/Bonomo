@@ -142,14 +142,50 @@ export interface LeadActivity {
   authorAvatarUrl?: string;
 }
 
+export type LeadTemperature = 'hot' | 'warm' | 'cold';
+export type LeadEventType = '15 Anos' | 'Casamento' | 'Infantil' | 'Formatura' | 'Corporativo' | 'Outro';
+export type LeadContactRole = 'debutante' | 'mother' | 'father' | 'decision_maker' | 'other';
+
+export interface LeadContact {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  role: LeadContactRole;
+  isPrimaryDecisionMaker?: boolean;
+}
+
 export interface Lead {
   id: string;
   debutanteId: string;
   debutanteName: string;
   debutanteSlug: string;
   venueId: string;
+  funnelId?: string;     // Funil comercial ao qual o lead pertence
   name: string;
   phone: string;
+  email?: string;
+  neighborhood?: string; // Bairro
+  address?: string;      // Endereço completo
+
+  // Contatos Vinculados & Decisor
+  contacts?: LeadContact[];
+  primaryContactRole?: LeadContactRole;
+
+  // Dados do Evento
+  eventType?: LeadEventType;      // Padrão '15 Anos' para indicação
+  eventDate?: string;             // Data do evento
+  debutanteBirthDate?: string;    // Data de aniversário da debutante
+  estimatedGuests?: number;       // Quantidade estimada de convidados
+  desiredPeriod?: string;         // Data desejada / período (caso sem data exata)
+
+  // Dados Comerciais & Qualificação
+  interestService?: string;       // Qual espaço/pacote/serviço despertou interesse
+  estimatedBudget?: number;       // Investimento / orçamento
+  paymentMethod?: string;         // Forma de pagamento
+  temperature?: LeadTemperature;  // 'hot' (🔥 Quente) | 'warm' (🟡 Morno) | 'cold' (🔵 Frio)
+  tags?: string[];                // Tags específicas do funil
+
   age: number;
   group: string;
   notes?: string;

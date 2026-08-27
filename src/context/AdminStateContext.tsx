@@ -176,6 +176,7 @@ export interface AdminContextType {
   deleteLead: (leadId: string) => void;
   closeLeadSale: (leadId: string) => void;
   closeLeadSaleWithValue: (leadId: string, dealValue: number, packageSold: string, contractDate?: string) => void;
+  updateLeadData: (leadId: string, data: Partial<Lead>) => void;
   assignLead: (leadId: string, assigneeName: string) => void;
   claimLeadIfUnassigned: (leadId: string, claimantName?: string) => void;
 
@@ -183,6 +184,7 @@ export interface AdminContextType {
   assignLeadSdr: (leadId: string, sdrId: string) => void;
   assignLeadCloser: (leadId: string, closerId: string) => void;
   removeLeadCloser: (leadId: string) => void;
+  removeLeadSdr: (leadId: string) => void;
 
   // Lead Distribution (Round Robin)
   distributeLeadRoundRobin: (venueId: string) => Collaborator | null;
@@ -1649,6 +1651,56 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   };
 
+  const removeLeadSdr = (leadId: string) => {
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    setLeads(prev => prev.map(lead => {
+      if (lead.id !== leadId) return lead;
+
+      const newActivity: LeadActivity = {
+        id: `act_${Date.now()}`,
+        leadId,
+        timestamp: new Date().toISOString(),
+        type: 'assignment',
+        title: 'SDR removido',
+        text: `SDR "${lead.sdrName || ''}" removido por ${author}.`,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      };
+
+      return {
+        ...lead,
+        sdrId: undefined,
+        sdrName: undefined,
+        assignedTo: undefined,
+        activities: [newActivity, ...lead.activities],
+        updatedAt: new Date().toISOString().split('T')[0],
+      };
+    }));
+  };
+
+  const updateLeadData = (leadId: string, data: Partial<Lead>) => {
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        if (lead.id !== leadId) return lead;
+        return {
+          ...lead,
+          ...data,
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({ id: leadId, ...data } as any);
+    }
+  };
+
   // ── Lead Tasks ──────────────────────────────────────────────────────────────
 
   const addLeadTask = (leadId: string, task: Omit<LeadTask, 'id' | 'leadId' | 'createdAt' | 'status'>): string => {
@@ -2137,11 +2189,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deleteLead,
       closeLeadSale,
       closeLeadSaleWithValue,
+      updateLeadData,
       assignLead,
       claimLeadIfUnassigned,
       assignLeadSdr,
       assignLeadCloser,
       removeLeadCloser,
+      removeLeadSdr,
       distributeLeadRoundRobin,
       addLeadTask,
       updateLeadTask,
