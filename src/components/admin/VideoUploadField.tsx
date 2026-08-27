@@ -93,8 +93,9 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
           }
         );
 
-        if (r2Url) {
+        if (r2Url && r2Url.startsWith('http')) {
           onChange(r2Url, file.name);
+          setResolvedSrc(r2Url);
           setJustUploaded(true);
           setTimeout(() => setJustUploaded(false), 3000);
           return;
