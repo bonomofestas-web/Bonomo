@@ -448,13 +448,34 @@ const RootAppRouter: React.FC = () => {
     );
   }
 
-  // Check if first-access video onboarding is required (suppressed if journey is pending linkage)
-  if (activeDeb && activeDeb.hasJourneyEnabled && !activeDeb.isJourneyPending && !activeDeb.hasSeenWelcomeVideo) {
+  const isVideoSeenLocally = activeDeb?.slug ? (
+    typeof window !== 'undefined' && (
+      sessionStorage.getItem(`bonomo_video_seen_${activeDeb.slug}`) === 'true' ||
+      localStorage.getItem(`bonomo_video_seen_${activeDeb.slug}`) === 'true'
+    )
+  ) : false;
+
+  const handleStartJourney = () => {
+    if (!activeDeb) return;
+    try {
+      sessionStorage.setItem(`bonomo_video_seen_${activeDeb.slug}`, 'true');
+      localStorage.setItem(`bonomo_video_seen_${activeDeb.slug}`, 'true');
+    } catch (err) {
+      console.warn('Storage error:', err);
+    }
+    setAsyncDeb((prev: any) => prev ? { ...prev, hasSeenWelcomeVideo: true } : prev);
+    markWelcomeVideoSeen(activeDeb.slug);
+  };
+
+  // Check if first-access video/PWA onboarding is required
+  const shouldShowOnboarding = activeDeb && !activeDeb.hasSeenWelcomeVideo && !isVideoSeenLocally;
+
+  if (shouldShowOnboarding) {
     return (
       <WelcomeVideoIntroView
         debutante={activeDeb}
         venue={activeVenue}
-        onStartJourney={() => markWelcomeVideoSeen(activeDeb.slug)}
+        onStartJourney={handleStartJourney}
       />
     );
   }

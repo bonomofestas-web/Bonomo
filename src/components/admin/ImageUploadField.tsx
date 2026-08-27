@@ -6,6 +6,7 @@ interface ImageUploadFieldProps {
   label: string;
   value?: string;
   onChange: (base64OrUrl: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
   placeholder?: string;
   helperText?: string;
   aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
@@ -17,6 +18,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   label,
   value,
   onChange,
+  onUploadingChange,
   placeholder,
   helperText,
   aspectRatio = '16:9',
@@ -29,6 +31,11 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const setUploadingState = (uploading: boolean) => {
+    setIsUploading(uploading);
+    if (onUploadingChange) onUploadingChange(uploading);
+  };
 
   // Fast client-side image compression and conversion to WebP
   const compressImage = (file: File): Promise<{ base64: string; blob: Blob }> => {
@@ -96,7 +103,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
       return;
     }
 
-    setIsUploading(true);
+    setUploadingState(true);
     setUploadSuccess(false);
 
     try {
@@ -124,7 +131,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
     } catch (err) {
       console.warn('[ImageUploadField] Falha no upload R2, mantendo preview local:', err);
     } finally {
-      setIsUploading(false);
+      setUploadingState(false);
     }
   };
 

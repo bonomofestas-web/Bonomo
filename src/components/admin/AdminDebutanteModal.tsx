@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Calendar, Phone, Mail, Sparkles, Building2, Users, Trash2 } from 'lucide-react';
+import { X, User, Calendar, Phone, Mail, Sparkles, Building2, Users, Trash2, Loader2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
@@ -26,6 +26,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
   const [baseGuestLimit, setBaseGuestLimit] = useState(250);
   const [hasJourneyEnabled, setHasJourneyEnabled] = useState(true);
   const [journeyTemplateChoice, setJourneyTemplateChoice] = useState<string>('pending');
@@ -354,6 +355,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               label="Foto de Perfil da Debutante"
               value={avatarUrl}
               onChange={(val) => setAvatarUrl(val)}
+              onUploadingChange={setIsPhotoUploading}
               aspectRatio="1:1"
               previewHeight="80px"
               placeholder="Subir foto de rosto da aniversariante"
@@ -545,15 +547,28 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
 
                 <button
                   type="submit"
+                  disabled={isPhotoUploading}
                   className="adm-btn-primary"
                   style={{
                     padding: '10px 22px',
                     borderRadius: '12px',
                     fontWeight: 800,
                     fontSize: '0.86rem',
+                    opacity: isPhotoUploading ? 0.7 : 1,
+                    cursor: isPhotoUploading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}
                 >
-                  {debutanteToEdit ? 'Salvar Alterações' : 'Cadastrar & Gerar Link'}
+                  {isPhotoUploading ? (
+                    <>
+                      <Loader2 size={16} className="adm-spin" />
+                      <span>Enviando foto para a nuvem...</span>
+                    </>
+                  ) : (
+                    debutanteToEdit ? 'Salvar Alterações' : 'Cadastrar & Gerar Link'
+                  )}
                 </button>
               </div>
             </div>

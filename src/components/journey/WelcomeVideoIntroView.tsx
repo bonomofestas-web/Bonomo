@@ -179,29 +179,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
           }}>
             {step === 'pwa_guide' ? 'Instalação do App' : 'Boas-Vindas 15 Anos'}
           </span>
-
-          {/* Quick Skip Button - guarantees user is NEVER trapped */}
-          <button
-            type="button"
-            onClick={onStartJourney}
-            style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(212, 175, 55, 0.4)',
-              color: '#F3E5AB',
-              borderRadius: '20px',
-              padding: '5px 12px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <span>Pular</span>
-            <ArrowRight size={12} />
-          </button>
         </div>
       </div>
 
@@ -492,37 +469,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             </div>
           )}
 
-          {/* Bottom Floating Skip / Advance Button */}
-          {!isVideoEnded && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartJourney();
-              }}
-              style={{
-                position: 'absolute',
-                bottom: '24px',
-                background: 'rgba(0, 0, 0, 0.85)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(212, 175, 55, 0.5)',
-                color: '#F3E5AB',
-                borderRadius: '30px',
-                padding: '10px 22px',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                zIndex: 35,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
-              }}
-            >
-              <span>Concluir & Iniciar Jornada</span>
-              <ArrowRight size={14} color="#D4AF37" />
-            </button>
-          )}
+
 
           {/* Floating Sound Orientation Badge (Mandated by Audio 1) */}
           {!isVideoEnded && (
