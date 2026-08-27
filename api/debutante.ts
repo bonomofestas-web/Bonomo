@@ -25,19 +25,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Parâmetro slug ou id é obrigatório.' });
   }
 
-  try {
     const clean = decodeURIComponent(slugParam).trim().toLowerCase();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
 
-    // Query debutante by slug or id
-    const { data: row, error } = await supabase
-      .from('debutantes')
-      .select('*')
-      .or(`slug.ilike.${clean},id.eq.${clean}`)
-      .maybeSingle();
+    let row = null;
 
-    if (error) {
-      console.error('[API Debutante] Erro ao buscar:', error);
-      return res.status(500).json({ error: error.message });
+    if (isUuid) {
+      const { data } = await supabase.from('debutantes').select('*').eq('id', clean).maybeSingle();
+      if (data) row = data;
+    }
+
+    // 1. Exact slug match
+    if (!row) {
+      const { data } = await supabase.from('debutantes').select('*').ilike('slug', clean).maybeSingle();
+      if (data) row = data;
+    }
+
+    // 2. Base slug match (ignores 4-character random suffix variations)
+    const baseSlug = clean.replace(/-[a-z0-9]{4}$/, '');
+    if (!row && baseSlug) {
+      const { data: rows } = await supabase.from('debutantes').select('*').ilike('slug', `${baseSlug}%`);
+      if (rows && rows.length > 0) row = rows[0];
+    }
+
+    // 3. Name prefix match
+    if (!row) {
+      const nameGuess = clean.replace(/-\d{4}.*$/, '').replace(/-/g, ' ').trim();
+      if (nameGuess.length >= 3) {
+        const { data: rows } = await supabase.from('debutantes').select('*').ilike('name', `%${nameGuess}%`);
+        if (rows && rows.length > 0) row = rows[0];
+      }
     }
 
     if (!row) {

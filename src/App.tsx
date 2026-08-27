@@ -297,30 +297,40 @@ const RootAppRouter: React.FC = () => {
   const viewMode = routeInfo.mode;
   const currentDebutanteSlug = routeInfo.slug;
 
-  // Resolve current active debutante account
-  const inMemoryDeb = 
-    (currentDebutanteSlug ? getDebutanteBySlug(currentDebutanteSlug) : undefined) ||
-    debutantes.find(d => currentDebutanteSlug && (d.slug.toLowerCase() === currentDebutanteSlug.toLowerCase() || d.id === currentDebutanteSlug));
+  // Resolve current active debutante account with smart slug matching
+  const cleanSlug = currentDebutanteSlug ? decodeURIComponent(currentDebutanteSlug).trim().toLowerCase() : '';
+  const baseSlug = cleanSlug.replace(/-[a-z0-9]{4}$/, '');
+
+  const inMemoryDeb = cleanSlug 
+    ? (getDebutanteBySlug(cleanSlug) ||
+       debutantes.find(d => 
+         d.slug.toLowerCase() === cleanSlug || 
+         d.id === cleanSlug ||
+         (baseSlug && d.slug.toLowerCase().startsWith(baseSlug))
+       ))
+    : undefined;
 
   const [isLoadingSlug, setIsLoadingSlug] = useState<boolean>(() => {
-    return Boolean(viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb);
+    return Boolean(viewMode === 'debutante' && cleanSlug && !inMemoryDeb);
   });
 
-  // If not found in memory (e.g. fresh incognito visit), fetch directly from Supabase
+  // If not found in memory (e.g. fresh incognito visit), fetch directly from Supabase / API
   useEffect(() => {
-    if (viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb) {
+    if (viewMode === 'debutante' && cleanSlug) {
       setIsLoadingSlug(true);
-      debutanteService.getBySlug(currentDebutanteSlug).then(result => {
-        if (result) setAsyncDeb(result);
+      debutanteService.getBySlug(cleanSlug).then(result => {
+        if (result) {
+          setAsyncDeb(result);
+        }
         setIsLoadingSlug(false);
       }).catch(() => {
         setIsLoadingSlug(false);
       });
     }
-  }, [viewMode, currentDebutanteSlug, inMemoryDeb]);
+  }, [viewMode, cleanSlug]);
 
-  const dynamicFallbackDeb = (viewMode === 'debutante' && currentDebutanteSlug) 
-    ? generateDynamicDebutanteFromSlug(currentDebutanteSlug, venues[0]?.id)
+  const dynamicFallbackDeb = (viewMode === 'debutante' && cleanSlug) 
+    ? generateDynamicDebutanteFromSlug(cleanSlug, venues[0]?.id)
     : undefined;
 
   const activeDeb = inMemoryDeb || asyncDeb || dynamicFallbackDeb || debutantes[0];
