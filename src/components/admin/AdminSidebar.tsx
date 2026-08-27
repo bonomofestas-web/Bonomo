@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  LogOut, Gift, CheckSquare,
+  LogOut, CheckSquare,
   ChevronRight, Settings,
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
@@ -82,8 +82,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={18} />, roles: ['master', 'admin', 'crm'] },
-    { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={18} />, roles: ['master', 'admin', 'crm'] },
-    { id: 'templates', label: 'Jornadas & Metas', icon: <Target size={18} />, roles: ['master', 'admin'] },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
@@ -133,7 +131,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   };
 
   const renderNavButton = (item: { id: AdminTabType; label: string; icon: React.ReactNode }, isSubItem = false) => {
-    const isActive = activeTab === item.id;
+    const isActive = item.id === 'crm'
+      ? activeTab === 'crm' && (!activeFunnelId || activeFunnelId === null)
+      : activeTab === item.id;
     return (
       <button
         key={item.id}

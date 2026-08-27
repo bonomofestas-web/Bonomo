@@ -911,14 +911,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-    const year = date.split('-')[0] || '2027';
-    let baseSlug = `${cleanName}-${year}`;
+      .replace(/^-|-$/g, '') || 'debutante';
+    const year = date ? (date.split('-')[0] || '2027') : '2027';
+    const randomHex = Math.random().toString(36).substring(2, 6);
+    let baseSlug = `${cleanName}-${year}-${randomHex}`;
     let slug = baseSlug;
     let count = 1;
     while (debutantes.some(d => d.slug === slug)) {
       count++;
-      slug = `${baseSlug}-${count}`;
+      slug = `${cleanName}-${year}-${randomHex}${count}`;
     }
     return slug;
   };

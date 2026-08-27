@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Gift, Crown } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { ImageUploadField } from './ImageUploadField';
 import type { JourneyTemplate } from '../../types/admin';
 import type { Milestone, VipReward, MilestoneStatus, VipRewardStatus } from '../../types';
 
@@ -65,21 +64,26 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    // Auto-sort milestones ascending by required referrals
+    const sortedMilestones = [...milestones].sort((a, b) => (Number(a.requiredReferrals) || 0) - (Number(b.requiredReferrals) || 0));
+    // Auto-sort VIP rewards ascending by required sales
+    const sortedVipRewards = [...vipRewards].sort((a, b) => (Number(a.requiredSales) || 0) - (Number(b.requiredSales) || 0));
+
     if (templateToEdit) {
       updateTemplate(templateToEdit.id, {
         name: name.trim(),
         description: description.trim(),
         seasonOrPeriod: seasonOrPeriod.trim(),
-        milestones,
-        vipRewards,
+        milestones: sortedMilestones,
+        vipRewards: sortedVipRewards,
       });
     } else {
       addTemplate({
         name: name.trim(),
         description: description.trim(),
         seasonOrPeriod: seasonOrPeriod.trim(),
-        milestones,
-        vipRewards,
+        milestones: sortedMilestones,
+        vipRewards: sortedVipRewards,
       });
     }
 
@@ -128,7 +132,7 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
         background: 'var(--adm-bg-card)',
         border: '1px solid var(--adm-border)',
         borderRadius: '20px',
-        maxWidth: '720px',
+        maxWidth: '740px',
         width: '100%',
         maxHeight: '90vh',
         overflowY: 'auto',
@@ -180,19 +184,19 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
             margin: 0,
             letterSpacing: '-0.3px',
           }}>
-            {templateToEdit ? 'Editar Modelo de Jornada' : 'Criar Novo Modelo de Jornada'}
+            {templateToEdit ? 'Editar Modelo de Jornada' : 'Novo Modelo de Jornada'}
           </h2>
         </div>
         <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', marginBottom: '22px' }}>
-          Defina as metas da jornada e os presentes VIPs para aplicar nas debutantes.
+          Defina as metas por indicação e os presentes VIPs por contrato fechado. As metas são auto-ordenadas por pontuação.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Nome do Modelo */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '12px' }}>
             <div>
               <label style={labelStyle}>
-                Nome do Modelo *
+                Nome do Modelo de Jornada *
               </label>
               <input
                 type="text"
@@ -234,24 +238,28 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
           {/* Milestones Configuration */}
           <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Gift size={16} color="var(--adm-accent)" />
-                <span>Metas da Jornada por Indicações</span>
-              </h3>
+              <div>
+                <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Gift size={16} color="var(--adm-accent)" />
+                  <span>Metas da Jornada por Indicações (Ordem Crescente)</span>
+                </h3>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                  Edite a quantidade de indicações exigida. Os dados do prêmio vêm do Catálogo.
+                </span>
+              </div>
 
               {/* Quick Select from Benefits Catalog */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Puxar do Catálogo:</span>
                 <select
+                  value=""
                   onChange={(e) => {
                     const found = benefitsCatalog.find(b => b.id === e.target.value);
                     if (found) {
-                      setMilestones(prev => [
-                        ...prev,
-                        {
+                      setMilestones(prev => {
+                        const newMilestone: Milestone = {
                           id: `m_${Date.now()}`,
-                          title: `Meta ${prev.length + 1}`,
-                          description: 'Desbloqueie benefícios',
+                          title: found.name,
+                          description: found.description,
                           requiredReferrals: found.pointsRequired || 5,
                           rewardTitle: found.name,
                           rewardDescription: found.description,
@@ -259,22 +267,24 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                           status: 'locked',
                           iconName: 'Gift',
                           badgeTag: `${found.pointsRequired} INDICAÇÕES`,
-                        }
-                      ]);
+                        };
+                        return [...prev, newMilestone].sort((a, b) => (Number(a.requiredReferrals) || 0) - (Number(b.requiredReferrals) || 0));
+                      });
                     }
                   }}
                   style={{
                     background: 'var(--adm-bg-input)',
                     border: '1px solid var(--adm-border)',
                     borderRadius: '8px',
-                    padding: '6px 10px',
+                    padding: '6px 12px',
                     color: 'var(--adm-accent)',
                     fontSize: '0.74rem',
                     fontWeight: 700,
                     outline: 'none',
+                    cursor: 'pointer',
                   }}
                 >
-                  <option value="">+ Inserir do Catálogo...</option>
+                  <option value="">+ Inserir do Catálogo de Benefícios...</option>
                   {benefitsCatalog.map(b => (
                     <option key={b.id} value={b.id}>{b.name} ({b.pointsRequired} pts)</option>
                   ))}
@@ -282,35 +292,80 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {milestones.map((m, idx) => (
                 <div key={m.id || idx} style={{
                   background: 'var(--adm-bg-input)',
                   border: '1px solid var(--adm-border)',
                   borderRadius: '14px',
-                  padding: '14px',
+                  padding: '12px 14px',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
+                  alignItems: 'center',
+                  gap: '14px',
                 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr auto', gap: '10px', alignItems: 'center' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginBottom: '4px', fontWeight: 600 }}>Meta (Qtd)</label>
+                  {/* Thumbnail */}
+                  {m.rewardImageUrl && (
+                    <img
+                      src={m.rewardImageUrl}
+                      alt={m.rewardTitle}
+                      style={{
+                        width: '54px',
+                        height: '54px',
+                        borderRadius: '10px',
+                        objectFit: 'cover',
+                        border: '1px solid var(--adm-border)',
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+
+                  {/* Benefit Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        {m.rewardTitle}
+                      </span>
+                      <span style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        background: 'var(--adm-accent-bg)',
+                        color: 'var(--adm-accent)',
+                        borderRadius: '6px',
+                        padding: '1px 6px',
+                      }}>
+                        {m.requiredReferrals} pts exigidos
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {m.rewardDescription}
+                    </p>
+                  </div>
+
+                  {/* Required Referrals Input */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <label style={{ display: 'block', fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
+                        Meta (Indicações)
+                      </label>
                       <input
                         type="number"
+                        min="1"
                         value={m.requiredReferrals}
-                        onChange={(e) => handleMilestoneChange(idx, 'requiredReferrals', Number(e.target.value))}
-                        style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '8px', color: 'var(--adm-text-title)', textAlign: 'center', fontWeight: 700 }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginBottom: '4px', fontWeight: 600 }}>Título do Prêmio</label>
-                      <input
-                        type="text"
-                        value={m.rewardTitle}
-                        onChange={(e) => handleMilestoneChange(idx, 'rewardTitle', e.target.value)}
-                        style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '8px 12px', color: 'var(--adm-text-title)', fontWeight: 600 }}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 1;
+                          handleMilestoneChange(idx, 'requiredReferrals', val);
+                        }}
+                        style={{
+                          width: '75px',
+                          background: 'var(--adm-bg-card)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '8px',
+                          padding: '6px 8px',
+                          color: 'var(--adm-text-title)',
+                          textAlign: 'center',
+                          fontWeight: 800,
+                          fontSize: '0.84rem',
+                        }}
                       />
                     </div>
 
@@ -322,35 +377,16 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                         border: '1px solid rgba(239, 68, 68, 0.3)',
                         color: 'var(--adm-red)',
                         borderRadius: '8px',
-                        padding: '8px 12px',
+                        padding: '6px 10px',
                         fontSize: '0.72rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        marginTop: '16px',
+                        marginTop: '12px',
                       }}
                     >
                       Remover
                     </button>
                   </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginBottom: '4px', fontWeight: 600 }}>Descrição</label>
-                    <input
-                      type="text"
-                      value={m.rewardDescription}
-                      onChange={(e) => handleMilestoneChange(idx, 'rewardDescription', e.target.value)}
-                      style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '8px 12px', color: 'var(--adm-text-title)' }}
-                    />
-                  </div>
-
-                  {/* Image Upload for Reward */}
-                  <ImageUploadField
-                    label={`Foto do Prêmio (Meta #${idx + 1})`}
-                    value={m.rewardImageUrl}
-                    onChange={(val) => handleMilestoneChange(idx, 'rewardImageUrl', val)}
-                    aspectRatio="16:9"
-                    previewHeight="70px"
-                  />
                 </div>
               ))}
             </div>
@@ -359,21 +395,25 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
           {/* VIP Rewards Configuration */}
           <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-              <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Crown size={16} color="#EC4899" />
-                <span>Presentes VIPs por Vendas Convertidas</span>
-              </h3>
+              <div>
+                <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Crown size={16} color="#EC4899" />
+                  <span>Presentes VIPs por Vendas Convertidas (Ordem Crescente)</span>
+                </h3>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                  Edite a quantidade de vendas exigida. Os dados do presente vêm do Catálogo VIP.
+                </span>
+              </div>
 
               {/* Quick Select from VIP Catalog */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Puxar do Catálogo VIP:</span>
                 <select
+                  value=""
                   onChange={(e) => {
                     const found = vipCatalog.find(v => v.id === e.target.value);
                     if (found) {
-                      setVipRewards(prev => [
-                        ...prev,
-                        {
+                      setVipRewards(prev => {
+                        const newReward: VipReward = {
                           id: `vip_${Date.now()}`,
                           name: found.name,
                           description: found.description,
@@ -382,22 +422,24 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                           order: prev.length + 1,
                           badgeTag: found.badgeTag || `${found.salesRequired}ª VENDA`,
                           status: 'locked',
-                        }
-                      ]);
+                        };
+                        return [...prev, newReward].sort((a, b) => (Number(a.requiredSales) || 0) - (Number(b.requiredSales) || 0));
+                      });
                     }
                   }}
                   style={{
                     background: 'var(--adm-bg-input)',
                     border: '1px solid var(--adm-border)',
                     borderRadius: '8px',
-                    padding: '6px 10px',
+                    padding: '6px 12px',
                     color: 'var(--adm-green)',
                     fontSize: '0.74rem',
                     fontWeight: 700,
                     outline: 'none',
+                    cursor: 'pointer',
                   }}
                 >
-                  <option value="">+ Inserir Presente VIP...</option>
+                  <option value="">+ Inserir do Catálogo VIP...</option>
                   {vipCatalog.map(v => (
                     <option key={v.id} value={v.id}>{v.name} ({v.salesRequired} vendas)</option>
                   ))}
@@ -405,35 +447,80 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {vipRewards.map((v, idx) => (
                 <div key={v.id || idx} style={{
                   background: 'var(--adm-bg-input)',
                   border: '1px solid var(--adm-border)',
                   borderRadius: '14px',
-                  padding: '14px',
+                  padding: '12px 14px',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
+                  alignItems: 'center',
+                  gap: '14px',
                 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr auto', gap: '10px', alignItems: 'center' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginBottom: '4px', fontWeight: 600 }}>Vendas Mín.</label>
+                  {/* Thumbnail */}
+                  {v.imageUrl && (
+                    <img
+                      src={v.imageUrl}
+                      alt={v.name}
+                      style={{
+                        width: '54px',
+                        height: '54px',
+                        borderRadius: '10px',
+                        objectFit: 'cover',
+                        border: '1px solid var(--adm-border)',
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+
+                  {/* VIP Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        {v.name}
+                      </span>
+                      <span style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        color: 'var(--adm-green)',
+                        borderRadius: '6px',
+                        padding: '1px 6px',
+                      }}>
+                        {v.requiredSales} {v.requiredSales === 1 ? 'venda exigida' : 'vendas exigidas'}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {v.description}
+                    </p>
+                  </div>
+
+                  {/* Required Sales Input */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <label style={{ display: 'block', fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
+                        Vendas Mínimas
+                      </label>
                       <input
                         type="number"
+                        min="1"
                         value={v.requiredSales}
-                        onChange={(e) => handleVipChange(idx, 'requiredSales', Number(e.target.value))}
-                        style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '8px', color: 'var(--adm-text-title)', textAlign: 'center', fontWeight: 700 }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginBottom: '4px', fontWeight: 600 }}>Nome do Presente VIP</label>
-                      <input
-                        type="text"
-                        value={v.name}
-                        onChange={(e) => handleVipChange(idx, 'name', e.target.value)}
-                        style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '8px 12px', color: 'var(--adm-text-title)', fontWeight: 600 }}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 1;
+                          handleVipChange(idx, 'requiredSales', val);
+                        }}
+                        style={{
+                          width: '75px',
+                          background: 'var(--adm-bg-card)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '8px',
+                          padding: '6px 8px',
+                          color: 'var(--adm-text-title)',
+                          textAlign: 'center',
+                          fontWeight: 800,
+                          fontSize: '0.84rem',
+                        }}
                       />
                     </div>
 
@@ -445,25 +532,16 @@ export const AdminTemplateModal: React.FC<AdminTemplateModalProps> = ({
                         border: '1px solid rgba(239, 68, 68, 0.3)',
                         color: 'var(--adm-red)',
                         borderRadius: '8px',
-                        padding: '8px 12px',
+                        padding: '6px 10px',
                         fontSize: '0.72rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        marginTop: '16px',
+                        marginTop: '12px',
                       }}
                     >
                       Remover
                     </button>
                   </div>
-
-                  {/* Image Upload for VIP */}
-                  <ImageUploadField
-                    label={`Foto do Presente VIP (#${idx + 1})`}
-                    value={v.imageUrl}
-                    onChange={(val) => handleVipChange(idx, 'imageUrl', val)}
-                    aspectRatio="1:1"
-                    previewHeight="70px"
-                  />
                 </div>
               ))}
             </div>
