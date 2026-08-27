@@ -148,49 +148,54 @@ export const debutanteService = {
     try {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deb.id);
       
-      const payload: any = {
-        venue_id: deb.venueId,
-        name: deb.name,
-        slug: deb.slug,
-        party_date: deb.partyDate,
-        avatar_url: deb.avatarUrl,
-        phone: deb.phone,
-        email: deb.email,
-        mother_name: deb.motherName,
-        father_name: deb.fatherName,
-        has_journey_enabled: deb.hasJourneyEnabled,
-        is_journey_pending: deb.isJourneyPending,
-        welcome_video_url: deb.welcomeVideoUrl,
-        has_seen_welcome_video: deb.hasSeenWelcomeVideo,
-        journey_template_id: deb.journeyTemplateId,
-        custom_invite_photo_url: deb.customInvitePhotoUrl,
-        use_custom_invite_photo: deb.useCustomInvitePhoto,
-        reception_message: deb.receptionMessage,
-        base_guest_limit: deb.baseGuestLimit,
-        extra_guests_unlocked: deb.extraGuestsUnlocked,
-        valid_referrals: deb.validReferrals,
-        total_target_referrals: deb.totalTargetReferrals,
-        converted_referral_sales: deb.convertedReferralSales,
-        journey_cycle: deb.journeyCycle,
-        milestones: deb.milestones,
-        vip_rewards: deb.vipRewards,
-      };
+      const payload: any = {};
+      if (deb.venueId !== undefined) payload.venue_id = deb.venueId;
+      if (deb.name !== undefined) payload.name = deb.name;
+      if (deb.slug !== undefined) payload.slug = deb.slug;
+      if (deb.partyDate !== undefined) payload.party_date = deb.partyDate;
+      if (deb.avatarUrl !== undefined) payload.avatar_url = deb.avatarUrl;
+      if (deb.phone !== undefined) payload.phone = deb.phone;
+      if (deb.email !== undefined) payload.email = deb.email;
+      if (deb.motherName !== undefined) payload.mother_name = deb.motherName;
+      if (deb.fatherName !== undefined) payload.father_name = deb.fatherName;
+      if (deb.hasJourneyEnabled !== undefined) payload.has_journey_enabled = deb.hasJourneyEnabled;
+      if (deb.isJourneyPending !== undefined) payload.is_journey_pending = deb.isJourneyPending;
+      if (deb.welcomeVideoUrl !== undefined) payload.welcome_video_url = deb.welcomeVideoUrl;
+      if (deb.hasSeenWelcomeVideo !== undefined) payload.has_seen_welcome_video = deb.hasSeenWelcomeVideo;
+      if (deb.journeyTemplateId !== undefined) payload.journey_template_id = deb.journeyTemplateId;
+      if (deb.customInvitePhotoUrl !== undefined) payload.custom_invite_photo_url = deb.customInvitePhotoUrl;
+      if (deb.useCustomInvitePhoto !== undefined) payload.use_custom_invite_photo = deb.useCustomInvitePhoto;
+      if (deb.receptionMessage !== undefined) payload.reception_message = deb.receptionMessage;
+      if (deb.baseGuestLimit !== undefined) payload.base_guest_limit = deb.baseGuestLimit;
+      if (deb.extraGuestsUnlocked !== undefined) payload.extra_guests_unlocked = deb.extraGuestsUnlocked;
+      if (deb.validReferrals !== undefined) payload.valid_referrals = deb.validReferrals;
+      if (deb.totalTargetReferrals !== undefined) payload.total_target_referrals = deb.totalTargetReferrals;
+      if (deb.convertedReferralSales !== undefined) payload.converted_referral_sales = deb.convertedReferralSales;
+      if (deb.journeyCycle !== undefined) payload.journey_cycle = deb.journeyCycle;
+      if (deb.milestones !== undefined) payload.milestones = deb.milestones;
+      if (deb.vipRewards !== undefined) payload.vip_rewards = deb.vipRewards;
 
       if (isUuid) {
+        const { data: updated, error: updateErr } = await supabase
+          .from('debutantes')
+          .update(payload)
+          .eq('id', deb.id)
+          .select('id');
+
+        if (!updateErr && updated && updated.length > 0) {
+          return true;
+        }
+
         payload.id = deb.id;
-        const { error } = await supabase.from('debutantes').upsert(payload);
-        if (error) {
-          console.error('Erro ao salvar debutante por ID:', error);
-          if (deb.slug) {
-            await supabase.from('debutantes').update(payload).eq('slug', deb.slug);
-          }
+        const { error: insertErr } = await supabase.from('debutantes').insert(payload);
+        if (insertErr) {
+          console.error('Erro ao inserir debutante por UUID:', insertErr);
           return false;
         }
         return true;
       } else if (deb.slug) {
         const { data: existing } = await supabase.from('debutantes').select('id').eq('slug', deb.slug).maybeSingle();
         if (existing?.id) {
-          payload.id = existing.id;
           await supabase.from('debutantes').update(payload).eq('id', existing.id);
         } else {
           await supabase.from('debutantes').insert(payload);
