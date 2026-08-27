@@ -48,6 +48,14 @@ const AVAILABLE_FUNNEL_ICONS = [
   { id: 'camera', label: 'Eventos & Fotos', icon: Camera },
 ];
 
+const FUNNEL_CATEGORIES = [
+  { id: 'Marketing Digital', label: 'Marketing Digital / Ads', icon: Radio, color: '#3B82F6', badgeBg: 'rgba(59,130,246,0.15)' },
+  { id: 'Parcerias Estratégicas', label: 'Parcerias & B2B', icon: Handshake, color: '#10B981', badgeBg: 'rgba(16,185,129,0.15)' },
+  { id: 'Eventos Presenciais', label: 'Eventos & Degustações', icon: Sparkles, color: '#F59E0B', badgeBg: 'rgba(245,158,11,0.15)' },
+  { id: 'Prospecção Ativa', label: 'Prospecção Ativa / Outbound', icon: PhoneCall, color: '#8B5CF6', badgeBg: 'rgba(139,92,246,0.15)' },
+  { id: 'Indicações do App', label: 'Indicações do App', icon: Crown, color: '#D4AF37', badgeBg: 'rgba(212,175,55,0.15)' },
+];
+
 export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   initialLeadId,
   activeFunnelId,
@@ -87,7 +95,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [formFunnelVenueId, setFormFunnelVenueId] = useState('');
   const [formFunnelIcon, setFormFunnelIcon] = useState('target');
   const [formCustomImageUrl, setFormCustomImageUrl] = useState('');
-  const [formIsPinned, setFormIsPinned] = useState(false);
   const [iconMode, setIconMode] = useState<'icon' | 'image'>('icon');
   const [formAccessMode, setFormAccessMode] = useState<'all' | 'custom'>('all');
   const [formAllowedCollaboratorIds, setFormAllowedCollaboratorIds] = useState<string[]>([]);
@@ -158,7 +165,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setFormFunnelVenueId(targetVenueId || activeVenueId || (venues[0]?.id || ''));
     setFormFunnelIcon('target');
     setFormCustomImageUrl('');
-    setFormIsPinned(false);
     setIconMode('icon');
     setFormAccessMode('all');
     setFormAllowedCollaboratorIds([]);
@@ -176,7 +182,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setFormFunnelVenueId(funnel.venueId || (venues[0]?.id || ''));
     setFormFunnelIcon(funnel.icon || 'target');
     setFormCustomImageUrl(funnel.customImageUrl || '');
-    setFormIsPinned(funnel.isPinned || false);
     setIconMode(funnel.customImageUrl ? 'image' : 'icon');
     const hasCustomAccess = funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0;
     setFormAccessMode(hasCustomAccess ? 'custom' : 'all');
@@ -187,6 +192,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Save Funnel (Create or Update)
   const handleSaveFunnel = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const allowedIds = formAccessMode === 'custom' ? formAllowedCollaboratorIds : [];
+
+    // If Primary Funnel (Indicações do App), ONLY update allowed collaborator access list
+    if (funnelToConfigure?.isPrimary) {
+      updateFunnel(funnelToConfigure.id, {
+        allowedCollaboratorIds: allowedIds,
+      });
+      setIsCreateFunnelModalOpen(false);
+      setFunnelToConfigure(null);
+      return;
+    }
+
     if (!formFunnelName.trim()) return;
 
     const targetVenueId = formFunnelVenueId || venues[0]?.id;
@@ -195,7 +213,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       return;
     }
 
-    const allowedIds = formAccessMode === 'custom' ? formAllowedCollaboratorIds : [];
     const finalCustomImage = iconMode === 'image' && formCustomImageUrl.trim() ? formCustomImageUrl.trim() : undefined;
 
     if (funnelToConfigure) {
@@ -206,7 +223,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         venueId: targetVenueId,
         icon: formFunnelIcon,
         customImageUrl: finalCustomImage,
-        isPinned: formIsPinned,
         allowedCollaboratorIds: allowedIds,
       });
     } else {
@@ -220,7 +236,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         badgeColor: '#3B82F6',
         icon: formFunnelIcon,
         customImageUrl: finalCustomImage,
-        isPinned: formIsPinned,
+        isPinned: false,
         stagesCount: 4,
         isPrimary: false,
         isDemo: false,
@@ -511,9 +527,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }}>
         <div style={{
           background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
+          border: funnelToConfigure?.isPrimary ? '1.5px solid rgba(212,175,55,0.4)' : '1px solid var(--adm-border)',
           borderRadius: '20px',
-          maxWidth: '560px',
+          maxWidth: '620px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
@@ -527,24 +543,37 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: 'var(--adm-accent-bg)',
-                border: '1px solid var(--adm-accent)',
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                background: funnelToConfigure?.isPrimary ? 'rgba(212,175,55,0.15)' : 'var(--adm-accent-bg)',
+                border: `1px solid ${funnelToConfigure?.isPrimary ? 'var(--adm-accent)' : 'var(--adm-accent)'}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'var(--adm-accent)',
               }}>
-                <Settings size={18} />
+                {funnelToConfigure?.isPrimary ? <Crown size={20} /> : <Settings size={20} />}
               </div>
               <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-                  {funnelToConfigure ? 'Configurações do Funil' : 'Novo Pipeline Comercial'}
-                </h3>
-                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                  Defina a casa vinculada e controle quem tem acesso a este funil
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
+                    {funnelToConfigure 
+                      ? (funnelToConfigure.isPrimary ? 'Controle de Acesso • Funil de Indicação' : 'Configurações do Funil')
+                      : 'Novo Pipeline Comercial'
+                    }
+                  </h3>
+                  {funnelToConfigure?.isPrimary && (
+                    <span style={{ fontSize: '0.64rem', background: 'rgba(212,175,55,0.2)', color: 'var(--adm-accent)', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                      Padrão do Sistema
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                  {funnelToConfigure?.isPrimary 
+                    ? 'Funil estrutural integrado às indicações das debutantes e convidadas'
+                    : 'Defina a casa vinculada, categoria e permissões de acesso'
+                  }
                 </div>
               </div>
             </div>
@@ -558,255 +587,331 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           </div>
 
           {/* Form Body */}
-          <form onSubmit={handleSaveFunnel} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Nome do Funil */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                Nome do Funil *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Funil de Indicação • Espaço Rio Lounge"
-                value={formFunnelName}
-                onChange={(e) => setFormFunnelName(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.84rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            {/* Casa de Festas & Categoria */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  Casa de Festas Vinculada *
-                </label>
-                <select
-                  required
-                  value={formFunnelVenueId}
-                  onChange={(e) => setFormFunnelVenueId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    padding: '10px 12px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  {venues.length === 0 ? (
-                    <option value="">Nenhuma casa cadastrada</option>
-                  ) : (
-                    venues.map(v => (
-                      <option key={v.id} value={v.id}>🏢 {v.name}</option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                  Categoria / Origem
-                </label>
-                <select
-                  value={formFunnelCategory}
-                  onChange={(e) => setFormFunnelCategory(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    padding: '10px 12px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <option>Indicações do App</option>
-                  <option>Marketing Digital</option>
-                  <option>Parcerias Estratégicas</option>
-                  <option>Eventos Presenciais</option>
-                  <option>Prospecção Ativa</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Descrição */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                Descrição Comercial
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Descrição do objetivo e etapas deste funil..."
-                value={formFunnelDescription}
-                onChange={(e) => setFormFunnelDescription(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  resize: 'vertical',
-                }}
-              />
-            </div>
-
-            {/* ── ÍCONE OU FOTO DO FUNIL (400x400) ── */}
-            <div style={{
-              background: 'var(--adm-bg-input)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '14px',
-              padding: '14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  Identidade Visual do Funil
-                </span>
-                <div style={{ display: 'flex', gap: '4px', background: 'var(--adm-bg-card)', padding: '3px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIconMode('icon')}
-                    style={{
-                      background: iconMode === 'icon' ? 'var(--adm-accent-bg)' : 'transparent',
-                      border: iconMode === 'icon' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                      color: iconMode === 'icon' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Ícone
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIconMode('image')}
-                    style={{
-                      background: iconMode === 'image' ? 'var(--adm-accent-bg)' : 'transparent',
-                      border: iconMode === 'image' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                      color: iconMode === 'image' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Foto (400x400)
-                  </button>
-                </div>
-              </div>
-
-              {iconMode === 'icon' ? (
+          <form onSubmit={handleSaveFunnel} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            {/* ── CASO 1: FUNIL PADRÃO DE INDICAÇÃO (ESTRUTURA FIXA E PROTEGIDA) ── */}
+            {funnelToConfigure?.isPrimary ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Banner Informativo */}
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-                  gap: '8px',
-                  maxHeight: '160px',
-                  overflowY: 'auto',
-                  padding: '4px',
+                  background: 'rgba(212,175,55,0.08)',
+                  border: '1px solid rgba(212,175,55,0.25)',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
                 }}>
-                  {AVAILABLE_FUNNEL_ICONS.map(item => {
-                    const isSelected = formFunnelIcon === item.id;
-                    const IconComp = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setFormFunnelIcon(item.id)}
-                        style={{
-                          background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                          border: isSelected ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                          borderRadius: '10px',
-                          padding: '8px 6px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.12s ease',
-                          color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                        }}
-                      >
-                        <IconComp size={18} color={isSelected ? 'var(--adm-accent)' : 'var(--adm-text-muted)'} />
-                        <span style={{ fontSize: '0.64rem', fontWeight: isSelected ? 800 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px' }}>
-                          {item.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <Sparkles size={18} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', lineHeight: 1.5 }}>
+                    <strong>Funil Padrão e Vitalício:</strong> Este é o funil nativo do ecossistema de indicações. Seu nome, categoria, casa vinculada e identidade visual são pré-definidos para garantir a integridade dos pontos e relatórios. Você pode gerenciar abaixo quais membros da equipe têm acesso a ele.
+                  </div>
                 </div>
-              ) : (
+
+                {/* Card de Resumo Fixo */}
+                <div style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '12px',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>
+                      Nome do Funil
+                    </div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)', marginTop: '2px' }}>
+                      {funnelToConfigure.name}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>
+                      Casa de Festas Vinculada
+                    </div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-accent)', marginTop: '2px' }}>
+                      🏢 {venues.find(v => v.id === funnelToConfigure.venueId)?.name || 'Casa Principal'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>
+                      Categoria
+                    </div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)', marginTop: '2px' }}>
+                      👑 Indicações do App
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>
+                      Status do Funil
+                    </div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>
+                      ● Ativo & Protegido
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ── CASO 2: FUNIL PERSONALIZADO / NOVO FUNIL (CONFIGURAÇÃO COMPLETA) ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                
+                {/* Nome do Funil */}
                 <div>
-                  <ImageUploadField
-                    label="Foto ou Banner do Funil"
-                    helperText="A foto será redimensionada e comprimida automaticamente para 400x400 pixels."
-                    aspectRatio="1:1"
-                    previewHeight="120px"
-                    value={formCustomImageUrl}
-                    onChange={(url) => setFormCustomImageUrl(url)}
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                    Nome do Funil *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Tráfego Pago & Meta Ads • Unidade Barra"
+                    value={formFunnelName}
+                    onChange={(e) => setFormFunnelName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '12px',
+                      padding: '11px 14px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.86rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
                   />
                 </div>
-              )}
-            </div>
 
-            {/* ── FIXAR NO MENU LATERAL (SIDEBAR) ── */}
-            <div
-              onClick={() => setFormIsPinned(!formIsPinned)}
-              style={{
-                background: formIsPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                border: `1.5px solid ${formIsPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                borderRadius: '12px',
-                padding: '12px 14px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Pin size={16} color={formIsPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)'} style={{ transform: formIsPinned ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+                {/* Seletor Visual de Casa de Festas Vinculada */}
                 <div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: formIsPinned ? 'var(--adm-accent)' : 'var(--adm-text-title)' }}>
-                    Fixar no Menu Lateral (Sidebar)
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                    Exibe este funil com 1 clique na seção "FUNIS" da barra esquerda
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                    Casa de Festas Vinculada *
+                  </label>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: venues.length > 1 ? 'repeat(auto-fit, minmax(200px, 1fr))' : '1fr',
+                    gap: '8px',
+                    maxHeight: '180px',
+                    overflowY: 'auto',
+                  }}>
+                    {venues.map(v => {
+                      const isSelected = formFunnelVenueId === v.id;
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => setFormFunnelVenueId(v.id)}
+                          style={{
+                            background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                            border: `1.5px solid ${isSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                            borderRadius: '12px',
+                            padding: '10px 12px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {v.logoUrl ? (
+                            <img
+                              src={v.logoUrl}
+                              alt={v.name}
+                              style={{ width: '32px', height: '32px', borderRadius: '8px', objectFit: 'contain', background: 'rgba(0,0,0,0.5)', padding: '3px', border: '1px solid var(--adm-border)' }}
+                            />
+                          ) : (
+                            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--adm-bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-accent)' }}>
+                              <Building2 size={16} />
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {v.name}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {v.address}
+                            </div>
+                          </div>
+                          {isSelected && <CheckCircle2 size={16} color="var(--adm-accent)" />}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={formIsPinned}
-                onChange={() => {}}
-                style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer', width: '16px', height: '16px' }}
-              />
-            </div>
 
-            {/* ── CONTROLE DE ACESSO & PRIVACIDADE DO FUNIL ── */}
+                {/* Seletor Visual de Categoria / Origem */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                    Categoria / Canal de Origem
+                  </label>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                    gap: '8px',
+                  }}>
+                    {FUNNEL_CATEGORIES.map(cat => {
+                      const isSelected = formFunnelCategory === cat.id;
+                      const CatIcon = cat.icon;
+                      return (
+                        <div
+                          key={cat.id}
+                          onClick={() => setFormFunnelCategory(cat.id)}
+                          style={{
+                            background: isSelected ? cat.badgeBg : 'var(--adm-bg-input)',
+                            border: `1.5px solid ${isSelected ? cat.color : 'var(--adm-border)'}`,
+                            borderRadius: '10px',
+                            padding: '9px 10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <CatIcon size={16} color={cat.color} />
+                          <span style={{ fontSize: '0.76rem', fontWeight: isSelected ? 800 : 600, color: isSelected ? 'var(--adm-text-title)' : 'var(--adm-text-muted)' }}>
+                            {cat.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Descrição */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                    Descrição Comercial
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Descrição do objetivo e etapas deste funil..."
+                    value={formFunnelDescription}
+                    onChange={(e) => setFormFunnelDescription(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+
+                {/* Identidade Visual do Funil */}
+                <div style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '14px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Identidade Visual do Funil
+                    </span>
+                    <div style={{ display: 'flex', gap: '4px', background: 'var(--adm-bg-card)', padding: '3px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIconMode('icon')}
+                        style={{
+                          background: iconMode === 'icon' ? 'var(--adm-accent-bg)' : 'transparent',
+                          border: iconMode === 'icon' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                          color: iconMode === 'icon' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Ícone
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIconMode('image')}
+                        style={{
+                          background: iconMode === 'image' ? 'var(--adm-accent-bg)' : 'transparent',
+                          border: iconMode === 'image' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                          color: iconMode === 'image' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Foto (400x400)
+                      </button>
+                    </div>
+                  </div>
+
+                  {iconMode === 'icon' ? (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                      gap: '8px',
+                      maxHeight: '150px',
+                      overflowY: 'auto',
+                      padding: '4px',
+                    }}>
+                      {AVAILABLE_FUNNEL_ICONS.map(item => {
+                        const isSelected = formFunnelIcon === item.id;
+                        const IconComp = item.icon;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setFormFunnelIcon(item.id)}
+                            style={{
+                              background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                              border: isSelected ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                              borderRadius: '10px',
+                              padding: '8px 6px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.12s ease',
+                              color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            }}
+                          >
+                            <IconComp size={18} color={isSelected ? 'var(--adm-accent)' : 'var(--adm-text-muted)'} />
+                            <span style={{ fontSize: '0.64rem', fontWeight: isSelected ? 800 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px' }}>
+                              {item.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div>
+                      <ImageUploadField
+                        label="Foto ou Banner do Funil"
+                        helperText="A foto será redimensionada e comprimida automaticamente para 400x400 pixels."
+                        aspectRatio="1:1"
+                        previewHeight="120px"
+                        value={formCustomImageUrl}
+                        onChange={(url) => setFormCustomImageUrl(url)}
+                        folder="funnels"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── CONTROLE DE ACESSO & PRIVACIDADE DO FUNIL (COM PROTEÇÃO HIERÁRQUICA) ── */}
             <div style={{
               background: 'var(--adm-bg-input)',
               border: '1px solid var(--adm-border)',
@@ -820,11 +925,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Shield size={16} color="var(--adm-accent)" />
                   <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                    Controle de Acessos & Privacidade
+                    Controle de Acessos & Permissões da Equipe
                   </span>
                 </div>
                 <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                  Exclusivo Gerência / Master
+                  {currentUser?.role === 'master' ? 'Acesso Master Total' : 'Permissões por Hierarquia'}
                 </span>
               </div>
 
@@ -856,7 +961,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       👥 Todo o Time (Padrão)
                     </div>
                     <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                      Todos os SDRs e Closers da casa
+                      Visível a todos os membros da casa
                     </div>
                   </div>
                 </div>
@@ -900,7 +1005,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   flexDirection: 'column',
                   gap: '6px',
                   marginTop: '4px',
-                  maxHeight: '180px',
+                  maxHeight: '200px',
                   overflowY: 'auto',
                   background: 'var(--adm-bg-card)',
                   border: '1px solid var(--adm-border)',
@@ -908,60 +1013,83 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   padding: '8px',
                 }}>
                   <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                    Marque os colaboradores autorizados a visualizar este funil:
+                    Selecione os colaboradores autorizados a visualizar e interagir com este funil:
                   </div>
 
-                  {collaborators.filter(c => c.active).map(collab => {
-                    const isChecked = formAllowedCollaboratorIds.includes(collab.id);
-                    return (
-                      <div
-                        key={collab.id}
-                        onClick={() => handleToggleAllowedCollaborator(collab.id)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          background: isChecked ? 'var(--adm-accent-bg)' : 'transparent',
-                          border: `1px solid ${isChecked ? 'var(--adm-accent)' : 'transparent'}`,
-                          borderRadius: '8px',
-                          padding: '6px 10px',
-                          cursor: 'pointer',
-                          transition: 'all 0.12s ease',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {}}
-                            style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
-                          />
-                          {collab.avatarUrl && (
-                            <img
-                              src={collab.avatarUrl}
-                              alt={collab.name}
-                              style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }}
-                            />
-                          )}
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                            {collab.name}
-                          </span>
-                        </div>
+                  {collaborators
+                    .filter(c => c.active && c.role !== 'master') // Master always has root access and is excluded from checklist
+                    .map(collab => {
+                      const isChecked = formAllowedCollaboratorIds.includes(collab.id);
+                      
+                      // Hierarchy check: can the current user toggle this collaborator's access?
+                      const canModify = currentUser?.role === 'master' || 
+                        (currentUser?.role === 'admin' && collab.role !== 'master' && collab.role !== 'admin') ||
+                        (currentUser?.role === 'crm' && (collab.role === 'sdr' || collab.role === 'closer'));
 
-                        <span style={{
-                          fontSize: '0.64rem',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                          padding: '2px 6px',
-                          borderRadius: '6px',
-                          background: collab.role === 'closer' ? 'rgba(249, 115, 22, 0.15)' : collab.role === 'sdr' ? 'rgba(139, 92, 246, 0.15)' : 'var(--adm-bg-input)',
-                          color: collab.role === 'closer' ? '#FB923C' : collab.role === 'sdr' ? '#A78BFA' : 'var(--adm-text-muted)',
-                        }}>
-                          {collab.role}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      return (
+                        <div
+                          key={collab.id}
+                          onClick={() => {
+                            if (canModify) handleToggleAllowedCollaborator(collab.id);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: isChecked ? 'var(--adm-accent-bg)' : 'transparent',
+                            border: `1px solid ${isChecked ? 'var(--adm-accent)' : 'transparent'}`,
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            cursor: canModify ? 'pointer' : 'not-allowed',
+                            opacity: canModify ? 1 : 0.6,
+                            transition: 'all 0.12s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={!canModify}
+                              onChange={() => {}}
+                              style={{ accentColor: 'var(--adm-accent)', cursor: canModify ? 'pointer' : 'not-allowed' }}
+                            />
+                            {collab.avatarUrl ? (
+                              <img
+                                src={collab.avatarUrl}
+                                alt={collab.name}
+                                style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontWeight: 800, fontSize: '0.66rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {collab.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                              {collab.name}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {!canModify && (
+                              <span title="Permissão bloqueada por hierarquia de cargo" style={{ display: 'flex', alignItems: 'center' }}>
+                                <Lock size={12} color="var(--adm-text-muted)" />
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: '0.64rem',
+                              fontWeight: 800,
+                              textTransform: 'uppercase',
+                              padding: '2px 6px',
+                              borderRadius: '6px',
+                              background: collab.role === 'closer' ? 'rgba(249, 115, 22, 0.15)' : collab.role === 'sdr' ? 'rgba(139, 92, 246, 0.15)' : 'var(--adm-bg-input)',
+                              color: collab.role === 'closer' ? '#FB923C' : collab.role === 'sdr' ? '#A78BFA' : 'var(--adm-text-muted)',
+                            }}>
+                              {collab.role}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </div>
@@ -972,9 +1100,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    deleteFunnel(funnelToConfigure.id);
-                    setIsCreateFunnelModalOpen(false);
-                    setFunnelToConfigure(null);
+                    if (confirm(`Tem certeza que deseja excluir o funil "${funnelToConfigure.name}"?`)) {
+                      deleteFunnel(funnelToConfigure.id);
+                      setIsCreateFunnelModalOpen(false);
+                      setFunnelToConfigure(null);
+                    }
                   }}
                   style={{
                     background: 'rgba(239, 68, 68, 0.12)',
