@@ -250,16 +250,24 @@ const RootAppRouter: React.FC = () => {
     (currentDebutanteSlug ? getDebutanteBySlug(currentDebutanteSlug) : undefined) ||
     debutantes.find(d => currentDebutanteSlug && (d.slug.toLowerCase() === currentDebutanteSlug.toLowerCase() || d.id === currentDebutanteSlug));
 
+  const [isLoadingSlug, setIsLoadingSlug] = useState<boolean>(() => {
+    return Boolean(viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb);
+  });
+
   // If not found in memory (e.g. fresh incognito visit), fetch directly from Supabase
   useEffect(() => {
     if (viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb) {
+      setIsLoadingSlug(true);
       debutanteService.getBySlug(currentDebutanteSlug).then(result => {
         if (result) setAsyncDeb(result);
-      }).catch(() => {});
+        setIsLoadingSlug(false);
+      }).catch(() => {
+        setIsLoadingSlug(false);
+      });
     }
   }, [viewMode, currentDebutanteSlug, inMemoryDeb]);
 
-  const activeDeb = inMemoryDeb || asyncDeb || debutantes[0];
+  const activeDeb = inMemoryDeb || asyncDeb || (currentDebutanteSlug ? undefined : debutantes[0]);
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
   // Dynamic Favicon and Document Title
@@ -291,6 +299,32 @@ const RootAppRouter: React.FC = () => {
 
   if (viewMode === 'admin') {
     return <AdminPortal onOpenDebutanteApp={handleOpenDebutanteApp} />;
+  }
+
+  // If a specific debutante was requested and is still loading from database, show luxury loader
+  if (viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb && !asyncDeb && isLoadingSlug) {
+    return (
+      <div style={{
+        height: '100vh',
+        width: '100vw',
+        background: '#040307',
+        color: '#D4AF37',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '16px',
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}>
+        <Crown size={36} color="#D4AF37" />
+        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFF' }}>
+          Carregando a experiência VIP de 15 Anos...
+        </div>
+        <div style={{ fontSize: '0.78rem', color: '#A0988A' }}>
+          Bonomo Festas
+        </div>
+      </div>
+    );
   }
 
   // Check if first-access video onboarding is required (suppressed if journey is pending linkage)

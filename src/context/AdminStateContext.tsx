@@ -388,7 +388,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (dbVenues.length > 0) setVenues(dbVenues);
           if (dbFunnels.length > 0) setFunnels(dbFunnels);
           if (dbLeads.length > 0) setLeads(dbLeads);
-          if (dbDebutantes.length > 0) setDebutantes(dbDebutantes);
+
+          // Merge local debutantes with remote database to prevent any data loss
+          const localDebsRaw = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
+          const localDebs: DebutanteAccount[] = localDebsRaw ? JSON.parse(localDebsRaw) : [];
+          
+          for (const lDeb of localDebs) {
+            if (!dbDebutantes.some(d => d.id === lDeb.id || d.slug === lDeb.slug)) {
+              debutanteService.upsert(lDeb);
+            }
+          }
+
+          const combinedDebs = [...dbDebutantes];
+          for (const lDeb of localDebs) {
+            if (!combinedDebs.some(d => d.id === lDeb.id || d.slug === lDeb.slug)) {
+              combinedDebs.push(lDeb);
+            }
+          }
+          if (combinedDebs.length > 0) setDebutantes(combinedDebs);
+
           if (dbTasks.length > 0) setTasks(dbTasks);
           if (dbCollabs.length > 0) {
             setCollaborators(dbCollabs);
