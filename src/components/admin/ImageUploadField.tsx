@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, X, Loader2, Check } from 'lucide-react';
 import { cloudflareR2Service, isCloudflareR2Configured } from '../../lib/cloudflareR2';
 
 interface ImageUploadFieldProps {
@@ -28,19 +28,21 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const compressImage = (file: File): Promise<string> => {
+  // Fast client-side image compression and conversion to WebP
+  const compressImage = (file: File): Promise<{ base64: string; blob: Blob }> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
-        if (!result) return resolve('');
+        if (!result) return resolve({ base64: '', blob: file });
 
         const img = new Image();
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const maxDimension = aspectRatio === '1:1' ? 400 : 1280;
+            const maxDimension = aspectRatio === '1:1' ? 480 : 1280;
             let { width, height } = img;
 
             if (width > maxDimension || height > maxDimension) {
@@ -60,19 +62,30 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = 'high';
               ctx.drawImage(img, 0, 0, width, height);
-              const compressed = canvas.toDataURL('image/webp', 0.85);
-              resolve(compressed);
+
+              const compressedBase64 = canvas.toDataURL('image/webp', 0.85);
+
+              canvas.toBlob(
+                (blob) => {
+                  resolve({
+                    base64: compressedBase64,
+                    blob: blob || file,
+                  });
+                },
+                'image/webp',
+                0.85
+              );
             } else {
-              resolve(result);
+              resolve({ base64: result, blob: file });
             }
           } catch {
-            resolve(result);
+            resolve({ base64: result, blob: file });
           }
         };
-        img.onerror = () => resolve(result);
+        img.onerror = () => resolve({ base64: result, blob: file });
         img.src = result;
       };
-      reader.onerror = () => resolve('');
+      reader.onerror = () => resolve({ base64: '', blob: file });
       reader.readAsDataURL(file);
     });
   };
@@ -84,19 +97,32 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
     }
 
     setIsUploading(true);
-    try {
-      if (isCloudflareR2Configured) {
-        const r2Url = await cloudflareR2Service.uploadFile(file, folder);
-        if (r2Url) {
-          onChange(r2Url);
-          return;
-        }
-      }
+    setUploadSuccess(false);
 
-      const compressedBase64 = await compressImage(file);
+    try {
+      // 1. Instant compression (converts multi-megabyte camera photos into ~80-120KB WebP)
+      const { base64: compressedBase64, blob: compressedBlob } = await compressImage(file);
+
+      // 2. Instant optimistic preview: UI updates with 0ms visual delay
       if (compressedBase64) {
         onChange(compressedBase64);
       }
+
+      // 3. Fast background upload of the small WebP to Cloudflare R2
+      if (isCloudflareR2Configured) {
+        const webpFile = new File([compressedBlob], `${file.name.split('.')[0]}.webp`, {
+          type: 'image/webp',
+        });
+        const r2Url = await cloudflareR2Service.uploadFile(webpFile, folder);
+        if (r2Url && r2Url.startsWith('http')) {
+          onChange(r2Url);
+          setUploadSuccess(true);
+          setTimeout(() => setUploadSuccess(false), 2500);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[ImageUploadField] Falha no upload R2, mantendo preview local:', err);
     } finally {
       setIsUploading(false);
     }
@@ -217,8 +243,18 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           />
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '4px' }}>
-              Imagem carregada com sucesso
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>Imagem carregada</span>
+              {isUploading && (
+                <span style={{ fontSize: '0.68rem', color: '#D4AF37', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Loader2 size={11} className="animate-spin" /> Otimizando & CDN...
+                </span>
+              )}
+              {uploadSuccess && (
+                <span style={{ fontSize: '0.68rem', color: '#22C55E', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <Check size={11} /> Salvo no R2
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
@@ -288,7 +324,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
             <>
               <Loader2 size={22} className="animate-spin" color="var(--adm-accent)" />
               <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-accent)' }}>
-                Enviando arquivo...
+                Otimizando e enviando imagem...
               </div>
             </>
           ) : (
@@ -298,7 +334,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
                 {placeholder || 'Clique para selecionar ou arraste uma foto'}
               </div>
               <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                JPG, PNG ou WebP • Proporção {aspectRatio} recomendada
+                JPG, PNG ou WebP • Otimização automática e instantânea
               </div>
             </>
           )}

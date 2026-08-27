@@ -58,6 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         Key: key,
         Body: buffer,
         ContentType: contentType || 'application/octet-stream',
+        CacheControl: 'public, max-age=31536000, immutable',
       })
     );
 

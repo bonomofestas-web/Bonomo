@@ -62,6 +62,7 @@ function r2DevUploadPlugin() {
                 Key: key,
                 Body: buffer,
                 ContentType: contentType || 'application/octet-stream',
+                CacheControl: 'public, max-age=31536000, immutable',
               })
             );
 
