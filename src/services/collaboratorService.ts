@@ -25,6 +25,7 @@ export const collaboratorService = {
         avatarUrl: row.avatar_url,
         phone: row.phone,
         active: row.active ?? true,
+        theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
       }));
     } catch (err) {
@@ -33,7 +34,7 @@ export const collaboratorService = {
     }
   },
 
-  async upsert(collab: Partial<Collaborator> & { id?: string; email?: string }): Promise<boolean> {
+  async upsert(collab: Partial<Collaborator> & { id?: string; email?: string; theme?: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
       const isUuid = !!collab.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collab.id);
@@ -47,26 +48,34 @@ export const collaboratorService = {
       if (collab.avatarUrl !== undefined) payload.avatar_url = collab.avatarUrl;
       if (collab.phone !== undefined) payload.phone = collab.phone;
       if (collab.active !== undefined) payload.active = collab.active;
+      if (collab.theme !== undefined) payload.theme = collab.theme;
 
       if (isUuid) {
+        // Try update first so only specified columns are modified
+        const { data: updated, error: updateErr } = await supabase
+          .from('collaborators')
+          .update(payload)
+          .eq('id', collab.id)
+          .select('id');
+
+        if (!updateErr && updated && updated.length > 0) {
+          return true;
+        }
+
+        // If not found, insert
         payload.id = collab.id;
-        const { error } = await supabase.from('collaborators').upsert(payload);
-        if (error) {
-          console.error('Erro ao salvar colaborador no Supabase:', error);
-          if (collab.email) {
-            await supabase.from('collaborators').update(payload).eq('email', collab.email);
-          }
+        const { error: insertErr } = await supabase.from('collaborators').insert(payload);
+        if (insertErr) {
+          console.error('Erro ao inserir colaborador:', insertErr);
           return false;
         }
         return true;
       } else if (collab.email) {
         const { data: existing } = await supabase.from('collaborators').select('id').eq('email', collab.email).maybeSingle();
         if (existing?.id) {
-          const { error } = await supabase.from('collaborators').update(payload).eq('id', existing.id);
-          if (error) console.error('Erro ao atualizar colaborador por email:', error);
+          await supabase.from('collaborators').update(payload).eq('id', existing.id);
         } else {
-          const { error } = await supabase.from('collaborators').insert(payload);
-          if (error) console.error('Erro ao inserir colaborador:', error);
+          await supabase.from('collaborators').insert(payload);
         }
         return true;
       }

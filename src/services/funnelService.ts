@@ -26,7 +26,7 @@ export const funnelService = {
         badgeColor: row.badge_color || '#3B82F6',
         icon: row.icon || 'target',
         customImageUrl: row.custom_image_url,
-        isPinned: row.is_pinned || false,
+        isPinned: row.is_pinned ?? false,
         stagesCount: row.stages_count || 4,
         isPrimary: row.is_primary || false,
         isDemo: row.is_demo || false,
@@ -41,29 +41,43 @@ export const funnelService = {
   async upsert(funnel: Partial<CommercialFunnel> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const payload: any = {
-        id: funnel.id,
-        name: funnel.name,
-        category: funnel.category,
-        description: funnel.description,
-        venue_id: funnel.venueId,
-        allowed_collaborator_ids: funnel.allowedCollaboratorIds || [],
-        badge: funnel.badge,
-        badge_color: funnel.badgeColor,
-        icon: funnel.icon,
-        custom_image_url: funnel.customImageUrl,
-        is_pinned: funnel.isPinned,
-        stages_count: funnel.stagesCount,
-        is_primary: funnel.isPrimary,
-        is_demo: funnel.isDemo,
-      };
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(funnel.id);
 
-      const { error } = await supabase.from('commercial_funnels').upsert(payload);
-      if (error) {
-        console.error('Erro ao salvar funil comercial:', error);
-        return false;
+      const payload: any = {};
+      if (funnel.name !== undefined) payload.name = funnel.name;
+      if (funnel.category !== undefined) payload.category = funnel.category;
+      if (funnel.description !== undefined) payload.description = funnel.description;
+      if (funnel.venueId !== undefined) payload.venue_id = funnel.venueId;
+      if (funnel.allowedCollaboratorIds !== undefined) payload.allowed_collaborator_ids = funnel.allowedCollaboratorIds;
+      if (funnel.badge !== undefined) payload.badge = funnel.badge;
+      if (funnel.badgeColor !== undefined) payload.badge_color = funnel.badgeColor;
+      if (funnel.icon !== undefined) payload.icon = funnel.icon;
+      if (funnel.customImageUrl !== undefined) payload.custom_image_url = funnel.customImageUrl;
+      if (funnel.isPinned !== undefined) payload.is_pinned = funnel.isPinned;
+      if (funnel.stagesCount !== undefined) payload.stages_count = funnel.stagesCount;
+      if (funnel.isPrimary !== undefined) payload.is_primary = funnel.isPrimary;
+      if (funnel.isDemo !== undefined) payload.is_demo = funnel.isDemo;
+
+      if (isUuid) {
+        const { data: updated, error: updateErr } = await supabase
+          .from('commercial_funnels')
+          .update(payload)
+          .eq('id', funnel.id)
+          .select('id');
+
+        if (!updateErr && updated && updated.length > 0) {
+          return true;
+        }
+
+        payload.id = funnel.id;
+        const { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
+        if (insertErr) {
+          console.error('Erro ao inserir funil por UUID:', insertErr);
+          return false;
+        }
+        return true;
       }
-      return true;
+      return false;
     } catch (err) {
       console.error('Falha em funnelService.upsert:', err);
       return false;

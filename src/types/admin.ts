@@ -38,6 +38,7 @@ export interface Collaborator {
   active: boolean;
   isFirstAccess?: boolean;
   password?: string;
+  theme?: ThemeMode;
   createdAt: string;
 }
 

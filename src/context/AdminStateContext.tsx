@@ -310,6 +310,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const setTheme = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
     safeLocalStorageSet(STORAGE_KEY_THEME, newTheme);
+    if (currentUser?.id || currentUser?.email) {
+      collaboratorService.upsert({
+        id: currentUser.id,
+        email: currentUser.email,
+        theme: newTheme,
+      });
+    }
   };
 
   useEffect(() => {
@@ -381,7 +388,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (dbLeads.length > 0) setLeads(dbLeads);
           if (dbDebutantes.length > 0) setDebutantes(dbDebutantes);
           if (dbTasks.length > 0) setTasks(dbTasks);
-          if (dbCollabs.length > 0) setCollaborators(dbCollabs);
+          if (dbCollabs.length > 0) {
+            setCollaborators(dbCollabs);
+            const activeEmail = currentUser?.email || 'dev@bonomoapp.com';
+            const matched = dbCollabs.find(c => c.email.toLowerCase() === activeEmail.toLowerCase());
+            if (matched && matched.theme) {
+              setThemeState(matched.theme as ThemeMode);
+              safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
+            }
+          }
           if (dbBenefits.length > 0) setBenefitsCatalog(dbBenefits);
           if (dbVip.length > 0) setVipCatalog(dbVip);
         }
