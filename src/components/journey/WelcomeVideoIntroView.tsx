@@ -59,23 +59,48 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
     if (step !== 'video' || !resolvedSrc || !videoRef.current) return;
 
     const video = videoRef.current;
-    video.muted = false; // Tentar com som
-
     const playPromise = video.play();
     if (playPromise !== undefined) {
       playPromise
         .then(() => {
           setIsPlaying(true);
-          setIsMuted(false);
         })
         .catch(() => {
-          // If browser blocked sound autoplay, fall back to muted and let user tap
+          // If browser blocked sound autoplay, fall back to muted
           video.muted = true;
           setIsMuted(true);
-          video.play().then(() => setIsPlaying(true)).catch(() => {});
+          video.play().then(() => setIsPlaying(true)).catch(() => {
+            setIsPlaying(false);
+          });
         });
     }
   }, [step, resolvedSrc]);
+
+  const handleProceedToVideo = () => {
+    // If the debutante does NOT have journey enabled or is journey pending, skip video step completely!
+    if (!debutante.hasJourneyEnabled || debutante.isJourneyPending) {
+      onStartJourney();
+      return;
+    }
+
+    setStep('video');
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        setIsMuted(false);
+        const p = videoRef.current.play();
+        if (p !== undefined) {
+          p.then(() => setIsPlaying(true)).catch(() => {
+            if (videoRef.current) {
+              videoRef.current.muted = true;
+              setIsMuted(true);
+              videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+            }
+          });
+        }
+      }
+    }, 50);
+  };
 
   const handleToggleSound = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,6 +108,9 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
     const nextMuted = !isMuted;
     videoRef.current.muted = nextMuted;
     setIsMuted(nextMuted);
+    if (videoRef.current.paused) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
   };
 
   const handleTogglePlay = () => {
@@ -124,7 +152,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'linear-gradient(180deg, rgba(4,3,7,0.95) 0%, rgba(4,3,7,0) 100%)',
-        zIndex: 20,
+        zIndex: 60,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Crown size={18} color="#D4AF37" />
@@ -139,17 +167,42 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
           </span>
         </div>
 
-        <span style={{
-          fontSize: '0.7rem',
-          color: '#D4AF37',
-          background: 'rgba(212, 175, 55, 0.12)',
-          padding: '4px 10px',
-          borderRadius: '12px',
-          border: '1px solid rgba(212, 175, 55, 0.3)',
-          fontWeight: 700,
-        }}>
-          {step === 'pwa_guide' ? 'Instalação do App' : 'Boas-Vindas 15 Anos'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            fontSize: '0.7rem',
+            color: '#D4AF37',
+            background: 'rgba(212, 175, 55, 0.12)',
+            padding: '4px 10px',
+            borderRadius: '12px',
+            border: '1px solid rgba(212, 175, 55, 0.3)',
+            fontWeight: 700,
+          }}>
+            {step === 'pwa_guide' ? 'Instalação do App' : 'Boas-Vindas 15 Anos'}
+          </span>
+
+          {/* Quick Skip Button - guarantees user is NEVER trapped */}
+          <button
+            type="button"
+            onClick={onStartJourney}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(212, 175, 55, 0.4)',
+              color: '#F3E5AB',
+              borderRadius: '20px',
+              padding: '5px 12px',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>Pular</span>
+            <ArrowRight size={12} />
+          </button>
+        </div>
       </div>
 
       {/* ── STEP 1: PWA / FIXAR NA TELA INICIAL ORIENTATION ── */}
@@ -362,7 +415,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
           {/* Action to proceed to video */}
           <button
             type="button"
-            onClick={() => setStep('video')}
+            onClick={handleProceedToVideo}
             style={{
               width: '100%',
               marginTop: '20px',
@@ -381,7 +434,11 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
               boxShadow: '0 8px 24px rgba(212, 175, 55, 0.45)',
             }}
           >
-            <span>Já Adicionei / Continuar</span>
+            <span>
+              {debutante.hasJourneyEnabled && !debutante.isJourneyPending 
+                ? 'Já Adicionei / Assistir Vídeo' 
+                : 'Já Adicionei / Iniciar Meu Aplicativo'}
+            </span>
             <ArrowRight size={16} />
           </button>
         </div>
@@ -418,8 +475,13 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
               src={resolvedSrc}
               autoPlay
               playsInline
+              preload="auto"
               muted={isMuted}
               onEnded={handleVideoEnded}
+              onError={() => {
+                console.warn('Falha no carregamento do vídeo, avançando automaticamente.');
+                setIsVideoEnded(true);
+              }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -428,6 +490,38 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.84rem' }}>
               Carregando vídeo de apresentação...
             </div>
+          )}
+
+          {/* Bottom Floating Skip / Advance Button */}
+          {!isVideoEnded && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartJourney();
+              }}
+              style={{
+                position: 'absolute',
+                bottom: '24px',
+                background: 'rgba(0, 0, 0, 0.85)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(212, 175, 55, 0.5)',
+                color: '#F3E5AB',
+                borderRadius: '30px',
+                padding: '10px 22px',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                zIndex: 35,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
+              }}
+            >
+              <span>Concluir & Iniciar Jornada</span>
+              <ArrowRight size={14} color="#D4AF37" />
+            </button>
           )}
 
           {/* Floating Sound Orientation Badge (Mandated by Audio 1) */}

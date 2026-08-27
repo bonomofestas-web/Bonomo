@@ -35,6 +35,7 @@ import { leadService } from '../services/leadService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService } from '../services/collaboratorService';
+import { createMonogramAvatar } from '../utils/avatarUtils';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -974,7 +975,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       slug,
       partyDate: data.partyDate,
       partyDaysLeft: daysLeft,
-      avatarUrl: data.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80',
+      avatarUrl: data.avatarUrl || createMonogramAvatar(data.name.trim()),
       phone: data.phone.trim(),
       email: data.email?.trim(),
       hasJourneyEnabled: isJourneyActive,
