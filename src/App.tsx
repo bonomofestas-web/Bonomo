@@ -17,6 +17,7 @@ import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPa
 import { AdminPortal } from './components/admin/AdminPortal';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
 import { debutanteService } from './services/debutanteService';
+import type { DebutanteAccount } from './types/admin';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
 
 const MainContentSwitcher: React.FC = () => {
@@ -223,6 +224,55 @@ const parseRouteFromLocation = (): { mode: 'debutante' | 'admin'; slug?: string 
   return { mode: 'admin', slug: 'maria-eduarda-2027' };
 };
 
+const generateDynamicDebutanteFromSlug = (slug: string, venueId?: string): DebutanteAccount => {
+  const clean = decodeURIComponent(slug).trim().toLowerCase();
+  const withoutRandom = clean.replace(/-\d{4}(-[a-z0-9]+)?$/, '');
+  const parts = withoutRandom.split('-').filter(Boolean);
+  const formattedName = parts.length > 0 
+    ? parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') 
+    : 'Debutante';
+  
+  const yearMatch = clean.match(/-(20\d{2})/);
+  const partyYear = yearMatch ? yearMatch[1] : '2027';
+
+  return {
+    id: `deb_${clean.replace(/[^a-z0-9]/g, '_')}`,
+    venueId: venueId || 'all',
+    name: formattedName,
+    slug: clean,
+    partyDate: `${partyYear}-11-15`,
+    partyDaysLeft: 240,
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80',
+    phone: '(21) 99999-9999',
+    hasJourneyEnabled: true,
+    isJourneyPending: false,
+    hasSeenWelcomeVideo: false,
+    baseGuestLimit: 250,
+    extraGuestsUnlocked: 0,
+    currentGuestLimit: 250,
+    validReferrals: 0,
+    totalTargetReferrals: 30,
+    journeyProgressPercentage: 0,
+    convertedReferralSales: 0,
+    journeyCycle: {
+      journeyStartDate: new Date().toISOString(),
+      journeyMaximumEndDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+      currentCycleStartDate: new Date().toISOString(),
+      currentCycleEndDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      cycleRenewalTarget: 3,
+      cycleRenewalProgress: 0,
+      journeyStatus: 'active',
+    },
+    milestones: [],
+    vipRewards: [],
+    guests: [],
+    referrals: [],
+    appointments: [],
+    createdAt: new Date().toISOString().split('T')[0],
+    updatedAt: new Date().toISOString().split('T')[0],
+  };
+};
+
 const RootAppRouter: React.FC = () => {
   const { debutantes, venues, getDebutanteBySlug, getVenueById, markWelcomeVideoSeen } = useAdminState();
 
@@ -267,7 +317,11 @@ const RootAppRouter: React.FC = () => {
     }
   }, [viewMode, currentDebutanteSlug, inMemoryDeb]);
 
-  const activeDeb = inMemoryDeb || asyncDeb || (currentDebutanteSlug ? undefined : debutantes[0]);
+  const dynamicFallbackDeb = (viewMode === 'debutante' && currentDebutanteSlug) 
+    ? generateDynamicDebutanteFromSlug(currentDebutanteSlug, venues[0]?.id)
+    : undefined;
+
+  const activeDeb = inMemoryDeb || asyncDeb || dynamicFallbackDeb || debutantes[0];
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
   // Dynamic Favicon and Document Title
@@ -339,7 +393,7 @@ const RootAppRouter: React.FC = () => {
   }
 
   return (
-    <AppStateProvider initialAccount={activeDeb} key={activeDeb?.id || 'default'}>
+    <AppStateProvider initialAccount={activeDeb} initialVenue={activeVenue} key={activeDeb?.id || 'default'}>
       <AppContent />
     </AppStateProvider>
   );

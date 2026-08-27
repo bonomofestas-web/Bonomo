@@ -236,11 +236,24 @@ const AppStateContext = createContext<AppStateContextType | undefined>(undefined
 export const AppStateProvider: React.FC<{ 
   children: React.ReactNode;
   initialAccount?: DebutanteAccount;
-}> = ({ children, initialAccount }) => {
+  initialVenue?: any;
+}> = ({ children, initialAccount, initialVenue }) => {
   const [activeTab, setActiveTab] = useState<TabType>('journey');
   const [journeySubTab, setJourneySubTab] = useState<JourneySubTab>('benefits');
   const [themes] = useState<VenueTheme[]>(mockThemes);
   const [currentTheme, setCurrentTheme] = useState<VenueTheme>(() => {
+    if (initialVenue) {
+      return {
+        ...mockThemes[0],
+        id: initialVenue.id,
+        name: initialVenue.name,
+        tagline: initialVenue.tagline || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
+        logoUrl: initialVenue.logoUrl || initialVenue.photoUrl || '/logo_riio_lounge.png',
+        primaryColor: initialVenue.primaryColor || '#D4AF37',
+        secondaryColor: initialVenue.secondaryColor || '#AA7C11',
+        accentColor: initialVenue.accentColor || '#F3E5AB',
+      };
+    }
     if (initialAccount?.venueId) {
       try {
         const savedVenues = localStorage.getItem('bonomo_admin_venues_v7');
@@ -251,7 +264,11 @@ export const AppStateProvider: React.FC<{
             ...mockThemes[0],
             id: venue.id,
             name: venue.name,
+            tagline: venue.tagline || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
             logoUrl: venue.logoUrl || venue.photoUrl || '/logo_riio_lounge.png',
+            primaryColor: venue.primaryColor || '#D4AF37',
+            secondaryColor: venue.secondaryColor || '#AA7C11',
+            accentColor: venue.accentColor || '#F3E5AB',
           };
         }
       } catch (e) {
