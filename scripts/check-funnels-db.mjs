@@ -23,12 +23,9 @@ envContent.split('\n').forEach(line => {
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
-async function checkColumns() {
-  const { data: collab, error: err1 } = await supabase.from('collaborators').select('id, name, theme, pinned_funnel_ids').limit(1);
-  console.log('Collaborators pinned_funnel_ids column:', err1 ? err1.message : 'OK', collab);
-
-  const { data: venues, error: err3 } = await supabase.from('venues').select('*');
-  console.log('All Venues in DB:', err3 ? err3.message : 'OK', venues?.map(v => ({ id: v.id, name: v.name, welcome_video_url: v.welcome_video_url })));
+async function checkFunnels() {
+  const { data: funnels, error } = await supabase.from('commercial_funnels').select('*');
+  console.log('All Funnels in Supabase:', error ? error.message : 'OK', funnels?.map(f => ({ id: f.id, name: f.name, is_pinned: f.is_pinned, venue_id: f.venue_id })));
 }
 
-checkColumns();
+checkFunnels();

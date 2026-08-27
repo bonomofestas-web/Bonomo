@@ -9,6 +9,7 @@ interface VideoUploadFieldProps {
   fileName?: string;
   onChange: (videoUrl: string, fileName?: string) => void;
   helperText?: string;
+  customKey?: string;
 }
 
 export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
@@ -17,6 +18,7 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
   fileName,
   onChange,
   helperText = 'Formato vertical 9:16 (Stories) ou padrão. Arquivo local ou link direto (.mp4, .webm)',
+  customKey,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -90,7 +92,8 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
           'videos',
           (progress) => {
             setUploadProgress(progress);
-          }
+          },
+          customKey
         );
 
         if (r2Url && r2Url.startsWith('http')) {

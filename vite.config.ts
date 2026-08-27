@@ -25,7 +25,7 @@ function r2DevUploadPlugin() {
         req.on('data', (chunk: any) => { body += chunk; });
         req.on('end', async () => {
           try {
-            const { fileBase64, fileName, contentType, folder = 'uploads' } = JSON.parse(body || '{}');
+            const { fileBase64, fileName, contentType, folder = 'uploads', customKey } = JSON.parse(body || '{}');
             if (!fileBase64) {
               res.statusCode = 400;
               res.setHeader('Content-Type', 'application/json');
@@ -45,7 +45,7 @@ function r2DevUploadPlugin() {
             const ext = fileName ? fileName.split('.').pop() : (contentType ? contentType.split('/')[1] : 'bin');
             const timestamp = Date.now();
             const randomHex = Math.random().toString(36).substring(2, 8);
-            const key = `${folder}/${timestamp}_${randomHex}.${ext}`;
+            const key = customKey ? `${folder}/${customKey}` : `${folder}/${timestamp}_${randomHex}.${ext}`;
 
             const s3Client = new S3Client({
               region: 'auto',

@@ -21,7 +21,8 @@ export const cloudflareR2Service = {
   async uploadFile(
     file: File | Blob,
     folder = 'uploads',
-    onProgress?: (progress: R2UploadProgress) => void
+    onProgress?: (progress: R2UploadProgress) => void,
+    customKey?: string
   ): Promise<string> {
     try {
       // Convert File/Blob to Base64
@@ -37,6 +38,7 @@ export const cloudflareR2Service = {
         fileName: (file as File).name || 'upload.bin',
         contentType: file.type || 'application/octet-stream',
         folder,
+        customKey,
       });
 
       return new Promise<string>((resolve) => {

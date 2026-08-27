@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { fileBase64, fileName, contentType, folder = 'uploads' } = req.body || {};
+    const { fileBase64, fileName, contentType, folder = 'uploads', customKey } = req.body || {};
 
     if (!fileBase64) {
       return res.status(400).json({ error: 'Arquivo fileBase64 não fornecido.' });
@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ext = fileName ? fileName.split('.').pop() : (contentType ? contentType.split('/')[1] : 'bin');
     const timestamp = Date.now();
     const randomHex = Math.random().toString(36).substring(2, 8);
-    const key = `${folder}/${timestamp}_${randomHex}.${ext}`;
+    const key = customKey ? `${folder}/${customKey}` : `${folder}/${timestamp}_${randomHex}.${ext}`;
 
     const s3Client = new S3Client({
       region: 'auto',

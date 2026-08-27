@@ -23,12 +23,25 @@ envContent.split('\n').forEach(line => {
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
 
-async function checkColumns() {
-  const { data: collab, error: err1 } = await supabase.from('collaborators').select('id, name, theme, pinned_funnel_ids').limit(1);
-  console.log('Collaborators pinned_funnel_ids column:', err1 ? err1.message : 'OK', collab);
+async function testPinFunnel() {
+  const funnelId = 'f1111111-1111-1111-1111-111111111111';
+  console.log('Toggling pin on funnel:', funnelId);
 
-  const { data: venues, error: err3 } = await supabase.from('venues').select('*');
-  console.log('All Venues in DB:', err3 ? err3.message : 'OK', venues?.map(v => ({ id: v.id, name: v.name, welcome_video_url: v.welcome_video_url })));
+  const { data: updated, error } = await supabase
+    .from('commercial_funnels')
+    .update({ is_pinned: true })
+    .eq('id', funnelId)
+    .select('*');
+
+  console.log('Update result:', error ? error.message : 'SUCCESS', updated);
+
+  const { data: verified } = await supabase
+    .from('commercial_funnels')
+    .select('id, name, is_pinned')
+    .eq('id', funnelId)
+    .single();
+
+  console.log('Verified from DB:', verified);
 }
 
-checkColumns();
+testPinFunnel();

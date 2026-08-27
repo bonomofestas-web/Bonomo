@@ -1,14 +1,169 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, MapPin, 
   Edit3, Trash2, Video, ArrowLeft,
-  Users, Save, Target, Sparkles, Play, X, Eye, Phone, Mail, ChevronRight, CheckCircle2, Film
+  Users, Save, Target, Sparkles, Play, X, Eye, Phone, Mail, ChevronRight, CheckCircle2, Film, Loader2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { resolveMediaUrl } from '../../utils/mediaStorage';
 import type { Venue } from '../../types/admin';
+
+const StoriesVenueVideoModal: React.FC<{
+  venue: Venue;
+  onClose: () => void;
+}> = ({ venue, onClose }) => {
+  const [resolvedSrc, setResolvedSrc] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (venue.welcomeVideoUrl) {
+      setIsLoading(true);
+      resolveMediaUrl(venue.welcomeVideoUrl)
+        .then((src) => {
+          if (isMounted) {
+            setResolvedSrc(src);
+            setIsLoading(false);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setResolvedSrc(venue.welcomeVideoUrl || '');
+            setIsLoading(false);
+          }
+        });
+    } else {
+      setResolvedSrc('');
+      setIsLoading(false);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [venue.welcomeVideoUrl]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        background: 'rgba(0, 0, 0, 0.88)',
+        backdropFilter: 'blur(14px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+        animation: 'fadeIn 0.2s ease-out',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '420px',
+          height: '85vh',
+          maxHeight: '740px',
+          background: '#000000',
+          borderRadius: '24px',
+          overflow: 'hidden',
+          border: '1.5px solid rgba(212,175,55,0.4)',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.9), 0 0 40px rgba(212,175,55,0.2)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Modal Top Bar */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          padding: '16px 20px',
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%)',
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Film size={16} color="var(--adm-accent)" />
+            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#FFF' }}>
+              {venue.name}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.15)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              color: '#FFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Loading Spinner */}
+        {isLoading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#000',
+            zIndex: 5,
+          }}>
+            <Loader2 size={36} className="animate-spin" color="var(--adm-accent)" />
+          </div>
+        )}
+
+        {/* Vertical 9:16 Video Player */}
+        {resolvedSrc ? (
+          <video
+            src={resolvedSrc}
+            controls
+            autoPlay
+            playsInline
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          />
+        ) : (
+          !isLoading && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: '#FFF',
+              fontSize: '0.86rem',
+            }}>
+              Vídeo não disponível
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface AdminVenuesViewProps {
   onNavigateToFunnel?: (funnelId: string) => void;
@@ -286,6 +441,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
               value={welcomeVideoUrl}
               onChange={setWelcomeVideoUrl}
               label="Vídeo da Casa de Festas"
+              customKey={selectedVenueId ? `video_apresentacao_${selectedVenueId}.mp4` : undefined}
             />
           </div>
 
@@ -967,93 +1123,10 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
 
         {/* ── POPUP MODAL FOR 9:16 VERTICAL STORIES VIDEO PLAYER ─────────────── */}
         {isPlayingVideoModal && selectedVenue.welcomeVideoUrl && (
-          <div
-            onClick={() => setIsPlayingVideoModal(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 99999,
-              background: 'rgba(0, 0, 0, 0.85)',
-              backdropFilter: 'blur(12px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '20px',
-              animation: 'fadeIn 0.2s ease-out',
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: 'relative',
-                width: '100%',
-                maxWidth: '420px',
-                height: '85vh',
-                maxHeight: '740px',
-                background: '#000000',
-                borderRadius: '24px',
-                overflow: 'hidden',
-                border: '1.5px solid rgba(212,175,55,0.4)',
-                boxShadow: '0 25px 60px rgba(0,0,0,0.9), 0 0 40px rgba(212,175,55,0.2)',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              {/* Modal Top Bar */}
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                padding: '16px 20px',
-                background: 'linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%)',
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Film size={16} color="var(--adm-accent)" />
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#FFF' }}>
-                    {selectedVenue.name}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsPlayingVideoModal(false)}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: '32px',
-                    height: '32px',
-                    color: '#FFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Vertical 9:16 Video */}
-              <video
-                src={selectedVenue.welcomeVideoUrl}
-                controls
-                autoPlay
-                playsInline
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block',
-                }}
-              />
-            </div>
-          </div>
+          <StoriesVenueVideoModal
+            venue={selectedVenue}
+            onClose={() => setIsPlayingVideoModal(false)}
+          />
         )}
       </div>
     );

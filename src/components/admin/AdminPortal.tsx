@@ -122,7 +122,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'venues':
         return (
           <AdminVenuesView
-            onNavigateToFunnel={(funnelId) => {
+            onNavigateToFunnel={(funnelId: string) => {
               setActiveFunnelId(funnelId);
               setActiveTab('crm');
             }}

@@ -295,6 +295,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
             label="Vídeo Vertical de Boas-Vindas da Casa (Stories 9:16)"
             value={welcomeVideoUrl}
             onChange={(val) => setWelcomeVideoUrl(val)}
+            customKey={venueToEdit?.id ? `video_apresentacao_${venueToEdit.id}.mp4` : undefined}
             helperText="Formato vertical 9:16. Este vídeo será reproduzido no primeiro acesso das debutantes desta casa."
           />
 
