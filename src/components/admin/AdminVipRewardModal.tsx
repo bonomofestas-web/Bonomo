@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Crown, Save } from 'lucide-react';
+import { X, Crown, Save, Eye } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import type { VipRewardCatalogItem } from '../../types/admin';
@@ -35,13 +35,14 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
       setCardImageUrl(rewardToEdit.cardImageUrl || '');
       setDetailImageUrl(rewardToEdit.detailImageUrl || '');
     } else {
+      // Clean initial state without mock data
       setName('');
-      setDescription('Garantido com contrato de festa fechado por indicação');
+      setDescription('');
       setSalesRequired(1);
       setBadgeTag('1ª VENDA');
       setEstimatedValue(3500);
-      setCardImageUrl('https://images.unsplash.com/photo-1509741102003-ca64bfe5f069?w=500&auto=format&fit=crop&q=80');
-      setDetailImageUrl('https://images.unsplash.com/photo-1509741102003-ca64bfe5f069?w=1200&auto=format&fit=crop&q=80');
+      setCardImageUrl('');
+      setDetailImageUrl('');
     }
   }, [rewardToEdit, isOpen]);
 
@@ -58,8 +59,8 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
         salesRequired: Number(salesRequired),
         badgeTag: badgeTag.trim(),
         estimatedValue: Number(estimatedValue),
-        cardImageUrl,
-        detailImageUrl,
+        cardImageUrl: cardImageUrl.trim(),
+        detailImageUrl: detailImageUrl.trim() || cardImageUrl.trim(),
       });
     } else {
       addVipCatalogItem({
@@ -68,8 +69,8 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
         salesRequired: Number(salesRequired),
         badgeTag: badgeTag.trim(),
         estimatedValue: Number(estimatedValue),
-        cardImageUrl,
-        detailImageUrl,
+        cardImageUrl: cardImageUrl.trim(),
+        detailImageUrl: detailImageUrl.trim() || cardImageUrl.trim(),
       });
     }
 
@@ -101,28 +102,31 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
   };
 
   return (
-    <div className="admin-modal-overlay" style={{
+    <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(0, 0, 0, 0.8)',
-      backdropFilter: 'blur(8px)',
+      background: 'rgba(0, 0, 0, 0.85)',
+      backdropFilter: 'blur(10px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000,
+      zIndex: 1200,
       padding: '20px',
       animation: 'fadeIn 0.2s ease-out',
-      fontFamily: "'Poppins', sans-serif",
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      <div className="admin-modal-content" style={{
+      <div style={{
         background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
-        borderRadius: '20px',
-        maxWidth: '620px',
+        border: '1.5px solid var(--adm-border)',
+        borderRadius: '24px',
+        maxWidth: '960px',
         width: '100%',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+        maxHeight: '92vh',
+        overflow: 'hidden',
+        position: 'relative',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.8), 0 0 30px rgba(236,72,153,0.15)',
+        display: 'flex',
+        flexDirection: 'column',
       }}>
         {/* Header */}
         <div style={{
@@ -131,32 +135,27 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          background: 'linear-gradient(135deg, rgba(236,72,153,0.15) 0%, rgba(20,17,27,0.95) 100%)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'rgba(236, 72, 153, 0.15)',
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
+              background: 'rgba(236, 72, 153, 0.18)',
+              border: '1px solid rgba(236, 72, 153, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#EC4899',
             }}>
-              <Crown size={20} />
+              <Crown size={20} color="#EC4899" />
             </div>
             <div>
-              <h2 style={{
-                fontSize: '1.25rem',
-                fontWeight: 800,
-                color: 'var(--adm-text-title)',
-                margin: 0,
-                letterSpacing: '-0.3px',
-              }}>
-                {rewardToEdit ? 'Editar Presente VIP' : 'Novo Presente VIP'}
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                {rewardToEdit ? 'Editar Presente VIP' : 'Cadastrar Novo Presente VIP'}
               </h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Prêmio de alto valor desbloqueado por vendas de festas convertidas
+              <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: 0 }}>
+                Presente de alto valor liberado para a debutante quando indicações fecham contrato de festa.
               </p>
             </div>
           </div>
@@ -176,143 +175,193 @@ export const AdminVipRewardModal: React.FC<AdminVipRewardModalProps> = ({
               cursor: 'pointer',
             }}
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Nome */}
-          <div>
-            <label style={labelStyle}>
-              Nome do Presente VIP *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Ex: Apple Watch SE 2, iPhone 15..."
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Vendas, Tag & Valor Estimado */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+        {/* Split View Content: Form on Left + Live Preview on Right */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
+          {/* LEFT: Form */}
+          <form 
+            onSubmit={handleSubmit}
+            style={{
+              flex: 1,
+              minWidth: '320px',
+              padding: '24px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              borderRight: '1px solid var(--adm-border)',
+            }}
+          >
             <div>
-              <label style={labelStyle}>
-                Vendas Fechadas
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={salesRequired}
-                onChange={(e) => setSalesRequired(Number(e.target.value))}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>
-                Selo / Tag
-              </label>
+              <label style={labelStyle}>Nome do Presente VIP *</label>
               <input
                 type="text"
-                placeholder="Ex: 1ª VENDA"
-                value={badgeTag}
-                onChange={(e) => setBadgeTag(e.target.value)}
+                required
+                placeholder="Ex: Apple Watch SE 2, iPhone 15, MacBook Air..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 style={inputStyle}
               />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Vendas Necessárias *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={salesRequired}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 1;
+                    setSalesRequired(val);
+                    setBadgeTag(val === 1 ? '1ª VENDA' : `${val} VENDAS`);
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Valor Estimado (R$)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="Ex: 3500"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(Number(e.target.value) || 0)}
+                  style={inputStyle}
+                />
+              </div>
             </div>
 
             <div>
-              <label style={labelStyle}>
-                Valor Estimado (R$)
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={100}
-                placeholder="Ex: 3500"
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(Number(e.target.value))}
-                style={inputStyle}
+              <label style={labelStyle}>Descrição do Presente VIP</label>
+              <textarea
+                rows={3}
+                placeholder="Ex: Garantido quando 1 amiga fechar o contrato de 15 anos no espaço..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{ ...inputStyle, resize: 'vertical' }}
               />
             </div>
-          </div>
 
-          {/* Descrição */}
-          <div>
-            <label style={labelStyle}>
-              Descrição Comercial do Presente VIP
-            </label>
-            <textarea
-              rows={3}
-              placeholder="Ex: Garantido com contrato de festa fechado por indicação da aniversariante..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{
-                ...inputStyle,
-                resize: 'vertical',
-                minHeight: '75px',
-              }}
+            {/* Image Upload */}
+            <ImageUploadField
+              label="Foto do Presente VIP"
+              value={cardImageUrl}
+              onChange={setCardImageUrl}
+              aspectRatio="1:1"
+              previewHeight="120px"
             />
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="adm-btn-secondary"
+                style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '0.82rem' }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="submit"
+                className="adm-btn-primary"
+                style={{ flex: 2, padding: '10px', borderRadius: '10px', fontWeight: 800, fontSize: '0.84rem' }}
+              >
+                <Save size={15} />
+                <span>{rewardToEdit ? 'Salvar Alterações' : 'Salvar no Catálogo'}</span>
+              </button>
+            </div>
+          </form>
+
+          {/* RIGHT: Live Preview in Debutante App */}
+          <div style={{
+            width: '360px',
+            background: 'var(--adm-bg-input)',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '14px',
+            overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EC4899', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase' }}>
+              <Eye size={14} />
+              <span>Preview no App da Debutante</span>
+            </div>
+
+            {/* Realistic Debutante VIP Card Preview */}
+            <div style={{
+              width: '100%',
+              maxWidth: '300px',
+              background: 'linear-gradient(135deg, rgba(38, 16, 32, 0.95) 0%, rgba(20, 10, 18, 0.98) 100%)',
+              border: '1.5px solid rgba(236, 72, 153, 0.45)',
+              borderRadius: '20px',
+              overflow: 'hidden',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.6), 0 0 20px rgba(236,72,153,0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}>
+              {cardImageUrl ? (
+                <img
+                  src={cardImageUrl}
+                  alt={name || 'Presente VIP'}
+                  style={{ width: '100%', height: '140px', objectFit: 'cover' }}
+                />
+              ) : (
+                <div style={{
+                  width: '100%',
+                  height: '140px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--adm-text-muted)',
+                  fontSize: '0.72rem',
+                }}>
+                  <Crown size={28} color="#EC4899" style={{ opacity: 0.5, marginBottom: '6px' }} />
+                  <span>Sem imagem cadastrada</span>
+                </div>
+              )}
+
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{
+                    fontSize: '0.64rem',
+                    fontWeight: 800,
+                    color: '#EC4899',
+                    background: 'rgba(236, 72, 153, 0.15)',
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    textTransform: 'uppercase',
+                  }}>
+                    {salesRequired} {salesRequired === 1 ? 'Venda Exigida' : 'Vendas Exigidas'}
+                  </span>
+
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#22C55E' }}>
+                    R$ {Number(estimatedValue).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+
+                <h4 style={{ fontSize: '0.98rem', fontWeight: 900, color: '#FFF', margin: 0 }}>
+                  {name || 'Nome do Presente VIP'}
+                </h4>
+
+                <p style={{ fontSize: '0.74rem', color: '#D1C8BA', margin: 0, lineHeight: 1.4 }}>
+                  {description || 'A descrição detalhada do presente aparecerá aqui para a debutante.'}
+                </p>
+              </div>
+            </div>
           </div>
-
-          {/* Imagem 1: Mockup 1:1 Transparente */}
-          <ImageUploadField
-            label="1. Mockup do Presente VIP (Formato 1:1 Quadrado PNG)"
-            value={cardImageUrl}
-            onChange={(val) => setCardImageUrl(val)}
-            aspectRatio="1:1"
-            previewHeight="85px"
-            placeholder="Subir imagem isolada do produto VIP"
-          />
-
-          {/* Imagem 2: Banner 16:9 Oficial */}
-          <ImageUploadField
-            label="2. Banner Oficial / Fotografia do Produto (Formato 16:9)"
-            value={detailImageUrl}
-            onChange={(val) => setDetailImageUrl(val)}
-            aspectRatio="16:9"
-            previewHeight="95px"
-            placeholder="Subir foto de divulgação ou banner 16:9"
-          />
-
-          {/* Footer Buttons */}
-          <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              className="adm-btn-secondary"
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 700,
-                fontSize: '0.84rem',
-              }}
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="submit"
-              className="adm-btn-primary"
-              style={{
-                flex: 2,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 800,
-                fontSize: '0.86rem',
-              }}
-            >
-              <Save size={16} />
-              <span>{rewardToEdit ? 'Salvar Alterações' : 'Adicionar ao Catálogo VIP'}</span>
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );

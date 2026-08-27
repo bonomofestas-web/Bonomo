@@ -8,7 +8,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
-import { AdminDebutanteDetailModal } from './AdminDebutanteDetailModal';
+import { AdminDebutanteDetailView } from './AdminDebutanteDetailView';
 import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
 import { AdminJourneysConfigView } from './AdminJourneysConfigView';
 import { AdminAppointmentsView } from './AdminAppointmentsView';
@@ -33,13 +33,15 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   // Sub-tabs: 'debutantes' | 'benefits' | 'templates' | 'appointments'
   const [activeSubTab, setActiveSubTab] = useState<'debutantes' | 'benefits' | 'templates' | 'appointments'>(initialSubTab);
 
+  // Selected Debutante for In-Page Detail View
+  const [selectedDebutanteId, setSelectedDebutanteId] = useState<string | null>(null);
+
   // View Mode: 'grid' (3 cards per row) | 'list'
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [debutanteToEdit, setDebutanteToEdit] = useState<DebutanteAccount | null>(null);
   const [debutanteToDelete, setDebutanteToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [detailModalDebutante, setDetailModalDebutante] = useState<DebutanteAccount | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [filterModule, setFilterModule] = useState<'all' | 'journey' | 'guests_only'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -209,62 +211,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         </div>
 
         {/* Global Action (only on debutantes tab) */}
-        {activeSubTab === 'debutantes' && (
+        {activeSubTab === 'debutantes' && !selectedDebutanteId && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* View Mode Toggle: Grid vs List */}
-            <div style={{
-              display: 'flex',
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '12px',
-              padding: '3px',
-              gap: '2px',
-            }}>
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                title="Visualização em Cards (3 por linha)"
-                style={{
-                  background: viewMode === 'grid' ? 'var(--adm-accent-bg)' : 'transparent',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: viewMode === 'grid' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>Cards</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                title="Visualização em Lista Compacta"
-                style={{
-                  background: viewMode === 'list' ? 'var(--adm-accent-bg)' : 'transparent',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                }}
-              >
-                <List size={15} />
-                <span>Lista</span>
-              </button>
-            </div>
-
             <button
               onClick={() => {
                 setDebutanteToEdit(null);
@@ -287,6 +235,23 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
       {/* ── TAB 1: ANIVERSARIANTES / DEBUTANTES ─────────────────────────────── */}
       {activeSubTab === 'debutantes' && (
+        selectedDebutanteId ? (
+          (() => {
+            const deb = debutantes.find(d => d.id === selectedDebutanteId);
+            if (!deb) return null;
+            return (
+              <AdminDebutanteDetailView
+                debutante={deb}
+                venue={venues.find(v => v.id === deb.venueId)}
+                onBack={() => setSelectedDebutanteId(null)}
+                onEdit={() => {
+                  setDebutanteToEdit(deb);
+                  setIsModalOpen(true);
+                }}
+              />
+            );
+          })()
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Search & Filter Bar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -321,31 +286,87 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
               labelUnit="aniversariantes"
             />
 
-            {/* Module Filter Pills */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {[
-                { id: 'all', label: `Todas as Aniversariantes (${debutantes.length})` },
-                { id: 'journey', label: `Com Jornada VIP Ativa (${debutantes.filter(d => d.hasJourneyEnabled).length})` },
-                { id: 'guests_only', label: `Apenas Convidados & Agenda (${debutantes.filter(d => !d.hasJourneyEnabled).length})` },
-              ].map(tab => (
+            {/* Module Filter Pills & Right-Aligned Cards/List Switch */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'all', label: `Todas as Aniversariantes (${debutantes.length})` },
+                  { id: 'journey', label: `Com Jornada VIP Ativa (${debutantes.filter(d => d.hasJourneyEnabled).length})` },
+                  { id: 'guests_only', label: `Apenas Convidados & Agenda (${debutantes.filter(d => !d.hasJourneyEnabled).length})` },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setFilterModule(tab.id as any)}
+                    style={{
+                      background: filterModule === tab.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                      border: filterModule === tab.id ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                      color: filterModule === tab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                      borderRadius: '20px',
+                      padding: '5px 14px',
+                      fontSize: '0.74rem',
+                      fontWeight: filterModule === tab.id ? 800 : 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* View Mode Toggle: Grid vs List (Right Side) */}
+              <div style={{
+                display: 'flex',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '12px',
+                padding: '3px',
+                gap: '2px',
+              }}>
                 <button
-                  key={tab.id}
-                  onClick={() => setFilterModule(tab.id as any)}
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  title="Visualização em Cards (3 por linha)"
                   style={{
-                    background: filterModule === tab.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                    border: filterModule === tab.id ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                    color: filterModule === tab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                    borderRadius: '20px',
-                    padding: '5px 14px',
-                    fontSize: '0.74rem',
-                    fontWeight: filterModule === tab.id ? 800 : 600,
+                    background: viewMode === 'grid' ? 'var(--adm-accent-bg)' : 'transparent',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    color: viewMode === 'grid' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
                   }}
                 >
-                  {tab.label}
+                  <LayoutGrid size={14} />
+                  <span>Cards</span>
                 </button>
-              ))}
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  title="Visualização em Lista Compacta"
+                  style={{
+                    background: viewMode === 'list' ? 'var(--adm-accent-bg)' : 'transparent',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  <List size={14} />
+                  <span>Lista</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -391,7 +412,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   <div
                     key={deb.id}
                     className="saas-card"
-                    onClick={() => setDetailModalDebutante(deb)}
+                    onClick={() => setSelectedDebutanteId(deb.id)}
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
@@ -641,7 +662,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                 return (
                   <div
                     key={deb.id}
-                    onClick={() => setDetailModalDebutante(deb)}
+                    onClick={() => setSelectedDebutanteId(deb.id)}
                     style={{
                       background: 'var(--adm-bg-card)',
                       border: '1px solid var(--adm-border)',
@@ -770,6 +791,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
             </div>
           )}
         </div>
+        )
       )}
 
       {/* ── TAB 2: PRÊMIOS & BENEFÍCIOS VIP ─────────────────────────────────── */}
@@ -800,20 +822,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         />
       )}
 
-      {/* Detail / Central da Aniversariante Modal */}
-      {detailModalDebutante && (
-        <AdminDebutanteDetailModal
-          isOpen={Boolean(detailModalDebutante)}
-          onClose={() => setDetailModalDebutante(null)}
-          debutante={detailModalDebutante}
-          venue={venues.find(v => v.id === detailModalDebutante.venueId)}
-          onEdit={() => {
-            setDebutanteToEdit(detailModalDebutante);
-            setDetailModalDebutante(null);
-            setIsModalOpen(true);
-          }}
-        />
-      )}
+
 
       {/* Delete Confirm Modal */}
       {debutanteToDelete && (

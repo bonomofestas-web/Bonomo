@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Bell, UserPlus, Crown, Calendar, Sparkles } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
+import { DebutanteNotificationsModal } from '../notifications/DebutanteNotificationsModal';
 
 export const Header: React.FC = () => {
-  const { debutante, activeTab, setActiveTab, setIsReferralModalOpen, referrals, benefits, vipRewards } = useAppState();
+  const { debutante, currentTheme, activeTab, setActiveTab, setIsReferralModalOpen, referrals, benefits, vipRewards } = useAppState();
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const journeyStatus = debutante.journeyCycle.journeyStatus;
   const isJourneyActive = journeyStatus === 'active';
@@ -106,11 +108,11 @@ export const Header: React.FC = () => {
             height: '38px',
           }} />
 
-          {/* Center: Espaço Rio Lounge logo */}
+          {/* Center: Dynamic Venue Logo */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
             <img 
-              src="/logo_riio_lounge.png" 
-              alt="Espaço Rio Lounge" 
+              src={currentTheme.logoUrl || '/logo_riio_lounge.png'} 
+              alt={currentTheme.name || 'Casa de Festas'} 
               style={{ 
                 height: '84px', 
                 maxWidth: '180px',
@@ -122,19 +124,22 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Right: Bell notification */}
-          <div style={{
-            position: 'relative',
-            width: '38px',
-            height: '38px',
-            borderRadius: '50%',
-            background: 'rgba(255, 255, 255, 0.08)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}>
+          <div 
+            onClick={() => setIsNotificationsOpen(true)}
+            style={{
+              position: 'relative',
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.08)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
             <Bell size={18} color="#FFF" />
             <span style={{
               position: 'absolute',
@@ -148,6 +153,12 @@ export const Header: React.FC = () => {
             }} />
           </div>
         </div>
+
+        {/* Notifications Modal */}
+        <DebutanteNotificationsModal
+          isOpen={isNotificationsOpen}
+          onClose={() => setIsNotificationsOpen(false)}
+        />
 
         {/* ── CARD DE IDENTIFICAÇÃO DA ANIVERSARIANTE ── */}
         <div style={{

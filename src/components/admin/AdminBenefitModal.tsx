@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Gift, Sparkles, Save } from 'lucide-react';
+import { X, Gift, Save, Eye } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import type { BenefitCatalogItem } from '../../types/admin';
@@ -32,16 +32,17 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
       setCategory(benefitToEdit.category);
       setPointsRequired(benefitToEdit.pointsRequired);
       setEstimatedValue(benefitToEdit.estimatedValue || benefitToEdit.defaultValue || 1500);
-      setCardImageUrl(benefitToEdit.cardImageUrl);
+      setCardImageUrl(benefitToEdit.cardImageUrl || '');
       setDetailImageUrl(benefitToEdit.detailImageUrl || '');
     } else {
+      // Clean initial state without mock data
       setName('');
       setDescription('');
       setCategory('festa');
       setPointsRequired(5);
       setEstimatedValue(1500);
-      setCardImageUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80');
-      setDetailImageUrl('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&auto=format&fit=crop&q=80');
+      setCardImageUrl('');
+      setDetailImageUrl('');
     }
   }, [benefitToEdit, isOpen]);
 
@@ -102,29 +103,40 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
     fontFamily: "'Plus Jakarta Sans', sans-serif",
   };
 
+  const categoryLabels: Record<string, string> = {
+    festa: 'Festa & Horário',
+    convidados: 'Convidados Extras',
+    entretenimento: 'Entretenimento & Atrações',
+    gastronomia: 'Gastronomia & Open Bar',
+    vip: 'Experiência VIP',
+  };
+
   return (
-    <div className="admin-modal-overlay" style={{
+    <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(0, 0, 0, 0.8)',
-      backdropFilter: 'blur(8px)',
+      background: 'rgba(0, 0, 0, 0.85)',
+      backdropFilter: 'blur(10px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000,
+      zIndex: 1200,
       padding: '20px',
       animation: 'fadeIn 0.2s ease-out',
-      fontFamily: "'Poppins', sans-serif",
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      <div className="admin-modal-content" style={{
+      <div style={{
         background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
-        borderRadius: '20px',
-        maxWidth: '560px',
+        border: '1.5px solid var(--adm-border)',
+        borderRadius: '24px',
+        maxWidth: '960px',
         width: '100%',
-        maxHeight: '90vh',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-        overflowY: 'auto',
+        maxHeight: '92vh',
+        overflow: 'hidden',
+        position: 'relative',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.8), 0 0 30px rgba(212,175,55,0.15)',
+        display: 'flex',
+        flexDirection: 'column',
       }}>
         {/* Header */}
         <div style={{
@@ -133,32 +145,27 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          background: 'linear-gradient(135deg, rgba(212,175,55,0.12) 0%, rgba(20,17,27,0.95) 100%)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
               background: 'var(--adm-accent-bg)',
+              border: '1px solid var(--adm-accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--adm-accent)',
             }}>
-              <Gift size={20} />
+              <Gift size={20} color="var(--adm-accent)" />
             </div>
             <div>
-              <h2 style={{
-                fontSize: '1.25rem',
-                fontWeight: 800,
-                color: 'var(--adm-text-title)',
-                margin: 0,
-                letterSpacing: '-0.3px',
-              }}>
-                {benefitToEdit ? 'Editar Benefício do Catálogo' : 'Novo Benefício de Meta'}
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                {benefitToEdit ? 'Editar Benefício do Catálogo' : 'Cadastrar Novo Benefício no Catálogo'}
               </h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Item disponibilizado para montagem de jornadas de indicação
+              <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: 0 }}>
+                Defina o nome, categoria, valor estimado e foto. Ao salvar, estará disponível para todas as jornadas.
               </p>
             </div>
           </div>
@@ -178,175 +185,192 @@ export const AdminBenefitModal: React.FC<AdminBenefitModalProps> = ({
               cursor: 'pointer',
             }}
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Nome */}
-          <div>
-            <label style={labelStyle}>
-              Nome do Benefício *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Ex: Cabine de Fotos Espelho Mágico"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Descrição */}
-          <div>
-            <label style={labelStyle}>
-              Descrição Comercial do Benefício *
-            </label>
-            <textarea
-              required
-              rows={2}
-              placeholder="Descreva o que a debutante ganha ao atingir esta meta..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{
-                ...inputStyle,
-                resize: 'vertical',
-                minHeight: '60px',
-              }}
-            />
-          </div>
-
-          {/* Categoria, Indicações & Valor Estimado */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '12px' }}>
+        {/* Split View Content: Form on Left + Live Preview on Right */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
+          {/* LEFT: Form */}
+          <form 
+            onSubmit={handleSubmit}
+            style={{
+              flex: 1,
+              minWidth: '320px',
+              padding: '24px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              borderRight: '1px solid var(--adm-border)',
+            }}
+          >
             <div>
-              <label style={labelStyle}>
-                Categoria
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as any)}
+              <label style={labelStyle}>Nome do Benefício *</label>
+              <input
+                type="text"
+                required
+                placeholder="Ex: Cabine de Fotos 360°, Robô de LED, DJ & Pista Paris..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 style={inputStyle}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Categoria *</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as any)}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value="festa">Festa & Horário</option>
+                  <option value="convidados">Convidados Extras</option>
+                  <option value="entretenimento">Entretenimento & Atrações</option>
+                  <option value="gastronomia">Gastronomia & Open Bar</option>
+                  <option value="vip">Experiência VIP</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Valor Estimado (R$)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  placeholder="Ex: 1500"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(Number(e.target.value) || 0)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Descrição do Benefício</label>
+              <textarea
+                rows={3}
+                placeholder="Descreva o que está incluído no benefício para a debutante..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{ ...inputStyle, resize: 'vertical' }}
+              />
+            </div>
+
+            {/* Image Upload */}
+            <ImageUploadField
+              label="Foto do Benefício (Card & Catálogo)"
+              value={cardImageUrl}
+              onChange={setCardImageUrl}
+              aspectRatio="16:9"
+              previewHeight="120px"
+            />
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="adm-btn-secondary"
+                style={{ flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '0.82rem' }}
               >
-                <option value="festa">Festa & Horário</option>
-                <option value="convidados">Convidados Extras</option>
-                <option value="entretenimento">Atrações & Show</option>
-                <option value="gastronomia">Gastronomia</option>
-                <option value="vip">Experiência VIP</option>
-              </select>
-            </div>
+                Cancelar
+              </button>
 
-            <div>
-              <label style={labelStyle}>
-                Indicações
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={pointsRequired}
-                onChange={(e) => setPointsRequired(Number(e.target.value))}
-                style={inputStyle}
-              />
+              <button
+                type="submit"
+                className="adm-btn-primary"
+                style={{ flex: 2, padding: '10px', borderRadius: '10px', fontWeight: 800, fontSize: '0.84rem' }}
+              >
+                <Save size={15} />
+                <span>{benefitToEdit ? 'Salvar Alterações' : 'Salvar no Catálogo'}</span>
+              </button>
             </div>
+          </form>
 
-            <div>
-              <label style={labelStyle}>
-                Valor Estimado (R$)
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={50}
-                placeholder="Ex: 1500"
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(Number(e.target.value))}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-
-          {/* Imagens do Benefício */}
+          {/* RIGHT: Live Preview in Debutante App */}
           <div style={{
+            width: '360px',
             background: 'var(--adm-bg-input)',
-            border: '1px solid var(--adm-border)',
-            borderRadius: '12px',
-            padding: '14px',
+            padding: '24px',
             display: 'flex',
             flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
             gap: '14px',
+            overflowY: 'auto',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sparkles size={16} color="var(--adm-accent)" />
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                Imagens do Benefício (2 Formatos)
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--adm-accent)', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase' }}>
+              <Eye size={14} />
+              <span>Preview no App da Debutante</span>
             </div>
 
-            {/* Image 1: Mockup Transparent for main app journey */}
-            <div>
-              <ImageUploadField
-                label="Imagem 1: Mockup / Fundo Transparente (Destaque Principal na Jornada)"
-                value={cardImageUrl}
-                onChange={(val) => setCardImageUrl(val)}
-                aspectRatio="1:1"
-                placeholder="PNG com fundo transparente para o card/trilha da debutante"
-                previewHeight="75px"
-              />
-              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px', display: 'block' }}>
-                * Recomendado: Foto do item recortada em PNG transparente para flutuar no card da jornada.
-              </span>
-            </div>
+            {/* Realistic Debutante Card Preview */}
+            <div style={{
+              width: '100%',
+              maxWidth: '300px',
+              background: 'linear-gradient(135deg, rgba(32, 20, 48, 0.95) 0%, rgba(18, 12, 28, 0.98) 100%)',
+              border: '1.5px solid rgba(212, 175, 55, 0.45)',
+              borderRadius: '20px',
+              overflow: 'hidden',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.6), 0 0 20px rgba(212,175,55,0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}>
+              {cardImageUrl ? (
+                <img
+                  src={cardImageUrl}
+                  alt={name || 'Benefício'}
+                  style={{ width: '100%', height: '140px', objectFit: 'cover' }}
+                />
+              ) : (
+                <div style={{
+                  width: '100%',
+                  height: '140px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--adm-text-muted)',
+                  fontSize: '0.72rem',
+                }}>
+                  <Gift size={28} color="var(--adm-accent)" style={{ opacity: 0.5, marginBottom: '6px' }} />
+                  <span>Sem imagem cadastrada</span>
+                </div>
+              )}
 
-            {/* Image 2: Banner / Modal / Real venue photo */}
-            <div>
-              <ImageUploadField
-                label="Imagem 2: Banner / Foto Real do Salão (Modal de Detalhes do Benefício)"
-                value={detailImageUrl}
-                onChange={(val) => setDetailImageUrl(val)}
-                aspectRatio="16:9"
-                placeholder="Foto 16:9 de alta resolução com o benefício no salão"
-                previewHeight="75px"
-              />
-              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px', display: 'block' }}>
-                * Exibida quando a debutante clica para ver os detalhes da conquista ou fotos reais do serviço.
-              </span>
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{
+                    fontSize: '0.64rem',
+                    fontWeight: 800,
+                    color: '#D4AF37',
+                    background: 'rgba(212, 175, 55, 0.15)',
+                    padding: '2px 8px',
+                    borderRadius: '8px',
+                    textTransform: 'uppercase',
+                  }}>
+                    {categoryLabels[category] || 'Benefício'}
+                  </span>
+
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#22C55E' }}>
+                    R$ {Number(estimatedValue).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+
+                <h4 style={{ fontSize: '0.98rem', fontWeight: 900, color: '#FFF', margin: 0 }}>
+                  {name || 'Nome do Benefício'}
+                </h4>
+
+                <p style={{ fontSize: '0.74rem', color: '#D1C8BA', margin: 0, lineHeight: 1.4 }}>
+                  {description || 'A descrição detalhada do benefício aparecerá aqui para a debutante.'}
+                </p>
+              </div>
             </div>
           </div>
-
-          {/* Footer Actions */}
-          <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              className="adm-btn-secondary"
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 700,
-                fontSize: '0.84rem',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="adm-btn-primary"
-              style={{
-                flex: 2,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 800,
-                fontSize: '0.86rem',
-              }}
-            >
-              <Save size={14} />
-              <span>Salvar no Catálogo</span>
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );

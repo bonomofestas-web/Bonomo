@@ -240,7 +240,26 @@ export const AppStateProvider: React.FC<{
   const [activeTab, setActiveTab] = useState<TabType>('journey');
   const [journeySubTab, setJourneySubTab] = useState<JourneySubTab>('benefits');
   const [themes] = useState<VenueTheme[]>(mockThemes);
-  const [currentTheme, setCurrentTheme] = useState<VenueTheme>(mockThemes[0]);
+  const [currentTheme, setCurrentTheme] = useState<VenueTheme>(() => {
+    if (initialAccount?.venueId) {
+      try {
+        const savedVenues = localStorage.getItem('bonomo_admin_venues_v7');
+        const venuesList = savedVenues ? JSON.parse(savedVenues) : [];
+        const venue = venuesList.find((v: any) => v.id === initialAccount.venueId);
+        if (venue) {
+          return {
+            ...mockThemes[0],
+            id: venue.id,
+            name: venue.name,
+            logoUrl: venue.logoUrl || venue.photoUrl || '/logo_riio_lounge.png',
+          };
+        }
+      } catch (e) {
+        console.error('Error finding venue theme:', e);
+      }
+    }
+    return mockThemes[0];
+  });
   
   const [debutante, setDebutante] = useState<DebutanteProfile>(() => {
     if (initialAccount) {
@@ -693,6 +712,23 @@ export const AppStateProvider: React.FC<{
         updatedAt: new Date().toISOString().split('T')[0],
       };
       localStorage.setItem('bonomo_admin_leads_v7', JSON.stringify([newLead, ...leadsList]));
+
+      // Also persist to debutante account referrals in AdminState storage
+      const savedDebs = localStorage.getItem('bonomo_admin_debutantes_v7');
+      if (savedDebs) {
+        const debsList = JSON.parse(savedDebs);
+        const updatedDebs = debsList.map((d: any) => {
+          if (d.id === debutante.id) {
+            const curRefs = d.referrals || [];
+            return {
+              ...d,
+              referrals: [newRef, ...curRefs],
+            };
+          }
+          return d;
+        });
+        localStorage.setItem('bonomo_admin_debutantes_v7', JSON.stringify(updatedDebs));
+      }
 
       // Background Supabase Sync
       if (isSupabaseConfigured) {
