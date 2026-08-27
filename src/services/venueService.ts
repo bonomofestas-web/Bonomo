@@ -52,8 +52,9 @@ export const venueService = {
   async upsert(venue: Partial<Venue> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(venue.id);
+      
       const payload: any = {
-        id: venue.id,
         name: venue.name,
         tagline: venue.tagline,
         logo_url: venue.logoUrl,
@@ -80,12 +81,28 @@ export const venueService = {
         round_robin_next_index: venue.roundRobinNextIndex,
       };
 
-      const { error } = await supabase.from('venues').upsert(payload);
-      if (error) {
-        console.error('Erro ao salvar casa de festa:', error);
-        return false;
+      if (isUuid) {
+        payload.id = venue.id;
+        const { error } = await supabase.from('venues').upsert(payload);
+        if (error) {
+          console.error('Erro ao salvar casa de festa por ID:', error);
+          if (venue.name) {
+            await supabase.from('venues').update(payload).eq('name', venue.name);
+          }
+          return false;
+        }
+        return true;
+      } else if (venue.name) {
+        const { data: existing } = await supabase.from('venues').select('id').eq('name', venue.name).maybeSingle();
+        if (existing?.id) {
+          payload.id = existing.id;
+          await supabase.from('venues').update(payload).eq('id', existing.id);
+        } else {
+          await supabase.from('venues').insert(payload);
+        }
+        return true;
       }
-      return true;
+      return false;
     } catch (err) {
       console.error('Falha em venueService.upsert:', err);
       return false;
@@ -95,7 +112,11 @@ export const venueService = {
   async delete(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const { error } = await supabase.from('venues').delete().eq('id', id);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const query = isUuid 
+        ? supabase.from('venues').delete().eq('id', id)
+        : supabase.from('venues').delete().ilike('name', `%${id}%`);
+      const { error } = await query;
       if (error) {
         console.error('Erro ao deletar casa de festa:', error);
         return false;

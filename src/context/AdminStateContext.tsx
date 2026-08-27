@@ -49,6 +49,17 @@ const STORAGE_KEY_THEME = 'bonomo_admin_theme_v7';
 const STORAGE_KEY_TASKS = 'bonomo_admin_tasks_v7';
 const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
 
+export const generateUuid = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 // ── Default Seed Data ─────────────────────────────────────────────────────────
 
 const DEFAULT_COLLABORATORS: Collaborator[] = [
@@ -703,7 +714,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Collaborators CRUD ──────────────────────────────────────────────────────
 
   const addCollaborator = (data: Omit<Collaborator, 'id' | 'createdAt'>): string => {
-    const id = `collab_${Date.now()}`;
+    const id = generateUuid();
     const newCollab: Collaborator = {
       ...data,
       id,
@@ -747,7 +758,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Venue Methods ───────────────────────────────────────────────────────────
 
   const addVenue = (venueData: Omit<Venue, 'id' | 'createdAt'>): string => {
-    const id = `venue_${Date.now()}`;
+    const id = generateUuid();
     const newVenue: Venue = {
       ...venueData,
       ballroomImageUrl: venueData.ballroomImageUrl || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&auto=format&fit=crop&q=80',
@@ -766,7 +777,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Create the mandatory primary referral funnel for this venue immediately
     const primaryFunnel: CommercialFunnel = {
-      id: `indicacao_${id}`,
+      id: generateUuid(),
       name: `Funil de Indicação • ${newVenue.name}`,
       category: 'Indicações do App',
       description: `Captação automatizada através das convidadas e debutantes VIP da unidade ${newVenue.name}.`,
@@ -909,7 +920,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     welcomeVideoUrl?: string;
     journeyTemplateId?: string;
   }): DebutanteAccount => {
-    const id = `deb_${Date.now()}`;
+    const id = generateUuid();
     const slug = generateSlug(data.name, data.partyDate);
     const partyTime = new Date(data.partyDate).getTime();
     const nowTime = new Date().getTime();
@@ -996,7 +1007,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Funnels CRUD ───────────────────────────────────────────────────────────
 
   const addFunnel = (data: Omit<CommercialFunnel, 'id' | 'createdAt'>): string => {
-    const id = `funnel_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const id = generateUuid();
     const newFunnel: CommercialFunnel = {
       ...data,
       id,
@@ -1734,7 +1745,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Benefits & VIP Catalogs CRUD ─────────────────────────────────────────────
 
   const addBenefitCatalogItem = (data: Omit<BenefitCatalogItem, 'id' | 'createdAt'>): string => {
-    const id = `ben_${Date.now()}`;
+    const id = generateUuid();
     const newItem: BenefitCatalogItem = { ...data, id, createdAt: new Date().toISOString().split('T')[0] };
     setBenefitsCatalog(prev => {
       const updated = [newItem, ...prev];
@@ -1773,7 +1784,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const addVipCatalogItem = (data: Omit<VipRewardCatalogItem, 'id' | 'createdAt'>): string => {
-    const id = `vip_cat_${Date.now()}`;
+    const id = generateUuid();
     const newItem: VipRewardCatalogItem = { ...data, id, createdAt: new Date().toISOString().split('T')[0] };
     setVipCatalog(prev => {
       const updated = [newItem, ...prev];
@@ -1927,7 +1938,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── General & Personal Tasks ───────────────────────────────────────────────
 
   const addTask = (data: Omit<AdminTask, 'id' | 'createdAt'>): string => {
-    const id = `task_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const id = generateUuid();
     const newTask: AdminTask = {
       ...data,
       id,

@@ -146,8 +146,9 @@ export const debutanteService = {
   async upsert(deb: Partial<DebutanteAccount> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deb.id);
+      
       const payload: any = {
-        id: deb.id,
         venue_id: deb.venueId,
         name: deb.name,
         slug: deb.slug,
@@ -175,12 +176,28 @@ export const debutanteService = {
         vip_rewards: deb.vipRewards,
       };
 
-      const { error } = await supabase.from('debutantes').upsert(payload);
-      if (error) {
-        console.error('Erro ao salvar debutante no Supabase:', error);
-        return false;
+      if (isUuid) {
+        payload.id = deb.id;
+        const { error } = await supabase.from('debutantes').upsert(payload);
+        if (error) {
+          console.error('Erro ao salvar debutante por ID:', error);
+          if (deb.slug) {
+            await supabase.from('debutantes').update(payload).eq('slug', deb.slug);
+          }
+          return false;
+        }
+        return true;
+      } else if (deb.slug) {
+        const { data: existing } = await supabase.from('debutantes').select('id').eq('slug', deb.slug).maybeSingle();
+        if (existing?.id) {
+          payload.id = existing.id;
+          await supabase.from('debutantes').update(payload).eq('id', existing.id);
+        } else {
+          await supabase.from('debutantes').insert(payload);
+        }
+        return true;
       }
-      return true;
+      return false;
     } catch (err) {
       console.error('Falha em debutanteService.upsert:', err);
       return false;
