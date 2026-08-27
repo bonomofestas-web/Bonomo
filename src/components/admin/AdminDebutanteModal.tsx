@@ -5,6 +5,8 @@ import { ImageUploadField } from './ImageUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import type { DebutanteAccount } from '../../types/admin';
 
+import { createMonogramAvatar } from '../../utils/avatarUtils';
+
 interface AdminDebutanteModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -46,7 +48,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
       setPartyDate('2027-04-18');
       setPhone('');
       setEmail('');
-      setAvatarUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80');
+      setAvatarUrl('');
       setBaseGuestLimit(250);
       setHasJourneyEnabled(true);
       setJourneyTemplateChoice(templates.length > 0 ? templates[0].id : 'pending');
@@ -59,6 +61,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const finalAvatar = avatarUrl.trim() || createMonogramAvatar(name.trim());
     const isPending = hasJourneyEnabled && (journeyTemplateChoice === 'pending' || !journeyTemplateChoice);
     const selectedTemplate = (!isPending && hasJourneyEnabled) ? templates.find(t => t.id === journeyTemplateChoice) : null;
 
@@ -69,7 +72,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
         partyDate,
         phone: phone.trim(),
         email: email.trim() || undefined,
-        avatarUrl: avatarUrl.trim(),
+        avatarUrl: finalAvatar,
         baseGuestLimit: Number(baseGuestLimit),
         hasJourneyEnabled,
         isJourneyPending: isPending,
@@ -86,7 +89,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
         partyDate,
         phone: phone.trim(),
         email: email.trim() || undefined,
-        avatarUrl: avatarUrl.trim(),
+        avatarUrl: finalAvatar,
         baseGuestLimit: Number(baseGuestLimit),
         hasJourneyEnabled,
         journeyTemplateId: isPending ? 'pending' : selectedTemplate?.id,

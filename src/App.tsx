@@ -224,6 +224,8 @@ const parseRouteFromLocation = (): { mode: 'debutante' | 'admin'; slug?: string 
   return { mode: 'admin', slug: 'maria-eduarda-2027' };
 };
 
+import { createMonogramAvatar, generateBlackGoldPwaIcon } from './utils/avatarUtils';
+
 const generateDynamicDebutanteFromSlug = (slug: string, venueId?: string): DebutanteAccount => {
   const clean = decodeURIComponent(slug).trim().toLowerCase();
   const withoutRandom = clean.replace(/-\d{4}(-[a-z0-9]+)?$/, '');
@@ -242,7 +244,7 @@ const generateDynamicDebutanteFromSlug = (slug: string, venueId?: string): Debut
     slug: clean,
     partyDate: `${partyYear}-11-15`,
     partyDaysLeft: 240,
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80',
+    avatarUrl: createMonogramAvatar(formattedName),
     phone: '(21) 99999-9999',
     hasJourneyEnabled: true,
     isJourneyPending: false,
@@ -354,44 +356,49 @@ const RootAppRouter: React.FC = () => {
       const venueName = activeVenue ? activeVenue.name : 'Bonomo Festas';
       document.title = `${debTitle} | ${venueName}`;
       link.href = venueIcon;
-      appleLink.href = venueIcon;
 
-      // Dynamic manifest blob for Android & iOS PWA home screen icon
-      try {
-        const dynamicManifest = {
-          name: `${activeDeb?.name || '15 Anos'} • ${venueName}`,
-          short_name: `${activeDeb?.name || '15 Anos'}`,
-          description: `Aplicativo oficial de 15 Anos no ${venueName}`,
-          start_url: window.location.href,
-          display: 'standalone',
-          background_color: '#0B0512',
-          theme_color: activeVenue?.primaryColor || '#D4AF37',
-          icons: [
-            {
-              src: venueIcon,
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any maskable'
-            },
-            {
-              src: venueIcon,
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any maskable'
-            }
-          ]
-        };
-        const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
-        const manifestURL = URL.createObjectURL(blob);
-        if (!manifestLink) {
-          manifestLink = document.createElement('link');
-          manifestLink.rel = 'manifest';
-          document.head.appendChild(manifestLink);
+      // Generate solid black background with centered golden logo for home screen
+      generateBlackGoldPwaIcon(venueIcon).then((blackGoldPwaIconUrl) => {
+        if (appleLink) {
+          appleLink.href = blackGoldPwaIconUrl;
         }
-        manifestLink.href = manifestURL;
-      } catch (err) {
-        console.warn('Falha ao gerar manifest dinâmico:', err);
-      }
+
+        try {
+          const dynamicManifest = {
+            name: `${activeDeb?.name || '15 Anos'} • ${venueName}`,
+            short_name: `${activeDeb?.name || '15 Anos'}`,
+            description: `Aplicativo oficial de 15 Anos no ${venueName}`,
+            start_url: window.location.href,
+            display: 'standalone',
+            background_color: '#000000',
+            theme_color: '#000000',
+            icons: [
+              {
+                src: blackGoldPwaIconUrl,
+                sizes: '192x192',
+                type: 'image/png',
+                purpose: 'any maskable'
+              },
+              {
+                src: blackGoldPwaIconUrl,
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'any maskable'
+              }
+            ]
+          };
+          const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
+          const manifestURL = URL.createObjectURL(blob);
+          if (!manifestLink) {
+            manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            document.head.appendChild(manifestLink);
+          }
+          manifestLink.href = manifestURL;
+        } catch (err) {
+          console.warn('Falha ao gerar manifest dinâmico:', err);
+        }
+      });
     }
   }, [viewMode, activeDeb, activeVenue]);
 
