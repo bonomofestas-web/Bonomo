@@ -16,6 +16,7 @@ import { ReferralFormModal } from './components/referrals/ReferralFormModal';
 import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPage';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
+import { debutanteService } from './services/debutanteService';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
 
 const MainContentSwitcher: React.FC = () => {
@@ -193,49 +194,30 @@ export const AppContent: React.FC = () => {
   );
 };
 
-const parseRouteFromLocation = (): { mode: 'admin' | 'debutante'; slug: string } => {
-  const searchParams = new URLSearchParams(window.location.search);
-  const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
-  const hash = window.location.hash.replace(/^#\/?/, '');
-  const hashParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : (hash.includes('=') ? hash : ''));
+const parseRouteFromLocation = (): { mode: 'debutante' | 'admin'; slug?: string } => {
+  if (typeof window === 'undefined') return { mode: 'admin', slug: 'maria-eduarda-2027' };
 
-  // 1. Search params (?debutante=slug or ?d=slug)
-  if (searchParams.has('debutante')) {
-    return { mode: 'debutante', slug: searchParams.get('debutante')! };
-  }
-  if (searchParams.has('d')) {
-    return { mode: 'debutante', slug: searchParams.get('d')! };
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramSlug = urlParams.get('debutante') || urlParams.get('d') || urlParams.get('slug');
+  if (paramSlug) {
+    return { mode: 'debutante', slug: decodeURIComponent(paramSlug).trim() };
   }
 
-  // 2. Hash params (#debutante=slug or #/debutante/slug)
-  if (hashParams.has('debutante')) {
-    return { mode: 'debutante', slug: hashParams.get('debutante')! };
-  }
-  if (hash.startsWith('debutante/')) {
-    const slug = hash.replace(/^debutante\//, '').split('?')[0];
-    if (slug) return { mode: 'debutante', slug };
+  const hash = window.location.hash;
+  if (hash.includes('debutante=')) {
+    const match = hash.match(/debutante=([^&]+)/);
+    if (match && match[1]) {
+      return { mode: 'debutante', slug: decodeURIComponent(match[1]).trim() };
+    }
   }
 
-  // 3. Explicit admin routes
-  if (searchParams.has('admin') || searchParams.has('portal') || searchParams.has('login')) {
+  if (urlParams.has('admin') || urlParams.has('portal') || urlParams.has('login')) {
     return { mode: 'admin', slug: '' };
   }
 
-  // 4. Pathname detection (e.g. /maria-eduarda-2027 or /debutante/maria-eduarda-2027)
-  const segments = pathname.split('/').filter(Boolean);
-  const first = segments[0]?.toLowerCase() || '';
-
-  const RESERVED_ADMIN_ROUTES = [
-    '', 'admin', 'portal', 'crm', 'login', 'dashboard', 'settings',
-    'api', 'assets', 'favicon.ico', 'favicon.png', 'vite.svg', 'index.html'
-  ];
-
-  if (first === 'debutante' && segments[1]) {
-    return { mode: 'debutante', slug: segments[1] };
-  }
-
-  if (first && !RESERVED_ADMIN_ROUTES.includes(first)) {
-    return { mode: 'debutante', slug: segments[0] };
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  if (path && !path.startsWith('admin') && !path.startsWith('api') && !path.startsWith('assets') && !path.includes('.')) {
+    return { mode: 'debutante', slug: decodeURIComponent(path).trim() };
   }
 
   return { mode: 'admin', slug: 'maria-eduarda-2027' };
@@ -245,6 +227,7 @@ const RootAppRouter: React.FC = () => {
   const { debutantes, venues, getDebutanteBySlug, getVenueById, markWelcomeVideoSeen } = useAdminState();
 
   const [routeInfo, setRouteInfo] = useState(parseRouteFromLocation);
+  const [asyncDeb, setAsyncDeb] = useState<any>(null);
 
   // Listen to popstate and hashchange for smooth in-browser navigation
   useEffect(() => {
@@ -263,11 +246,20 @@ const RootAppRouter: React.FC = () => {
   const currentDebutanteSlug = routeInfo.slug;
 
   // Resolve current active debutante account
-  const activeDeb = 
+  const inMemoryDeb = 
     (currentDebutanteSlug ? getDebutanteBySlug(currentDebutanteSlug) : undefined) ||
-    debutantes.find(d => currentDebutanteSlug && (d.slug.toLowerCase() === currentDebutanteSlug.toLowerCase() || d.id === currentDebutanteSlug)) ||
-    debutantes[0];
+    debutantes.find(d => currentDebutanteSlug && (d.slug.toLowerCase() === currentDebutanteSlug.toLowerCase() || d.id === currentDebutanteSlug));
 
+  // If not found in memory (e.g. fresh incognito visit), fetch directly from Supabase
+  useEffect(() => {
+    if (viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb) {
+      debutanteService.getBySlug(currentDebutanteSlug).then(result => {
+        if (result) setAsyncDeb(result);
+      }).catch(() => {});
+    }
+  }, [viewMode, currentDebutanteSlug, inMemoryDeb]);
+
+  const activeDeb = inMemoryDeb || asyncDeb || debutantes[0];
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
   // Dynamic Favicon and Document Title

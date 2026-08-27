@@ -143,6 +143,135 @@ export const debutanteService = {
     }
   },
 
+  async getBySlug(slug: string): Promise<DebutanteAccount | null> {
+    if (!isSupabaseConfigured || !slug) return null;
+    try {
+      const clean = decodeURIComponent(slug).toLowerCase().trim();
+      const { data: row, error } = await supabase
+        .from('debutantes')
+        .select('*')
+        .or(`slug.eq.${clean},id.eq.${clean}`)
+        .maybeSingle();
+
+      if (error || !row) return null;
+
+      const { data: guestsData } = await supabase.from('guests').select('*').eq('debutante_id', row.id);
+      const { data: referralsData } = await supabase.from('referrals').select('*').eq('debutante_id', row.id);
+      const { data: appointmentsData } = await supabase.from('appointments').select('*').eq('debutante_id', row.id);
+
+      const debGuests: Guest[] = (guestsData || []).map(g => ({
+        id: g.id,
+        name: g.name,
+        phone: g.phone || '',
+        age: g.age || 15,
+        gender: g.gender,
+        group: g.group || 'Amigos',
+        status: g.status || 'pending',
+        plusOnes: g.plus_ones || 0,
+        companionDetails: g.companion_details || [],
+        sweetMessage: g.sweet_message,
+        declinedMessage: g.declined_message,
+        isSelfRegistered: g.is_self_registered || false,
+        origin: g.origin || 'individual_link',
+        allowedCapacity: g.allowed_capacity || 1,
+        companionMode: g.companion_mode || 'fill_later',
+        confirmationSource: g.confirmation_source || 'debutante',
+        isLinkExpired: g.is_link_expired || false,
+        isCompanion: g.is_companion || false,
+        parentGuestId: g.parent_guest_id,
+        confirmedAt: g.confirmed_at,
+      }));
+
+      const debReferrals: Referral[] = (referralsData || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        age: r.age || 14,
+        group: r.group || 'Amigos',
+        notes: r.notes,
+        createdAt: r.created_at || new Date().toISOString(),
+        status: r.status || 'pending',
+        pointsGranted: r.points_granted || 0,
+        isRenewalReferral: r.is_renewal_referral || false,
+        rejectionReason: r.rejection_reason,
+      }));
+
+      const debAppointments: Appointment[] = (appointmentsData || []).map(a => ({
+        id: a.id,
+        title: a.title,
+        category: a.category,
+        date: a.date,
+        time: a.time,
+        location: a.location || '',
+        address: a.address,
+        status: a.status || 'scheduled',
+        notes: a.notes,
+        responsibleCollaboratorId: a.responsible_collaborator_id,
+        responsibleName: a.responsible_name,
+        responsibleRole: a.responsible_role,
+        responsiblePhone: a.responsible_phone,
+        venueId: a.venue_id,
+      }));
+
+      let partyDaysLeft = 180;
+      try {
+        const pD = new Date(row.party_date).getTime();
+        const nD = new Date().getTime();
+        partyDaysLeft = Math.max(0, Math.ceil((pD - nD) / (1000 * 60 * 60 * 24)));
+      } catch {
+        partyDaysLeft = 180;
+      }
+
+      return {
+        id: row.id,
+        venueId: row.venue_id,
+        name: row.name,
+        slug: row.slug,
+        partyDate: row.party_date,
+        partyDaysLeft,
+        avatarUrl: row.avatar_url || '',
+        phone: row.phone || '',
+        email: row.email,
+        motherName: row.mother_name,
+        fatherName: row.father_name,
+        hasJourneyEnabled: row.has_journey_enabled ?? true,
+        isJourneyPending: row.is_journey_pending ?? false,
+        welcomeVideoUrl: row.welcome_video_url,
+        hasSeenWelcomeVideo: row.has_seen_welcome_video ?? false,
+        journeyTemplateId: row.journey_template_id,
+        customInvitePhotoUrl: row.custom_invite_photo_url,
+        useCustomInvitePhoto: row.use_custom_invite_photo ?? false,
+        receptionMessage: row.reception_message,
+        baseGuestLimit: row.base_guest_limit || 150,
+        extraGuestsUnlocked: row.extra_guests_unlocked || 0,
+        currentGuestLimit: (row.base_guest_limit || 150) + (row.extra_guests_unlocked || 0),
+        validReferrals: row.valid_referrals || 0,
+        totalTargetReferrals: row.total_target_referrals || 20,
+        journeyProgressPercentage: Math.round(((row.valid_referrals || 0) / (row.total_target_referrals || 20)) * 100),
+        convertedReferralSales: row.converted_referral_sales || 0,
+        journeyCycle: row.journey_cycle || {
+          journeyStartDate: new Date().toISOString(),
+          journeyMaximumEndDate: new Date(Date.now() + 180 * 86400000).toISOString(),
+          currentCycleStartDate: new Date().toISOString(),
+          currentCycleEndDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+          cycleRenewalTarget: 3,
+          cycleRenewalProgress: 0,
+          journeyStatus: 'active',
+        },
+        milestones: row.milestones || [],
+        vipRewards: row.vip_rewards || [],
+        guests: debGuests,
+        referrals: debReferrals,
+        appointments: debAppointments,
+        createdAt: row.created_at || new Date().toISOString(),
+        updatedAt: row.updated_at || new Date().toISOString(),
+      };
+    } catch (err) {
+      console.error('Falha em debutanteService.getBySlug:', err);
+      return null;
+    }
+  },
+
   async upsert(deb: Partial<DebutanteAccount> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {

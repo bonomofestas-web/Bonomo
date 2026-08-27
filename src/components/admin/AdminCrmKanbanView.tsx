@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Kanban, List, Search, Building2,
   Inbox, Clock, Calendar, DollarSign, XCircle,
-  ChevronLeft, ChevronDown, Plus, Layers,
+  ChevronDown, Plus, Layers,
   ArrowRight, CheckCircle2, Users, X,
   Crown, Megaphone, Handshake, Sparkles, Target,
   Settings, Shield, Lock, Trash2, Pin,
@@ -1623,19 +1623,47 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: viewMode === 'workspace' ? '12px' : '20px', padding: viewMode === 'workspace' ? '16px 24px 16px 24px' : '24px 32px 60px 32px', maxWidth: '1600px', margin: '0 auto', height: viewMode === 'workspace' ? 'calc(100vh - 64px)' : 'auto', boxSizing: 'border-box', overflow: viewMode === 'workspace' ? 'hidden' : 'visible', animation: 'fadeIn 0.25s ease-out', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <button onClick={() => handleSelectFunnel(null)} title="Voltar para a Central de Funis" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '6px 12px', color: 'var(--adm-text-title)', fontSize: '0.76rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', transition: 'all 0.15s ease' }}><ChevronLeft size={14} /> <span>Todos os Funis</span></button>
-          
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: viewMode === 'workspace' ? '8px' : '18px',
+      padding: viewMode === 'workspace' ? '8px 16px 12px 16px' : '20px 24px 60px 24px',
+      width: '100%',
+      height: viewMode === 'workspace' ? 'calc(100vh - 64px)' : 'auto',
+      boxSizing: 'border-box',
+      overflow: viewMode === 'workspace' ? 'hidden' : 'visible',
+      animation: 'fadeIn 0.2s ease-out',
+      fontFamily: "'Plus Jakarta Sans', sans-serif"
+    }}>
+      {/* Clean Subtle Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
+        {/* Left: Active Funnel Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ position: 'relative' }}>
-            <button onClick={() => setIsFunnelDropdownOpen(!isFunnelDropdownOpen)} style={{ background: 'var(--adm-bg-card)', border: '1.5px solid var(--adm-accent)', borderRadius: '12px', padding: '6px 14px', color: 'var(--adm-text-title)', fontSize: '0.94rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(currentFunnel || { icon: 'target' }, 15, 24)}</span>
+            <button
+              onClick={() => setIsFunnelDropdownOpen(!isFunnelDropdownOpen)}
+              style={{
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                padding: '6px 12px',
+                color: 'var(--adm-text-title)',
+                fontSize: '0.86rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(currentFunnel || { icon: 'target' }, 14, 20)}</span>
               <span>{currentFunnel?.name || 'Funil Comercial'}</span>
-              <ChevronDown size={14} color="var(--adm-accent)" />
+              <ChevronDown size={13} color="var(--adm-accent)" />
             </button>
+
             {isFunnelDropdownOpen && (
-              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: '340px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '8px', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: '320px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '8px', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
                 {visibleVenues.map(v => {
                   const vFunnels = funnelsList.filter(f => f.venueId === v.id);
                   if (vFunnels.length === 0) return null;
@@ -1645,10 +1673,29 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         🏢 {v.name}
                       </div>
                       {vFunnels.map(f => (
-                        <button key={f.id} onClick={() => handleSelectFunnel(f.id)} style={{ background: f.id === selectedFunnelId ? 'var(--adm-accent-bg)' : 'transparent', border: 'none', borderRadius: '8px', padding: '8px 10px', color: f.id === selectedFunnelId ? 'var(--adm-accent)' : 'var(--adm-text-title)', fontSize: '0.8rem', fontWeight: f.id === selectedFunnelId ? 800 : 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left' }}>
-                          <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(f, 13, 20)}</span>
+                        <button
+                          key={f.id}
+                          onClick={() => {
+                            handleSelectFunnel(f.id);
+                            setIsFunnelDropdownOpen(false);
+                          }}
+                          style={{
+                            background: f.id === selectedFunnelId ? 'var(--adm-accent-bg)' : 'transparent',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '7px 10px',
+                            color: f.id === selectedFunnelId ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            fontSize: '0.78rem',
+                            fontWeight: f.id === selectedFunnelId ? 800 : 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(f, 13, 18)}</span>
                           <span style={{ flex: 1 }}>{f.name}</span>
-                          {f.isPinned && <Pin size={11} color="var(--adm-accent)" style={{ transform: 'rotate(45deg)' }} />}
                           {f.id === selectedFunnelId && <CheckCircle2 size={13} color="var(--adm-accent)" />}
                         </button>
                       ))}
@@ -1658,44 +1705,74 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               </div>
             )}
           </div>
+        </div>
 
-          {canConfigureFunnels && currentFunnel && (
+        {/* Right: [Kanban] [Entrada] [Tabela] Switcher */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '3px', display: 'flex', gap: '3px' }}>
             <button
-              onClick={() => handleOpenConfigureFunnel(currentFunnel)}
-              title="Configurar Acessos e Casa de Festas deste Funil"
+              onClick={() => setViewMode('kanban')}
               style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '10px',
-                padding: '6px 12px',
-                color: 'var(--adm-text-muted)',
-                fontSize: '0.74rem',
-                fontWeight: 700,
+                background: viewMode === 'kanban' ? 'var(--adm-accent-bg)' : 'transparent',
+                color: viewMode === 'kanban' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '7px',
+                border: viewMode === 'kanban' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                padding: '5px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
+                gap: '5px',
                 transition: 'all 0.15s ease',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--adm-accent)';
-                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+            >
+              <Kanban size={13} />
+              <span>Kanban</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveLeadIdForWorkspace(null);
+                setViewMode('workspace');
               }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--adm-text-muted)';
-                e.currentTarget.style.borderColor = 'var(--adm-border)';
+              style={{
+                background: viewMode === 'workspace' ? 'var(--adm-accent-bg)' : 'transparent',
+                color: viewMode === 'workspace' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '7px',
+                border: viewMode === 'workspace' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                padding: '5px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
               }}
             >
-              <Settings size={13} />
-              <span>Configurar Funil & Acessos</span>
+              <Inbox size={13} />
+              <span>Entrada</span>
             </button>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px', padding: '4px', display: 'flex', gap: '4px' }}>
-            <button onClick={() => setViewMode('kanban')} style={{ background: viewMode === 'kanban' ? 'var(--adm-accent-bg)' : 'transparent', color: viewMode === 'kanban' ? 'var(--adm-accent)' : 'var(--adm-text-muted)', borderRadius: '8px', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Kanban size={14} /> Kanban</button>
-            <button onClick={() => setViewMode('workspace')} style={{ background: viewMode === 'workspace' ? 'var(--adm-accent-bg)' : 'transparent', color: viewMode === 'workspace' ? 'var(--adm-accent)' : 'var(--adm-text-muted)', borderRadius: '8px', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Inbox size={14} /> Entrada</button>
-            <button onClick={() => setViewMode('list')} style={{ background: viewMode === 'list' ? 'var(--adm-accent-bg)' : 'transparent', color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)', borderRadius: '8px', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><List size={14} /> Tabela</button>
+            <button
+              onClick={() => setViewMode('list')}
+              style={{
+                background: viewMode === 'list' ? 'var(--adm-accent-bg)' : 'transparent',
+                color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '7px',
+                border: viewMode === 'list' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                padding: '5px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <List size={13} />
+              <span>Tabela</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1703,6 +1780,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       {viewMode === 'workspace' ? (
         <AdminCrmWorkspaceView 
           initialLeadId={activeLeadIdForWorkspace || undefined}
+          isMiddleInitiallyOpen={!!activeLeadIdForWorkspace}
         />
       ) : (
         <>

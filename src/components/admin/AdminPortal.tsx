@@ -41,7 +41,7 @@ const ROLE_COLORS: Record<string, string> = {
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators } = useAdminState();
+  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, funnels } = useAdminState();
   const [activeTab, setActiveTab] = useState<AdminTabType>('home');
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -222,8 +222,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           boxSizing: 'border-box',
           gap: '12px',
         }}>
-          {/* Left: Mobile Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Left: Mobile Toggle & Responsive Session Breadcrumb */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
             {/* Mobile Hamburger */}
             <button
               className="admin-mobile-menu-btn"
@@ -242,48 +242,86 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             >
               {isMobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
+
+            {/* Dynamic Breadcrumbs */}
+            {(() => {
+              const activeFunnel = funnels.find(f => f.id === activeFunnelId);
+              let category = 'Central';
+              let title = 'Meu Dia • Início';
+              if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
+              else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
+              else if (activeTab === 'venues') { category = 'Unidades'; title = 'Casas de Festa & Espaços'; }
+              else if (activeTab === 'debutantes') { category = 'Debutantes'; title = 'Central de Aniversariantes • 15 Anos'; }
+              else if (activeTab === 'benefits') { category = 'Catálogo'; title = 'Catálogo de Benefícios & Recompensas'; }
+              else if (activeTab === 'collaborators') { category = 'Gestão'; title = 'Equipe Comercial & Permissões'; }
+              else if (activeTab === 'templates') { category = 'Jornadas'; title = 'Configurações de Jornadas VIP'; }
+              else if (activeTab === 'appointments') { category = 'Agenda'; title = 'Agenda & Visitas / Degustações'; }
+              else if (activeTab === 'settings') { category = 'Sistema'; title = 'Configurações Gerais'; }
+
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#D4AF37', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {category}
+                  </span>
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.8rem' }}>/</span>
+                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.2px' }}>
+                    {title}
+                  </h1>
+                </div>
+              );
+            })()}
           </div>
 
-          {/* Center: SaaS Search Capsule & Results Dropdown */}
-          <div className="admin-header-search" style={{ position: 'relative', width: '100%', maxWidth: '440px', margin: '0 auto' }}>
+          {/* Right Header Actions: Expandable Search + Notification Bell + Profile */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
+            {/* Expandable Search Capsule */}
+            <div className="admin-header-search" style={{ position: 'relative' }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: 'var(--adm-bg-input)',
-                border: `1px solid ${isSearchFocused && globalSearch ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                background: isSearchFocused || globalSearch ? '#141118' : 'transparent',
+                border: `1px solid ${isSearchFocused || globalSearch ? 'rgba(212, 175, 55, 0.4)' : 'transparent'}`,
                 borderRadius: '50px',
-                padding: '7px 16px',
-                width: '100%',
-                transition: 'all 0.2s ease',
-              }}>
-                <span style={{ color: 'var(--adm-text-muted)', display: 'flex' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                padding: isSearchFocused || globalSearch ? '5px 12px' : '6px',
+                width: isSearchFocused || globalSearch ? '280px' : '36px',
+                height: '36px',
+                boxSizing: 'border-box',
+                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                cursor: isSearchFocused || globalSearch ? 'text' : 'pointer',
+              }}
+              onClick={() => setIsSearchFocused(true)}
+              >
+                <span style={{ color: isSearchFocused || globalSearch ? '#D4AF37' : '#9E988D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
                 </span>
-                <input
-                  type="text"
-                  placeholder="Buscar leads, aniversariantes, casas, equipe..."
-                  value={globalSearch}
-                  onChange={(e) => setGlobalSearch(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.82rem',
-                    width: '100%',
-                    fontFamily: 'inherit',
-                  }}
-                />
+                {(isSearchFocused || globalSearch) && (
+                  <input
+                    type="text"
+                    placeholder="Buscar no sistema..."
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
+                    autoFocus
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color: '#FFF',
+                      fontSize: '0.8rem',
+                      width: '100%',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                )}
                 {globalSearch && (
                   <button
                     type="button"
-                    onClick={() => setGlobalSearch('')}
+                    onClick={(e) => { e.stopPropagation(); setGlobalSearch(''); }}
                     style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0, fontSize: '0.7rem' }}
                   >
                     ✕
@@ -490,8 +528,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
-          {/* Right Header Actions (Master Switcher & Notifications Bell) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {/* 1. Notification Bell & Dropdown */}
             <div style={{ position: 'relative' }}>
               <button

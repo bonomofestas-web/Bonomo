@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Send, ChevronDown, 
-  Trash2, MoreHorizontal, Check
+  Trash2, MoreHorizontal, Check,
+  ChevronLeft
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { 
@@ -15,14 +16,16 @@ interface AdminLeadInspectorProps {
   lead: Lead;
   onWhatsApp: (lead: Lead) => void;
   onStageChange: (stage: CrmStage) => void;
+  onToggleCollapse?: () => void;
+  isCollapsed?: boolean;
 }
 
 const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string; border: string }> = {
-  new_lead:          { label: 'Novo Lead',                    color: '#60A5FA', bg: 'rgba(96,165,250,0.15)',  border: '#60A5FA' },
-  in_analysis:       { label: 'Em Análise / Contato',         color: '#FBBF24', bg: 'rgba(251,191,36,0.15)',  border: '#FBBF24' },
-  meeting_scheduled: { label: 'Reunião / Degustação',         color: '#A78BFA', bg: 'rgba(167,139,250,0.15)', border: '#A78BFA' },
-  contract_signed:   { label: 'Contrato Fechado (Venda VIP)', color: '#34D399', bg: 'rgba(52,211,153,0.15)',  border: '#34D399' },
-  lost:              { label: 'Perdido / Recusado',           color: '#EF4444', bg: 'rgba(239,68,68,0.15)',   border: '#EF4444' },
+  new_lead:          { label: 'Novo Lead',                    color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',  border: '#3B82F6' },
+  in_analysis:       { label: 'Em Análise / Contato',         color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  border: '#F59E0B' },
+  meeting_scheduled: { label: 'Reunião / Degustação',         color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)', border: '#8B5CF6' },
+  contract_signed:   { label: 'Contrato Fechado (Venda VIP)', color: '#10B981', bg: 'rgba(16,185,129,0.12)',  border: '#10B981' },
+  lost:              { label: 'Perdido / Recusado',           color: '#EF4444', bg: 'rgba(239,68,68,0.12)',   border: '#EF4444' },
 };
 
 const STAGE_LIST: CrmStage[] = ['new_lead', 'in_analysis', 'meeting_scheduled', 'contract_signed', 'lost'];
@@ -39,6 +42,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   lead,
   onWhatsApp,
   onStageChange,
+  onToggleCollapse,
+  isCollapsed,
 }) => {
   const { 
     currentUser, 
@@ -53,7 +58,6 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     removeLeadCloser
   } = useAdminState();
 
-  const [activeTab, setActiveTab] = useState<'principal' | 'estatisticas' | 'midia'>('principal');
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -61,6 +65,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [newContactRole, setNewContactRole] = useState<LeadContactRole>('mother');
   const [newTagInput, setNewTagInput] = useState('');
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
@@ -127,22 +132,22 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const currentStageConfig = STAGE_CONFIGS[lead.stage] || STAGE_CONFIGS.new_lead;
   const currentStageIndex = STAGE_LIST.indexOf(lead.stage);
 
-  // ── ROW STYLES (Kommo CRM pure row key-value) ──────────────────────────────
+  // ── ROW STYLES (Light & Dark theme adaptive) ───────────────────────────────
   const rowStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
-    padding: '8px 16px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-    minHeight: '38px',
-    fontSize: '0.81rem',
+    padding: '7px 16px',
+    borderBottom: '1px solid var(--adm-border)',
+    minHeight: '36px',
+    fontSize: '0.8rem',
     fontFamily: "'Plus Jakarta Sans', sans-serif",
   };
 
   const rowLabelStyle: React.CSSProperties = {
-    width: '135px',
+    width: '130px',
     flexShrink: 0,
     color: 'var(--adm-text-muted)',
-    fontSize: '0.76rem',
+    fontSize: '0.74rem',
     fontWeight: 500,
   };
 
@@ -158,10 +163,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     width: '100%',
     background: 'transparent',
     border: '1px solid transparent',
-    borderRadius: '4px',
+    borderRadius: '6px',
     padding: '3px 6px',
     color: 'var(--adm-text-title)',
-    fontSize: '0.81rem',
+    fontSize: '0.8rem',
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -172,10 +177,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     width: '100%',
     background: 'transparent',
     border: '1px solid transparent',
-    borderRadius: '4px',
+    borderRadius: '6px',
     padding: '3px 6px',
     color: 'var(--adm-text-title)',
-    fontSize: '0.81rem',
+    fontSize: '0.8rem',
     outline: 'none',
     cursor: 'pointer',
     fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -186,19 +191,20 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: '#121018',
+      background: 'var(--adm-bg-card)',
       color: 'var(--adm-text-title)',
       overflow: 'hidden',
+      position: 'relative',
     }}>
-      {/* ── 1. KOMMO HEADER: LEAD TITLE & STATUS BAR ───────────────────────── */}
+      {/* ── 1. KOMMO HEADER (Distinct subtle background tone) ──────────────── */}
       <div style={{
-        padding: '14px 16px 10px',
+        padding: '12px 16px 8px',
         borderBottom: '1px solid var(--adm-border)',
-        background: '#16131F',
+        background: 'var(--adm-bg-sidebar)',
         flexShrink: 0,
       }}>
-        {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+        {/* Title row + Collapse Button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <input
               type="text"
@@ -206,36 +212,52 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               onChange={(e) => handleUpdate({ name: e.target.value })}
               style={{
                 ...inlineInputStyle,
-                fontSize: '1.08rem',
+                fontSize: '1.05rem',
                 fontWeight: 900,
                 padding: '2px 4px',
-                color: '#FFF',
+                color: 'var(--adm-text-title)',
               }}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
               title="Clique para editar o nome"
             />
           </div>
-          <button style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '4px' }}>
-            <MoreHorizontal size={18} />
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                title={isCollapsed ? "Expandir ficha do lead" : "Recolher ficha do lead"}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-muted)',
+                  borderRadius: '6px',
+                  padding: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+            )}
+            <button style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '4px' }}>
+              <MoreHorizontal size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Lead ID badge + City/Venue */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        {/* Venue & Debutante info */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
           <span style={{
-            background: 'rgba(255, 255, 255, 0.08)',
+            fontSize: '0.72rem',
             color: 'var(--adm-text-muted)',
-            padding: '2px 8px',
-            borderRadius: '4px',
-            fontSize: '0.68rem',
-            fontWeight: 700,
-            letterSpacing: '0.5px',
+            fontWeight: 600,
           }}>
-            #{lead.id.slice(-8).toUpperCase()} {leadVenue?.name || 'Bonomo Festas'}
-          </span>
-          <span style={{ fontSize: '0.72rem', color: '#D4AF37', fontWeight: 700 }}>
-            Indicada por: {lead.debutanteName}
+            {leadVenue?.name || 'Bonomo Festas'} • <strong style={{ color: 'var(--adm-accent)' }}>Indicada por: {lead.debutanteName}</strong>
           </span>
         </div>
 
@@ -275,7 +297,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     flex: 1,
                     height: '4px',
                     borderRadius: '2px',
-                    background: lead.stage === 'lost' && stg === 'lost' ? '#EF4444' : isFilled ? cfg.color : 'rgba(255,255,255,0.12)',
+                    background: lead.stage === 'lost' && stg === 'lost' ? '#EF4444' : isFilled ? cfg.color : 'rgba(128,128,128,0.2)',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
                   }}
@@ -292,12 +314,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               left: 0,
               right: 0,
               marginTop: '4px',
-              background: '#1A1624',
+              background: 'var(--adm-bg-card)',
               border: '1px solid var(--adm-border)',
               borderRadius: '8px',
               overflow: 'hidden',
               zIndex: 50,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
             }}>
               {STAGE_LIST.map(stg => {
                 const cfg = STAGE_CONFIGS[stg];
@@ -317,10 +339,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       cursor: 'pointer',
                       fontSize: '0.76rem',
                       fontWeight: isSelected ? 800 : 500,
-                      color: isSelected ? cfg.color : '#D1C8BA',
+                      color: isSelected ? cfg.color : 'var(--adm-text-title)',
                       background: isSelected ? cfg.bg : 'transparent',
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
                     onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? cfg.bg : 'transparent'}
                   >
                     <span>{cfg.label}</span>
@@ -332,27 +354,22 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           )}
         </div>
 
-        {/* Sub-tabs: Principal | Estatísticas | Mídia */}
-        <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
-          {(['principal', 'estatisticas', 'midia'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: activeTab === tab ? '2px solid #2563EB' : '2px solid transparent',
-                padding: '4px 2px 8px 2px',
-                color: activeTab === tab ? '#FFF' : 'var(--adm-text-muted)',
-                fontSize: '0.78rem',
-                fontWeight: activeTab === tab ? 800 : 500,
-                textTransform: 'capitalize',
-                cursor: 'pointer',
-              }}
-            >
-              {tab === 'principal' ? 'Principal' : tab === 'estatisticas' ? 'Estatísticas' : 'Mídia'}
-            </button>
-          ))}
+        {/* Tab: Principal Only */}
+        <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+          <button
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '2px solid var(--adm-accent)',
+              padding: '4px 2px 6px 2px',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              cursor: 'default',
+            }}
+          >
+            Principal
+          </button>
         </div>
       </div>
 
@@ -378,7 +395,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 ))}
               </select>
             ) : (
-              <span style={{ fontSize: '0.81rem', color: '#FFF' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
                 {sdrCollab?.name || 'Nenhum SDR atribuído'}
               </span>
             )}
@@ -404,7 +421,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 ))}
               </select>
             ) : (
-              <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+              <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
                 Disponível na Reunião
               </span>
             )}
@@ -415,7 +432,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         <div style={rowStyle}>
           <span style={rowLabelStyle}>Venda / Orçamento</span>
           <div style={rowValueStyle}>
-            <span style={{ color: '#22C55E', fontWeight: 800, marginRight: '4px' }}>R$</span>
+            <span style={{ color: '#10B981', fontWeight: 800, marginRight: '4px' }}>R$</span>
             <input
               type="number"
               min="0"
@@ -423,8 +440,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               placeholder="0"
               value={lead.estimatedBudget || lead.dealValue || ''}
               onChange={(e) => handleUpdate({ estimatedBudget: Number(e.target.value) || undefined })}
-              style={{ ...inlineInputStyle, color: '#22C55E', fontWeight: 800 }}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              style={{ ...inlineInputStyle, color: '#10B981', fontWeight: 800 }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -438,30 +455,49 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               type="text"
               value={lead.phone}
               onChange={(e) => handleUpdate({ phone: e.target.value })}
-              style={{ ...inlineInputStyle, width: '150px' }}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              style={{ ...inlineInputStyle, width: '140px' }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
-            <button
-              type="button"
-              onClick={() => onWhatsApp(lead)}
-              style={{
-                background: '#25D366',
-                border: 'none',
-                color: '#FFF',
-                borderRadius: '4px',
-                padding: '3px 8px',
-                fontSize: '0.68rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <Send size={11} />
-              <span>Abrir</span>
-            </button>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setIsWhatsAppModalOpen(true)}
+                title="Ver perfil do WhatsApp"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-muted)',
+                  borderRadius: '4px',
+                  padding: '3px 6px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Perfil
+              </button>
+              <button
+                type="button"
+                onClick={() => onWhatsApp(lead)}
+                style={{
+                  background: '#25D366',
+                  border: 'none',
+                  color: '#FFF',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Send size={11} />
+                <span>Abrir</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -475,7 +511,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.email || ''}
               onChange={(e) => handleUpdate({ email: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -491,7 +527,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.neighborhood || ''}
               onChange={(e) => handleUpdate({ neighborhood: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -507,7 +543,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.address || ''}
               onChange={(e) => handleUpdate({ address: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -541,7 +577,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.eventDate || lead.partyDate || ''}
               onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -556,7 +592,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.debutanteBirthDate || ''}
               onChange={(e) => handleUpdate({ debutanteBirthDate: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -573,7 +609,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.estimatedGuests || ''}
               onChange={(e) => handleUpdate({ estimatedGuests: Number(e.target.value) || undefined })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -589,7 +625,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.desiredPeriod || ''}
               onChange={(e) => handleUpdate({ desiredPeriod: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -605,7 +641,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.interestService || ''}
               onChange={(e) => handleUpdate({ interestService: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -621,7 +657,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               value={lead.paymentMethod || ''}
               onChange={(e) => handleUpdate({ paymentMethod: e.target.value })}
               style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.06)'; }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; }}
             />
           </div>
@@ -647,16 +683,16 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         <div style={rowStyle}>
           <span style={rowLabelStyle}>Qualificação</span>
           <div style={{ ...rowValueStyle, justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.78rem', color: lead.isValidated ? '#34D399' : 'var(--adm-text-muted)', fontWeight: 700 }}>
+            <span style={{ fontSize: '0.78rem', color: lead.isValidated ? '#10B981' : 'var(--adm-text-muted)', fontWeight: 700 }}>
               {lead.isValidated ? '✅ Validada (+1 pt)' : '⏳ Aguardando'}
             </span>
             <button
               type="button"
               onClick={() => lead.isValidated ? invalidateLead(lead.id) : validateLead(lead.id)}
               style={{
-                background: lead.isValidated ? 'rgba(239, 68, 68, 0.15)' : 'rgba(52, 211, 153, 0.18)',
-                color: lead.isValidated ? '#EF4444' : '#34D399',
-                border: `1px solid ${lead.isValidated ? 'rgba(239, 68, 68, 0.35)' : 'rgba(52, 211, 153, 0.4)'}`,
+                background: lead.isValidated ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.15)',
+                color: lead.isValidated ? '#EF4444' : '#10B981',
+                border: `1px solid ${lead.isValidated ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
                 borderRadius: '4px',
                 padding: '2px 6px',
                 fontSize: '0.68rem',
@@ -678,9 +714,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <span
                   key={t}
                   style={{
-                    background: 'rgba(37, 99, 235, 0.2)',
-                    border: '1px solid rgba(37, 99, 235, 0.5)',
-                    color: '#60A5FA',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    color: '#3B82F6',
                     padding: '1px 6px',
                     borderRadius: '4px',
                     fontSize: '0.68rem',
@@ -694,7 +730,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   <button
                     type="button"
                     onClick={() => handleRemoveTag(t)}
-                    style={{ background: 'transparent', border: 'none', color: '#60A5FA', cursor: 'pointer', padding: 0 }}
+                    style={{ background: 'transparent', border: 'none', color: '#3B82F6', cursor: 'pointer', padding: 0 }}
                   >
                     ×
                   </button>
@@ -710,13 +746,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   value={newTagInput}
                   onChange={(e) => setNewTagInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleAddTag(); }}
-                  style={{ ...inlineInputStyle, background: 'rgba(255,255,255,0.06)', width: '110px' }}
+                  style={{ ...inlineInputStyle, background: 'var(--adm-bg-input)', width: '110px' }}
                   autoFocus
                 />
                 <button
                   type="button"
                   onClick={handleAddTag}
-                  style={{ background: '#2563EB', border: 'none', color: '#FFF', borderRadius: '4px', padding: '2px 6px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ background: '#3B82F6', border: 'none', color: '#FFF', borderRadius: '4px', padding: '2px 6px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Ok
                 </button>
@@ -745,8 +781,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  background: cnt.isPrimaryDecisionMaker ? 'rgba(212,175,55,0.1)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${cnt.isPrimaryDecisionMaker ? 'rgba(212,175,55,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                  background: cnt.isPrimaryDecisionMaker ? 'rgba(212,175,55,0.08)' : 'var(--adm-bg-input)',
+                  border: `1px solid ${cnt.isPrimaryDecisionMaker ? 'rgba(212,175,55,0.3)' : 'var(--adm-border)'}`,
                   borderRadius: '4px',
                   padding: '4px 6px',
                   fontSize: '0.72rem',
@@ -761,7 +797,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     <button
                       type="button"
                       onClick={() => handleSetPrimaryDecisor(cnt)}
-                      style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#D1C8BA', borderRadius: '4px', padding: '1px 4px', fontSize: '0.6rem', cursor: 'pointer' }}
+                      style={{ background: 'transparent', border: '1px solid var(--adm-border)', color: 'var(--adm-text-title)', borderRadius: '4px', padding: '1px 4px', fontSize: '0.6rem', cursor: 'pointer' }}
                     >
                       Tornar Decisor
                     </button>
@@ -785,7 +821,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   required
                   value={newContactName}
                   onChange={(e) => setNewContactName(e.target.value)}
-                  style={{ ...inlineInputStyle, background: 'rgba(255,255,255,0.06)' }}
+                  style={{ ...inlineInputStyle, background: 'var(--adm-bg-input)' }}
                 />
                 <input
                   type="text"
@@ -793,12 +829,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   required
                   value={newContactPhone}
                   onChange={(e) => setNewContactPhone(e.target.value)}
-                  style={{ ...inlineInputStyle, background: 'rgba(255,255,255,0.06)' }}
+                  style={{ ...inlineInputStyle, background: 'var(--adm-bg-input)' }}
                 />
                 <select
                   value={newContactRole}
                   onChange={(e) => setNewContactRole(e.target.value as any)}
-                  style={{ ...inlineSelectStyle, background: 'rgba(255,255,255,0.06)' }}
+                  style={{ ...inlineSelectStyle, background: 'var(--adm-bg-input)' }}
                 >
                   <option value="mother">Mãe</option>
                   <option value="father">Pai</option>
@@ -810,7 +846,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   <button type="button" onClick={() => setIsAddingContact(false)} style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', fontSize: '0.68rem', cursor: 'pointer' }}>
                     Cancelar
                   </button>
-                  <button type="submit" style={{ background: '#2563EB', border: 'none', color: '#FFF', borderRadius: '4px', padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
+                  <button type="submit" style={{ background: '#3B82F6', border: 'none', color: '#FFF', borderRadius: '4px', padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
                     Salvar
                   </button>
                 </div>
@@ -828,6 +864,121 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         </div>
 
       </div>
+
+      {/* WhatsApp Profile Modal */}
+      {isWhatsAppModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(6px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '340px',
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            gap: '12px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+          }}>
+            <div style={{ position: 'relative' }}>
+              <div style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: 'rgba(37, 211, 102, 0.15)',
+                border: '2px solid #25D366',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.4rem',
+                fontWeight: 900,
+                color: '#25D366',
+              }}>
+                {lead.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: '#25D366',
+                border: '2px solid var(--adm-bg-card)',
+              }} />
+            </div>
+
+            <div>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: '0 0 2px' }}>
+                {lead.name}
+              </h4>
+              <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)' }}>
+                {lead.phone}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', marginTop: '4px', fontWeight: 700 }}>
+                Indicada por {lead.debutanteName}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setIsWhatsAppModalOpen(false)}
+                style={{
+                  flex: 1,
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWhatsAppModalOpen(false);
+                  onWhatsApp(lead);
+                }}
+                style={{
+                  flex: 1,
+                  background: '#25D366',
+                  border: 'none',
+                  color: '#FFF',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Send size={12} />
+                <span>Conversar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

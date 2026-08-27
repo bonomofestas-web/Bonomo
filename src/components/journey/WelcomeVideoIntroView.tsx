@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, Crown, ArrowRight, Volume2, VolumeX, Play, 
-  Smartphone, Share2, PlusSquare, MoreVertical, Download
+  Smartphone, PlusSquare, MoreVertical, Download
 } from 'lucide-react';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
 import type { DebutanteAccount, Venue } from '../../types/admin';
@@ -285,7 +285,13 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
                     1
                   </div>
                   <div style={{ fontSize: '0.82rem', color: '#FFF' }}>
-                    Toque no botão <strong style={{ color: '#D4AF37' }}>Compartilhar</strong> (<Share2 size={13} style={{ display: 'inline', verticalAlign: 'middle' }} />) na barra inferior do Safari.
+                    Toque no botão <strong style={{ color: '#D4AF37' }}>Compartilhar</strong> (
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#D4AF37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle', margin: '0 2px' }}>
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                      <polyline points="16 6 12 2 8 6" />
+                      <line x1="12" y1="2" x2="12" y2="15" />
+                    </svg>
+                    ) na barra inferior do Safari.
                   </div>
                 </div>
 
