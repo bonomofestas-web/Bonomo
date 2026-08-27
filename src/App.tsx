@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdminStateProvider, useAdminState } from './context/AdminStateContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Header } from './components/layout/Header';
@@ -193,22 +193,81 @@ export const AppContent: React.FC = () => {
   );
 };
 
+const parseRouteFromLocation = (): { mode: 'admin' | 'debutante'; slug: string } => {
+  const searchParams = new URLSearchParams(window.location.search);
+  const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const hashParams = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : (hash.includes('=') ? hash : ''));
+
+  // 1. Search params (?debutante=slug or ?d=slug)
+  if (searchParams.has('debutante')) {
+    return { mode: 'debutante', slug: searchParams.get('debutante')! };
+  }
+  if (searchParams.has('d')) {
+    return { mode: 'debutante', slug: searchParams.get('d')! };
+  }
+
+  // 2. Hash params (#debutante=slug or #/debutante/slug)
+  if (hashParams.has('debutante')) {
+    return { mode: 'debutante', slug: hashParams.get('debutante')! };
+  }
+  if (hash.startsWith('debutante/')) {
+    const slug = hash.replace(/^debutante\//, '').split('?')[0];
+    if (slug) return { mode: 'debutante', slug };
+  }
+
+  // 3. Explicit admin routes
+  if (searchParams.has('admin') || searchParams.has('portal') || searchParams.has('login')) {
+    return { mode: 'admin', slug: '' };
+  }
+
+  // 4. Pathname detection (e.g. /maria-eduarda-2027 or /debutante/maria-eduarda-2027)
+  const segments = pathname.split('/').filter(Boolean);
+  const first = segments[0]?.toLowerCase() || '';
+
+  const RESERVED_ADMIN_ROUTES = [
+    '', 'admin', 'portal', 'crm', 'login', 'dashboard', 'settings',
+    'api', 'assets', 'favicon.ico', 'favicon.png', 'vite.svg', 'index.html'
+  ];
+
+  if (first === 'debutante' && segments[1]) {
+    return { mode: 'debutante', slug: segments[1] };
+  }
+
+  if (first && !RESERVED_ADMIN_ROUTES.includes(first)) {
+    return { mode: 'debutante', slug: segments[0] };
+  }
+
+  return { mode: 'admin', slug: 'maria-eduarda-2027' };
+};
+
 const RootAppRouter: React.FC = () => {
   const { debutantes, venues, getDebutanteBySlug, getVenueById, markWelcomeVideoSeen } = useAdminState();
 
-  const [urlParams] = useState(() => new URLSearchParams(window.location.search));
-  const [viewMode, setViewMode] = useState<'admin' | 'debutante'>(() => {
-    // Default to admin system unless explicitly provided with ?debutante=slug
-    if (urlParams.has('debutante')) return 'debutante';
-    return 'admin';
-  });
+  const [routeInfo, setRouteInfo] = useState(parseRouteFromLocation);
 
-  const [currentDebutanteSlug, setCurrentDebutanteSlug] = useState<string>(() => {
-    return urlParams.get('debutante') || 'maria-eduarda-2027';
-  });
+  // Listen to popstate and hashchange for smooth in-browser navigation
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setRouteInfo(parseRouteFromLocation());
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, []);
+
+  const viewMode = routeInfo.mode;
+  const currentDebutanteSlug = routeInfo.slug;
 
   // Resolve current active debutante account
-  const activeDeb = getDebutanteBySlug(currentDebutanteSlug) || debutantes[0];
+  const activeDeb = 
+    (currentDebutanteSlug ? getDebutanteBySlug(currentDebutanteSlug) : undefined) ||
+    debutantes.find(d => currentDebutanteSlug && (d.slug.toLowerCase() === currentDebutanteSlug.toLowerCase() || d.id === currentDebutanteSlug)) ||
+    debutantes[0];
+
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
   // Dynamic Favicon and Document Title
@@ -233,10 +292,9 @@ const RootAppRouter: React.FC = () => {
   }, [viewMode, activeDeb, activeVenue]);
 
   const handleOpenDebutanteApp = (slug?: string) => {
-    if (slug) {
-      setCurrentDebutanteSlug(slug);
-    }
-    setViewMode('debutante');
+    const targetSlug = slug || activeDeb?.slug || 'maria-eduarda-2027';
+    setRouteInfo({ mode: 'debutante', slug: targetSlug });
+    window.history.pushState({}, '', `/?debutante=${encodeURIComponent(targetSlug)}`);
   };
 
   if (viewMode === 'admin') {

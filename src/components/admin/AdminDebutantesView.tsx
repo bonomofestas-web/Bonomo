@@ -115,7 +115,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
   const handleCopyExclusiveLink = (slug: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const url = `${window.location.origin}/${slug}`;
+    const url = `${window.location.origin}/?debutante=${encodeURIComponent(slug)}`;
     navigator.clipboard.writeText(url);
     setCopiedSlug(slug);
     setTimeout(() => setCopiedSlug(null), 2500);
@@ -124,8 +124,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   const handleSendWhatsAppAccess = (debutante: DebutanteAccount, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const venue = venues.find(v => v.id === debutante.venueId);
-    const venueName = venue?.name || 'Espaço Rio Lounge';
-    const link = `${window.location.origin}/${debutante.slug}`;
+    const venueName = venue?.name || 'Espaço Bonomo';
+    const link = `${window.location.origin}/?debutante=${encodeURIComponent(debutante.slug)}`;
     
     const text = `Olá, ${debutante.name}! 👑✨\nSeu aplicativo oficial para os seus 15 Anos no ${venueName} está pronto!\n\nAcesse diretamente pelo seu link exclusivo:\n${link}`;
     const cleanPhone = debutante.phone.replace(/\D/g, '');
@@ -137,7 +137,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
   const handleOpenAppDirect = (slug: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    window.open(`/${slug}`, '_blank');
+    window.open(`/?debutante=${encodeURIComponent(slug)}`, '_blank');
   };
 
   return (

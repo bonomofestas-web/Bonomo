@@ -29,14 +29,14 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
   const wonContractsCount = debutante.convertedReferralSales || 0;
 
   const handleCopyLink = () => {
-    const fullUrl = `${window.location.origin}/${debutante.slug}`;
+    const fullUrl = `${window.location.origin}/?debutante=${encodeURIComponent(debutante.slug)}`;
     navigator.clipboard.writeText(fullUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleOpenApp = () => {
-    window.open(`/${debutante.slug}`, '_blank');
+    window.open(`/?debutante=${encodeURIComponent(debutante.slug)}`, '_blank');
   };
 
   // Toggle referral status (Pendente <-> Validada)

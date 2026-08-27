@@ -1970,7 +1970,32 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Query Helpers ────────────────────────────────────────────────────────────
 
   const getDebutanteBySlug = (slug: string): DebutanteAccount | undefined => {
-    return debutantes.find(d => d.slug === slug || d.id === slug);
+    if (!slug) return undefined;
+    const clean = decodeURIComponent(slug).toLowerCase().trim();
+    
+    // 1. Check in-memory debutantes
+    const foundInState = debutantes.find(d => 
+      (d.slug && d.slug.toLowerCase().trim() === clean) || 
+      (d.id && d.id.toLowerCase().trim() === clean)
+    );
+    if (foundInState) return foundInState;
+
+    // 2. Fallback: check localStorage directly (useful on instant new-tab open)
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
+      if (saved) {
+        const list: DebutanteAccount[] = JSON.parse(saved);
+        const foundInStorage = list.find(d => 
+          (d.slug && d.slug.toLowerCase().trim() === clean) || 
+          (d.id && d.id.toLowerCase().trim() === clean)
+        );
+        if (foundInStorage) return foundInStorage;
+      }
+    } catch (e) {
+      console.error('Error in getDebutanteBySlug storage lookup:', e);
+    }
+
+    return undefined;
   };
 
   const getVenueById = (venueId: string): Venue | undefined => {
