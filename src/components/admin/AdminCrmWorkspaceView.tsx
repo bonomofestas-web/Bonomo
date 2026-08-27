@@ -1,78 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Send, MessageSquare, 
-  Clock, Sparkles, 
-  Inbox, Calendar, DollarSign, XCircle,
-  Plus, Trash2, Check, AlertTriangle,
-  ClipboardList, AlignLeft
+  Search, Send, MessageSquare, Sparkles, 
+  Settings, Mic
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskModal } from './AdminTaskModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
-import type { Lead, CrmStage, LeadTask } from '../../types/admin';
+import type { Lead, CrmStage } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
   initialLeadId?: string;
   onLeadOpened?: () => void;
 }
 
-const STAGE_CONFIGS: Record<CrmStage, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
-  new_lead:          { label: 'Novo Lead',                    shortLabel: 'Novo',       color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',   border: 'rgba(96,165,250,0.35)' },
-  in_analysis:       { label: 'Em Análise',                   shortLabel: 'Análise',    color: '#FBBF24', bg: 'rgba(251,191,36,0.12)',   border: 'rgba(251,191,36,0.35)' },
-  meeting_scheduled: { label: 'Reunião / Degustação',         shortLabel: 'Reunião',    color: '#A78BFA', bg: 'rgba(167,139,250,0.12)',  border: 'rgba(167,139,250,0.35)' },
-  contract_signed:   { label: 'Contrato Fechado (Venda VIP)', shortLabel: 'Fechado',    color: '#FFD700', bg: 'rgba(255,215,0,0.15)',    border: 'rgba(255,215,0,0.45)' },
-  lost:              { label: 'Perdido / Recusado',           shortLabel: 'Perdido',    color: '#EF4444', bg: 'rgba(239,68,68,0.12)',    border: 'rgba(239,68,68,0.35)' },
-};
-
-const STAGE_LIST: CrmStage[] = ['new_lead', 'in_analysis', 'meeting_scheduled', 'contract_signed', 'lost'];
-
-const renderStageIcon = (stage: CrmStage, size = 14) => {
-  switch (stage) {
-    case 'new_lead':          return <Inbox size={size} color="#60A5FA" />;
-    case 'in_analysis':       return <Clock size={size} color="#FBBF24" />;
-    case 'meeting_scheduled': return <Calendar size={size} color="#A78BFA" />;
-    case 'contract_signed':   return <DollarSign size={size} color="#FFD700" />;
-    case 'lost':              return <XCircle size={size} color="#EF4444" />;
-  }
-};
-
 const formatDate = (iso: string) => {
   try {
-    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch { return iso; }
 };
 
-const formatDateShort = (dateStr: string) => {
+const formatTimeOnly = (iso: string) => {
   try {
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}/${y}`;
-  } catch { return dateStr; }
-};
-
-const getTaskStatus = (task: LeadTask) => {
-  if (task.status === 'completed') return { color: '#34D399', bg: 'rgba(52,211,153,0.1)', label: 'Concluída' };
-  const now = new Date();
-  const due = new Date(`${task.dueDate}T${task.dueTime || '23:59'}`);
-  if (due < now) return { color: '#EF4444', bg: 'rgba(239,68,68,0.1)', label: 'Atrasada' };
-  const diffMs = due.getTime() - now.getTime();
-  const diffH = diffMs / (1000 * 60 * 60);
-  if (diffH < 24) return { color: '#FBBF24', bg: 'rgba(251,191,36,0.1)', label: 'Urgente' };
-  return { color: '#60A5FA', bg: 'rgba(96,165,250,0.1)', label: 'Pendente' };
-};
-
-const AvatarCircle: React.FC<{ src?: string; name: string; size?: number; color?: string }> = ({ src, name, size = 30, color = '#D4AF37' }) => {
-  const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', border: `1.5px solid ${color}`, overflow: 'hidden', flexShrink: 0, background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {src ? (
-        <img src={src} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <span style={{ fontSize: size * 0.38, fontWeight: 800, color }}>{initials}</span>
-      )}
-    </div>
-  );
+    const d = new Date(iso);
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch { return '11:15'; }
 };
 
 export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
@@ -80,23 +34,22 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   onLeadOpened,
 }) => {
   const { 
-    leads, collaborators, currentUser, activeVenueId,
+    leads, currentUser, activeVenueId,
     updateLeadStage, closeLeadSaleWithValue, addLeadNote,
     claimLeadIfUnassigned, assignLeadSdr,
-    completeLeadTask, deleteLeadTask,
+    deleteLeadTask,
   } = useAdminState();
 
   // ── Column 1 filters ──────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState<'all' | CrmStage>('all');
-  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'unassigned' | 'mine'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'mine' | 'unassigned'>('all');
 
   // ── Active lead ────────────────────────────────────────────────────────────
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId || null);
   
   // ── Column 3 state ─────────────────────────────────────────────────────────
-  const [noteInput, setNoteInput] = useState('');
-  const [activeCol3Tab, setActiveCol3Tab] = useState<'history' | 'tasks'>('history');
+  const [messageMode, setMessageMode] = useState<'whatsapp' | 'internal_note' | 'task'>('whatsapp');
+  const [messageText, setMessageText] = useState('');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
   // ── Task creation state ────────────────────────────────────────────────────
@@ -114,26 +67,27 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   // Filtered leads for Column 1
   const filteredLeads = leads.filter(l => {
     const matchesVenue = !activeVenueId || l.venueId === activeVenueId;
-    // For SDR/Closer: only see their own leads
     const userRole = currentUser?.role;
     let matchesRole = true;
     if (userRole === 'sdr' && currentUser?.id) {
-      matchesRole = l.sdrId === currentUser.id || (l.participants || []).some(p => p.collaboratorId === currentUser!.id);
+      matchesRole = l.sdrId === currentUser.id || !l.sdrId;
     } else if (userRole === 'closer' && currentUser?.id) {
-      matchesRole = l.closerId === currentUser.id || (l.participants || []).some(p => p.collaboratorId === currentUser!.id);
+      matchesRole = l.closerId === currentUser.id || l.stage === 'meeting_scheduled' || l.stage === 'contract_signed';
     }
-    const matchesStage = stageFilter === 'all' || l.stage === stageFilter;
-    let matchesAssignee = true;
-    if (assigneeFilter === 'unassigned') {
-      matchesAssignee = !l.sdrId && !l.assignedTo;
-    } else if (assigneeFilter === 'mine') {
-      matchesAssignee = l.sdrId === currentUser?.id || l.closerId === currentUser?.id;
+
+    let matchesFilterType = true;
+    if (filterType === 'mine') {
+      matchesFilterType = (l.sdrId === currentUser?.id || l.closerId === currentUser?.id);
+    } else if (filterType === 'unassigned') {
+      matchesFilterType = !l.sdrId;
     }
-    const matchesSearch = 
+
+    const matchesSearch = !search.trim() ||
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       l.phone.includes(search) ||
       l.debutanteName.toLowerCase().includes(search.toLowerCase());
-    return matchesVenue && matchesRole && matchesStage && matchesAssignee && matchesSearch;
+
+    return matchesVenue && matchesRole && matchesFilterType && matchesSearch;
   });
 
   useEffect(() => {
@@ -146,7 +100,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
 
   const handleSelectLead = (lead: Lead) => {
     setSelectedLeadId(lead.id);
-    // Auto-claim if unassigned and current user is SDR
     if (!lead.sdrId && (currentUser?.role === 'sdr' || currentUser?.role === 'crm')) {
       claimLeadIfUnassigned(lead.id);
     }
@@ -155,7 +108,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const handleStageChange = (newStage: CrmStage) => {
     if (!currentLead) return;
 
-    // Auto-claim SDR if unassigned when progressing past new_lead
     if (newStage !== 'new_lead' && !currentLead.sdrId && currentUser && (currentUser.role === 'sdr' || currentUser.role === 'crm' || currentUser.role === 'admin' || currentUser.role === 'master')) {
       assignLeadSdr(currentLead.id, currentUser.id);
     }
@@ -171,10 +123,19 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate);
   };
 
-  const handleAddNote = () => {
-    if (!currentLead || !noteInput.trim()) return;
-    addLeadNote(currentLead.id, noteInput.trim());
-    setNoteInput('');
+  const handleSendMessage = () => {
+    if (!currentLead || !messageText.trim()) return;
+
+    if (messageMode === 'whatsapp') {
+      const cleanPhone = currentLead.phone.replace(/\D/g, '');
+      const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(messageText.trim())}`;
+      window.open(url, '_blank');
+      addLeadNote(currentLead.id, `[WhatsApp Enviado] ${messageText.trim()}`);
+    } else if (messageMode === 'internal_note') {
+      addLeadNote(currentLead.id, messageText.trim());
+    }
+
+    setMessageText('');
   };
 
   const handleWhatsApp = (lead: Lead) => {
@@ -183,160 +144,267 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     window.open(`https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(txt)}`, '_blank');
   };
 
-  const pendingTasks = (currentLead?.tasks || []).filter(t => t.status !== 'completed');
-  const completedTasks = (currentLead?.tasks || []).filter(t => t.status === 'completed');
-
-  // ── INPUT STYLE HELPER (uses CSS vars) ─────────────────────────────────────
-  const inputStyle: React.CSSProperties = {
-    width: '100%', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)',
-    borderRadius: '8px', padding: '7px 10px', color: 'var(--adm-text-title)',
-    fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box',
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
-  };
-
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '310px 380px 1fr',
+      gridTemplateColumns: '310px 390px 1fr',
       gap: '0px',
       height: '100%',
       minHeight: 0,
       flex: 1,
-      background: 'var(--adm-bg-card)',
+      background: '#0D0B12',
       border: '1px solid var(--adm-border)',
-      borderRadius: '20px',
-      boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
+      borderRadius: '16px',
       overflow: 'hidden',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 1 — CAIXA DE ENTRADA                                           */}
+      {/* COLUNA 1 — INBOX / CONVERSAS ABERTAS (KOMMO STYLE)                      */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
-        background: 'var(--adm-bg-sidebar)',
-        borderRight: '1px solid var(--adm-border)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        background: '#121019',
+        borderRight: '1px solid rgba(255, 255, 255, 0.07)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         height: '100%',
       }}>
-        {/* Inbox Header */}
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--adm-border)', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, background: 'var(--adm-bg-card)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <Inbox size={16} color="#D4AF37" />
-              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Caixa de Entrada</span>
+        {/* Search header */}
+        <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid rgba(255, 255, 255, 0.07)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={14} color="var(--adm-text-muted)" style={{ position: 'absolute', left: '10px', top: '9px' }} />
+              <input
+                type="text"
+                placeholder="Buscar lead ou telefone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '6px',
+                  padding: '6px 10px 6px 30px',
+                  color: '#FFF',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
-            <span style={{ background: 'var(--adm-accent-bg)', color: '#D4AF37', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 800, border: '1px solid rgba(212,175,55,0.3)' }}>
-              {filteredLeads.length}
-            </span>
+            <button
+              type="button"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-text-muted)',
+                cursor: 'pointer',
+                padding: '6px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Settings size={15} />
+            </button>
           </div>
 
-          {/* Search */}
-          <div style={{ position: 'relative' }}>
-            <Search size={13} color="var(--adm-text-muted)" style={{ position: 'absolute', left: 9, top: 9 }} />
-            <input
-              type="text"
-              placeholder="Buscar lead..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ ...inputStyle, paddingLeft: '28px', fontSize: '0.75rem' }}
-            />
-          </div>
+          {/* INBOX Title + Filter row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.76rem', fontWeight: 900, color: 'var(--adm-text-muted)', letterSpacing: '0.6px' }}>
+                INBOX
+              </span>
+              <span style={{
+                background: '#2563EB',
+                color: '#FFF',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontSize: '0.66rem',
+                fontWeight: 800,
+              }}>
+                {filteredLeads.length}
+              </span>
+            </div>
 
-          {/* Filters row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value as any)} style={{ ...inputStyle, fontSize: '0.72rem' }}>
-              <option value="all">Todas as etapas</option>
-              {STAGE_LIST.map(s => <option key={s} value={s}>{STAGE_CONFIGS[s].shortLabel}</option>)}
-            </select>
-            <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value as any)} style={{ ...inputStyle, fontSize: '0.72rem' }}>
-              <option value="all">Todos</option>
-              <option value="unassigned">Sem SDR</option>
-              <option value="mine">Meus Leads</option>
-            </select>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setFilterType('all')}
+                style={{
+                  background: filterType === 'all' ? 'rgba(34, 197, 94, 0.18)' : 'transparent',
+                  border: 'none',
+                  color: filterType === 'all' ? '#22C55E' : 'var(--adm-text-muted)',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Abertas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('mine')}
+                style={{
+                  background: filterType === 'mine' ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+                  border: 'none',
+                  color: filterType === 'mine' ? '#60A5FA' : 'var(--adm-text-muted)',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Minhas
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Leads list (Independent Scroll) */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 8px' }}>
+        {/* Leads list */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {filteredLeads.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--adm-text-muted)', fontSize: '0.8rem' }}>
-              <Inbox size={32} color="var(--adm-text-muted)" style={{ marginBottom: '8px', opacity: 0.5 }} />
-              <div>Nenhum lead encontrado</div>
-              <div style={{ fontSize: '0.7rem', marginTop: '4px', opacity: 0.7 }}>Tente ajustar os filtros</div>
+            <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
+              Nenhum contato encontrado
             </div>
           ) : (
-            filteredLeads.map(lead => {
-              const isSelected = lead.id === currentLead?.id;
-              const cfg = STAGE_CONFIGS[lead.stage];
-              const noSdr = !lead.sdrId;
-              const pendingCount = (lead.tasks || []).filter(t => t.status !== 'completed').length;
-              const sdr = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : null;
+            filteredLeads.map((lead, index) => {
+              const isSelected = selectedLeadId === lead.id;
+              const tagCode = `A${1400 + (index * 7) % 500}`;
+              const timeStr = lead.createdAt ? formatTimeOnly(lead.createdAt) : 'Hoje 11:15';
+              const lastNote = lead.notes || 'Salesbot: Olá, tudo bem?';
+
               return (
                 <div
                   key={lead.id}
                   onClick={() => handleSelectLead(lead)}
                   style={{
-                    background: isSelected ? 'var(--adm-accent-bg)' : 'transparent',
-                    border: isSelected ? '1.5px solid rgba(212,175,55,0.5)' : '1px solid transparent',
-                    borderRadius: '10px', padding: '10px 12px', cursor: 'pointer',
-                    display: 'flex', flexDirection: 'column', gap: '5px',
-                    marginBottom: '4px', transition: 'all 0.12s ease',
+                    padding: '10px 14px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                    cursor: 'pointer',
+                    background: isSelected ? '#2563EB' : 'transparent',
+                    color: isSelected ? '#FFF' : 'inherit',
+                    transition: 'all 0.1s ease',
                   }}
-                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-card)'; }}
-                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {lead.name}
-                    </span>
-                    <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, padding: '1px 6px', borderRadius: '5px', fontSize: '0.6rem', fontWeight: 800, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
-                      {renderStageIcon(lead.stage, 10)}
-                      {cfg.shortLabel}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                    {lead.phone} · {lead.age}a · {lead.group}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
-                    {noSdr ? (
-                      <span style={{ fontSize: '0.62rem', color: '#FBBF24', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        <AlertTriangle size={10} color="#FBBF24" /> Sem SDR
-                      </span>
-                    ) : sdr ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <AvatarCircle src={sdr.avatarUrl} name={sdr.name} size={18} color="#8B5CF6" />
-                        <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>{sdr.name}</span>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    {/* Avatar with WhatsApp dot */}
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(255, 255, 255, 0.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 800,
+                        fontSize: '0.82rem',
+                        color: isSelected ? '#FFF' : '#D1C8BA',
+                      }}>
+                        {lead.name.slice(0, 2).toUpperCase()}
                       </div>
-                    ) : (
-                      <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>{lead.sdrName}</span>
-                    )}
-                    {pendingCount > 0 && (
-                      <span style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', padding: '1px 6px', borderRadius: '5px', fontSize: '0.6rem', fontWeight: 800, border: '1px solid rgba(239,68,68,0.3)' }}>
-                        {pendingCount} tarefa{pendingCount > 1 ? 's' : ''}
-                      </span>
-                    )}
+                      {/* WhatsApp channel badge */}
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '-2px',
+                        right: '-2px',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        background: '#25D366',
+                        border: '2px solid #121019',
+                      }} />
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Row 1: Name + Tag + Time */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                        <span style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          color: isSelected ? '#FFF' : 'var(--adm-text-title)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {lead.name}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          <span style={{
+                            background: isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(34, 197, 94, 0.15)',
+                            color: isSelected ? '#FFF' : '#22C55E',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                          }}>
+                            {tagCode}
+                          </span>
+                          <span style={{ fontSize: '0.66rem', color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--adm-text-muted)' }}>
+                            {timeStr}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Debutante / Venue / City */}
+                      <div style={{ fontSize: '0.7rem', color: isSelected ? 'rgba(255,255,255,0.85)' : '#D4AF37', marginTop: '1px', fontWeight: 600 }}>
+                        {lead.debutanteName || 'Rio de Janeiro'}
+                      </div>
+
+                      {/* Row 3: Message preview */}
+                      <div style={{
+                        fontSize: '0.72rem',
+                        color: isSelected ? 'rgba(255,255,255,0.8)' : 'var(--adm-text-muted)',
+                        marginTop: '2px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {lastNote}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
             })
           )}
         </div>
+
+        {/* Footer: Menções & Chats de equipe */}
+        <div style={{
+          padding: '8px 14px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.07)',
+          background: 'rgba(0, 0, 0, 0.25)',
+          fontSize: '0.68rem',
+          fontWeight: 800,
+          color: 'var(--adm-text-muted)',
+          letterSpacing: '0.5px',
+          textTransform: 'uppercase',
+        }}>
+          MENÇÕES & CHATS DE EQUIPE
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 2 — INSPEÇÃO & PERFIL DETALHADO DO LEAD                         */}
+      {/* COLUNA 2 — INSPEÇÃO & LINHAS DO LEAD (KOMMO STYLE)                     */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
-        borderRight: '1px solid var(--adm-border)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: 'var(--adm-bg-app)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.07)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: '#121018',
         height: '100%',
       }}>
         {!currentLead ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: 'var(--adm-text-muted)' }}>
             <Sparkles size={40} color="var(--adm-text-muted)" style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Selecione um lead para começar</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Selecione um contato para inspecionar</div>
           </div>
         ) : (
           <AdminLeadInspector
@@ -348,283 +416,300 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 3 — HISTÓRICO & TAREFAS                                        */}
+      {/* COLUNA 3 — FEED DE TIMELINE / CHAT & CAIXA DE ENVIO                    */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: 'var(--adm-bg-app)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: '#0F0D15',
+        height: '100%',
       }}>
         {!currentLead ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px', color: 'var(--adm-text-muted)' }}>
             <MessageSquare size={36} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: '0.8rem' }}>Selecione um lead</div>
+            <div style={{ fontSize: '0.8rem' }}>Selecione um lead para ver o histórico</div>
           </div>
         ) : (
           <>
-            {/* Tab bar */}
-            <div style={{ borderBottom: '1px solid var(--adm-border)', padding: '0 20px', display: 'flex', gap: '0' }}>
-              {([
-                { key: 'history', label: 'Histórico', icon: <AlignLeft size={14} /> },
-                { key: 'tasks', label: `Tarefas${pendingTasks.length > 0 ? ` (${pendingTasks.length})` : ''}`, icon: <ClipboardList size={14} /> },
-              ] as const).map(tab => (
-                <button key={tab.key} onClick={() => setActiveCol3Tab(tab.key)} style={{
-                  background: 'transparent', border: 'none',
-                  borderBottom: activeCol3Tab === tab.key ? '2px solid #D4AF37' : '2px solid transparent',
-                  color: activeCol3Tab === tab.key ? '#D4AF37' : 'var(--adm-text-muted)',
-                  padding: '12px 16px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', gap: '6px', fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  transition: 'all 0.12s ease', marginBottom: '-1px',
+            {/* Timeline feed body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Date Divider (Hoje) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '4px 0' }}>
+                <span style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  color: 'var(--adm-text-muted)',
+                  padding: '2px 12px',
+                  borderRadius: '12px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
                 }}>
-                  {tab.icon}{tab.label}
-                </button>
-              ))}
+                  Hoje
+                </span>
+              </div>
+
+              {/* Lead Creation Audit Pill */}
+              <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                <span>{currentLead.createdAt ? formatDate(currentLead.createdAt) : 'Hoje'}</span>{' '}
+                <strong style={{ color: '#D4AF37' }}>{currentLead.debutanteName}</strong> indicou{' '}
+                <strong style={{ color: '#FFF' }}>{currentLead.name}</strong> para os 15 Anos.
+              </div>
+
+              {/* Message Cards (Simulated Kommo Chat Bubble) */}
+              <div style={{
+                background: '#161320',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'rgba(37, 211, 102, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#25D366',
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                  }}>
+                    WA
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#FFF' }}>
+                      {currentLead.name}
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                      Telefone: {currentLead.phone}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message pill inside card */}
+                <div style={{
+                  background: '#2563EB',
+                  color: '#FFF',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '0.8rem',
+                  lineHeight: 1.5,
+                }}>
+                  <div style={{ fontSize: '0.66rem', opacity: 0.85, marginBottom: '4px' }}>
+                    {formatDate(currentLead.createdAt || new Date().toISOString())} • SalesBot
+                  </div>
+                  Olá, {currentLead.name}! Tudo bem? Recebemos sua indicação através da debutante {currentLead.debutanteName} para conhecer os pacotes especiais de 15 Anos da Bonomo Festas.
+                </div>
+
+                <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textAlign: 'right' }}>
+                  Conversa Nº {currentLead.id.slice(-6).toUpperCase()}
+                </div>
+              </div>
+
+              {/* Internal Note */}
+              {currentLead.notes && (
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  fontSize: '0.78rem',
+                }}>
+                  <div style={{ fontSize: '0.68rem', color: '#D4AF37', fontWeight: 700, marginBottom: '4px' }}>
+                    Observação Interna
+                  </div>
+                  <div style={{ color: 'var(--adm-text-title)', lineHeight: 1.5 }}>
+                    {currentLead.notes}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ── HISTORY TAB ──────────────────────────────────────────────── */}
-            {activeCol3Tab === 'history' && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* Note Input */}
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--adm-border)', display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Registrar observação ou atualização..."
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddNote(); }}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button onClick={handleAddNote} disabled={!noteInput.trim()} style={{
-                    background: noteInput.trim() ? 'linear-gradient(135deg, #D4AF37, #AA7C11)' : 'var(--adm-bg-card)',
-                    border: 'none', borderRadius: '8px', padding: '7px 14px', color: noteInput.trim() ? '#000' : 'var(--adm-text-muted)',
-                    cursor: noteInput.trim() ? 'pointer' : 'default', fontWeight: 800, fontSize: '0.78rem',
-                    display: 'flex', alignItems: 'center', gap: '5px', fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  }}>
-                    <Send size={13} /> Enviar
-                  </button>
-                </div>
-
-                {/* Quick tags & Task Shortcut */}
-                <div style={{ padding: '8px 20px', borderBottom: '1px solid var(--adm-border)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <button 
-                    onClick={() => setIsTaskModalOpen(true)}
-                    style={{
-                      background: 'var(--adm-accent-bg)', border: '1px solid var(--adm-accent)', color: 'var(--adm-accent)',
-                      borderRadius: '6px', padding: '3px 9px', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: '4px', fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
-                  >
-                    <Plus size={11} /> Agendar Tarefa / Ligação
-                  </button>
-                  {['Ligou, não atendeu', 'WhatsApp enviado', 'Aguardando retorno', 'Interesse confirmado', 'Visita agendada'].map(tag => (
-                    <button key={tag} onClick={() => addLeadNote(currentLead.id, tag)} style={{
-                      background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', color: 'var(--adm-text-muted)',
-                      borderRadius: '6px', padding: '3px 8px', fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}>
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Timeline */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {(currentLead.activities || []).map((activity, idx) => {
-                    const typeColors: Record<string, string> = {
-                      creation: '#60A5FA', status_change: '#A78BFA', note: '#34D399',
-                      deal_closed: '#FFD700', assignment: '#F97316', task_created: '#8B5CF6',
-                      task_completed: '#34D399', contact: '#60A5FA',
-                    };
-                    const color = typeColors[activity.type] || '#888';
-                    const collab = activity.authorId ? collaborators.find(c => c.id === activity.authorId) : null;
-                    return (
-                      <div key={idx} style={{ display: 'flex', gap: '10px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                          {collab ? (
-                            <AvatarCircle src={collab.avatarUrl || activity.authorAvatarUrl} name={activity.authorName} size={28} color={color} />
-                          ) : (
-                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${color}20`, border: `2px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />
-                            </div>
-                          )}
-                          {idx < (currentLead.activities || []).length - 1 && (
-                            <div style={{ width: '1px', flex: 1, background: 'var(--adm-border)', marginTop: '4px', minHeight: '16px' }} />
-                          )}
-                        </div>
-                        <div style={{ flex: 1, paddingBottom: idx < (currentLead.activities || []).length - 1 ? '4px' : '0' }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', lineHeight: 1.4 }}>
-                            {activity.title}
-                          </div>
-                          {activity.text && (
-                            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', marginTop: '3px', lineHeight: 1.5 }}>
-                              {activity.text}
-                            </div>
-                          )}
-                          <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', marginTop: '4px', display: 'flex', gap: '6px' }}>
-                            <span style={{ color, fontWeight: 600 }}>{activity.authorName}</span>
-                            <span>·</span>
-                            <span>{formatDate(activity.timestamp)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {(!currentLead.activities || currentLead.activities.length === 0) && (
-                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--adm-text-muted)', fontSize: '0.8rem' }}>
-                      Nenhuma atividade registrada ainda.
-                    </div>
-                  )}
-                </div>
+            {/* Bottom Action Box (Kommo CRM exact interaction box) */}
+            <div style={{
+              padding: '12px 16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#14111C',
+              flexShrink: 0,
+            }}>
+              {/* Tab Selector: Bate-papo | Nota interna | Criar Tarefa */}
+              <div style={{ display: 'flex', gap: '14px', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMessageMode('whatsapp')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: messageMode === 'whatsapp' ? '#25D366' : 'var(--adm-text-muted)',
+                    fontSize: '0.76rem',
+                    fontWeight: messageMode === 'whatsapp' ? 800 : 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <span>Bate-papo com {currentLead.name.split(' ')[0]}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMessageMode('internal_note')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: messageMode === 'internal_note' ? '#D4AF37' : 'var(--adm-text-muted)',
+                    fontSize: '0.76rem',
+                    fontWeight: messageMode === 'internal_note' ? 800 : 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  Nota interna
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsTaskModalOpen(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  + Nova Tarefa
+                </button>
               </div>
-            )}
 
-            {/* ── TASKS TAB ──────────────────────────────────────────────────── */}
-            {activeCol3Tab === 'tasks' && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* Add Task Button */}
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--adm-border)' }}>
+              {/* Text Input */}
+              <textarea
+                rows={2}
+                placeholder={
+                  messageMode === 'whatsapp'
+                    ? `Enviar mensagem no WhatsApp para ${currentLead.name}...`
+                    : 'Adicionar observação interna no histórico deste lead...'
+                }
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    handleSendMessage();
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  color: '#FFF',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  resize: 'none',
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                }}
+              />
+
+              {/* Action Toolbar */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => setIsTaskModalOpen(true)}
-                    className="adm-btn-primary"
+                    onClick={handleSendMessage}
                     style={{
-                      width: '100%',
-                      padding: '10px 16px',
-                      borderRadius: '12px',
+                      background: messageMode === 'whatsapp' ? '#25D366' : '#2563EB',
+                      border: 'none',
+                      color: '#FFF',
+                      borderRadius: '6px',
+                      padding: '6px 14px',
+                      fontSize: '0.76rem',
                       fontWeight: 800,
-                      fontSize: '0.84rem',
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 16px rgba(212, 175, 55, 0.25)',
+                      gap: '6px',
                     }}
                   >
-                    <Plus size={16} strokeWidth={2.5} />
-                    <span>Nova Tarefa</span>
+                    <Send size={12} />
+                    <span>{messageMode === 'whatsapp' ? 'Enviar WhatsApp' : 'Salvar Nota'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: 'none',
+                      color: 'var(--adm-text-muted)',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Mic size={14} />
                   </button>
                 </div>
 
-                {/* Task List */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {pendingTasks.length === 0 && completedTasks.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--adm-text-muted)' }}>
-                      <ClipboardList size={36} style={{ marginBottom: '10px', opacity: 0.3 }} />
-                      <div style={{ fontSize: '0.82rem' }}>Nenhuma tarefa criada</div>
-                    </div>
-                  ) : (
-                    <>
-                      {pendingTasks.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pendentes ({pendingTasks.length})</div>
-                          {pendingTasks.map(task => {
-                            const st = getTaskStatus(task);
-                            const assignee = collaborators.find(c => c.id === task.assignedToId);
-                            return (
-                              <div key={task.id} style={{ background: 'var(--adm-bg-card)', border: `1px solid ${st.color}40`, borderRadius: '10px', padding: '10px 12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                                <button onClick={() => completeLeadTask(currentLead.id, task.id)} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${st.color}`, background: 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '2px', fontFamily: "'Inter', sans-serif" }}>
-                                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: st.color, opacity: 0.5 }} />
-                                </button>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '3px' }}>{task.description}</div>
-                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ background: st.bg, color: st.color, padding: '1px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 800 }}>
-                                      {st.label}
-                                    </span>
-                                    <span style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
-                                      {formatDateShort(task.dueDate)}{task.dueTime ? ' às ' + task.dueTime : ''}
-                                    </span>
-                                    {assignee && (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <AvatarCircle src={assignee.avatarUrl} name={assignee.name} size={16} color="#D4AF37" />
-                                        <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>{assignee.name}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <button 
-                                  onClick={() => setTaskToDelete({ leadId: currentLead.id, taskId: task.id, title: task.description })} 
-                                  style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', fontFamily: "'Inter', sans-serif" }}
-                                  onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
-                                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
-                                  title="Excluir Tarefa"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </>
-                      )}
-
-                      {completedTasks.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '10px' }}>Concluídas ({completedTasks.length})</div>
-                          {completedTasks.map(task => {
-                            const assignee = collaborators.find(c => c.id === task.assignedToId);
-                            return (
-                              <div key={task.id} style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', gap: '10px', alignItems: 'center', opacity: 0.6 }}>
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid #34D399', background: 'rgba(52,211,153,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  <Check size={11} color="#34D399" />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', textDecoration: 'line-through' }}>{task.description}</div>
-                                  {assignee && (
-                                    <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                      <AvatarCircle src={assignee.avatarUrl} name={assignee.name} size={14} color="#888" />
-                                      {assignee.name}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
+                {messageText && (
+                  <button
+                    type="button"
+                    onClick={() => setMessageText('')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
 
-      {/* Close Deal Modal */}
-      {currentLead && (
+      {/* ── MODALS ─────────────────────────────────────────────────────────── */}
+      {isCloseDealModalOpen && currentLead && (
         <CloseDealValueModal
+          lead={currentLead}
           isOpen={isCloseDealModalOpen}
           onClose={() => setIsCloseDealModalOpen(false)}
-          lead={currentLead}
-          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, contractDate: string) => {
-            handleConfirmSale(leadId, dealValue, packageSold, contractDate);
-            setIsCloseDealModalOpen(false);
-          }}
+          onConfirmSale={handleConfirmSale}
         />
       )}
 
-      {/* Task Delete Confirmation Modal */}
-      <AdminConfirmModal
-        isOpen={!!taskToDelete}
-        onClose={() => setTaskToDelete(null)}
-        onConfirm={() => {
-          if (taskToDelete) {
-            deleteLeadTask(taskToDelete.leadId, taskToDelete.taskId);
-            setTaskToDelete(null);
-          }
-        }}
-        title="Excluir Tarefa"
-        itemName={taskToDelete?.title}
-        message={taskToDelete ? `Tem certeza que deseja apagar a tarefa "${taskToDelete.title}"? Esta ação não poderá ser desfeita.` : undefined}
-      />
-
-      {/* Create Task Modal for Lead */}
-      {currentLead && (
+      {isTaskModalOpen && currentLead && (
         <AdminTaskModal
           isOpen={isTaskModalOpen}
-          onClose={() => setIsTaskModalOpen(false)}
           presetLeadId={currentLead.id}
-          presetDebutanteId={currentLead.debutanteId}
+          onClose={() => setIsTaskModalOpen(false)}
+        />
+      )}
+
+      {taskToDelete && (
+        <AdminConfirmModal
+          isOpen={!!taskToDelete}
+          title="Excluir Tarefa"
+          message={`Tem certeza que deseja excluir a tarefa "${taskToDelete.title}"? Esta ação não pode ser desfeita.`}
+          confirmText="Excluir Tarefa"
+          danger={true}
+          onConfirm={() => {
+            deleteLeadTask(taskToDelete.leadId, taskToDelete.taskId);
+            setTaskToDelete(null);
+          }}
+          onClose={() => setTaskToDelete(null)}
         />
       )}
     </div>
