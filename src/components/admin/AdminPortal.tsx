@@ -120,7 +120,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'venues':
-        return <AdminVenuesView />;
+        return (
+          <AdminVenuesView
+            onNavigateToFunnel={(funnelId) => {
+              setActiveFunnelId(funnelId);
+              setActiveTab('crm');
+            }}
+          />
+        );
       case 'debutantes':
         return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} />;
       case 'benefits':
