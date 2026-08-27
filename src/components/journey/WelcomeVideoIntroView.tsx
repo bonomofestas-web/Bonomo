@@ -4,6 +4,7 @@ import {
   Smartphone, PlusSquare, MoreVertical, Download
 } from 'lucide-react';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import type { DebutanteAccount, Venue } from '../../types/admin';
 
 interface WelcomeVideoIntroViewProps {
@@ -22,6 +23,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   const [deviceTab, setDeviceTab] = useState<'ios' | 'android'>('ios');
 
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
+  const [avatarSrc, setAvatarSrc] = useState<string>(debutante.avatarUrl || '');
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -30,7 +32,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   const rawVideoUrl = debutante.welcomeVideoUrl || venue?.welcomeVideoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
   const venueName = venue?.name || 'Espaço Rio Lounge';
 
-  // Asynchronously resolve IndexedDB or Web URL
+  // Asynchronously resolve IndexedDB or Web URL for video and avatar
   useEffect(() => {
     let isMounted = true;
     resolveMediaUrl(rawVideoUrl).then((src) => {
@@ -38,10 +40,19 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
         setResolvedSrc(src || rawVideoUrl);
       }
     });
+    if (debutante.avatarUrl) {
+      resolveMediaUrl(debutante.avatarUrl).then((src) => {
+        if (isMounted) {
+          setAvatarSrc(src || debutante.avatarUrl || createMonogramAvatar(debutante.name));
+        }
+      });
+    } else {
+      setAvatarSrc(createMonogramAvatar(debutante.name));
+    }
     return () => {
       isMounted = false;
     };
-  }, [rawVideoUrl]);
+  }, [rawVideoUrl, debutante.avatarUrl, debutante.name]);
 
   // When moving to video step, start video playback
   useEffect(() => {
@@ -158,8 +169,11 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
           {/* Avatar & Welcome */}
           <div style={{ position: 'relative', marginBottom: '14px' }}>
             <img
-              src={debutante.avatarUrl}
+              src={avatarSrc || createMonogramAvatar(debutante.name)}
               alt={debutante.name}
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = createMonogramAvatar(debutante.name);
+              }}
               style={{
                 width: '68px',
                 height: '68px',
