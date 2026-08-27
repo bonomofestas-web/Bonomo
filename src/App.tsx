@@ -324,7 +324,7 @@ const RootAppRouter: React.FC = () => {
   const activeDeb = inMemoryDeb || asyncDeb || dynamicFallbackDeb || debutantes[0];
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
-  // Dynamic Favicon and Document Title
+  // Dynamic Favicon, Apple Touch Icon (Home Screen) and Document Title
   React.useEffect(() => {
     let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
     if (!link) {
@@ -333,15 +333,65 @@ const RootAppRouter: React.FC = () => {
       document.head.appendChild(link);
     }
 
+    let appleLink: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
+    if (!appleLink) {
+      appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      document.head.appendChild(appleLink);
+    }
+
+    let manifestLink: HTMLLinkElement | null = document.querySelector("link[rel='manifest']");
+
+    const venueIcon = activeVenue?.logoUrl || '/logo_riio_lounge.png';
+
     if (viewMode === 'admin') {
       document.title = 'Bonomo Festas • Painel de Gestão & CRM';
       link.href = '/favicon.png';
       link.type = 'image/png';
+      appleLink.href = '/favicon.png';
     } else {
       const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
       const venueName = activeVenue ? activeVenue.name : 'Bonomo Festas';
       document.title = `${debTitle} | ${venueName}`;
-      link.href = activeVenue?.logoUrl || '/favicon.png';
+      link.href = venueIcon;
+      appleLink.href = venueIcon;
+
+      // Dynamic manifest blob for Android & iOS PWA home screen icon
+      try {
+        const dynamicManifest = {
+          name: `${activeDeb?.name || '15 Anos'} • ${venueName}`,
+          short_name: `${activeDeb?.name || '15 Anos'}`,
+          description: `Aplicativo oficial de 15 Anos no ${venueName}`,
+          start_url: window.location.href,
+          display: 'standalone',
+          background_color: '#0B0512',
+          theme_color: activeVenue?.primaryColor || '#D4AF37',
+          icons: [
+            {
+              src: venueIcon,
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any maskable'
+            },
+            {
+              src: venueIcon,
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
+            }
+          ]
+        };
+        const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
+        const manifestURL = URL.createObjectURL(blob);
+        if (!manifestLink) {
+          manifestLink = document.createElement('link');
+          manifestLink.rel = 'manifest';
+          document.head.appendChild(manifestLink);
+        }
+        manifestLink.href = manifestURL;
+      } catch (err) {
+        console.warn('Falha ao gerar manifest dinâmico:', err);
+      }
     }
   }, [viewMode, activeDeb, activeVenue]);
 
