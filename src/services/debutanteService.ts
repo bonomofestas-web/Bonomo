@@ -275,10 +275,16 @@ export const debutanteService = {
   async upsert(deb: Partial<DebutanteAccount> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deb.id);
+      const isUuidPattern = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const isUuid = isUuidPattern(deb.id);
       
       const payload: any = {};
-      if (deb.venueId !== undefined) payload.venue_id = deb.venueId;
+      if (deb.venueId !== undefined) {
+        payload.venue_id = isUuidPattern(deb.venueId) ? deb.venueId : 'a1111111-1111-1111-1111-111111111111';
+      }
+      if (deb.journeyTemplateId !== undefined) {
+        payload.journey_template_id = isUuidPattern(deb.journeyTemplateId) ? deb.journeyTemplateId : null;
+      }
       if (deb.name !== undefined) payload.name = deb.name;
       if (deb.slug !== undefined) payload.slug = deb.slug;
       if (deb.partyDate !== undefined) payload.party_date = deb.partyDate;
@@ -291,7 +297,6 @@ export const debutanteService = {
       if (deb.isJourneyPending !== undefined) payload.is_journey_pending = deb.isJourneyPending;
       if (deb.welcomeVideoUrl !== undefined) payload.welcome_video_url = deb.welcomeVideoUrl;
       if (deb.hasSeenWelcomeVideo !== undefined) payload.has_seen_welcome_video = deb.hasSeenWelcomeVideo;
-      if (deb.journeyTemplateId !== undefined) payload.journey_template_id = deb.journeyTemplateId;
       if (deb.customInvitePhotoUrl !== undefined) payload.custom_invite_photo_url = deb.customInvitePhotoUrl;
       if (deb.useCustomInvitePhoto !== undefined) payload.use_custom_invite_photo = deb.useCustomInvitePhoto;
       if (deb.receptionMessage !== undefined) payload.reception_message = deb.receptionMessage;
@@ -325,9 +330,11 @@ export const debutanteService = {
       } else if (deb.slug) {
         const { data: existing } = await supabase.from('debutantes').select('id').eq('slug', deb.slug).maybeSingle();
         if (existing?.id) {
-          await supabase.from('debutantes').update(payload).eq('id', existing.id);
+          const { error: updErr } = await supabase.from('debutantes').update(payload).eq('id', existing.id);
+          if (updErr) console.error('Erro ao atualizar debutante por slug:', updErr);
         } else {
-          await supabase.from('debutantes').insert(payload);
+          const { error: insErr } = await supabase.from('debutantes').insert(payload);
+          if (insErr) console.error('Erro ao inserir debutante por slug:', insErr);
         }
         return true;
       }
