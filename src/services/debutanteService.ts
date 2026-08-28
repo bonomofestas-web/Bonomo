@@ -326,6 +326,21 @@ export const debutanteService = {
   },
 
   async upsert(deb: Partial<DebutanteAccount> & { id: string }): Promise<boolean> {
+    // 1. Try Serverless Backend API (bypasses RLS restrictions)
+    try {
+      const res = await fetch('/api/save-debutante', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deb),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success) return true;
+      }
+    } catch {
+      // Fall through to direct Supabase client
+    }
+
     if (!isSupabaseConfigured) return false;
     try {
       const isUuidPattern = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
@@ -399,6 +414,10 @@ export const debutanteService = {
   },
 
   async delete(id: string): Promise<boolean> {
+    try {
+      await fetch(`/api/save-debutante?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch {}
+
     if (!isSupabaseConfigured) return false;
     try {
       const { error } = await supabase.from('debutantes').delete().eq('id', id);

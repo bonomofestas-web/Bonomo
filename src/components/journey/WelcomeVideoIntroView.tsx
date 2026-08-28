@@ -77,8 +77,8 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   }, [step, resolvedSrc]);
 
   const handleProceedToVideo = () => {
-    // If the debutante does NOT have journey enabled or is journey pending, skip video step completely!
-    if (!debutante.hasJourneyEnabled || debutante.isJourneyPending) {
+    // If the debutante explicitly has journey disabled, skip video step completely!
+    if (debutante.hasJourneyEnabled === false) {
       onStartJourney();
       return;
     }
@@ -412,7 +412,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             }}
           >
             <span>
-              {debutante.hasJourneyEnabled && !debutante.isJourneyPending 
+              {debutante.hasJourneyEnabled !== false 
                 ? 'Já Adicionei / Assistir Vídeo' 
                 : 'Já Adicionei / Iniciar Meu Aplicativo'}
             </span>

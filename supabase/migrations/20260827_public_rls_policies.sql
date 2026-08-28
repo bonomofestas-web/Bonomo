@@ -65,3 +65,16 @@ CREATE POLICY "Allow public update on debutantes"
 ON public.debutantes FOR UPDATE 
 TO anon, authenticated 
 USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert on debutantes" ON public.debutantes;
+CREATE POLICY "Allow public insert on debutantes" 
+ON public.debutantes FOR INSERT 
+TO anon, authenticated 
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public delete on debutantes" ON public.debutantes;
+CREATE POLICY "Allow public delete on debutantes" 
+ON public.debutantes FOR DELETE 
+TO anon, authenticated 
+USING (true);
+
