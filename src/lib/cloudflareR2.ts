@@ -41,7 +41,7 @@ export const cloudflareR2Service = {
         customKey,
       });
 
-      return new Promise<string>((resolve) => {
+      return new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/upload');
         xhr.setRequestHeader('Content-Type', 'application/json');
@@ -66,43 +66,45 @@ export const cloudflareR2Service = {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const res = JSON.parse(xhr.responseText);
-              if (onProgress) {
-                onProgress({
+              if (res.url && res.url.startsWith('http')) {
+                onProgress?.({
                   percentage: 100,
                   loadedBytes: payload.length,
                   totalBytes: payload.length,
                   formattedProgress: '100% (Concluído)',
                 });
-              }
-              if (res.url) {
                 resolve(res.url);
                 return;
               }
-            } catch {
-              // fallback
+              reject(new Error(res.error || 'R2 não retornou uma URL válida'));
+            } catch (parseErr) {
+              reject(new Error(`Resposta inválida do servidor de upload: ${xhr.responseText?.slice(0, 100)}`));
             }
-            resolve(base64Data);
           } else {
-            console.warn('[R2 Upload Client] HTTP status error:', xhr.status, xhr.responseText);
-            resolve(base64Data);
+            let errMsg = `Erro HTTP ${xhr.status} no upload`;
+            try {
+              const errJson = JSON.parse(xhr.responseText);
+              if (errJson?.error) errMsg = errJson.error;
+            } catch {}
+            reject(new Error(errMsg));
           }
         };
 
-        xhr.onerror = (err) => {
-          console.warn('[R2 Upload Client] XHR network error:', err);
-          resolve(base64Data);
+        xhr.onerror = () => {
+          reject(new Error('Falha de rede ao enviar vídeo para o servidor de upload. Verifique sua conexão.'));
         };
+
+        xhr.ontimeout = () => {
+          reject(new Error('Tempo esgotado no upload. O vídeo pode ser grande demais ou a conexão está lenta.'));
+        };
+
+        xhr.timeout = 300000; // 5 minutos
+
 
         xhr.send(payload);
       });
     } catch (err) {
-      console.warn('[R2 Upload Client] Fallback local ativo:', err);
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (e) => reject(e);
-        reader.readAsDataURL(file);
-      });
+      throw new Error(`Falha ao preparar arquivo para upload: ${(err as Error)?.message || err}`);
     }
   },
 };

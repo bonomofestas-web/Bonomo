@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Video, Play, Pause, Film, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { saveMediaFile, resolveMediaUrl } from '../../utils/mediaStorage';
-import { cloudflareR2Service, isCloudflareR2Configured, type R2UploadProgress } from '../../lib/cloudflareR2';
+import { resolveMediaUrl } from '../../utils/mediaStorage';
+import { cloudflareR2Service, type R2UploadProgress } from '../../lib/cloudflareR2';
 
 interface VideoUploadFieldProps {
   label: string;
@@ -86,38 +86,33 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
     setResolvedSrc(localPreviewUrl);
 
     try {
-      if (isCloudflareR2Configured) {
-        const r2Url = await cloudflareR2Service.uploadFile(
-          file,
-          'videos',
-          (progress) => {
-            setUploadProgress(progress);
-          },
-          customKey
-        );
+      const r2Url = await cloudflareR2Service.uploadFile(
+        file,
+        'videos',
+        (progress) => {
+          setUploadProgress(progress);
+        },
+        customKey
+      );
 
-        if (r2Url && r2Url.startsWith('http')) {
-          onChange(r2Url, file.name);
-          setResolvedSrc(r2Url);
-          setJustUploaded(true);
-          setTimeout(() => setJustUploaded(false), 3000);
-          return;
-        }
+      if (r2Url && r2Url.startsWith('http')) {
+        onChange(r2Url, file.name);
+        setResolvedSrc(r2Url);
+        setJustUploaded(true);
+        setTimeout(() => setJustUploaded(false), 3000);
+      } else {
+        throw new Error('Servidor de upload não retornou uma URL válida. Tente novamente.');
       }
-
-      // Local fallback in IndexedDB
-      const mediaKey = await saveMediaFile(file, 'video');
-      onChange(mediaKey, file.name);
-      setJustUploaded(true);
-      setTimeout(() => setJustUploaded(false), 3000);
     } catch (err: any) {
-      console.error('[VideoUpload] Error processing video:', err);
-      setUploadError(err.message || 'Erro ao processar o vídeo.');
+      console.error('[VideoUpload] Falha no upload para R2:', err);
+      setUploadError(`❌ Falha no upload: ${err.message || 'Erro desconhecido. Tente novamente.'}`);
+      setResolvedSrc(''); // limpa preview local
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
     }
   };
+
 
   const handleApplyUrl = () => {
     if (urlDraft.trim()) {
