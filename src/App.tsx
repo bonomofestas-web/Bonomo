@@ -17,7 +17,8 @@ import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPa
 import { AdminPortal } from './components/admin/AdminPortal';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
 import { debutanteService } from './services/debutanteService';
-import type { DebutanteAccount } from './types/admin';
+import { venueService } from './services/venueService';
+import type { DebutanteAccount, Venue } from './types/admin';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
 
 // localStorage key to remember slugs that completed onboarding (cross-session fallback)
@@ -301,6 +302,7 @@ const RootAppRouter: React.FC = () => {
   const [routeInfo, setRouteInfo] = useState(parseRouteFromLocation);
   const [asyncDeb, setAsyncDeb] = useState<any>(null);
   const [isLoadingSlug, setIsLoadingSlug] = useState<boolean>(false);
+  const [asyncVenue, setAsyncVenue] = useState<Venue | null>(null);
   const [sessionUnlockedSlugs, setSessionUnlockedSlugs] = useState<Record<string, boolean>>(
     () => getSeenVideoSlugs() // initialize from localStorage so it persists across page refreshes
   );
@@ -341,9 +343,14 @@ const RootAppRouter: React.FC = () => {
     if (hasFetchedRef.current === cleanSlug) return; // avoid duplicate fetches
     hasFetchedRef.current = cleanSlug;
     setIsLoadingSlug(true);
-    debutanteService.getBySlug(cleanSlug).then(result => {
+    debutanteService.getBySlug(cleanSlug).then(async result => {
       if (result) {
         setAsyncDeb(result);
+        // Buscar o venue junto — ele contém o welcomeVideoUrl do vídeo de boas-vindas
+        if (result.venueId) {
+          const venueFromDb = await venueService.getById(result.venueId);
+          if (venueFromDb) setAsyncVenue(venueFromDb);
+        }
       }
       setIsLoadingSlug(false);
     }).catch(() => {
@@ -356,7 +363,11 @@ const RootAppRouter: React.FC = () => {
     : undefined;
 
   const activeDeb = inMemoryDeb || asyncDeb || dynamicFallbackDeb || debutantes[0];
-  const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
+  // activeVenue: tenta memória admin → venue buscado do Supabase → primeiro venue disponível
+  // asyncVenue garante que o welcomeVideoUrl chegue corretamente no modo anônimo
+  const activeVenue = (activeDeb ? getVenueById(activeDeb.venueId) : undefined)
+    ?? asyncVenue
+    ?? venues[0];
 
   // Dynamic Favicon, Apple Touch Icon (Home Screen) and Document Title
   useEffect(() => {

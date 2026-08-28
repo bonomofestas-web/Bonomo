@@ -49,6 +49,51 @@ export const venueService = {
     }
   },
 
+  async getById(id: string): Promise<Venue | null> {
+    if (!isSupabaseConfigured || !id) return null;
+    try {
+      const { data, error } = await supabase
+        .from('venues')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      return {
+        id: data.id,
+        name: data.name,
+        tagline: data.tagline || '',
+        logoUrl: data.logo_url || undefined,
+        ballroomImageUrl: data.ballroom_image_url || '',
+        description: data.description || '',
+        experienceText: data.experience_text || '',
+        address: data.address || '',
+        yearsInBusiness: data.years_in_business || 0,
+        eventsCompleted: data.events_completed || 0,
+        guestsDelighted: data.guests_delighted || 0,
+        googleMapsEmbedUrl: data.google_maps_embed_url || '',
+        googleMapsLink: data.google_maps_link || '',
+        wazeLink: data.waze_link || '',
+        defaultDressCode: data.default_dress_code || 'Esporte Fino / Gala',
+        primaryColor: data.primary_color || '#D4AF37',
+        secondaryColor: data.secondary_color || '#AA7C11',
+        accentColor: data.accent_color || '#F3E5AB',
+        glowColor: data.glow_color || 'rgba(212,175,55,0.4)',
+        fontFamily: data.font_family || 'Montserrat',
+        welcomeVideoUrl: data.welcome_video_url || undefined,
+        welcomeVideoName: data.welcome_video_name || undefined,
+        leadDistributionMode: data.lead_distribution_mode || 'queue',
+        leadDistributionSdrIds: data.lead_distribution_sdr_ids || [],
+        roundRobinNextIndex: data.round_robin_next_index || 0,
+        createdAt: data.created_at || new Date().toISOString(),
+      };
+    } catch (err) {
+      console.error('Falha em venueService.getById:', err);
+      return null;
+    }
+  },
+
   async upsert(venue: Partial<Venue> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
