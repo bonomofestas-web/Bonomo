@@ -21,14 +21,20 @@ import type { DebutanteAccount } from './types/admin';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
 
 const MainContentSwitcher: React.FC = () => {
-  const { activeTab } = useAppState();
+  const { activeTab, debutante } = useAppState();
+  const isJourneyDisabled = debutante.hasJourneyEnabled === false;
+
+  if (isJourneyDisabled && (activeTab === 'journey' || activeTab === 'referrals' || activeTab === 'benefits')) {
+    return <GuestList />;
+  }
+
   switch (activeTab) {
     case 'journey':      return <VerticalJourney />;
     case 'referrals':   return <ReferralList />;
     case 'guests':      return <GuestList />;
     case 'appointments':return <AppointmentTimeline />;
     case 'benefits':    return <BenefitsHub />;
-    default:            return <VerticalJourney />;
+    default:            return isJourneyDisabled ? <GuestList /> : <VerticalJourney />;
   }
 };
 
@@ -448,27 +454,18 @@ const RootAppRouter: React.FC = () => {
     );
   }
 
-  const isVideoSeenLocally = activeDeb?.slug ? (
-    typeof window !== 'undefined' && (
-      sessionStorage.getItem(`bonomo_video_seen_${activeDeb.slug}`) === 'true' ||
-      localStorage.getItem(`bonomo_video_seen_${activeDeb.slug}`) === 'true'
-    )
-  ) : false;
+  const [sessionUnlockedSlugs, setSessionUnlockedSlugs] = useState<Record<string, boolean>>({});
 
   const handleStartJourney = () => {
     if (!activeDeb) return;
-    try {
-      sessionStorage.setItem(`bonomo_video_seen_${activeDeb.slug}`, 'true');
-      localStorage.setItem(`bonomo_video_seen_${activeDeb.slug}`, 'true');
-    } catch (err) {
-      console.warn('Storage error:', err);
-    }
+    setSessionUnlockedSlugs(prev => ({ ...prev, [activeDeb.slug]: true }));
     setAsyncDeb((prev: any) => prev ? { ...prev, hasSeenWelcomeVideo: true } : prev);
     markWelcomeVideoSeen(activeDeb.slug);
   };
 
   // Check if first-access video/PWA onboarding is required
-  const shouldShowOnboarding = activeDeb && !activeDeb.hasSeenWelcomeVideo && !isVideoSeenLocally;
+  const isUnlockedInCurrentSession = Boolean(activeDeb?.slug && sessionUnlockedSlugs[activeDeb.slug]);
+  const shouldShowOnboarding = activeDeb && !activeDeb.hasSeenWelcomeVideo && !isUnlockedInCurrentSession;
 
   if (shouldShowOnboarding) {
     return (

@@ -411,11 +411,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
               boxShadow: '0 8px 24px rgba(212, 175, 55, 0.45)',
             }}
           >
-            <span>
-              {debutante.hasJourneyEnabled !== false 
-                ? 'Já Adicionei / Assistir Vídeo' 
-                : 'Já Adicionei / Iniciar Meu Aplicativo'}
-            </span>
+            <span>Continuar</span>
             <ArrowRight size={16} />
           </button>
         </div>
