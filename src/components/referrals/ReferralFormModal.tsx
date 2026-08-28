@@ -20,7 +20,7 @@ interface ReferralFormModalProps {
   onClose: () => void;
 }
 
-type ModalStep = 'choice' | 'contacts_unsupported' | 'form';
+type ModalStep = 'choice' | 'form';
 
 export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, onClose }) => {
   const { addReferral } = useAppState();
@@ -33,8 +33,10 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [selectedContactName, setSelectedContactName] = useState<string | null>(null);
-  const [isPickerLoading, setIsPickerLoading] = useState(false);
+  const [isIosHintVisible, setIsIosHintVisible] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Reset modal state when opening
   useEffect(() => {
@@ -47,29 +49,20 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
       setNotes('');
       setSubmitted(false);
       setSelectedContactName(null);
-      setIsPickerLoading(false);
+      setIsIosHintVisible(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Handle native mobile contact selection
+  // Handle native mobile contact selection (iOS Safari & Android Chrome)
   const handleSelectFromContacts = async () => {
-    setIsPickerLoading(true);
+    const contactsApi = (navigator as any).contacts || (window as any).navigator?.contacts;
 
-    // 1. Try Native Mobile Contact Picker API (Chrome Android / Edge Mobile / PWA)
-    if ('contacts' in navigator && typeof (navigator as any).contacts?.select === 'function') {
+    // 1. Tenta a Contact Picker API diretamente no evento do usuário (sem await prévio para não perder o gesto no iOS)
+    if (contactsApi && typeof contactsApi.select === 'function') {
       try {
-        const availableProps = typeof (navigator as any).contacts?.getProperties === 'function'
-          ? await (navigator as any).contacts.getProperties()
-          : ['name', 'tel'];
-
-        const propsToQuery = ['name', 'tel'].filter(p => availableProps.includes(p));
-        const finalProps = propsToQuery.length > 0 ? propsToQuery : ['name'];
-
-        const contacts = await (navigator as any).contacts.select(finalProps, { multiple: false });
-        setIsPickerLoading(false);
-
+        const contacts = await contactsApi.select(['name', 'tel'], { multiple: false });
         if (contacts && contacts.length > 0) {
           const selected = contacts[0];
           const contactName = Array.isArray(selected.name) ? selected.name[0] : (selected.name || '');
@@ -85,21 +78,24 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
         }
         return;
       } catch (err: any) {
-        setIsPickerLoading(false);
         if (err?.name === 'AbortError') {
           // Usuária cancelou a janela de contatos
           return;
         }
-        console.warn('Contact picker interaction error or permission denied:', err);
+        console.warn('Contact picker fallback to auto-fill:', err);
       }
     }
 
-    setIsPickerLoading(false);
-    // 2. Se a API nativa não for suportada no dispositivo atual (ex: Desktop / iOS Safari), exibe tela informativa
-    setStep('contacts_unsupported');
+    // 2. Se a API de contatos não estiver disponível (ex: Safari iOS padrão ou desktop),
+    // abre o formulário com autofill do teclado do iPhone habilitado e foco automático
+    setIsIosHintVisible(true);
+    setStep('form');
+    setTimeout(() => {
+      nameInputRef.current?.focus();
+    }, 150);
   };
 
-  // Handle VCF / vCard file upload from PC / Mac / Mobile File Manager
+  // Handle VCF / vCard file upload from iPhone / Android / PC
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -272,7 +268,7 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
                   border: '1.5px solid rgba(255, 215, 0, 0.5)',
                   borderRadius: '18px',
                   padding: '18px 20px',
-                  cursor: isPickerLoading ? 'wait' : 'pointer',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '16px',
@@ -319,11 +315,11 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
                       textTransform: 'uppercase',
                       letterSpacing: '0.4px'
                     }}>
-                      ⚡ Automático
+                      ⚡ iPhone / Android
                     </span>
                   </div>
                   <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.3 }}>
-                    Abre a agenda de contatos do seu aparelho. Preenche o nome e telefone em 1 clique.
+                    Puxa nome e WhatsApp da agenda do celular em 1 toque.
                   </p>
                 </div>
               </div>
@@ -377,98 +373,35 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-        ) : step === 'contacts_unsupported' ? (
-          /* ── STEP 2: DISPOSITIVO / NAVEGADOR SEM SUPORTE À API DE CONTATOS ── */
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <button
-                onClick={() => setStep('choice')}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  color: '#FFF',
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
-                title="Voltar"
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#FFF' }}>
-                Importar Contatos
-              </h2>
-            </div>
 
-            <div style={{
-              background: 'rgba(255, 215, 0, 0.08)',
-              border: '1px solid rgba(255, 215, 0, 0.3)',
-              borderRadius: '16px',
-              padding: '18px',
-              marginBottom: '18px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Smartphone size={24} color="#FFD700" />
-                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#FFF' }}>
-                  Acesso Direto à Agenda
-                </span>
+              {/* Option 3: Upload VCF */}
+              <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#FFD700',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <FolderOpen size={14} />
+                  <span>Ou carregar arquivo de contato (.vcf)</span>
+                </button>
               </div>
-              <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.8)', margin: 0, lineHeight: 1.45 }}>
-                A abertura automática da lista de contatos é um recurso nativo para smartphones (Chrome, Edge e navegadores compatíveis).
-              </p>
-              <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.8)', margin: 0, lineHeight: 1.45 }}>
-                Você pode digitar os dados diretamente ou carregar um arquivo de contato (.vcf).
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setStep('form')}
-                className="btn-primary"
-                style={{ width: '100%', padding: '12px', fontSize: '0.9rem', fontWeight: 800 }}
-              >
-                <PenTool size={16} />
-                <span>Continuar e Digitar Dados</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  width: '100%',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '24px',
-                  padding: '12px',
-                  color: '#FFD700',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <FolderOpen size={16} color="#FFD700" />
-                <span>Carregar Arquivo .vcf do Aparelho</span>
-              </button>
             </div>
           </div>
         ) : (
-          /* ── STEP 3: FORMULÁRIO DE INDICAÇÃO ── */
+          /* ── STEP 2: FORMULÁRIO DE INDICAÇÃO ── */
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button
                   type="button"
@@ -512,6 +445,25 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
               )}
             </div>
 
+            {/* Dica para iPhone / iOS Auto-fill */}
+            {isIosHintVisible && (
+              <div style={{
+                background: 'rgba(255, 215, 0, 0.1)',
+                border: '1px solid rgba(255, 215, 0, 0.35)',
+                borderRadius: '12px',
+                padding: '9px 12px',
+                marginBottom: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Smartphone size={16} color="#FFD700" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '0.74rem', color: '#FFF', lineHeight: 1.3 }}>
+                  📱 <strong>Dica iPhone:</strong> Toque no teclado em <strong>"Contatos"</strong> acima das teclas para puxar os dados da sua amiga direto da sua agenda!
+                </span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
               {/* Nome */}
               <div>
@@ -521,7 +473,11 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
                 <div style={{ position: 'relative' }}>
                   <User size={16} color="var(--primary)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
                   <input
+                    ref={nameInputRef}
                     type="text"
+                    name="name"
+                    autoComplete="name"
+                    autoCapitalize="words"
                     required
                     placeholder="Ex: Sophia Alencar"
                     value={name}
@@ -549,6 +505,9 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
                   <Phone size={16} color="var(--primary)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
                   <input
                     type="tel"
+                    name="tel"
+                    autoComplete="tel"
+                    inputMode="tel"
                     required
                     placeholder="(21) 99999-9999"
                     value={phone}
