@@ -1198,31 +1198,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateLeadStage = (leadId: string, newStage: CrmStage) => {
+    let targetLead: Lead | null = null;
+    const stageLabels: Record<CrmStage, string> = {
+      new_lead: 'Novo Lead',
+      in_analysis: 'Em Análise',
+      meeting_scheduled: 'Reunião Agendada',
+      contract_signed: 'Contrato Fechado',
+      lost: 'Perdido / Recusado',
+    };
+
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'status_change',
+      title: `Etapa alterada para: ${stageLabels[newStage]}`,
+      text: `Status alterado por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-
-      const stageLabels: Record<CrmStage, string> = {
-        new_lead: 'Novo Lead',
-        in_analysis: 'Em Análise',
-        meeting_scheduled: 'Reunião Agendada',
-        contract_signed: 'Contrato Fechado',
-        lost: 'Perdido / Recusado',
-      };
-
-      const author = currentUser?.name || 'Administrador';
-      const authorId = currentUser?.id;
-      const authorAvatar = currentUser?.avatarUrl;
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'status_change',
-        title: `Etapa alterada para: ${stageLabels[newStage]}`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
 
       // Add participant record if user is a collaborator not yet in participants
       let updatedParticipants = lead.participants || [];
@@ -1235,7 +1237,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
       }
 
-      const updatedLead = {
+      targetLead = {
         ...lead,
         stage: newStage,
         participants: updatedParticipants,
@@ -1243,38 +1245,80 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
 
-      return updatedLead;
+      return targetLead;
     }));
+
+    // Sincronização 100% no Supabase
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        stage: newStage,
+      }).catch(err => console.error('❌ Erro ao atualizar etapa do lead no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'status_change',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de etapa no Supabase:', err));
+
+      if (authorId) {
+        leadService.addParticipant(leadId, {
+          collaboratorId: authorId,
+          collaboratorName: author,
+          collaboratorRole: currentUser?.role || 'crm',
+          collaboratorAvatarUrl: authorAvatar,
+          action: 'Alterou a etapa do lead',
+          timestamp: newActivity.timestamp,
+        }).catch(err => console.error('❌ Erro ao registrar participante no Supabase:', err));
+      }
+    }
   };
 
   const addLeadNote = (leadId: string, noteText: string) => {
     if (!noteText.trim()) return;
 
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: 'Observação registrada',
+      text: noteText.trim(),
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-
-      const author = currentUser?.name || 'Administrador';
-      const authorId = currentUser?.id;
-      const authorAvatar = currentUser?.avatarUrl;
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'note',
-        title: 'Observação registrada',
-        text: noteText.trim(),
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
-
       return {
         ...lead,
         activities: [newActivity, ...lead.activities],
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'note',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar nota de lead no Supabase:', err));
+    }
   };
 
   const validateLead = (leadId: string) => {
@@ -1502,47 +1546,67 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const rejectLead = (leadId: string, reason: string) => {
-    setLeads(prev => {
-      const updated = prev.map(lead => {
-        if (lead.id !== leadId) return lead;
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
 
-        const newActivity: LeadActivity = {
-          id: `act_${Date.now()}`,
-          leadId,
-          timestamp: new Date().toISOString(),
-          type: 'status_change',
-          title: 'Indicação Recusada',
-          text: `Motivo: ${reason}`,
-          authorName: currentUser?.name || 'Administrador',
-          authorId: currentUser?.id,
-          authorAvatarUrl: currentUser?.avatarUrl,
-        };
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'status_change',
+      title: 'Indicação Recusada',
+      text: `Motivo: ${reason}`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
 
-        return {
-          ...lead,
-          stage: 'lost' as const,
-          rejectionReason: reason,
-          activities: [newActivity, ...lead.activities],
-          updatedAt: new Date().toISOString().split('T')[0],
-        };
-      });
-      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-      return updated;
-    });
+    setLeads(prev => prev.map(lead => {
+      if (lead.id !== leadId) return lead;
+      return {
+        ...lead,
+        stage: 'lost' as const,
+        rejectionReason: reason,
+        activities: [newActivity, ...lead.activities],
+        updatedAt: new Date().toISOString().split('T')[0],
+      };
+    }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        stage: 'lost',
+        rejectionReason: reason,
+      }).catch(err => console.error('❌ Erro ao recusar lead no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'status_change',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de recusa no Supabase:', err));
+
+      supabase.from('referrals')
+        .update({ status: 'rejected', rejection_reason: reason })
+        .or(`lead_id.eq.${leadId},id.eq.${leadId}`)
+        .then(({ error }) => {
+          if (error) console.error('❌ Erro ao atualizar referral rejeitado:', error);
+        });
+    }
   };
 
   const deleteLead = (leadId: string) => {
-    setLeads(prev => {
-      const updated = prev.filter(l => l.id !== leadId);
-      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-      return updated;
-    });
-    // Also remove any tasks associated with this lead
-    setTasks(prev => {
-      const updated = prev.filter(t => t.leadId !== leadId);
-      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
-      return updated;
-    });
+    setLeads(prev => prev.filter(l => l.id !== leadId));
+    setTasks(prev => prev.filter(t => t.leadId !== leadId));
+
+    if (isSupabaseConfigured) {
+      leadService.delete(leadId).catch(err => console.error('❌ Erro ao deletar lead no Supabase:', err));
+    }
   };
 
   const closeLeadSaleWithValue = (leadId: string, dealValue: number, packageSold: string, contractDate?: string) => {
@@ -1551,22 +1615,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorAvatar = currentUser?.avatarUrl;
     const cDate = contractDate || new Date().toISOString().split('T')[0];
 
+    const formattedVal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dealValue);
+
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'deal_closed',
+      title: `Contrato Fechado: ${formattedVal}`,
+      text: `Venda concluída! Pacote: ${packageSold}. Valor: ${formattedVal}. Data: ${cDate}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
+    let targetLead: Lead | null = null;
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-
-      const formattedVal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dealValue);
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'deal_closed',
-        title: `Contrato Fechado: ${formattedVal}`,
-        text: `Venda concluída! Pacote: ${packageSold}. Valor: ${formattedVal}. Data: ${cDate}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
 
       // Add closer as participant if they closed the deal
       let updatedParticipants = lead.participants || [];
@@ -1579,7 +1644,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
       }
 
-      const updatedLead: Lead = {
+      targetLead = {
         ...lead,
         stage: 'contract_signed',
         dealValue,
@@ -1591,8 +1656,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
 
       syncDebutanteLeadStats(lead.debutanteId);
-      return updatedLead;
+      return targetLead;
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        stage: 'contract_signed',
+        dealValue,
+        packageSold,
+        contractDate: cDate,
+      }).catch(err => console.error('❌ Erro ao fechar venda no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'deal_closed',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de fechamento no Supabase:', err));
+
+      if (authorId) {
+        leadService.addParticipant(leadId, {
+          collaboratorId: authorId,
+          collaboratorName: author,
+          collaboratorRole: currentUser?.role || 'closer',
+          collaboratorAvatarUrl: authorAvatar,
+          action: 'Fechou o contrato de venda',
+          timestamp: newActivity.timestamp,
+        }).catch(err => console.error('❌ Erro ao registrar closer no Supabase:', err));
+      }
+    }
   };
 
   const closeLeadSale = (leadId: string) => {
@@ -1604,25 +1701,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: 'Lead assumido como SDR',
+      text: `${author} assumiu o atendimento comercial deste lead.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
       const hasSdr = lead.sdrId || (lead.assignedTo && lead.assignedTo.trim() !== '' && lead.assignedTo !== 'Sem responsável');
       if (hasSdr) return lead;
 
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: 'Lead assumido como SDR',
-        text: `${author} assumiu o atendimento comercial deste lead.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
-
       const updatedParticipants = addParticipantToLead(
-        lead, authorId || `user_${Date.now()}`, author,
+        lead, authorId || generateUuid(), author,
         currentUser?.role || 'sdr',
         authorAvatar,
         'sdr_claimed'
@@ -1638,33 +1735,63 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        sdrId: authorId,
+        sdrName: author,
+        assignedTo: author,
+      }).catch(err => console.error('❌ Erro ao assumir lead no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de SDR no Supabase:', err));
+
+      if (authorId) {
+        leadService.addParticipant(leadId, {
+          collaboratorId: authorId,
+          collaboratorName: author,
+          collaboratorRole: currentUser?.role || 'sdr',
+          collaboratorAvatarUrl: authorAvatar,
+          action: 'Assumiu o atendimento como SDR',
+          timestamp: newActivity.timestamp,
+        }).catch(err => console.error('❌ Erro ao registrar participante SDR no Supabase:', err));
+      }
+    }
   };
 
   const assignLead = (leadId: string, assigneeName: string) => {
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
+    const isUnassigning = !assigneeName || assigneeName === 'Sem responsável' || assigneeName === 'Não atribuído';
+
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: isUnassigning ? 'Responsável removido' : 'Responsável alterado',
+      text: isUnassigning 
+        ? `Responsável removido por ${author}.`
+        : `Responsável alterado para "${assigneeName}" por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
 
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
       const oldAssignee = lead.assignedTo || 'Sem responsável';
       if (oldAssignee === assigneeName) return lead;
-
-      const isUnassigning = !assigneeName || assigneeName === 'Sem responsável' || assigneeName === 'Não atribuído';
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: isUnassigning ? 'Responsável removido' : 'Responsável alterado',
-        text: isUnassigning 
-          ? `Responsável "${oldAssignee}" removido por ${author}.`
-          : `Responsável alterado de "${oldAssignee}" para "${assigneeName}" por ${author}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
 
       return {
         ...lead,
@@ -1674,6 +1801,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        assignedTo: isUnassigning ? undefined : assigneeName,
+        sdrName: isUnassigning ? undefined : assigneeName,
+      }).catch(err => console.error('❌ Erro ao atribuir lead no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de atribuição no Supabase:', err));
+    }
   };
 
   // ── SDR / Closer Dual Responsibility ────────────────────────────────────────
@@ -1686,21 +1832,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: 'SDR responsável alterado',
+      text: `SDR definido como "${sdr.name}" por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-      const oldSdrName = lead.sdrName || 'Sem SDR';
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: oldSdrName === 'Sem SDR' ? 'SDR responsável definido' : 'SDR responsável alterado',
-        text: `SDR alterado de "${oldSdrName}" para "${sdr.name}" por ${author}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
 
       const updatedParticipants = addParticipantToLead(
         lead, sdr.id, sdr.name, sdr.role, sdr.avatarUrl, 'sdr_assigned'
@@ -1716,6 +1861,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        sdrId: sdr.id,
+        sdrName: sdr.name,
+        assignedTo: sdr.name,
+      }).catch(err => console.error('❌ Erro ao definir SDR no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de SDR no Supabase:', err));
+
+      leadService.addParticipant(leadId, {
+        collaboratorId: sdr.id,
+        collaboratorName: sdr.name,
+        collaboratorRole: sdr.role,
+        collaboratorAvatarUrl: sdr.avatarUrl,
+        action: 'Designado como SDR responsável',
+        timestamp: newActivity.timestamp,
+      }).catch(err => console.error('❌ Erro ao registrar participante SDR no Supabase:', err));
+    }
   };
 
   const assignLeadCloser = (leadId: string, closerId: string) => {
@@ -1726,21 +1900,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: 'Closer responsável alterado',
+      text: `Closer definido como "${closer.name}" por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-      const oldCloserName = lead.closerName || 'Sem Closer';
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: oldCloserName === 'Sem Closer' ? 'Closer responsável definido' : 'Closer alterado',
-        text: `Closer alterado de "${oldCloserName}" para "${closer.name}" por ${author}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
 
       const updatedParticipants = addParticipantToLead(
         lead, closer.id, closer.name, closer.role, closer.avatarUrl, 'closer_assigned'
@@ -1755,6 +1928,34 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        closerId: closer.id,
+        closerName: closer.name,
+      }).catch(err => console.error('❌ Erro ao definir Closer no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de Closer no Supabase:', err));
+
+      leadService.addParticipant(leadId, {
+        collaboratorId: closer.id,
+        collaboratorName: closer.name,
+        collaboratorRole: closer.role,
+        collaboratorAvatarUrl: closer.avatarUrl,
+        action: 'Designado como Closer responsável',
+        timestamp: newActivity.timestamp,
+      }).catch(err => console.error('❌ Erro ao registrar participante Closer no Supabase:', err));
+    }
   };
 
   const removeLeadCloser = (leadId: string) => {
@@ -1762,21 +1963,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: 'Closer removido',
+      text: `Closer removido por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: 'Closer removido',
-        text: `Closer "${lead.closerName || ''}" removido por ${author}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
-
       return {
         ...lead,
         closerId: undefined,
@@ -1785,6 +1985,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        closerId: undefined,
+        closerName: undefined,
+      }).catch(err => console.error('❌ Erro ao remover Closer no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar remoção de Closer:', err));
+    }
   };
 
   const removeLeadSdr = (leadId: string) => {
@@ -1792,21 +2011,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'assignment',
+      title: 'SDR removido',
+      text: `SDR removido por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'assignment',
-        title: 'SDR removido',
-        text: `SDR "${lead.sdrName || ''}" removido por ${author}.`,
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
-      };
-
       return {
         ...lead,
         sdrId: undefined,
@@ -1816,6 +2034,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
+        sdrId: undefined,
+        sdrName: undefined,
+        assignedTo: undefined,
+      }).catch(err => console.error('❌ Erro ao remover SDR no Supabase:', err));
+
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: newActivity.timestamp,
+        type: 'assignment',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar remoção de SDR:', err));
+    }
   };
 
   const updateLeadData = (leadId: string, data: Partial<Lead>) => {
@@ -1828,12 +2066,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updatedAt: new Date().toISOString().split('T')[0],
         };
       });
-      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
       return updated;
     });
 
     if (isSupabaseConfigured) {
-      leadService.upsert({ id: leadId, ...data } as any);
+      leadService.upsert({ id: leadId, ...data } as any).catch(err => {
+        console.error('❌ Erro ao atualizar leadData no Supabase:', err);
+      });
     }
   };
 

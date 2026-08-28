@@ -167,22 +167,47 @@ export const leadService = {
     if (!isSupabaseConfigured) return false;
     try {
       const { error } = await supabase.from('lead_activities').insert({
+        id: generateUuid(),
         lead_id: leadId,
         type: activity.type,
         title: activity.title,
-        text: activity.text,
-        author_name: activity.authorName,
-        author_id: activity.authorId || null,
-        author_avatar_url: activity.authorAvatarUrl,
+        text: activity.text || '',
+        author_name: activity.authorName || 'Administrador',
+        author_id: isUuid(activity.authorId) ? activity.authorId : null,
+        author_avatar_url: activity.authorAvatarUrl || '',
         timestamp: activity.timestamp || new Date().toISOString(),
       });
       if (error) {
-        console.error('Erro ao adicionar atividade:', error);
+        console.error('❌ Erro ao adicionar atividade no Supabase:', error);
         return false;
       }
       return true;
     } catch (err) {
-      console.error('Falha em leadService.addActivity:', err);
+      console.error('❌ Falha em leadService.addActivity:', err);
+      return false;
+    }
+  },
+
+  async addParticipant(leadId: string, participant: Omit<LeadParticipant, 'id'>): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase.from('lead_participants').insert({
+        id: generateUuid(),
+        lead_id: leadId,
+        collaborator_id: isUuid(participant.collaboratorId) ? participant.collaboratorId : null,
+        collaborator_name: participant.collaboratorName,
+        collaborator_role: participant.collaboratorRole || 'sdr',
+        collaborator_avatar_url: participant.collaboratorAvatarUrl || '',
+        action: participant.action || 'Assumiu o lead',
+        timestamp: participant.timestamp || new Date().toISOString(),
+      });
+      if (error) {
+        console.error('❌ Erro ao adicionar participante no Supabase:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('❌ Falha em leadService.addParticipant:', err);
       return false;
     }
   },
@@ -192,12 +217,12 @@ export const leadService = {
     try {
       const { error } = await supabase.from('leads').delete().eq('id', id);
       if (error) {
-        console.error('Erro ao deletar lead:', error);
+        console.error('❌ Erro ao deletar lead:', error);
         return false;
       }
       return true;
     } catch (err) {
-      console.error('Falha em leadService.delete:', err);
+      console.error('❌ Falha em leadService.delete:', err);
       return false;
     }
   }
