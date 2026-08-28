@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Upload, Image as ImageIcon, X, Loader2, Check } from 'lucide-react';
-import { cloudflareR2Service, isCloudflareR2Configured } from '../../lib/cloudflareR2';
+import { cloudflareR2Service } from '../../lib/cloudflareR2';
 
 interface ImageUploadFieldProps {
   label: string;
@@ -31,6 +31,9 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const [localPreview, setLocalPreview] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string>('');
 
   const setUploadingState = (uploading: boolean) => {
     setIsUploading(uploading);
@@ -103,33 +106,37 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
       return;
     }
 
+    setUploadError('');
     setUploadingState(true);
     setUploadSuccess(false);
 
     try {
-      // 1. Instant compression (converts multi-megabyte camera photos into ~80-120KB WebP)
+      // 1. Instant compression (converts camera photos into ~80-120KB WebP)
       const { base64: compressedBase64, blob: compressedBlob } = await compressImage(file);
 
-      // 2. Instant optimistic preview: UI updates with 0ms visual delay
+      // Temporary local preview while uploading to R2
       if (compressedBase64) {
-        onChange(compressedBase64);
+        setLocalPreview(compressedBase64);
       }
 
-      // 3. Fast background upload of the small WebP to Cloudflare R2
-      if (isCloudflareR2Configured) {
-        const webpFile = new File([compressedBlob], `${file.name.split('.')[0]}.webp`, {
-          type: 'image/webp',
-        });
-        const r2Url = await cloudflareR2Service.uploadFile(webpFile, folder);
-        if (r2Url && r2Url.startsWith('http')) {
-          onChange(r2Url);
-          setUploadSuccess(true);
-          setTimeout(() => setUploadSuccess(false), 2500);
-          return;
-        }
+      // 2. Direct upload of WebP to Cloudflare R2
+      const webpFile = new File([compressedBlob], `${file.name.split('.')[0]}.webp`, {
+        type: 'image/webp',
+      });
+      const r2Url = await cloudflareR2Service.uploadFile(webpFile, folder);
+
+      if (r2Url && r2Url.startsWith('http')) {
+        onChange(r2Url);
+        setLocalPreview('');
+        setUploadSuccess(true);
+        setTimeout(() => setUploadSuccess(false), 2500);
+      } else {
+        throw new Error('Servidor não retornou uma URL válida do R2.');
       }
-    } catch (err) {
-      console.warn('[ImageUploadField] Falha no upload R2, mantendo preview local:', err);
+    } catch (err: any) {
+      console.error('[ImageUploadField] Falha no upload R2:', err);
+      setUploadError(err?.message || 'Erro ao enviar imagem para o R2.');
+      setLocalPreview('');
     } finally {
       setUploadingState(false);
     }
@@ -225,7 +232,21 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
         </div>
       )}
 
-      {value ? (
+      {uploadError && (
+        <div style={{
+          padding: '8px 12px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '8px',
+          color: '#EF4444',
+          fontSize: '0.74rem',
+          marginBottom: '8px',
+        }}>
+          ❌ {uploadError}
+        </div>
+      )}
+
+      {(localPreview || value) ? (
         <div style={{
           position: 'relative',
           borderRadius: '12px',
@@ -238,7 +259,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           padding: '10px 12px',
         }}>
           <img
-            src={value}
+            src={localPreview || value}
             alt="Preview"
             style={{
               width: aspectRatio === '1:1' ? (previewHeight || '64px') : '90px',
@@ -251,10 +272,10 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>Imagem carregada</span>
+              <span>{localPreview ? 'Enviando para o R2...' : 'Imagem salva no Cloudflare R2'}</span>
               {isUploading && (
                 <span style={{ fontSize: '0.68rem', color: '#D4AF37', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <Loader2 size={11} className="animate-spin" /> Otimizando & CDN...
+                  <Loader2 size={11} className="animate-spin" /> Otimizando & Enviando...
                 </span>
               )}
               {uploadSuccess && (

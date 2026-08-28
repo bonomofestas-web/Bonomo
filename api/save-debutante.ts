@@ -136,6 +136,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       valid_referrals: Number(payload.valid_referrals || payload.validReferrals || 0),
       total_target_referrals: Number(payload.total_target_referrals || payload.totalTargetReferrals || 30),
       converted_referral_sales: Number(payload.converted_referral_sales || payload.convertedReferralSales || 0),
+      journey_cycle: payload.journey_cycle || payload.journeyCycle || { cycleRenewalTarget: 3, cycleRenewalProgress: 0, journeyStatus: 'active' },
+      milestones: payload.milestones || [],
+      vip_rewards: payload.vip_rewards || payload.vipRewards || [],
       venue_id: venueId,
     };
 

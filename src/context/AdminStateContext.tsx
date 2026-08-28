@@ -35,6 +35,7 @@ import { leadService } from '../services/leadService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService } from '../services/collaboratorService';
+import { journeyTemplateService } from '../services/journeyTemplateService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
@@ -374,7 +375,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip] = await Promise.all([
+        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates] = await Promise.all([
           venueService.getAll(),
           funnelService.getAll(),
           leadService.getAll(),
@@ -383,6 +384,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           collaboratorService.getAll(),
           catalogService.getAllBenefits(),
           catalogService.getAllVipRewards(),
+          journeyTemplateService.getAll(),
         ]);
 
         if (isMounted) {
@@ -420,6 +422,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
           if (dbBenefits.length > 0) setBenefitsCatalog(dbBenefits);
           if (dbVip.length > 0) setVipCatalog(dbVip);
+          if (dbTemplates.length > 0) {
+            setTemplates(dbTemplates);
+          } else {
+            // Seed Supabase with local templates if empty
+            templates.forEach(t => journeyTemplateService.upsert(t));
+          }
         }
       } catch (err) {
         console.warn('Falha na sincronização inicial do Supabase:', err);
@@ -1955,12 +1963,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_TEMPLATES, JSON.stringify(updated));
       return updated;
     });
+    journeyTemplateService.upsert(newTemplate);
     return id;
   };
 
   const updateTemplate = (id: string, data: Partial<JourneyTemplate>) => {
     setTemplates(prev => {
-      const updated = prev.map(t => t.id === id ? { ...t, ...data } : t);
+      const updated = prev.map(t => {
+        if (t.id === id) {
+          const merged = { ...t, ...data };
+          journeyTemplateService.upsert(merged);
+          return merged;
+        }
+        return t;
+      });
       safeLocalStorageSet(STORAGE_KEY_TEMPLATES, JSON.stringify(updated));
       return updated;
     });
@@ -1972,6 +1988,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_TEMPLATES, JSON.stringify(updated));
       return updated;
     });
+    journeyTemplateService.delete(id);
   };
 
   const applyTemplateToDebutante = (debutanteId: string, templateId: string) => {
@@ -1981,6 +1998,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       journeyTemplateId: template.id,
       milestones: template.milestones,
       vipRewards: template.vipRewards,
+      hasJourneyEnabled: true,
+      isJourneyPending: false,
     });
   };
 
