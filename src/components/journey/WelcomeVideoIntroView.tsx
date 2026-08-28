@@ -24,6 +24,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
 
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [avatarSrc, setAvatarSrc] = useState<string>(debutante.avatarUrl || '');
+  const [videoError, setVideoError] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -451,17 +452,64 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
               preload="auto"
               muted={isMuted}
               onEnded={handleVideoEnded}
-              onError={() => {
-                console.warn('Falha no carregamento do vídeo, avançando automaticamente.');
-                setIsVideoEnded(true);
+              onError={(e) => {
+                console.warn('Vídeo não carregou a URL padrão:', e);
+                setVideoError(true);
               }}
-              onPlay={() => setIsPlaying(true)}
+              onPlay={() => {
+                setIsPlaying(true);
+                setVideoError(false);
+              }}
               onPause={() => setIsPlaying(false)}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
             <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.84rem' }}>
               Carregando vídeo de apresentação...
+            </div>
+          )}
+
+          {/* Video Load Fallback UI */}
+          {videoError && (
+            <div 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(4,3,7,0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px',
+                textAlign: 'center',
+                zIndex: 35,
+              }}
+            >
+              <Crown size={36} color="#D4AF37" style={{ marginBottom: '12px' }} />
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#FFF', marginBottom: '8px' }}>
+                Bem-vinda, {debutante.name}!
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#D1C8BA', marginBottom: '20px', maxWidth: '280px' }}>
+                O vídeo de apresentação está temporariamente indisponível. Você já pode iniciar sua jornada VIP!
+              </p>
+              <button
+                type="button"
+                onClick={onStartJourney}
+                style={{
+                  background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '30px',
+                  padding: '14px 28px',
+                  fontSize: '0.88rem',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 24px rgba(212, 175, 55, 0.5)',
+                }}
+              >
+                INICIAR MINHA JORNADA ➔
+              </button>
             </div>
           )}
 
