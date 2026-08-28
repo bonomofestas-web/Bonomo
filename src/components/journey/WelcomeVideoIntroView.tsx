@@ -30,17 +30,60 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   const [isPlaying, setIsPlaying] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const rawVideoUrl = debutante.welcomeVideoUrl || venue?.welcomeVideoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
   const venueName = venue?.name || 'Espaço Rio Lounge';
 
-  // Asynchronously resolve IndexedDB or Web URL for video and avatar
+  // Asynchronously resolve video and avatar with smart fallback cascade
   useEffect(() => {
     let isMounted = true;
-    resolveMediaUrl(rawVideoUrl).then((src) => {
-      if (isMounted) {
-        setResolvedSrc(src || rawVideoUrl);
+
+    async function resolveBestVideo() {
+      // 1. If debutante has a direct public web URL (e.g. Cloudflare R2 / S3), use it
+      if (debutante.welcomeVideoUrl && debutante.welcomeVideoUrl.startsWith('http')) {
+        if (isMounted) {
+          setResolvedSrc(debutante.welcomeVideoUrl);
+          setVideoError(false);
+        }
+        return;
       }
-    });
+
+      // 2. If debutante has a local IndexedDB media key (creator device), try to load blob
+      if (debutante.welcomeVideoUrl && debutante.welcomeVideoUrl.startsWith('idb://')) {
+        const idbSrc = await resolveMediaUrl(debutante.welcomeVideoUrl);
+        if (idbSrc && isMounted) {
+          setResolvedSrc(idbSrc);
+          setVideoError(false);
+          return;
+        }
+      }
+
+      // 3. Fallback to Venue's public web URL (Cloudflare R2)
+      if (venue?.welcomeVideoUrl && venue.welcomeVideoUrl.startsWith('http')) {
+        if (isMounted) {
+          setResolvedSrc(venue.welcomeVideoUrl);
+          setVideoError(false);
+        }
+        return;
+      }
+
+      // 4. Fallback to Venue's IndexedDB media key
+      if (venue?.welcomeVideoUrl && venue.welcomeVideoUrl.startsWith('idb://')) {
+        const venueIdbSrc = await resolveMediaUrl(venue.welcomeVideoUrl);
+        if (venueIdbSrc && isMounted) {
+          setResolvedSrc(venueIdbSrc);
+          setVideoError(false);
+          return;
+        }
+      }
+
+      // 5. Default fallback sample video
+      if (isMounted) {
+        setResolvedSrc('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+        setVideoError(false);
+      }
+    }
+
+    resolveBestVideo();
+
     if (debutante.avatarUrl) {
       resolveMediaUrl(debutante.avatarUrl).then((src) => {
         if (isMounted) {
@@ -50,10 +93,12 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
     } else {
       setAvatarSrc(createMonogramAvatar(debutante.name));
     }
+
     return () => {
       isMounted = false;
     };
-  }, [rawVideoUrl, debutante.avatarUrl, debutante.name]);
+  }, [debutante.welcomeVideoUrl, venue?.welcomeVideoUrl, debutante.avatarUrl, debutante.name]);
+
 
   // When moving to video step, start video playback
   useEffect(() => {
@@ -453,8 +498,14 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
               muted={isMuted}
               onEnded={handleVideoEnded}
               onError={(e) => {
-                console.warn('Vídeo não carregou a URL padrão:', e);
-                setVideoError(true);
+                console.warn('Vídeo falhou ao carregar URL atual:', resolvedSrc, e);
+                if (venue?.welcomeVideoUrl && venue.welcomeVideoUrl.startsWith('http') && resolvedSrc !== venue.welcomeVideoUrl) {
+                  setResolvedSrc(venue.welcomeVideoUrl);
+                } else if (resolvedSrc !== 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4') {
+                  setResolvedSrc('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+                } else {
+                  setVideoError(true);
+                }
               }}
               onPlay={() => {
                 setIsPlaying(true);
