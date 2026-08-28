@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AdminStateProvider, useAdminState } from './context/AdminStateContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Header } from './components/layout/Header';
@@ -19,6 +19,19 @@ import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroVie
 import { debutanteService } from './services/debutanteService';
 import type { DebutanteAccount } from './types/admin';
 import { Wifi, Battery, Signal, ChevronLeft, Bell, Crown } from 'lucide-react';
+
+// localStorage key to remember slugs that completed onboarding (cross-session fallback)
+const LS_SEEN_VIDEO_KEY = 'bonomo_seen_video_slugs_v1';
+const getSeenVideoSlugs = (): Record<string, boolean> => {
+  try { return JSON.parse(localStorage.getItem(LS_SEEN_VIDEO_KEY) || '{}'); } catch { return {}; }
+};
+const markSlugSeenInStorage = (slug: string) => {
+  try {
+    const current = getSeenVideoSlugs();
+    current[slug] = true;
+    localStorage.setItem(LS_SEEN_VIDEO_KEY, JSON.stringify(current));
+  } catch {}
+};
 
 const MainContentSwitcher: React.FC = () => {
   const { activeTab, debutante } = useAppState();
@@ -284,8 +297,14 @@ const generateDynamicDebutanteFromSlug = (slug: string, venueId?: string): Debut
 const RootAppRouter: React.FC = () => {
   const { debutantes, venues, getDebutanteBySlug, getVenueById, markWelcomeVideoSeen } = useAdminState();
 
+  // ── ALL useState HOOKS MUST BE DECLARED FIRST — before any conditional return ──
   const [routeInfo, setRouteInfo] = useState(parseRouteFromLocation);
   const [asyncDeb, setAsyncDeb] = useState<any>(null);
+  const [isLoadingSlug, setIsLoadingSlug] = useState<boolean>(false);
+  const [sessionUnlockedSlugs, setSessionUnlockedSlugs] = useState<Record<string, boolean>>(
+    () => getSeenVideoSlugs() // initialize from localStorage so it persists across page refreshes
+  );
+  const hasFetchedRef = useRef<string>('');
 
   // Listen to popstate and hashchange for smooth in-browser navigation
   useEffect(() => {
@@ -316,23 +335,20 @@ const RootAppRouter: React.FC = () => {
        ))
     : undefined;
 
-  const [isLoadingSlug, setIsLoadingSlug] = useState<boolean>(() => {
-    return Boolean(viewMode === 'debutante' && cleanSlug && !inMemoryDeb);
-  });
-
-  // If not found in memory (e.g. fresh incognito visit), fetch directly from Supabase / API
+  // Fetch from Supabase if not in memory (anonymous / incognito access)
   useEffect(() => {
-    if (viewMode === 'debutante' && cleanSlug) {
-      setIsLoadingSlug(true);
-      debutanteService.getBySlug(cleanSlug).then(result => {
-        if (result) {
-          setAsyncDeb(result);
-        }
-        setIsLoadingSlug(false);
-      }).catch(() => {
-        setIsLoadingSlug(false);
-      });
-    }
+    if (viewMode !== 'debutante' || !cleanSlug) return;
+    if (hasFetchedRef.current === cleanSlug) return; // avoid duplicate fetches
+    hasFetchedRef.current = cleanSlug;
+    setIsLoadingSlug(true);
+    debutanteService.getBySlug(cleanSlug).then(result => {
+      if (result) {
+        setAsyncDeb(result);
+      }
+      setIsLoadingSlug(false);
+    }).catch(() => {
+      setIsLoadingSlug(false);
+    });
   }, [viewMode, cleanSlug]);
 
   const dynamicFallbackDeb = (viewMode === 'debutante' && cleanSlug) 
@@ -343,7 +359,7 @@ const RootAppRouter: React.FC = () => {
   const activeVenue = activeDeb ? getVenueById(activeDeb.venueId) : venues[0];
 
   // Dynamic Favicon, Apple Touch Icon (Home Screen) and Document Title
-  React.useEffect(() => {
+  useEffect(() => {
     let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
     if (!link) {
       link = document.createElement('link');
@@ -373,12 +389,10 @@ const RootAppRouter: React.FC = () => {
       document.title = `${debTitle} | ${venueName}`;
       link.href = venueIcon;
 
-      // Generate solid black background with centered golden logo for home screen
       generateBlackGoldPwaIcon(venueIcon).then((blackGoldPwaIconUrl) => {
         if (appleLink) {
           appleLink.href = blackGoldPwaIconUrl;
         }
-
         try {
           const dynamicManifest = {
             name: `${activeDeb?.name || '15 Anos'} • ${venueName}`,
@@ -389,18 +403,8 @@ const RootAppRouter: React.FC = () => {
             background_color: '#000000',
             theme_color: '#000000',
             icons: [
-              {
-                src: blackGoldPwaIconUrl,
-                sizes: '192x192',
-                type: 'image/png',
-                purpose: 'any maskable'
-              },
-              {
-                src: blackGoldPwaIconUrl,
-                sizes: '512x512',
-                type: 'image/png',
-                purpose: 'any maskable'
-              }
+              { src: blackGoldPwaIconUrl, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+              { src: blackGoldPwaIconUrl, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
             ]
           };
           const blob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/json' });
@@ -424,11 +428,37 @@ const RootAppRouter: React.FC = () => {
     window.history.pushState({}, '', `/?debutante=${encodeURIComponent(targetSlug)}`);
   };
 
+  const handleStartJourney = () => {
+    if (!activeDeb) return;
+    const slug = activeDeb.slug;
+
+    // 1. Unlock in current session (immediate UI feedback)
+    setSessionUnlockedSlugs(prev => ({ ...prev, [slug]: true }));
+
+    // 2. Persist in localStorage (survives page refresh, works offline/anon)
+    markSlugSeenInStorage(slug);
+
+    // 3. Update local state for asyncDeb (if loaded from Supabase)
+    setAsyncDeb((prev: any) => prev ? { ...prev, hasSeenWelcomeVideo: true } : prev);
+
+    // 4. Update in-memory admin state
+    markWelcomeVideoSeen(slug);
+
+    // 5. Persist to Supabase database (fire-and-forget, no await)
+    if (activeDeb.id && !activeDeb.id.startsWith('deb_')) {
+      debutanteService.upsert({ id: activeDeb.id, hasSeenWelcomeVideo: true }).catch(
+        (err) => console.warn('Aviso: não foi possível persistir hasSeenWelcomeVideo no banco:', err)
+      );
+    }
+  };
+
+  // ── Conditional rendering — AFTER all hooks ──
+
   if (viewMode === 'admin') {
     return <AdminPortal onOpenDebutanteApp={handleOpenDebutanteApp} />;
   }
 
-  // If a specific debutante was requested and is still loading from database, show luxury loader
+  // Show loading spinner while fetching debutante from DB
   if (viewMode === 'debutante' && currentDebutanteSlug && !inMemoryDeb && !asyncDeb && isLoadingSlug) {
     return (
       <div style={{
@@ -454,16 +484,8 @@ const RootAppRouter: React.FC = () => {
     );
   }
 
-  const [sessionUnlockedSlugs, setSessionUnlockedSlugs] = useState<Record<string, boolean>>({});
-
-  const handleStartJourney = () => {
-    if (!activeDeb) return;
-    setSessionUnlockedSlugs(prev => ({ ...prev, [activeDeb.slug]: true }));
-    setAsyncDeb((prev: any) => prev ? { ...prev, hasSeenWelcomeVideo: true } : prev);
-    markWelcomeVideoSeen(activeDeb.slug);
-  };
-
   // Check if first-access video/PWA onboarding is required
+  // Priority: DB flag > localStorage > session
   const isUnlockedInCurrentSession = Boolean(activeDeb?.slug && sessionUnlockedSlugs[activeDeb.slug]);
   const shouldShowOnboarding = activeDeb && !activeDeb.hasSeenWelcomeVideo && !isUnlockedInCurrentSession;
 
