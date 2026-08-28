@@ -28,6 +28,7 @@ import {
   mockVipRewards 
 } from '../data/mockData';
 import { safeLocalStorageSet } from '../utils/mediaStorage';
+import { isUuid } from '../utils/uuid';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
@@ -1277,28 +1278,39 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const validateLead = (leadId: string) => {
+    let targetLead: Lead | null = null;
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const newActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'validation',
+      title: 'Indicação Validada (+1 Ponto na Jornada)',
+      text: 'Validação comercial confirmada. Ponto creditado para a aniversariante.',
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
       if (lead.isValidated) return lead;
-
-      const author = currentUser?.name || 'Administrador';
-      const authorId = currentUser?.id;
-      const authorAvatar = currentUser?.avatarUrl;
-
-      const newActivity: LeadActivity = {
-        id: `act_${Date.now()}`,
-        leadId,
-        timestamp: new Date().toISOString(),
-        type: 'validation',
-        title: 'Indicação Validada (+1 Ponto na Jornada)',
-        authorName: author,
-        authorId,
-        authorAvatarUrl: authorAvatar,
+      targetLead = {
+        ...lead,
+        isValidated: true,
+        pointsGranted: 1,
+        activities: [newActivity, ...lead.activities],
+        updatedAt: new Date().toISOString().split('T')[0],
       };
+      return targetLead;
+    }));
 
-      // Also sync debutante points
-      setDebutantes(dPrev => dPrev.map(d => {
-        if (d.id !== lead.debutanteId && d.slug !== lead.debutanteSlug) return d;
+    // Also sync debutante points in local state
+    setDebutantes(dPrev => dPrev.map(d => {
+      if (targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug)) {
         const newValid = (d.validReferrals || 0) + 1;
         const progress = Math.min(100, Math.round((newValid / d.totalTargetReferrals) * 100));
         return {
@@ -1306,26 +1318,68 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           validReferrals: newValid,
           journeyProgressPercentage: progress,
         };
-      }));
+      }
+      return d;
+    }));
 
-      return {
-        ...lead,
+    // Sincronização 100% no Supabase
+    if (isSupabaseConfigured) {
+      // 1. Atualiza o lead
+      leadService.upsert({
+        id: leadId,
         isValidated: true,
         pointsGranted: 1,
-        activities: [newActivity, ...lead.activities],
-        updatedAt: new Date().toISOString().split('T')[0],
-      };
-    }));
+      }).catch(err => console.error('❌ Erro ao validar lead no Supabase:', err));
+
+      // 2. Adiciona a atividade no lead
+      leadService.addActivity(leadId, {
+        leadId,
+        timestamp: new Date().toISOString(),
+        type: 'validation',
+        title: newActivity.title,
+        text: newActivity.text,
+        authorName: author,
+        authorId,
+        authorAvatarUrl: authorAvatar,
+      }).catch(err => console.error('❌ Erro ao registrar atividade de validação:', err));
+
+      // 3. Atualiza o status na tabela referrals
+      supabase.from('referrals')
+        .update({ status: 'validated', points_granted: 1 })
+        .or(`lead_id.eq.${leadId},id.eq.${leadId}`)
+        .then(({ error }) => {
+          if (error) console.error('❌ Erro ao atualizar referral no Supabase:', error);
+        });
+
+      // 4. Atualiza os pontos na debutante
+      const foundDeb = debutantes.find(d => targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug));
+      if (foundDeb && isUuid(foundDeb.id)) {
+        const newValid = (foundDeb.validReferrals || 0) + 1;
+        debutanteService.upsert({
+          id: foundDeb.id,
+          validReferrals: newValid,
+        }).catch(err => console.error('❌ Erro ao atualizar pontuação da debutante no Supabase:', err));
+      }
+    }
   };
 
   const invalidateLead = (leadId: string) => {
+    let targetLead: Lead | null = null;
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
       if (!lead.isValidated) return lead;
+      targetLead = {
+        ...lead,
+        isValidated: false,
+        pointsGranted: 0,
+        updatedAt: new Date().toISOString().split('T')[0],
+      };
+      return targetLead;
+    }));
 
-      // Also sync debutante points
-      setDebutantes(dPrev => dPrev.map(d => {
-        if (d.id !== lead.debutanteId && d.slug !== lead.debutanteSlug) return d;
+    // Also sync debutante points
+    setDebutantes(dPrev => dPrev.map(d => {
+      if (targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug)) {
         const newValid = Math.max(0, (d.validReferrals || 0) - 1);
         const progress = Math.min(100, Math.round((newValid / d.totalTargetReferrals) * 100));
         return {
@@ -1333,15 +1387,34 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           validReferrals: newValid,
           journeyProgressPercentage: progress,
         };
-      }));
+      }
+      return d;
+    }));
 
-      return {
-        ...lead,
+    // Sincronização 100% no Supabase
+    if (isSupabaseConfigured) {
+      leadService.upsert({
+        id: leadId,
         isValidated: false,
         pointsGranted: 0,
-        updatedAt: new Date().toISOString().split('T')[0],
-      };
-    }));
+      }).catch(err => console.error('❌ Erro ao invalidar lead no Supabase:', err));
+
+      supabase.from('referrals')
+        .update({ status: 'pending', points_granted: 0 })
+        .or(`lead_id.eq.${leadId},id.eq.${leadId}`)
+        .then(({ error }) => {
+          if (error) console.error('❌ Erro ao atualizar referral no Supabase:', error);
+        });
+
+      const foundDeb = debutantes.find(d => targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug));
+      if (foundDeb && isUuid(foundDeb.id)) {
+        const newValid = Math.max(0, (foundDeb.validReferrals || 0) - 1);
+        debutanteService.upsert({
+          id: foundDeb.id,
+          validReferrals: newValid,
+        }).catch(err => console.error('❌ Erro ao invalidar pontuação da debutante no Supabase:', err));
+      }
+    }
   };
 
   const createLeadFromReferral = (data: {

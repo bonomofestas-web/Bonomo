@@ -16,10 +16,11 @@ export const debutanteService = {
         return [];
       }
 
-      // Fetch related guests, referrals, and appointments
+      // Fetch related guests, referrals, appointments, and leads
       const { data: guestsData } = await supabase.from('guests').select('*');
       const { data: referralsData } = await supabase.from('referrals').select('*');
       const { data: appointmentsData } = await supabase.from('appointments').select('*');
+      const { data: leadsData } = await supabase.from('leads').select('*');
 
       return (debData || []).map(row => {
         const debGuests: Guest[] = (guestsData || [])
@@ -47,21 +48,55 @@ export const debutanteService = {
             confirmedAt: g.confirmed_at,
           }));
 
-        const debReferrals: Referral[] = (referralsData || [])
-          .filter(r => r.debutante_id === row.id)
-          .map(r => ({
-            id: r.id,
-            name: r.name,
-            phone: r.phone,
-            age: r.age || 14,
-            group: r.group || 'Amigos',
-            notes: r.notes,
-            createdAt: r.created_at || new Date().toISOString(),
-            status: r.status || 'pending',
-            pointsGranted: r.points_granted || 0,
-            isRenewalReferral: r.is_renewal_referral || false,
-            rejectionReason: r.rejection_reason,
-          }));
+        // Mescla referrals e leads vinculados a esta debutante
+        const rawRefs = (referralsData || []).filter(r => r.debutante_id === row.id);
+        const refMap = new Map<string, any>();
+        rawRefs.forEach(r => {
+          refMap.set(r.id, r);
+          if (r.lead_id) refMap.set(r.lead_id, r);
+        });
+
+        const linkedLeads = (leadsData || []).filter(l => l.debutante_id === row.id || (row.slug && l.debutante_slug === row.slug));
+        linkedLeads.forEach(l => {
+          if (!refMap.has(l.id)) {
+            const genRef = {
+              id: l.id,
+              debutante_id: row.id,
+              lead_id: l.id,
+              name: l.name,
+              phone: l.phone,
+              age: l.age || 15,
+              group: l.group || 'Amigos',
+              notes: l.notes || '',
+              status: l.is_validated ? 'validated' : (l.stage === 'lost' ? 'rejected' : 'pending'),
+              points_granted: l.points_granted || (l.is_validated ? 1 : 0),
+              is_renewal_referral: false,
+              created_at: l.created_at,
+            };
+            rawRefs.push(genRef);
+            refMap.set(l.id, genRef);
+          } else {
+            const existing = refMap.get(l.id) || refMap.get(l.lead_id);
+            if (existing && l.is_validated && existing.status !== 'validated') {
+              existing.status = 'validated';
+              existing.points_granted = l.points_granted || 1;
+            }
+          }
+        });
+
+        const debReferrals: Referral[] = rawRefs.map(r => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          age: r.age || 14,
+          group: r.group || 'Amigos',
+          notes: r.notes,
+          createdAt: r.created_at || new Date().toISOString(),
+          status: r.status || 'pending',
+          pointsGranted: r.points_granted || 0,
+          isRenewalReferral: r.is_renewal_referral || false,
+          rejectionReason: r.rejection_reason,
+        }));
 
         const debAppointments: Appointment[] = (appointmentsData || [])
           .filter(a => a.debutante_id === row.id)
@@ -92,6 +127,9 @@ export const debutanteService = {
           partyDaysLeft = 180;
         }
 
+        const actualValidCount = debReferrals.filter(r => r.status === 'validated' && !r.isRenewalReferral).length;
+        const totalValid = Math.max(row.valid_referrals || 0, actualValidCount);
+
         return {
           id: row.id,
           venueId: row.venue_id,
@@ -115,9 +153,9 @@ export const debutanteService = {
           baseGuestLimit: row.base_guest_limit || 150,
           extraGuestsUnlocked: row.extra_guests_unlocked || 0,
           currentGuestLimit: (row.base_guest_limit || 150) + (row.extra_guests_unlocked || 0),
-          validReferrals: row.valid_referrals || 0,
+          validReferrals: totalValid,
           totalTargetReferrals: row.total_target_referrals || 20,
-          journeyProgressPercentage: Math.round(((row.valid_referrals || 0) / (row.total_target_referrals || 20)) * 100),
+          journeyProgressPercentage: Math.round((totalValid / (row.total_target_referrals || 20)) * 100),
           convertedReferralSales: row.converted_referral_sales || 0,
           journeyCycle: row.journey_cycle || {
             journeyStartDate: new Date().toISOString(),
@@ -207,6 +245,9 @@ export const debutanteService = {
       partyDaysLeft = 180;
     }
 
+    const actualValidCount = debReferrals.filter(r => r.status === 'validated' && !r.isRenewalReferral).length;
+    const totalValid = Math.max(row.valid_referrals || 0, actualValidCount);
+
     return {
       id: row.id,
       venueId: row.venue_id,
@@ -230,9 +271,9 @@ export const debutanteService = {
       baseGuestLimit: row.base_guest_limit || 150,
       extraGuestsUnlocked: row.extra_guests_unlocked || 0,
       currentGuestLimit: (row.base_guest_limit || 150) + (row.extra_guests_unlocked || 0),
-      validReferrals: row.valid_referrals || 0,
+      validReferrals: totalValid,
       totalTargetReferrals: row.total_target_referrals || 20,
-      journeyProgressPercentage: Math.round(((row.valid_referrals || 0) / (row.total_target_referrals || 20)) * 100),
+      journeyProgressPercentage: Math.round((totalValid / (row.total_target_referrals || 20)) * 100),
       convertedReferralSales: row.converted_referral_sales || 0,
       journeyCycle: row.journey_cycle || {
         journeyStartDate: new Date().toISOString(),
@@ -307,16 +348,52 @@ export const debutanteService = {
 
       if (!row) return null;
 
-      const [guestsRes, referralsRes, appointmentsRes] = await Promise.all([
+      const [guestsRes, referralsRes, appointmentsRes, leadsRes] = await Promise.all([
         supabase.from('guests').select('*').eq('debutante_id', row.id),
         supabase.from('referrals').select('*').eq('debutante_id', row.id),
         supabase.from('appointments').select('*').eq('debutante_id', row.id),
+        supabase.from('leads').select('*').or(`debutante_id.eq.${row.id},debutante_slug.eq.${row.slug}`),
       ]);
+
+      const rawRefs = referralsRes.data || [];
+      const refMap = new Map<string, any>();
+      rawRefs.forEach(r => {
+        refMap.set(r.id, r);
+        if (r.lead_id) refMap.set(r.lead_id, r);
+      });
+
+      const linkedLeads = leadsRes.data || [];
+      linkedLeads.forEach(l => {
+        if (!refMap.has(l.id)) {
+          const genRef = {
+            id: l.id,
+            debutante_id: row.id,
+            lead_id: l.id,
+            name: l.name,
+            phone: l.phone,
+            age: l.age || 15,
+            group: l.group || 'Amigos',
+            notes: l.notes || '',
+            status: l.is_validated ? 'validated' : (l.stage === 'lost' ? 'rejected' : 'pending'),
+            points_granted: l.points_granted || (l.is_validated ? 1 : 0),
+            is_renewal_referral: false,
+            created_at: l.created_at,
+          };
+          rawRefs.push(genRef);
+          refMap.set(l.id, genRef);
+        } else {
+          const existing = refMap.get(l.id) || refMap.get(l.lead_id);
+          if (existing && l.is_validated && existing.status !== 'validated') {
+            existing.status = 'validated';
+            existing.points_granted = l.points_granted || 1;
+          }
+        }
+      });
 
       return this.mapDebutanteRow(
         row,
         guestsRes.data || [],
-        referralsRes.data || [],
+        rawRefs,
         appointmentsRes.data || []
       );
     } catch (err) {

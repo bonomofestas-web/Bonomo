@@ -445,22 +445,29 @@ export const ReferralFormModal: React.FC<ReferralFormModalProps> = ({ isOpen, on
               )}
             </div>
 
-            {/* Dica para iPhone / iOS Auto-fill */}
+            {/* Dica ilustrada para iPhone / iOS Auto-fill */}
             {isIosHintVisible && (
               <div style={{
-                background: 'rgba(255, 215, 0, 0.1)',
-                border: '1px solid rgba(255, 215, 0, 0.35)',
-                borderRadius: '12px',
-                padding: '9px 12px',
-                marginBottom: '14px',
+                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.14) 0%, rgba(255, 183, 3, 0.08) 100%)',
+                border: '1px solid rgba(255, 215, 0, 0.45)',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                marginBottom: '16px',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
+                flexDirection: 'column',
+                gap: '6px'
               }}>
-                <Smartphone size={16} color="#FFD700" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '0.74rem', color: '#FFF', lineHeight: 1.3 }}>
-                  📱 <strong>Dica iPhone:</strong> Toque no teclado em <strong>"Contatos"</strong> acima das teclas para puxar os dados da sua amiga direto da sua agenda!
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Smartphone size={16} color="#FFD700" style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#FFD700' }}>
+                    Como importar da agenda no iPhone:
+                  </span>
+                </div>
+                <ol style={{ margin: '4px 0 0 18px', padding: 0, fontSize: '0.75rem', color: '#FFF', lineHeight: 1.45 }}>
+                  <li>Toque no campo <strong>Nome da Amiga</strong> abaixo.</li>
+                  <li>No teclado do seu iPhone, toque em <strong>"Preencher Automático"</strong>.</li>
+                  <li>Escolha <strong>"Outro Contato..."</strong> e selecione sua amiga para preencher tudo em 1 toque!</li>
+                </ol>
               </div>
             )}
 

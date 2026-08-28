@@ -69,19 +69,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (v) venueData = v;
     }
 
-    // Fetch guests, referrals, appointments
-    const [guestsRes, referralsRes, appointmentsRes] = await Promise.all([
+    // Fetch guests, referrals, appointments and linked leads
+    const [guestsRes, referralsRes, appointmentsRes, leadsRes] = await Promise.all([
       supabase.from('guests').select('*').eq('debutante_id', row.id),
       supabase.from('referrals').select('*').eq('debutante_id', row.id),
       supabase.from('appointments').select('*').eq('debutante_id', row.id),
+      supabase.from('leads').select('*').or(`debutante_id.eq.${row.id},debutante_slug.eq.${row.slug}`),
     ]);
+
+    const rawReferrals = referralsRes.data || [];
+    const rawLeads = leadsRes.data || [];
+
+    // Mescla inteligente: adiciona leads vinculados que ainda não estejam em referrals
+    const referralMap = new Map<string, any>();
+    rawReferrals.forEach(r => {
+      referralMap.set(r.id, r);
+      if (r.lead_id) referralMap.set(r.lead_id, r);
+    });
+
+    rawLeads.forEach(l => {
+      if (!referralMap.has(l.id)) {
+        const generatedRef = {
+          id: l.id,
+          debutante_id: row.id,
+          lead_id: l.id,
+          name: l.name,
+          phone: l.phone,
+          age: l.age || 15,
+          group: l.group || 'Amigos',
+          notes: l.notes || '',
+          status: l.is_validated ? 'validated' : (l.stage === 'lost' ? 'rejected' : 'pending'),
+          points_granted: l.points_granted || (l.is_validated ? 1 : 0),
+          is_renewal_referral: false,
+          created_at: l.created_at,
+        };
+        rawReferrals.push(generatedRef);
+        referralMap.set(l.id, generatedRef);
+      } else {
+        // Se o lead foi validado no CRM, sincroniza o status no referral
+        const existing = referralMap.get(l.id) || referralMap.get(l.lead_id);
+        if (existing && l.is_validated && existing.status !== 'validated') {
+          existing.status = 'validated';
+          existing.points_granted = l.points_granted || 1;
+        }
+      }
+    });
+
+    // Recalcula valid_referrals real
+    const actualValidCount = rawReferrals.filter(r => r.status === 'validated' && !r.is_renewal_referral).length;
+    row.valid_referrals = Math.max(row.valid_referrals || 0, actualValidCount);
 
     return res.status(200).json({
       success: true,
       debutante: row,
       venue: venueData,
       guests: guestsRes.data || [],
-      referrals: referralsRes.data || [],
+      referrals: rawReferrals,
       appointments: appointmentsRes.data || [],
     });
   } catch (err: any) {
