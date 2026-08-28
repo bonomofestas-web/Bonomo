@@ -385,6 +385,13 @@ const RootAppRouter: React.FC = () => {
       document.head.appendChild(appleLink);
     }
 
+    let appleTitleMeta: HTMLMetaElement | null = document.querySelector("meta[name='apple-mobile-web-app-title']");
+    if (!appleTitleMeta) {
+      appleTitleMeta = document.createElement('meta');
+      appleTitleMeta.name = 'apple-mobile-web-app-title';
+      document.head.appendChild(appleTitleMeta);
+    }
+
     let manifestLink: HTMLLinkElement | null = document.querySelector("link[rel='manifest']");
 
     const venueIcon = activeVenue?.logoUrl || '/logo_riio_lounge.png';
@@ -394,21 +401,23 @@ const RootAppRouter: React.FC = () => {
       link.href = '/favicon.png';
       link.type = 'image/png';
       appleLink.href = '/favicon.png';
+      appleTitleMeta.content = 'Bonomo Festas';
     } else {
       const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
-      const venueName = activeVenue ? activeVenue.name : 'Bonomo Festas';
+      const venueName = activeVenue?.name || 'Bonomo Festas';
       document.title = `${debTitle} | ${venueName}`;
       link.href = venueIcon;
+      appleTitleMeta.content = venueName;
 
-      generateBlackGoldPwaIcon(venueIcon).then((blackGoldPwaIconUrl) => {
+      generateBlackGoldPwaIcon(venueIcon, venueName).then((blackGoldPwaIconUrl) => {
         if (appleLink) {
           appleLink.href = blackGoldPwaIconUrl;
         }
         try {
           const dynamicManifest = {
-            name: `${activeDeb?.name || '15 Anos'} • ${venueName}`,
-            short_name: `${activeDeb?.name || '15 Anos'}`,
-            description: `Aplicativo oficial de 15 Anos no ${venueName}`,
+            name: venueName,
+            short_name: venueName,
+            description: `Aplicativo oficial no ${venueName}`,
             start_url: window.location.href,
             display: 'standalone',
             background_color: '#000000',

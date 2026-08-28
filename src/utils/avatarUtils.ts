@@ -27,12 +27,46 @@ export const createMonogramAvatar = (name: string): string => {
 
 /**
  * Generates a 512x512 PWA Home Screen Icon with a solid black background
- * and the venue's golden logo centered.
+ * and the venue's golden logo perfectly proportioned and centered.
+ * Never leaves transparency to prevent iOS Safari from defaulting to white.
  */
-export const generateBlackGoldPwaIcon = (logoUrl: string): Promise<string> => {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !logoUrl) {
-      return resolve(logoUrl || '/logo_bonomo_gold.png');
+export const generateBlackGoldPwaIcon = (logoUrl: string, venueName = 'Bonomo'): Promise<string> => {
+  return new Promise<string>((resolve) => {
+    const generateFallbackIcon = (): string => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return logoUrl || '/favicon.png';
+
+        // Solid luxury pure black background
+        ctx.fillStyle = '#050308';
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Subtle luxury gold outer circle
+        ctx.strokeStyle = '#D4AF37';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(256, 256, 220, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Crown & Initial
+        const initial = venueName ? venueName.trim().charAt(0).toUpperCase() : 'B';
+        ctx.fillStyle = '#D4AF37';
+        ctx.font = "bold 160px 'Plus Jakarta Sans', sans-serif";
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(initial, 256, 265);
+
+        return canvas.toDataURL('image/png');
+      } catch {
+        return logoUrl || '/favicon.png';
+      }
+    };
+
+    if (typeof window === 'undefined') {
+      return resolve(logoUrl || '/favicon.png');
     }
 
     try {
@@ -40,18 +74,25 @@ export const generateBlackGoldPwaIcon = (logoUrl: string): Promise<string> => {
       canvas.width = 512;
       canvas.height = 512;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return resolve(logoUrl);
+      if (!ctx) return resolve(generateFallbackIcon());
 
-      // Solid pure black luxury background
+      // Solid pure black background (eliminates any white background on iOS)
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, 512, 512);
 
+      if (!logoUrl) {
+        return resolve(generateFallbackIcon());
+      }
+
       const img = new Image();
       img.crossOrigin = 'anonymous';
+
       img.onload = () => {
-        const maxLogoSize = 380;
-        let w = img.width || 380;
-        let h = img.height || 380;
+        // Safe container size for iOS & Android icons (~58% of canvas, perfectly balanced)
+        const maxLogoSize = 300;
+        let w = img.width || maxLogoSize;
+        let h = img.height || maxLogoSize;
+
         if (w > maxLogoSize || h > maxLogoSize) {
           if (w > h) {
             h = Math.round((h * maxLogoSize) / w);
@@ -60,18 +101,28 @@ export const generateBlackGoldPwaIcon = (logoUrl: string): Promise<string> => {
             w = Math.round((w * maxLogoSize) / h);
             h = maxLogoSize;
           }
+        } else {
+          // If original image is too small, scale up to fit safe container
+          const scale = maxLogoSize / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
         }
+
         const x = Math.round((512 - w) / 2);
         const y = Math.round((512 - h) / 2);
+
         ctx.drawImage(img, x, y, w, h);
         resolve(canvas.toDataURL('image/png'));
       };
+
       img.onerror = () => {
-        resolve(logoUrl);
+        // Fallback with solid black and gold monogram instead of raw transparent image
+        resolve(generateFallbackIcon());
       };
+
       img.src = logoUrl;
     } catch {
-      resolve(logoUrl);
+      resolve(generateFallbackIcon());
     }
   });
 };
