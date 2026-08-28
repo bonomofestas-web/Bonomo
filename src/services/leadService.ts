@@ -103,37 +103,35 @@ export const leadService = {
   async upsert(lead: Partial<Lead> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const safeId = isUuid(lead.id) ? lead.id : generateUuid();
-      const safeVenueId = isUuid(lead.venueId) ? lead.venueId : 'a1111111-1111-1111-1111-111111111111';
-      const safeFunnelId = isUuid((lead as any).funnelId) ? (lead as any).funnelId : 'f1111111-1111-1111-1111-111111111111';
-      const safeDebutanteId = isUuid(lead.debutanteId) ? lead.debutanteId : null;
-
-      const payload: any = {
-        id: safeId,
-        funnel_id: safeFunnelId,
-        venue_id: safeVenueId,
-        debutante_id: safeDebutanteId,
-        debutante_name: lead.debutanteName || 'Indicação Externa',
-        debutante_slug: lead.debutanteSlug || '',
-        name: lead.name,
-        phone: lead.phone,
-        age: lead.age || 15,
-        group: lead.group || 'Amigos',
-        notes: lead.notes || '',
-        stage: lead.stage || 'new_lead',
-        is_validated: lead.isValidated || false,
-        points_granted: lead.pointsGranted || 0,
-        rejection_reason: lead.rejectionReason,
-        sdr_id: isUuid(lead.sdrId) ? lead.sdrId : null,
-        sdr_name: lead.sdrName,
-        closer_id: isUuid(lead.closerId) ? lead.closerId : null,
-        closer_name: lead.closerName,
-        assigned_to: lead.assignedTo,
-        deal_value: lead.dealValue,
-        package_sold: lead.packageSold,
-        contract_date: lead.contractDate,
-        party_date: lead.partyDate || lead.eventDate,
-      };
+      const payload: any = {};
+      if (lead.name !== undefined) payload.name = lead.name;
+      if (lead.phone !== undefined) payload.phone = lead.phone;
+      if (lead.age !== undefined) payload.age = lead.age;
+      if (lead.group !== undefined) payload.group = lead.group;
+      if (lead.notes !== undefined) payload.notes = lead.notes;
+      if (lead.stage !== undefined) payload.stage = lead.stage;
+      if (lead.isValidated !== undefined) payload.is_validated = lead.isValidated;
+      if (lead.pointsGranted !== undefined) payload.points_granted = lead.pointsGranted;
+      if (lead.rejectionReason !== undefined) payload.rejection_reason = lead.rejectionReason;
+      
+      if (lead.sdrId !== undefined) payload.sdr_id = isUuid(lead.sdrId) ? lead.sdrId : null;
+      if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName;
+      if (lead.closerId !== undefined) payload.closer_id = isUuid(lead.closerId) ? lead.closerId : null;
+      if (lead.closerName !== undefined) payload.closer_name = lead.closerName;
+      if (lead.assignedTo !== undefined) payload.assigned_to = lead.assignedTo;
+      
+      if (lead.dealValue !== undefined) payload.deal_value = lead.dealValue;
+      if (lead.packageSold !== undefined) payload.package_sold = lead.packageSold;
+      if (lead.contractDate !== undefined) payload.contract_date = lead.contractDate;
+      if (lead.partyDate !== undefined || lead.eventDate !== undefined) {
+        payload.party_date = lead.partyDate || lead.eventDate;
+      }
+      
+      if (lead.venueId !== undefined && isUuid(lead.venueId)) payload.venue_id = lead.venueId;
+      if ((lead as any).funnelId !== undefined && isUuid((lead as any).funnelId)) payload.funnel_id = (lead as any).funnelId;
+      if (lead.debutanteId !== undefined) payload.debutante_id = isUuid(lead.debutanteId) ? lead.debutanteId : null;
+      if (lead.debutanteName !== undefined) payload.debutante_name = lead.debutanteName;
+      if (lead.debutanteSlug !== undefined) payload.debutante_slug = lead.debutanteSlug;
 
       if (lead.email !== undefined) payload.email = lead.email;
       if (lead.neighborhood !== undefined) payload.neighborhood = lead.neighborhood;
@@ -151,14 +149,46 @@ export const leadService = {
       if (lead.temperature !== undefined) payload.temperature = lead.temperature;
       if (lead.tags !== undefined) payload.tags = lead.tags;
 
-      const { error } = await supabase.from('leads').upsert(payload);
-      if (error) {
-        console.error('Erro ao salvar lead no Supabase:', error);
+      if (isUuid(lead.id)) {
+        // Tenta fazer UPDATE no registro existente
+        const { data: updated, error: updateErr } = await supabase
+          .from('leads')
+          .update(payload)
+          .eq('id', lead.id)
+          .select('id');
+
+        if (!updateErr && updated && updated.length > 0) {
+          return true;
+        }
+
+        // Se não existia ainda, prepara payload completo para INSERT
+        payload.id = lead.id;
+        if (!payload.name) payload.name = lead.name || 'Sem nome';
+        if (!payload.phone) payload.phone = lead.phone || '';
+        if (!payload.venue_id) payload.venue_id = 'a1111111-1111-1111-1111-111111111111';
+        if (!payload.funnel_id) payload.funnel_id = 'f1111111-1111-1111-1111-111111111111';
+        if (payload.stage === undefined) payload.stage = 'new_lead';
+
+        const { error: insertErr } = await supabase.from('leads').insert(payload);
+        if (insertErr) {
+          console.error('❌ Erro ao inserir novo lead no Supabase:', insertErr);
+          return false;
+        }
+        return true;
+      } else {
+        // ID não é UUID (ex: lead temporário ou criado por telefone), busca por telefone se houver
+        if (lead.phone) {
+          const cleanPhone = lead.phone.replace(/\D/g, '');
+          const { data: found } = await supabase.from('leads').select('id').ilike('phone', `%${cleanPhone}%`).maybeSingle();
+          if (found?.id) {
+            const { error: updErr } = await supabase.from('leads').update(payload).eq('id', found.id);
+            if (!updErr) return true;
+          }
+        }
         return false;
       }
-      return true;
     } catch (err) {
-      console.error('Falha em leadService.upsert:', err);
+      console.error('❌ Falha crítica em leadService.upsert:', err);
       return false;
     }
   },

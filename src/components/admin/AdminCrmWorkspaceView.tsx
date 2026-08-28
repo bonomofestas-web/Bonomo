@@ -41,7 +41,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const { 
     leads, collaborators, currentUser, activeVenueId,
     updateLeadStage, closeLeadSaleWithValue, addLeadNote,
-    claimLeadIfUnassigned, assignLeadSdr,
+    assignLeadSdr,
     deleteLeadTask, completeLeadTask
   } = useAdminState();
 
@@ -65,7 +65,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     if (initialLeadId) {
       setSelectedLeadId(initialLeadId);
       setIsMiddleCollapsed(false);
-      claimLeadIfUnassigned(initialLeadId);
       if (onLeadOpened) onLeadOpened();
     }
   }, [initialLeadId]);
@@ -102,9 +101,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const handleSelectLead = (lead: Lead) => {
     setSelectedLeadId(lead.id);
     setIsMiddleCollapsed(false);
-    if (!lead.sdrId && (currentUser?.role === 'sdr' || currentUser?.role === 'crm')) {
-      claimLeadIfUnassigned(lead.id);
-    }
   };
 
   const handleStageChange = (newStage: CrmStage) => {

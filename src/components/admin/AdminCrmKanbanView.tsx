@@ -493,7 +493,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleOpenLeadWorkspace = (lead: Lead) => {
     setActiveLeadIdForWorkspace(lead.id);
-    claimLeadIfUnassigned(lead.id);
     setViewMode('workspace');
   };
 

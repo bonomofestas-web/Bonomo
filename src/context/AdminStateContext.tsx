@@ -28,7 +28,6 @@ import {
   mockVipRewards 
 } from '../data/mockData';
 import { safeLocalStorageSet } from '../utils/mediaStorage';
-import { isUuid } from '../utils/uuid';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
@@ -1198,7 +1197,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateLeadStage = (leadId: string, newStage: CrmStage) => {
-    let targetLead: Lead | null = null;
+    const targetLead = leads.find(l => l.id === leadId);
     const stageLabels: Record<CrmStage, string> = {
       new_lead: 'Novo Lead',
       in_analysis: 'Em Análise',
@@ -1223,37 +1222,50 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       authorAvatarUrl: authorAvatar,
     };
 
+    // Regra: Ao mover para qualquer estágio após "Novo Lead" (ex: Em Análise), se não tiver SDR, o usuário assume como SDR
+    const shouldClaimSdr = newStage !== 'new_lead' && (!targetLead?.sdrId && !targetLead?.assignedTo) && Boolean(authorId);
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
 
-      // Add participant record if user is a collaborator not yet in participants
+      // Add participant record
       let updatedParticipants = lead.participants || [];
       if (authorId && !updatedParticipants.find(p => p.collaboratorId === authorId)) {
         updatedParticipants = addParticipantToLead(
           lead, authorId, author,
-          currentUser?.role || 'crm',
+          currentUser?.role || 'sdr',
           authorAvatar,
-          'stage_changed'
+          shouldClaimSdr ? 'sdr_claimed' : 'stage_changed'
         );
       }
 
-      targetLead = {
+      return {
         ...lead,
         stage: newStage,
+        sdrId: shouldClaimSdr ? authorId : lead.sdrId,
+        sdrName: shouldClaimSdr ? author : lead.sdrName,
+        assignedTo: shouldClaimSdr ? author : lead.assignedTo,
         participants: updatedParticipants,
         activities: [newActivity, ...lead.activities],
         updatedAt: new Date().toISOString().split('T')[0],
       };
-
-      return targetLead;
     }));
 
     // Sincronização 100% no Supabase
     if (isSupabaseConfigured) {
-      leadService.upsert({
+      const updatePayload: any = {
         id: leadId,
         stage: newStage,
-      }).catch(err => console.error('❌ Erro ao atualizar etapa do lead no Supabase:', err));
+      };
+      if (shouldClaimSdr) {
+        updatePayload.sdrId = authorId;
+        updatePayload.sdrName = author;
+        updatePayload.assignedTo = author;
+      }
+
+      leadService.upsert(updatePayload).catch(err => {
+        console.error('❌ Erro ao atualizar etapa do lead no Supabase:', err);
+      });
 
       leadService.addActivity(leadId, {
         leadId,
@@ -1270,9 +1282,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         leadService.addParticipant(leadId, {
           collaboratorId: authorId,
           collaboratorName: author,
-          collaboratorRole: currentUser?.role || 'crm',
+          collaboratorRole: currentUser?.role || 'sdr',
           collaboratorAvatarUrl: authorAvatar,
-          action: 'Alterou a etapa do lead',
+          action: shouldClaimSdr ? 'Assumiu como SDR ao mover para ' + stageLabels[newStage] : 'Alterou a etapa do lead',
           timestamp: newActivity.timestamp,
         }).catch(err => console.error('❌ Erro ao registrar participante no Supabase:', err));
       }
@@ -1322,7 +1334,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const validateLead = (leadId: string) => {
-    let targetLead: Lead | null = null;
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead) return;
+
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
@@ -1341,22 +1355,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-      if (lead.isValidated) return lead;
-      targetLead = {
+      return {
         ...lead,
         isValidated: true,
         pointsGranted: 1,
         activities: [newActivity, ...lead.activities],
         updatedAt: new Date().toISOString().split('T')[0],
       };
-      return targetLead;
     }));
 
-    // Also sync debutante points in local state
+    // Local state sync for debutantes
     setDebutantes(dPrev => dPrev.map(d => {
-      if (targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug)) {
+      if (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug) {
         const newValid = (d.validReferrals || 0) + 1;
-        const progress = Math.min(100, Math.round((newValid / d.totalTargetReferrals) * 100));
+        const progress = Math.min(100, Math.round((newValid / (d.totalTargetReferrals || 10)) * 100));
         return {
           ...d,
           validReferrals: newValid,
@@ -1378,7 +1390,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // 2. Adiciona a atividade no lead
       leadService.addActivity(leadId, {
         leadId,
-        timestamp: new Date().toISOString(),
+        timestamp: newActivity.timestamp,
         type: 'validation',
         title: newActivity.title,
         text: newActivity.text,
@@ -1387,7 +1399,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         authorAvatarUrl: authorAvatar,
       }).catch(err => console.error('❌ Erro ao registrar atividade de validação:', err));
 
-      // 3. Atualiza o status na tabela referrals
+      // 3. Atualiza na tabela referrals
       supabase.from('referrals')
         .update({ status: 'validated', points_granted: 1 })
         .or(`lead_id.eq.${leadId},id.eq.${leadId}`)
@@ -1396,11 +1408,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
 
       // 4. Atualiza os pontos na debutante
-      const foundDeb = debutantes.find(d => targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug));
-      if (foundDeb && isUuid(foundDeb.id)) {
+      const foundDeb = debutantes.find(d => d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug);
+      if (foundDeb) {
         const newValid = (foundDeb.validReferrals || 0) + 1;
         debutanteService.upsert({
           id: foundDeb.id,
+          slug: foundDeb.slug,
           validReferrals: newValid,
         }).catch(err => console.error('❌ Erro ao atualizar pontuação da debutante no Supabase:', err));
       }
@@ -1408,24 +1421,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const invalidateLead = (leadId: string) => {
-    let targetLead: Lead | null = null;
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead) return;
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
-      if (!lead.isValidated) return lead;
-      targetLead = {
+      return {
         ...lead,
         isValidated: false,
         pointsGranted: 0,
         updatedAt: new Date().toISOString().split('T')[0],
       };
-      return targetLead;
     }));
 
-    // Also sync debutante points
+    // Local state sync for debutantes
     setDebutantes(dPrev => dPrev.map(d => {
-      if (targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug)) {
+      if (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug) {
         const newValid = Math.max(0, (d.validReferrals || 0) - 1);
-        const progress = Math.min(100, Math.round((newValid / d.totalTargetReferrals) * 100));
+        const progress = Math.min(100, Math.round((newValid / (d.totalTargetReferrals || 10)) * 100));
         return {
           ...d,
           validReferrals: newValid,
@@ -1450,11 +1463,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (error) console.error('❌ Erro ao atualizar referral no Supabase:', error);
         });
 
-      const foundDeb = debutantes.find(d => targetLead && (d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug));
-      if (foundDeb && isUuid(foundDeb.id)) {
+      const foundDeb = debutantes.find(d => d.id === targetLead.debutanteId || d.slug === targetLead.debutanteSlug);
+      if (foundDeb) {
         const newValid = Math.max(0, (foundDeb.validReferrals || 0) - 1);
         debutanteService.upsert({
           id: foundDeb.id,
+          slug: foundDeb.slug,
           validReferrals: newValid,
         }).catch(err => console.error('❌ Erro ao invalidar pontuação da debutante no Supabase:', err));
       }
