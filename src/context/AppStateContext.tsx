@@ -20,6 +20,7 @@ import type {
   MilestoneStatus
 } from '../types';
 import type { DebutanteAccount } from '../types/admin';
+import { isUuid, generateUuid } from '../utils/uuid';
 import { 
   mockThemes, 
   mockDebutante, 
@@ -396,7 +397,16 @@ export const AppStateProvider: React.FC<{
             hasJourneyEnabled: fresh.hasJourneyEnabled,
           }));
           if (fresh.guests) setGuests(fresh.guests);
-          if (fresh.referrals) setReferrals(fresh.referrals);
+          if (fresh.referrals) {
+            setReferrals(prev => {
+              const map = new Map<string, Referral>();
+              fresh.referrals.forEach(r => map.set(r.id, r));
+              prev.forEach(r => {
+                if (!map.has(r.id)) map.set(r.id, r);
+              });
+              return Array.from(map.values());
+            });
+          }
           if (fresh.milestones) setMilestones(fresh.milestones);
           if (fresh.vipRewards) setVipRewards(fresh.vipRewards);
           setConvertedReferralSalesState(fresh.convertedReferralSales || 0);
@@ -676,7 +686,9 @@ export const AppStateProvider: React.FC<{
   // Add a new referral from debutante (starts as 'pending' and registers in CRM)
   const addReferral = (data: { name: string; phone: string; age: number; group: ReferralGroup; notes?: string }) => {
     const isPaused = debutante.journeyCycle.journeyStatus === 'paused';
-    const newRefId = `ref_${Date.now()}`;
+    const newRefId = generateUuid();
+    const newLeadId = generateUuid();
+
     const newRef: Referral = {
       id: newRefId,
       name: data.name,
@@ -699,14 +711,18 @@ export const AppStateProvider: React.FC<{
       processCycleRenewalOnReferral();
     }
 
-    // Directly register as a new lead in CRM Supabase Database
-    const newLeadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    // Direct registration as a new lead in CRM Supabase Database
+    const safeVenueId = isUuid(debutante.venueId) ? debutante.venueId : 'a1111111-1111-1111-1111-111111111111';
+    const safeFunnelId = 'f1111111-1111-1111-1111-111111111111';
+    const safeDebutanteId = isUuid(debutante.id) ? debutante.id : (isUuid(debutante.venueId) ? debutante.venueId : null);
+
     const newLead: import('../types/admin').Lead = {
       id: newLeadId,
-      debutanteId: debutante.id,
+      debutanteId: safeDebutanteId || '',
       debutanteName: debutante.name,
       debutanteSlug: debutante.slug || 'deb_slug',
-      venueId: debutante.venueId || 'rio_lounge',
+      venueId: safeVenueId,
+      funnelId: safeFunnelId,
       name: data.name,
       phone: data.phone,
       age: data.age,
@@ -719,7 +735,7 @@ export const AppStateProvider: React.FC<{
       tasks: [],
       activities: [
         {
-          id: `act_${Date.now()}`,
+          id: generateUuid(),
           leadId: newLeadId,
           timestamp: new Date().toISOString(),
           type: 'creation',
@@ -733,15 +749,17 @@ export const AppStateProvider: React.FC<{
 
     if (isSupabaseConfigured) {
       // 1. Salva o lead na tabela do CRM Supabase
-      leadService.upsert(newLead).catch(err => {
-        console.error('❌ Falha crítica ao salvar indicação na tabela leads do Supabase:', err);
+      leadService.upsert(newLead).then(success => {
+        if (!success) {
+          console.error('❌ Falha ao salvar indicação na tabela leads do Supabase');
+        }
+      }).catch(err => {
+        console.error('❌ Exceção ao salvar indicação na tabela leads do Supabase:', err);
       });
 
-      // 2. Salva o registro de referral associado
-      supabase.from('referrals').insert({
+      // 2. Salva o registro de referral associado na tabela referrals
+      const referralPayload: any = {
         id: newRefId,
-        debutante_id: debutante.id,
-        lead_id: newLeadId,
         name: data.name,
         phone: data.phone,
         age: data.age,
@@ -750,19 +768,28 @@ export const AppStateProvider: React.FC<{
         status: 'pending',
         points_granted: 0,
         is_renewal_referral: isPaused,
-      }).then(({ error }) => {
+      };
+
+      if (safeDebutanteId) {
+        referralPayload.debutante_id = safeDebutanteId;
+      }
+      referralPayload.lead_id = newLeadId;
+
+      supabase.from('referrals').insert(referralPayload).then(({ error }) => {
         if (error) {
-          console.error('❌ Falha ao inserir referral no Supabase:', error);
+          console.error('❌ Falha ao inserir referral na tabela referrals do Supabase:', error);
         }
       });
 
-      // 3. Atualiza o array de referrals da debutante no banco
-      debutanteService.upsert({
-        id: debutante.id,
-        validReferrals: debutante.validReferrals,
-      }).catch(err => {
-        console.error('❌ Falha ao sincronizar debutante após indicação:', err);
-      });
+      // 3. Atualiza os dados da debutante se ID for UUID
+      if (safeDebutanteId) {
+        debutanteService.upsert({
+          id: safeDebutanteId,
+          validReferrals: debutante.validReferrals,
+        }).catch(err => {
+          console.error('❌ Falha ao sincronizar debutante após indicação:', err);
+        });
+      }
     }
   };
 

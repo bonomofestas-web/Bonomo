@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { Lead, LeadActivity } from '../types/admin';
+import { isUuid, generateUuid } from '../utils/uuid';
+import type { Lead, LeadActivity, LeadParticipant } from '../types/admin';
 
 export const leadService = {
   async getAll(): Promise<Lead[]> {
@@ -34,7 +35,7 @@ export const leadService = {
             authorAvatarUrl: a.author_avatar_url,
           }));
 
-        const leadParticipants = (participantsData || [])
+        const leadParticipants: LeadParticipant[] = (participantsData || [])
           .filter(p => p.lead_id === row.id)
           .map(p => ({
             id: p.id,
@@ -102,25 +103,30 @@ export const leadService = {
   async upsert(lead: Partial<Lead> & { id: string }): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      const safeId = isUuid(lead.id) ? lead.id : generateUuid();
+      const safeVenueId = isUuid(lead.venueId) ? lead.venueId : 'a1111111-1111-1111-1111-111111111111';
+      const safeFunnelId = isUuid((lead as any).funnelId) ? (lead as any).funnelId : 'f1111111-1111-1111-1111-111111111111';
+      const safeDebutanteId = isUuid(lead.debutanteId) ? lead.debutanteId : null;
+
       const payload: any = {
-        id: lead.id,
-        funnel_id: (lead as any).funnelId || lead.venueId,
-        venue_id: lead.venueId,
-        debutante_id: lead.debutanteId || null,
-        debutante_name: lead.debutanteName,
-        debutante_slug: lead.debutanteSlug,
+        id: safeId,
+        funnel_id: safeFunnelId,
+        venue_id: safeVenueId,
+        debutante_id: safeDebutanteId,
+        debutante_name: lead.debutanteName || 'Indicação Externa',
+        debutante_slug: lead.debutanteSlug || '',
         name: lead.name,
         phone: lead.phone,
-        age: lead.age,
-        group: lead.group,
-        notes: lead.notes,
-        stage: lead.stage,
-        is_validated: lead.isValidated,
-        points_granted: lead.pointsGranted,
+        age: lead.age || 15,
+        group: lead.group || 'Amigos',
+        notes: lead.notes || '',
+        stage: lead.stage || 'new_lead',
+        is_validated: lead.isValidated || false,
+        points_granted: lead.pointsGranted || 0,
         rejection_reason: lead.rejectionReason,
-        sdr_id: lead.sdrId || null,
+        sdr_id: isUuid(lead.sdrId) ? lead.sdrId : null,
         sdr_name: lead.sdrName,
-        closer_id: lead.closerId || null,
+        closer_id: isUuid(lead.closerId) ? lead.closerId : null,
         closer_name: lead.closerName,
         assigned_to: lead.assignedTo,
         deal_value: lead.dealValue,
