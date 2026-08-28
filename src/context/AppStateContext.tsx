@@ -369,52 +369,6 @@ export const AppStateProvider: React.FC<{
     }
   }, [initialAccount]);
 
-  // Persist Debutante Account changes to localStorage so reloading retains 100% of user data
-  useEffect(() => {
-    if (!debutante.id) return;
-    try {
-      const savedDebs = localStorage.getItem('bonomo_admin_debutantes_v7');
-      if (savedDebs) {
-        const debs: DebutanteAccount[] = JSON.parse(savedDebs);
-        const updatedDebs = debs.map(d => {
-          if (d.id === debutante.id || d.slug === debutante.slug) {
-            return {
-              ...d,
-              name: debutante.name,
-              partyDate: debutante.partyDate,
-              partyDaysLeft: debutante.partyDaysLeft,
-              avatarUrl: debutante.avatarUrl,
-              phone: debutante.phone,
-              hasJourneyEnabled: debutante.hasJourneyEnabled,
-              welcomeVideoUrl: debutante.welcomeVideoUrl,
-              hasSeenWelcomeVideo: debutante.hasSeenWelcomeVideo,
-              validReferrals: debutante.validReferrals,
-              totalTargetReferrals: debutante.totalTargetReferrals,
-              journeyProgressPercentage: debutante.journeyProgressPercentage,
-              convertedReferralSales: debutante.convertedReferralSales,
-              baseGuestLimit: debutante.baseGuestLimit,
-              extraGuestsUnlocked: debutante.extraGuestsUnlocked,
-              currentGuestLimit: debutante.currentGuestLimit,
-              journeyCycle: debutante.journeyCycle,
-              useCustomInvitePhoto: debutante.useCustomInvitePhoto,
-              customInvitePhotoUrl: debutante.customInvitePhotoUrl,
-              receptionMessage: debutante.receptionMessage,
-              guests,
-              referrals,
-              milestones,
-              vipRewards,
-              updatedAt: new Date().toISOString(),
-            };
-          }
-          return d;
-        });
-        localStorage.setItem('bonomo_admin_debutantes_v7', JSON.stringify(updatedDebs));
-      }
-    } catch (e) {
-      console.error('Error saving debutante to localStorage:', e);
-    }
-  }, [debutante, guests, referrals, milestones, vipRewards]);
-
   // Realtime synchronization for active Debutante (Progress, Referrals, Guests)
   useEffect(() => {
     if (!isSupabaseConfigured || !debutante.id) return;
@@ -745,78 +699,70 @@ export const AppStateProvider: React.FC<{
       processCycleRenewalOnReferral();
     }
 
-    // Automatically register as a new lead in CRM (localStorage & Supabase)
-    try {
-      const savedLeads = localStorage.getItem('bonomo_admin_leads_v7');
-      const leadsList: import('../types/admin').Lead[] = savedLeads ? JSON.parse(savedLeads) : [];
-      const newLeadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      const newLead: import('../types/admin').Lead = {
-        id: newLeadId,
-        debutanteId: debutante.id,
-        debutanteName: debutante.name,
-        debutanteSlug: debutante.slug || 'deb_slug',
-        venueId: debutante.venueId || 'rio_lounge',
+    // Directly register as a new lead in CRM Supabase Database
+    const newLeadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const newLead: import('../types/admin').Lead = {
+      id: newLeadId,
+      debutanteId: debutante.id,
+      debutanteName: debutante.name,
+      debutanteSlug: debutante.slug || 'deb_slug',
+      venueId: debutante.venueId || 'rio_lounge',
+      name: data.name,
+      phone: data.phone,
+      age: data.age,
+      group: data.group,
+      notes: data.notes,
+      stage: 'new_lead',
+      isValidated: false,
+      pointsGranted: 0,
+      participants: [],
+      tasks: [],
+      activities: [
+        {
+          id: `act_${Date.now()}`,
+          leadId: newLeadId,
+          timestamp: new Date().toISOString(),
+          type: 'creation',
+          title: `Indicação enviada pela aniversariante ${debutante.name}`,
+          authorName: debutante.name,
+        }
+      ],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+
+    if (isSupabaseConfigured) {
+      // 1. Salva o lead na tabela do CRM Supabase
+      leadService.upsert(newLead).catch(err => {
+        console.error('❌ Falha crítica ao salvar indicação na tabela leads do Supabase:', err);
+      });
+
+      // 2. Salva o registro de referral associado
+      supabase.from('referrals').insert({
+        id: newRefId,
+        debutante_id: debutante.id,
+        lead_id: newLeadId,
         name: data.name,
         phone: data.phone,
         age: data.age,
         group: data.group,
         notes: data.notes,
-        stage: 'new_lead',
-        isValidated: false,
-        pointsGranted: 0,
-        participants: [],
-        tasks: [],
-        activities: [
-          {
-            id: `act_${Date.now()}`,
-            leadId: newLeadId,
-            timestamp: new Date().toISOString(),
-            type: 'creation',
-            title: `Indicação enviada pela aniversariante ${debutante.name}`,
-            authorName: debutante.name,
-          }
-        ],
-        createdAt: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString().split('T')[0],
-      };
-      localStorage.setItem('bonomo_admin_leads_v7', JSON.stringify([newLead, ...leadsList]));
+        status: 'pending',
+        points_granted: 0,
+        is_renewal_referral: isPaused,
+      }).then(({ error }) => {
+        if (error) {
+          console.error('❌ Falha ao inserir referral no Supabase:', error);
+        }
+      });
 
-      // Also persist to debutante account referrals in AdminState storage
-      const savedDebs = localStorage.getItem('bonomo_admin_debutantes_v7');
-      if (savedDebs) {
-        const debsList = JSON.parse(savedDebs);
-        const updatedDebs = debsList.map((d: any) => {
-          if (d.id === debutante.id) {
-            const curRefs = d.referrals || [];
-            return {
-              ...d,
-              referrals: [newRef, ...curRefs],
-            };
-          }
-          return d;
-        });
-        localStorage.setItem('bonomo_admin_debutantes_v7', JSON.stringify(updatedDebs));
-      }
-
-      // Background Supabase Sync
-      if (isSupabaseConfigured) {
-        leadService.upsert(newLead);
-        supabase.from('referrals').insert({
-          id: newRefId,
-          debutante_id: debutante.id,
-          lead_id: newLeadId,
-          name: data.name,
-          phone: data.phone,
-          age: data.age,
-          group: data.group,
-          notes: data.notes,
-          status: 'pending',
-          points_granted: 0,
-          is_renewal_referral: isPaused,
-        });
-      }
-    } catch (e) {
-      console.error('Error creating lead in localStorage/Supabase:', e);
+      // 3. Atualiza o array de referrals da debutante no banco
+      debutanteService.upsert({
+        id: debutante.id,
+        validReferrals: debutante.validReferrals,
+      }).catch(err => {
+        console.error('❌ Falha ao sincronizar debutante após indicação:', err);
+      });
     }
   };
 

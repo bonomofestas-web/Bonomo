@@ -111,6 +111,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     debutanteId: 'all',
     sortBy: 'recent',
   });
+  const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   const sortOptions = [
     { id: 'recent', label: 'Mais Recentes (Data)' },
@@ -1619,8 +1620,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       </div>
     );
   }
-
-  const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   return (
     <div style={{
