@@ -28,30 +28,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // 1. Resolve exact UUID if a slug or partial ID was passed
       let targetId = String(id).trim();
+      let debutanteName = '';
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
-      if (!isUuid) {
-        const { data: found } = await supabase
-          .from('debutantes')
-          .select('id')
-          .or(`slug.eq.${targetId},id.eq.${targetId}`)
-          .maybeSingle();
-        if (found?.id) {
-          targetId = found.id;
-        }
+      
+      const { data: found } = await supabase
+        .from('debutantes')
+        .select('id, name')
+        .or(`slug.eq.${targetId},id.eq.${targetId}`)
+        .maybeSingle();
+
+      if (found?.id) {
+        targetId = found.id;
+        debutanteName = found.name || '';
       }
 
-      // 2. Cascade delete dependent tables
-      await Promise.all([
-        supabase.from('guests').delete().eq('debutante_id', targetId),
-        supabase.from('referrals').delete().eq('debutante_id', targetId),
-        supabase.from('appointments').delete().eq('debutante_id', targetId).in('status', ['scheduled', 'pending']),
-        supabase.from('admin_tasks').delete().eq('debutante_id', targetId),
-      ]);
+      const todayStr = new Date().toISOString().split('T')[0];
 
-      // 3. Delete debutante record
-      const { error: debErr } = await supabase.from('debutantes').delete().or(`id.eq.${targetId},slug.eq.${id}`);
+      // 2. PRESERVAÇÃO COMERCIAL:
+      // - LEADS e INDICAÇÕES NUNCA são deletados.
+      // - Garantimos que os leads e indicações tenham o nome de quem indicou salvo como histórico
+      if (debutanteName) {
+        await supabase
+          .from('leads')
+          .update({ debutante_name: debutanteName })
+          .eq('debutante_id', targetId);
+
+        await supabase
+          .from('referrals')
+          .update({ debutante_name: debutanteName })
+          .eq('debutante_id', targetId);
+      }
+
+      // Desvincula foreign key se necessário para permitir exclusão da debutante sem cascatear os leads
+      await supabase
+        .from('referrals')
+        .update({ debutante_id: null })
+        .eq('debutante_id', targetId);
+
+      await supabase
+        .from('leads')
+        .update({ debutante_id: null })
+        .eq('debutante_id', targetId);
+
+      // 3. Remove apenas a lista de convidados (estritamente da festa dela)
+      await supabase.from('guests').delete().eq('debutante_id', targetId);
+
+      // 4. Remove apenas compromissos FUTUROS / PENDENTES (compromissos passados/realizados permanecem no histórico)
+      await supabase
+        .from('appointments')
+        .delete()
+        .eq('debutante_id', targetId)
+        .gte('date', todayStr)
+        .in('status', ['scheduled', 'pending']);
+
+      // 5. Remove apenas tarefas FUTURAS / PENDENTES (tarefas concluídas/histórico permanecem)
+      await supabase
+        .from('admin_tasks')
+        .delete()
+        .eq('debutante_id', targetId)
+        .in('status', ['todo', 'in_progress']);
+
+      // 6. Delete debutante record
+      const { error: debErr } = await supabase
+        .from('debutantes')
+        .delete()
+        .or(`id.eq.${targetId},slug.eq.${id}`);
+
       if (debErr) {
-        console.error('[API Save Debutante] Erro ao deletar:', debErr);
+        console.error('[API Save Debutante] Erro ao deletar debutante:', debErr);
         return res.status(500).json({ error: debErr.message });
       }
 

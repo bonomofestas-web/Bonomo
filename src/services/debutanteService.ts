@@ -429,24 +429,51 @@ export const debutanteService = {
     if (!isSupabaseConfigured) return false;
     try {
       let targetId = idOrSlug.trim();
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      let debutanteName = '';
 
-      if (!isUuid) {
-        const { data: found } = await supabase
-          .from('debutantes')
-          .select('id')
-          .or(`slug.eq.${targetId},id.eq.${targetId}`)
-          .maybeSingle();
-        if (found?.id) targetId = found.id;
+      const { data: found } = await supabase
+        .from('debutantes')
+        .select('id, name')
+        .or(`slug.eq.${targetId},id.eq.${targetId}`)
+        .maybeSingle();
+
+      if (found?.id) {
+        targetId = found.id;
+        debutanteName = found.name || '';
       }
 
-      // Cascade delete related records
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // PRESERVAÇÃO COMERCIAL: LEADS e INDICAÇÕES NUNCA são deletados
+      if (debutanteName) {
+        await Promise.all([
+          supabase.from('leads').update({ debutante_name: debutanteName }).eq('debutante_id', targetId),
+          supabase.from('referrals').update({ debutante_name: debutanteName }).eq('debutante_id', targetId),
+        ]);
+      }
+
       await Promise.all([
-        supabase.from('guests').delete().eq('debutante_id', targetId),
-        supabase.from('referrals').delete().eq('debutante_id', targetId),
-        supabase.from('appointments').delete().eq('debutante_id', targetId).in('status', ['scheduled', 'pending']),
-        supabase.from('admin_tasks').delete().eq('debutante_id', targetId),
+        supabase.from('referrals').update({ debutante_id: null }).eq('debutante_id', targetId),
+        supabase.from('leads').update({ debutante_id: null }).eq('debutante_id', targetId),
       ]);
+
+      // Remove apenas convidados (estritamente da festa dela)
+      await supabase.from('guests').delete().eq('debutante_id', targetId);
+
+      // Remove apenas compromissos FUTUROS / PENDENTES
+      await supabase
+        .from('appointments')
+        .delete()
+        .eq('debutante_id', targetId)
+        .gte('date', todayStr)
+        .in('status', ['scheduled', 'pending']);
+
+      // Remove apenas tarefas FUTURAS / PENDENTES
+      await supabase
+        .from('admin_tasks')
+        .delete()
+        .eq('debutante_id', targetId)
+        .in('status', ['todo', 'in_progress']);
 
       const { error } = await supabase
         .from('debutantes')
