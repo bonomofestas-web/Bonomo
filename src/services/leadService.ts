@@ -55,6 +55,21 @@ export const leadService = {
           debutanteSlug: row.debutante_slug || '',
           name: row.name,
           phone: row.phone,
+          email: row.email,
+          neighborhood: row.neighborhood,
+          address: row.address,
+          contacts: row.contacts || [],
+          primaryContactRole: row.primary_contact_role || 'debutante',
+          eventType: row.event_type || '15 Anos',
+          eventDate: row.event_date || row.party_date,
+          debutanteBirthDate: row.debutante_birth_date,
+          estimatedGuests: row.estimated_guests,
+          desiredPeriod: row.desired_period,
+          interestService: row.interest_service || row.package_sold,
+          estimatedBudget: row.estimated_budget ? Number(row.estimated_budget) : (row.deal_value ? Number(row.deal_value) : undefined),
+          paymentMethod: row.payment_method,
+          temperature: row.temperature || 'warm',
+          tags: row.tags || [],
           age: row.age || 14,
           group: row.group || 'Amigos',
           notes: row.notes || '',
@@ -89,7 +104,7 @@ export const leadService = {
     try {
       const payload: any = {
         id: lead.id,
-        funnel_id: (lead as any).funnelId || lead.venueId, // fallback
+        funnel_id: (lead as any).funnelId || lead.venueId,
         venue_id: lead.venueId,
         debutante_id: lead.debutanteId || null,
         debutante_name: lead.debutanteName,
@@ -111,8 +126,24 @@ export const leadService = {
         deal_value: lead.dealValue,
         package_sold: lead.packageSold,
         contract_date: lead.contractDate,
-        party_date: lead.partyDate,
+        party_date: lead.partyDate || lead.eventDate,
       };
+
+      if (lead.email !== undefined) payload.email = lead.email;
+      if (lead.neighborhood !== undefined) payload.neighborhood = lead.neighborhood;
+      if (lead.address !== undefined) payload.address = lead.address;
+      if (lead.contacts !== undefined) payload.contacts = lead.contacts;
+      if (lead.primaryContactRole !== undefined) payload.primary_contact_role = lead.primaryContactRole;
+      if (lead.eventType !== undefined) payload.event_type = lead.eventType;
+      if (lead.eventDate !== undefined) payload.event_date = lead.eventDate;
+      if (lead.debutanteBirthDate !== undefined) payload.debutante_birth_date = lead.debutanteBirthDate;
+      if (lead.estimatedGuests !== undefined) payload.estimated_guests = lead.estimatedGuests;
+      if (lead.desiredPeriod !== undefined) payload.desired_period = lead.desiredPeriod;
+      if (lead.interestService !== undefined) payload.interest_service = lead.interestService;
+      if (lead.estimatedBudget !== undefined) payload.estimated_budget = lead.estimatedBudget;
+      if (lead.paymentMethod !== undefined) payload.payment_method = lead.paymentMethod;
+      if (lead.temperature !== undefined) payload.temperature = lead.temperature;
+      if (lead.tags !== undefined) payload.tags = lead.tags;
 
       const { error } = await supabase.from('leads').upsert(payload);
       if (error) {

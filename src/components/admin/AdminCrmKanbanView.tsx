@@ -81,7 +81,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(
     activeFunnelId !== undefined ? activeFunnelId : (initialLeadId ? 'indicacao' : null)
   );
-  const [isFunnelDropdownOpen, setIsFunnelDropdownOpen] = useState(false);
   const [funnelSearch, setFunnelSearch] = useState('');
 
   // Funnel Configuration & Access Modal
@@ -153,7 +152,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleSelectFunnel = (id: string | null) => {
     setSelectedFunnelId(id);
-    setIsFunnelDropdownOpen(false);
     if (onSelectFunnel) onSelectFunnel(id);
   };
 
@@ -1622,12 +1620,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     );
   }
 
+  const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
+
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: viewMode === 'workspace' ? '8px' : '18px',
-      padding: viewMode === 'workspace' ? '8px 16px 12px 16px' : '20px 24px 60px 24px',
+      gap: '12px',
+      padding: viewMode === 'workspace' ? '12px 18px' : '16px 24px 60px 24px',
       width: '100%',
       height: viewMode === 'workspace' ? 'calc(100vh - 64px)' : 'auto',
       boxSizing: 'border-box',
@@ -1635,202 +1635,183 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       animation: 'fadeIn 0.2s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif"
     }}>
-      {/* Clean Subtle Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
-        {/* Left: Active Funnel Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setIsFunnelDropdownOpen(!isFunnelDropdownOpen)}
-              style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '10px',
-                padding: '6px 12px',
-                color: 'var(--adm-text-title)',
-                fontSize: '0.86rem',
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(currentFunnel || { icon: 'target' }, 14, 20)}</span>
-              <span>{currentFunnel?.name || 'Funil Comercial'}</span>
-              <ChevronDown size={13} color="var(--adm-accent)" />
-            </button>
-
-            {isFunnelDropdownOpen && (
-              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: '320px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '14px', padding: '8px', zIndex: 100, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
-                {visibleVenues.map(v => {
-                  const vFunnels = funnelsList.filter(f => f.venueId === v.id);
-                  if (vFunnels.length === 0) return null;
-                  return (
-                    <div key={v.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <div style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', padding: '4px 8px', letterSpacing: '0.5px' }}>
-                        🏢 {v.name}
-                      </div>
-                      {vFunnels.map(f => (
-                        <button
-                          key={f.id}
-                          onClick={() => {
-                            handleSelectFunnel(f.id);
-                            setIsFunnelDropdownOpen(false);
-                          }}
-                          style={{
-                            background: f.id === selectedFunnelId ? 'var(--adm-accent-bg)' : 'transparent',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '7px 10px',
-                            color: f.id === selectedFunnelId ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                            fontSize: '0.78rem',
-                            fontWeight: f.id === selectedFunnelId ? 800 : 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            cursor: 'pointer',
-                            textAlign: 'left'
-                          }}
-                        >
-                          <span style={{ display: 'flex', alignItems: 'center' }}>{renderFunnelVisual(f, 13, 18)}</span>
-                          <span style={{ flex: 1 }}>{f.name}</span>
-                          {f.id === selectedFunnelId && <CheckCircle2 size={13} color="var(--adm-accent)" />}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+      {/* ── BARRA DE FERRAMENTAS SUPERIOR UNIFICADA (KANBAN / ENTRADA / TABELA) ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '12px',
+        flexShrink: 0,
+        background: 'var(--adm-bg-card)',
+        border: '1px solid var(--adm-border)',
+        borderRadius: '14px',
+        padding: '8px 14px',
+      }}>
+        {/* 1. Busca Fixa à Esquerda */}
+        <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
+          <Search size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '10px' }} />
+          <input
+            type="text"
+            placeholder="Buscar lead ou telefone..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: '100%',
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '8px',
+              padding: '7px 12px 7px 36px',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.8rem',
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+            }}
+          />
         </div>
 
-        {/* Right: [Kanban] [Entrada] [Tabela] Switcher */}
+        {/* 2. Filtros Expansíveis + Seletor de Modo Minimalista (Apenas Ícones) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '3px', display: 'flex', gap: '3px' }}>
+          {/* Botão de Filtros Expansível */}
+          <button
+            type="button"
+            onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
+            title="Filtros avançados"
+            style={{
+              background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+              border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+              color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              fontSize: '0.76rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Settings size={14} />
+            <span>Filtros</span>
+            <ChevronDown size={12} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+          </button>
+
+          {/* Seletor de Modo Minimalista (Apenas Ícones com Tooltips) */}
+          <div style={{
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '8px',
+            padding: '2px',
+            display: 'flex',
+            gap: '2px',
+          }}>
             <button
+              type="button"
               onClick={() => setViewMode('kanban')}
+              title="Visualização Kanban"
               style={{
                 background: viewMode === 'kanban' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'kanban' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '7px',
+                borderRadius: '6px',
                 border: viewMode === 'kanban' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                padding: '5px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 800,
+                padding: '6px 10px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                justifyContent: 'center',
                 transition: 'all 0.15s ease',
               }}
             >
-              <Kanban size={13} />
-              <span>Kanban</span>
+              <Kanban size={15} />
             </button>
+
             <button
+              type="button"
               onClick={() => {
                 setActiveLeadIdForWorkspace(null);
                 setViewMode('workspace');
               }}
+              title="Caixa de Entrada / Chat"
               style={{
                 background: viewMode === 'workspace' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'workspace' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '7px',
+                borderRadius: '6px',
                 border: viewMode === 'workspace' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                padding: '5px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 800,
+                padding: '6px 10px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                justifyContent: 'center',
                 transition: 'all 0.15s ease',
               }}
             >
-              <Inbox size={13} />
-              <span>Entrada</span>
+              <Inbox size={15} />
             </button>
+
             <button
+              type="button"
               onClick={() => setViewMode('list')}
+              title="Visualização em Tabela"
               style={{
                 background: viewMode === 'list' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '7px',
+                borderRadius: '6px',
                 border: viewMode === 'list' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                padding: '5px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 800,
+                padding: '6px 10px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                justifyContent: 'center',
                 transition: 'all 0.15s ease',
               }}
             >
-              <List size={13} />
-              <span>Tabela</span>
+              <List size={15} />
             </button>
           </div>
         </div>
       </div>
 
+      {/* Painel Expansível de Filtros */}
+      {isFilterBarExpanded && (
+        <div style={{
+          background: 'var(--adm-bg-card)',
+          border: '1px solid var(--adm-border)',
+          borderRadius: '12px',
+          padding: '14px',
+          animation: 'fadeIn 0.15s ease-out',
+        }}>
+          <AdminFilterBar
+            filters={filterState}
+            onChange={setFilterState}
+            showDebutanteFilter={true}
+            showSortFilter={true}
+            sortOptions={sortOptions}
+            resultCount={filteredLeads.length}
+            totalCount={leads.length}
+            labelUnit="leads"
+          />
+        </div>
+      )}
+
       {viewMode === 'workspace' ? (
         <AdminCrmWorkspaceView 
           initialLeadId={activeLeadIdForWorkspace || undefined}
           isMiddleInitiallyOpen={!!activeLeadIdForWorkspace}
+          searchQuery={search}
         />
       ) : (
         <>
-          {/* Search & Rich Multi-Filter Bar for Kanban / List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Search Box */}
-            <div style={{ position: 'relative' }}>
-              <Search size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
-              <input
-                type="text"
-                placeholder="Buscar lead por nome, telefone ou aniversariante indicada..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '12px',
-                  padding: '10px 14px 10px 42px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.84rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
+          {/* Quick Metrics Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '16px', padding: '0 4px' }}>
+            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+              Total: <strong style={{ color: 'var(--adm-text-title)' }}>{filteredLeads.length}</strong>
             </div>
-
-            {/* Rich Filter Bar */}
-            <AdminFilterBar
-              filters={filterState}
-              onChange={setFilterState}
-              showDebutanteFilter={true}
-              showSortFilter={true}
-              sortOptions={sortOptions}
-              resultCount={filteredLeads.length}
-              totalCount={leads.length}
-              labelUnit="leads"
-            />
-
-            {/* Quick Metrics Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '16px', padding: '0 4px' }}>
-              <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                Total: <strong style={{ color: 'var(--adm-text-title)' }}>{filteredLeads.length}</strong>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                Qualificados: <strong style={{ color: 'var(--adm-green)' }}>{filteredLeads.filter(l => l.isValidated).length}</strong>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                Vendas VIP: <strong style={{ color: 'var(--adm-accent)' }}>{filteredLeads.filter(l => l.stage === 'contract_signed').length}</strong>
-              </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+              Qualificados: <strong style={{ color: 'var(--adm-green)' }}>{filteredLeads.filter(l => l.isValidated).length}</strong>
+            </div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+              Vendas VIP: <strong style={{ color: 'var(--adm-accent)' }}>{filteredLeads.filter(l => l.stage === 'contract_signed').length}</strong>
             </div>
           </div>
 

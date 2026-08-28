@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Send, MessageSquare, Sparkles, 
-  Settings, Mic, ChevronRight,
-  ShieldAlert, CheckCircle2
+  Send, MessageSquare, Sparkles, 
+  ChevronRight, CheckCircle2, Lock,
+  FileText
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
@@ -15,6 +15,7 @@ interface AdminCrmWorkspaceViewProps {
   initialLeadId?: string;
   onLeadOpened?: () => void;
   isMiddleInitiallyOpen?: boolean;
+  searchQuery?: string;
 }
 
 const formatDateTime = (iso: string) => {
@@ -35,6 +36,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   initialLeadId,
   onLeadOpened,
   isMiddleInitiallyOpen = true,
+  searchQuery = '',
 }) => {
   const { 
     leads, collaborators, currentUser, activeVenueId,
@@ -43,22 +45,16 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     deleteLeadTask, completeLeadTask
   } = useAdminState();
 
-  // ── Column 1 search & filters ─────────────────────────────────────────────
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'mine' | 'unassigned'>('all');
-  const [isSettingsFilterOpen, setIsSettingsFilterOpen] = useState(false);
-  const [selectedCollaboratorFilter, setSelectedCollaboratorFilter] = useState<string>('all');
-  const [selectedStageFilter, setSelectedStageFilter] = useState<string>('all');
-  const [selectedTemperatureFilter, setSelectedTemperatureFilter] = useState<string>('all');
+  // ── Column 1 filter tabs ──────────────────────────────────────────────────
+  const [filterTab, setFilterTab] = useState<'all' | 'mine'>('all');
 
   // ── Active lead & Column 2 Collapse state ──────────────────────────────────
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId || null);
   const [isMiddleCollapsed, setIsMiddleCollapsed] = useState<boolean>(!isMiddleInitiallyOpen && !initialLeadId);
   
   // ── Column 3 Top Tabs: 'whatsapp' | 'history' | 'tasks' ────────────────────
-  const [activeTabCol3, setActiveTabCol3] = useState<'whatsapp' | 'history' | 'tasks'>('whatsapp');
-  const [messageMode, setMessageMode] = useState<'whatsapp' | 'internal_note'>('whatsapp');
-  const [messageText, setMessageText] = useState('');
+  const [activeTabCol3, setActiveTabCol3] = useState<'whatsapp' | 'history' | 'tasks'>('history');
+  const [noteText, setNoteText] = useState('');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
   // ── Task creation state ────────────────────────────────────────────────────
@@ -77,44 +73,22 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   // Filtered leads for Column 1
   const filteredLeads = leads.filter(l => {
     const matchesVenue = !activeVenueId || l.venueId === activeVenueId;
-    const userRole = currentUser?.role;
-    let matchesRole = true;
-    if (userRole === 'sdr' && currentUser?.id) {
-      matchesRole = l.sdrId === currentUser.id || !l.sdrId;
-    } else if (userRole === 'closer' && currentUser?.id) {
-      matchesRole = l.closerId === currentUser.id || l.stage === 'meeting_scheduled' || l.stage === 'contract_signed';
+    
+    if (filterTab === 'mine') {
+      const isMine = (currentUser?.id && (l.sdrId === currentUser.id || l.closerId === currentUser.id)) ||
+        (currentUser?.name && l.assignedTo?.toLowerCase() === currentUser.name.toLowerCase());
+      if (!isMine) return false;
     }
 
-    let matchesFilterType = true;
-    if (filterType === 'mine') {
-      matchesFilterType = (l.sdrId === currentUser?.id || l.closerId === currentUser?.id);
-    } else if (filterType === 'unassigned') {
-      matchesFilterType = !l.sdrId;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = l.name.toLowerCase().includes(q) ||
+        l.phone.includes(q) ||
+        l.debutanteName.toLowerCase().includes(q);
+      if (!matchesSearch) return false;
     }
 
-    // Advanced gear filter
-    let matchesCollab = true;
-    if (selectedCollaboratorFilter !== 'all') {
-      if (selectedCollaboratorFilter === 'unassigned') matchesCollab = !l.sdrId;
-      else matchesCollab = l.sdrId === selectedCollaboratorFilter || l.closerId === selectedCollaboratorFilter;
-    }
-
-    let matchesStage = true;
-    if (selectedStageFilter !== 'all') {
-      matchesStage = l.stage === selectedStageFilter;
-    }
-
-    let matchesTemp = true;
-    if (selectedTemperatureFilter !== 'all') {
-      matchesTemp = l.temperature === selectedTemperatureFilter;
-    }
-
-    const matchesSearch = !search.trim() ||
-      l.name.toLowerCase().includes(search.toLowerCase()) ||
-      l.phone.includes(search) ||
-      l.debutanteName.toLowerCase().includes(search.toLowerCase());
-
-    return matchesVenue && matchesRole && matchesFilterType && matchesCollab && matchesStage && matchesTemp && matchesSearch;
+    return matchesVenue;
   });
 
   useEffect(() => {
@@ -151,33 +125,20 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate);
   };
 
-  const handleSendMessage = () => {
-    if (!currentLead || !messageText.trim()) return;
-
-    if (messageMode === 'whatsapp') {
-      const cleanPhone = currentLead.phone.replace(/\D/g, '');
-      const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(messageText.trim())}`;
-      window.open(url, '_blank');
-      addLeadNote(currentLead.id, `[WhatsApp Enviado] ${messageText.trim()}`);
-    } else if (messageMode === 'internal_note') {
-      addLeadNote(currentLead.id, messageText.trim());
-    }
-
-    setMessageText('');
-  };
-
-  const handleWhatsApp = (lead: Lead) => {
-    const clean = lead.phone.replace(/\D/g, '');
-    const txt = `Olá, ${lead.name}! Tudo bem?\nRecebemos sua indicação através da debutante ${lead.debutanteName} para conhecer os pacotes especiais de 15 Anos da Bonomo Festas.\nPodemos agendar uma visita ou degustação?`;
-    window.open(`https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(txt)}`, '_blank');
+  const handleSendInternalNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentLead || !noteText.trim()) return;
+    addLeadNote(currentLead.id, noteText.trim());
+    setNoteText('');
   };
 
   const leadTasks = currentLead?.tasks || [];
+  const leadActivities = currentLead?.activities || [];
 
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: isMiddleCollapsed ? '310px 1fr' : '310px 380px 1fr',
+      gridTemplateColumns: isMiddleCollapsed ? '290px 1fr' : '290px 400px 1fr',
       gap: '0px',
       height: '100%',
       minHeight: 0,
@@ -191,7 +152,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     }}>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 1 — INBOX / CONVERSAS ABERTAS (KOMMO STYLE)                      */}
+      {/* COLUNA 1 — INBOX / LISTA DE CONVERSAS (COMPACTO E LIMPO)                */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
         background: 'var(--adm-bg-card)',
@@ -201,319 +162,205 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
         overflow: 'hidden',
         height: '100%',
       }}>
-        {/* Search header with gear filter popover */}
-        <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--adm-border)', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={14} color="var(--adm-text-muted)" style={{ position: 'absolute', left: '10px', top: '9px' }} />
-              <input
-                type="text"
-                placeholder="Buscar lead ou telefone..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '6px',
-                  padding: '6px 10px 6px 30px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.78rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsSettingsFilterOpen(!isSettingsFilterOpen)}
-              title="Filtros avançados da Caixa de Entrada"
-              style={{
-                background: isSettingsFilterOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                border: `1px solid ${isSettingsFilterOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                color: isSettingsFilterOpen ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '6px',
-                padding: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Settings size={15} />
-            </button>
+        {/* Header Compacto: INBOX [Contador] e abas [Abertas] e [Minhas] */}
+        <div style={{
+          padding: '12px 14px',
+          borderBottom: '1px solid var(--adm-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--adm-bg-card)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '0.5px' }}>
+              INBOX
+            </span>
+            <span style={{
+              background: 'var(--adm-accent-bg)',
+              color: 'var(--adm-accent)',
+              border: '1px solid var(--adm-accent)',
+              padding: '1px 7px',
+              borderRadius: '10px',
+              fontSize: '0.66rem',
+              fontWeight: 800,
+            }}>
+              {filteredLeads.length}
+            </span>
           </div>
 
-          {/* Settings Filter Popover */}
-          {isSettingsFilterOpen && (
-            <div style={{
-              position: 'absolute',
-              top: 'calc(100% + 4px)',
-              left: '12px',
-              right: '12px',
-              background: 'var(--adm-bg-card)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '12px',
-              boxShadow: '0 12px 30px rgba(0,0,0,0.3)',
-              padding: '12px',
-              zIndex: 100,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Filtros da Caixa</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCollaboratorFilter('all');
-                    setSelectedStageFilter('all');
-                    setSelectedTemperatureFilter('all');
-                  }}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--adm-accent)', fontSize: '0.68rem', cursor: 'pointer', fontWeight: 700 }}
-                >
-                  Limpar
-                </button>
-              </div>
-
-              {/* Por Responsável */}
-              <div>
-                <label style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
-                  Responsável
-                </label>
-                <select
-                  value={selectedCollaboratorFilter}
-                  onChange={(e) => setSelectedCollaboratorFilter(e.target.value)}
-                  style={{ width: '100%', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.74rem', color: 'var(--adm-text-title)' }}
-                >
-                  <option value="all">Todos os responsáveis</option>
-                  <option value="unassigned">Sem SDR / Não atribuído</option>
-                  {collaborators.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Por Temperatura */}
-              <div>
-                <label style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, display: 'block', marginBottom: '3px' }}>
-                  Temperatura
-                </label>
-                <select
-                  value={selectedTemperatureFilter}
-                  onChange={(e) => setSelectedTemperatureFilter(e.target.value)}
-                  style={{ width: '100%', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.74rem', color: 'var(--adm-text-title)' }}
-                >
-                  <option value="all">Todas as temperaturas</option>
-                  <option value="hot">🔥 Quente</option>
-                  <option value="warm">🟡 Morno</option>
-                  <option value="cold">🔵 Frio</option>
-                </select>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsSettingsFilterOpen(false)}
-                style={{
-                  background: '#2563EB',
-                  color: '#FFF',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '6px',
-                  fontSize: '0.74rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  marginTop: '4px',
-                }}
-              >
-                Aplicar Filtros
-              </button>
-            </div>
-          )}
-
-          {/* INBOX Title + Filter tabs */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.76rem', fontWeight: 900, color: 'var(--adm-text-muted)', letterSpacing: '0.6px' }}>
-                INBOX
-              </span>
-              <span style={{
-                background: '#2563EB',
-                color: '#FFF',
-                padding: '1px 6px',
-                borderRadius: '10px',
-                fontSize: '0.66rem',
-                fontWeight: 800,
-              }}>
-                {filteredLeads.length}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button
-                type="button"
-                onClick={() => setFilterType('all')}
-                style={{
-                  background: filterType === 'all' ? 'rgba(34, 197, 94, 0.15)' : 'transparent',
-                  border: 'none',
-                  color: filterType === 'all' ? '#10B981' : 'var(--adm-text-muted)',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Abertas
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType('mine')}
-                style={{
-                  background: filterType === 'mine' ? 'rgba(37, 99, 235, 0.15)' : 'transparent',
-                  border: 'none',
-                  color: filterType === 'mine' ? '#3B82F6' : 'var(--adm-text-muted)',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Minhas
-              </button>
-            </div>
+          {/* Abas [Abertas] [Minhas] */}
+          <div style={{
+            display: 'flex',
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '8px',
+            padding: '2px',
+            gap: '2px',
+          }}>
+            <button
+              type="button"
+              onClick={() => setFilterTab('all')}
+              style={{
+                background: filterTab === 'all' ? 'var(--adm-bg-card)' : 'transparent',
+                color: filterTab === 'all' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                border: filterTab === 'all' ? '1px solid var(--adm-border)' : '1px solid transparent',
+                borderRadius: '6px',
+                padding: '3px 8px',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Abertas
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterTab('mine')}
+              style={{
+                background: filterTab === 'mine' ? 'var(--adm-bg-card)' : 'transparent',
+                color: filterTab === 'mine' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                border: filterTab === 'mine' ? '1px solid var(--adm-border)' : '1px solid transparent',
+                borderRadius: '6px',
+                padding: '3px 8px',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Minhas
+            </button>
           </div>
         </div>
 
-        {/* Leads list */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        {/* Feed de Leads / Conversas */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {filteredLeads.length === 0 ? (
-            <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-              Nenhum contato encontrado
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
+              Nenhum lead encontrado neste filtro.
             </div>
           ) : (
-            filteredLeads.map((lead, index) => {
-              const isSelected = selectedLeadId === lead.id;
-              const tagCode = `A${1400 + (index * 7) % 500}`;
-              const timeStr = lead.createdAt ? formatTimeOnly(lead.createdAt) : 'Hoje 11:15';
-              const lastNote = lead.notes || 'Salesbot: Olá, tudo bem?';
+            filteredLeads.map(lead => {
+              const isSelected = lead.id === selectedLeadId;
+              const sdr = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
+              const sdrAvatar = sdr?.avatarUrl;
+              const lastActivity = lead.activities?.[0];
 
               return (
                 <div
                   key={lead.id}
                   onClick={() => handleSelectLead(lead)}
                   style={{
-                    padding: '10px 14px',
+                    padding: '11px 14px',
                     borderBottom: '1px solid var(--adm-border)',
+                    background: isSelected ? 'var(--adm-accent-bg)' : 'transparent',
+                    borderLeft: isSelected ? '3px solid var(--adm-accent)' : '3px solid transparent',
                     cursor: 'pointer',
-                    background: isSelected ? '#2563EB' : 'transparent',
-                    color: isSelected ? '#FFF' : 'inherit',
-                    transition: 'all 0.1s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'transparent';
                   }}
                 >
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                    {/* Avatar with WhatsApp dot */}
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        background: isSelected ? 'rgba(255,255,255,0.2)' : 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 800,
-                        fontSize: '0.82rem',
-                        color: isSelected ? '#FFF' : 'var(--adm-text-title)',
-                      }}>
-                        {lead.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div style={{
-                        position: 'absolute',
-                        bottom: '-2px',
-                        right: '-2px',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        background: '#25D366',
-                        border: '2px solid var(--adm-bg-card)',
-                      }} />
-                    </div>
-
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* Row 1: Name + Tag + Time */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                        <span style={{
-                          fontSize: '0.82rem',
+                  {/* Top Row: Avatar + Indicator + Name + Tag + Time */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                      {/* Avatar with WhatsApp dot */}
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <div style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #1E1B2E 0%, #0D0B14 100%)',
+                          border: '1px solid rgba(212, 175, 55, 0.4)',
+                          color: '#D4AF37',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.72rem',
                           fontWeight: 800,
-                          color: isSelected ? '#FFF' : 'var(--adm-text-title)',
-                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                        }}>
+                          {sdrAvatar ? (
+                            <img src={sdrAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            lead.name.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '-1px',
+                          right: '-1px',
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: '#22C55E',
+                          border: '1.5px solid var(--adm-bg-card)',
+                        }} />
+                      </div>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          fontSize: '0.82rem',
+                          fontWeight: isSelected ? 800 : 700,
+                          color: 'var(--adm-text-title)',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}>
                           {lead.name}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                          <span style={{
-                            background: isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(16, 185, 129, 0.15)',
-                            color: isSelected ? '#FFF' : '#10B981',
-                            padding: '1px 4px',
-                            borderRadius: '3px',
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                          }}>
-                            {tagCode}
-                          </span>
-                          <span style={{ fontSize: '0.66rem', color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--adm-text-muted)' }}>
-                            {timeStr}
-                          </span>
                         </div>
                       </div>
-
-                      {/* Row 2: Debutante */}
-                      <div style={{ fontSize: '0.7rem', color: isSelected ? 'rgba(255,255,255,0.85)' : 'var(--adm-accent)', marginTop: '1px', fontWeight: 600 }}>
-                        {lead.debutanteName || 'Bonomo Festas'}
-                      </div>
-
-                      {/* Row 3: Message preview */}
-                      <div style={{
-                        fontSize: '0.72rem',
-                        color: isSelected ? 'rgba(255,255,255,0.8)' : 'var(--adm-text-muted)',
-                        marginTop: '2px',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}>
-                        {lastNote}
-                      </div>
                     </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        color: 'var(--adm-accent)',
+                        background: 'rgba(212, 175, 55, 0.1)',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                      }}>
+                        [A{lead.age || 15}00]
+                      </span>
+                      <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
+                        {formatTimeOnly(lead.createdAt || new Date().toISOString())}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Debutante Indicadora */}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    👑 <strong style={{ color: 'var(--adm-accent)' }}>{lead.debutanteName}</strong>
+                  </div>
+
+                  {/* Bottom Row: Última mensagem / nota preview */}
+                  <div style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--adm-text-muted)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    opacity: 0.8,
+                  }}>
+                    {lastActivity ? lastActivity.title : (lead.notes || 'Aguardando primeiro contato...')}
                   </div>
                 </div>
               );
             })
           )}
         </div>
-
-        {/* Footer: Menções & Chats de equipe */}
-        <div style={{
-          padding: '8px 14px',
-          borderTop: '1px solid var(--adm-border)',
-          background: 'var(--adm-bg-sidebar)',
-          fontSize: '0.68rem',
-          fontWeight: 800,
-          color: 'var(--adm-text-muted)',
-          letterSpacing: '0.5px',
-          textTransform: 'uppercase',
-        }}>
-          MENÇÕES & CHATS DE EQUIPE
-        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 2 — INSPEÇÃO & LINHAS DO LEAD (COLLAPSIBLE)                      */}
+      {/* COLUNA 2 — FICHA DO LEAD (REMODELADA COM 5 SEÇÕES TEMÁTICAS)            */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       {!isMiddleCollapsed && (
         <div style={{
@@ -526,13 +373,12 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
         }}>
           {!currentLead ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: 'var(--adm-text-muted)' }}>
-              <Sparkles size={40} color="var(--adm-text-muted)" style={{ opacity: 0.3 }} />
-              <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Selecione um contato</div>
+              <Sparkles size={36} color="var(--adm-text-muted)" style={{ opacity: 0.3 }} />
+              <div style={{ fontSize: '0.84rem', fontWeight: 600 }}>Selecione um lead no Inbox</div>
             </div>
           ) : (
             <AdminLeadInspector
               lead={currentLead}
-              onWhatsApp={handleWhatsApp}
               onStageChange={handleStageChange}
               onToggleCollapse={() => setIsMiddleCollapsed(true)}
               isCollapsed={false}
@@ -555,11 +401,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
         {!currentLead ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px', color: 'var(--adm-text-muted)' }}>
             <MessageSquare size={36} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: '0.8rem' }}>Selecione um lead para ver as conversas e tarefas</div>
+            <div style={{ fontSize: '0.8rem' }}>Selecione um lead para ver o histórico e tarefas</div>
           </div>
         ) : (
           <>
-            {/* Top Tabs Header: [WhatsApp] [Histórico] [Tarefas] */}
+            {/* Top Tabs Header: [WhatsApp] [Histórico & Notas] [Tarefas] */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -596,7 +442,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
 
                 <div style={{ display: 'flex', gap: '6px' }}>
                   {[
-                    { id: 'whatsapp', label: 'WhatsApp' },
+                    { id: 'whatsapp', label: 'WhatsApp (Sigiloso)' },
                     { id: 'history', label: 'Histórico & Notas' },
                     { id: 'tasks', label: `Tarefas (${leadTasks.length})` },
                   ].map(tab => (
@@ -622,7 +468,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                 </div>
               </div>
 
-              <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
                 {currentLead.phone}
               </div>
             </div>
@@ -630,127 +476,166 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
             {/* Content Body based on Active Top Tab */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
               
-              {/* ── TAB 1: WHATSAPP SIMULATED / EMBOSSED PREVIEW ─────────────── */}
+              {/* ── TAB 1: WHATSAPP SIGILOSO COM BLUR & CARD CENTRAL ─────────── */}
               {activeTabCol3 === 'whatsapp' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
-                  {/* Date Divider */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      color: 'var(--adm-text-muted)',
-                      padding: '2px 12px',
-                      borderRadius: '12px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                    }}>
-                      Hoje
-                    </span>
-                  </div>
-
-                  {/* Blurred / Simulated Chat Bubble */}
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  minHeight: '340px',
+                }}>
+                  {/* Fundo Embaçado Simulando Mensagens */}
                   <div style={{
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '12px',
-                    padding: '16px',
+                    position: 'absolute',
+                    inset: 0,
+                    filter: 'blur(6px)',
+                    opacity: 0.35,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '10px',
-                    position: 'relative',
-                    overflow: 'hidden',
+                    gap: '12px',
+                    pointerEvents: 'none',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        background: '#25D366',
-                        color: '#FFF',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 900,
-                        fontSize: '0.74rem',
-                      }}>
-                        WA
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          {currentLead.name}
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                          WhatsApp: {currentLead.phone}
-                        </div>
-                      </div>
+                    <div style={{ alignSelf: 'flex-start', background: '#2563EB', color: '#FFF', padding: '10px 14px', borderRadius: '12px', maxWidth: '70%' }}>
+                      Olá, temos novidades sobre sua festa de 15 Anos!
                     </div>
-
-                    <div style={{
-                      background: '#2563EB',
-                      color: '#FFF',
-                      borderRadius: '10px',
-                      padding: '12px 14px',
-                      fontSize: '0.82rem',
-                      lineHeight: 1.5,
-                      boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)',
-                    }}>
-                      <div style={{ fontSize: '0.66rem', opacity: 0.8, marginBottom: '4px' }}>
-                        {formatDateTime(currentLead.createdAt || new Date().toISOString())} • SalesBot
-                      </div>
-                      Olá, {currentLead.name}! Tudo bem? Recebemos sua indicação através da debutante {currentLead.debutanteName} para conhecer os pacotes especiais de 15 Anos da Bonomo Festas.
+                    <div style={{ alignSelf: 'flex-end', background: '#22C55E', color: '#FFF', padding: '10px 14px', borderRadius: '12px', maxWidth: '70%' }}>
+                      Perfeito, estamos muito animados para agendar a degustação!
                     </div>
+                    <div style={{ alignSelf: 'flex-start', background: '#2563EB', color: '#FFF', padding: '10px 14px', borderRadius: '12px', maxWidth: '70%' }}>
+                      Ótimo! Seguem os horários disponíveis neste sábado.
+                    </div>
+                  </div>
 
-                    {/* In-Brief Integration Banner Overlay */}
+                  {/* Card Central Glassmorphism Luxo */}
+                  <div style={{
+                    position: 'relative',
+                    zIndex: 10,
+                    background: 'rgba(11, 9, 14, 0.92)',
+                    border: '1.5px solid rgba(212, 175, 55, 0.4)',
+                    backdropFilter: 'blur(16px)',
+                    borderRadius: '20px',
+                    padding: '32px 28px',
+                    textAlign: 'center',
+                    maxWidth: '380px',
+                    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '14px',
+                  }}>
                     <div style={{
-                      background: 'rgba(212, 175, 55, 0.08)',
-                      border: '1px dashed var(--adm-accent)',
-                      borderRadius: '8px',
-                      padding: '10px 14px',
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '16px',
+                      background: 'rgba(37, 211, 102, 0.15)',
+                      border: '1px solid rgba(37, 211, 102, 0.4)',
+                      color: '#25D366',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '10px',
-                      marginTop: '6px',
+                      justifyContent: 'center',
                     }}>
-                      <ShieldAlert size={18} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                      <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)', lineHeight: 1.4 }}>
-                        <strong style={{ color: 'var(--adm-accent)' }}>Em breve:</strong> Integração oficial do WhatsApp direto nesta tela. Para responder agora, clique em <strong style={{ color: '#25D366' }}>Enviar WhatsApp</strong> abaixo.
-                      </div>
+                      <Lock size={26} />
+                    </div>
+
+                    <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
+                      WhatsApp Integrado
+                    </h4>
+
+                    <p style={{ fontSize: '0.82rem', color: '#A0988A', margin: 0, lineHeight: 1.5 }}>
+                      Funcionalidade sendo desenvolvida. Aguarde.
+                    </p>
+
+                    <div style={{ fontSize: '0.7rem', color: 'var(--adm-accent)', fontWeight: 700, background: 'rgba(212,175,55,0.1)', padding: '4px 10px', borderRadius: '8px' }}>
+                      ⚡ Conexão segura em implantação
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── TAB 2: HISTÓRICO & NOTAS ─────────────────────────────────── */}
+              {/* ── TAB 2: HISTÓRICO & NOTAS (COM AUDITORIA E FOTOS DA EQUIPE) ── */}
               {activeTabCol3 === 'history' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '4px' }}>
-                    Linha do Tempo & Anotações Internas
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileText size={14} color="var(--adm-accent)" />
+                    <span>Linha do Tempo & Auditoria Comercial</span>
                   </div>
 
-                  {currentLead.notes ? (
-                    <div style={{
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      fontSize: '0.8rem',
-                    }}>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 700, marginBottom: '4px' }}>
-                        Observação do Lead
-                      </div>
-                      <div style={{ color: 'var(--adm-text-title)', lineHeight: 1.5 }}>
-                        {currentLead.notes}
-                      </div>
+                  {leadActivities.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '28px', color: 'var(--adm-text-muted)', fontSize: '0.78rem', border: '1px dashed var(--adm-border)', borderRadius: '10px' }}>
+                      Nenhuma atividade registrada ainda para este lead.
                     </div>
                   ) : (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                      Nenhuma anotação registrada ainda.
-                    </div>
+                    leadActivities.map((act) => {
+                      const collabMatch = act.authorId ? collaborators.find(c => c.id === act.authorId) : undefined;
+                      const avatar = act.authorAvatarUrl || collabMatch?.avatarUrl;
+                      const authorName = act.authorName || collabMatch?.name || 'Equipe Comercial';
+
+                      return (
+                        <div
+                          key={act.id}
+                          style={{
+                            background: 'var(--adm-bg-card)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '12px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'flex-start',
+                          }}
+                        >
+                          {/* Avatar com Foto da Equipe */}
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #1E1B2E 0%, #0D0B14 100%)',
+                            border: '1.5px solid rgba(212, 175, 55, 0.4)',
+                            color: '#D4AF37',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.74rem',
+                            fontWeight: 900,
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                          }}>
+                            {avatar ? (
+                              <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              authorName.charAt(0).toUpperCase()
+                            )}
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                              <strong style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
+                                {authorName}
+                              </strong>
+                              <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                {formatDateTime(act.timestamp)}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '0.78rem', color: 'var(--adm-accent)', fontWeight: 700, marginBottom: act.text ? '4px' : '0' }}>
+                              {act.title}
+                            </div>
+
+                            {act.text && (
+                              <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', lineHeight: 1.4, background: 'var(--adm-bg-input)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--adm-border)' }}>
+                                {act.text}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}
 
-              {/* ── TAB 3: TAREFAS ───────────────────────────────────────────── */}
+              {/* ── TAB 3: TAREFAS VINCULADAS AO SUPABASE ────────────────────── */}
               {activeTabCol3 === 'tasks' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -836,165 +721,85 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               )}
             </div>
 
-            {/* Bottom Action Box (Kommo CRM exact interaction box) */}
+            {/* Caixa de Digitação Inferior (Modo Nota Interna Automático) */}
             <div style={{
               padding: '12px 16px',
               borderTop: '1px solid var(--adm-border)',
               background: 'var(--adm-bg-card)',
               flexShrink: 0,
             }}>
-              {/* Mode switch */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setMessageMode('whatsapp')}
+              <form onSubmit={handleSendInternalNote} style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Escrever uma nota interna ou registro de atendimento..."
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
                   style={{
-                    background: 'transparent',
+                    flex: 1,
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!noteText.trim()}
+                  style={{
+                    background: noteText.trim() ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
+                    color: noteText.trim() ? '#000' : 'var(--adm-text-muted)',
                     border: 'none',
-                    color: messageMode === 'whatsapp' ? '#25D366' : 'var(--adm-text-muted)',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
                     fontSize: '0.76rem',
-                    fontWeight: messageMode === 'whatsapp' ? 800 : 600,
-                    cursor: 'pointer',
-                    padding: 0,
+                    fontWeight: 800,
+                    cursor: noteText.trim() ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
                   }}
                 >
-                  <span>WhatsApp com {currentLead.name.split(' ')[0]}</span>
+                  <span>Salvar Nota</span>
+                  <Send size={12} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMessageMode('internal_note')}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: messageMode === 'internal_note' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                    fontSize: '0.76rem',
-                    fontWeight: messageMode === 'internal_note' ? 800 : 600,
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  Nota interna
-                </button>
-              </div>
-
-              {/* Text Input */}
-              <textarea
-                rows={2}
-                placeholder={
-                  messageMode === 'whatsapp'
-                    ? `Enviar mensagem no WhatsApp para ${currentLead.name}...`
-                    : 'Adicionar observação interna no histórico deste lead...'
-                }
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    handleSendMessage();
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '6px',
-                  padding: '8px 10px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.8rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  resize: 'none',
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                }}
-              />
-
-              {/* Action Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={handleSendMessage}
-                    style={{
-                      background: messageMode === 'whatsapp' ? '#25D366' : '#2563EB',
-                      border: 'none',
-                      color: '#FFF',
-                      borderRadius: '6px',
-                      padding: '6px 14px',
-                      fontSize: '0.76rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Send size={12} />
-                    <span>{messageMode === 'whatsapp' ? 'Enviar WhatsApp' : 'Salvar Nota'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      color: 'var(--adm-text-muted)',
-                      borderRadius: '6px',
-                      padding: '6px 10px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Mic size={14} />
-                  </button>
-                </div>
-
-                {messageText && (
-                  <button
-                    type="button"
-                    onClick={() => setMessageText('')}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-text-muted)',
-                      fontSize: '0.72rem',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cancelar
-                  </button>
-                )}
-              </div>
+              </form>
             </div>
           </>
         )}
       </div>
 
-      {/* ── MODALS ─────────────────────────────────────────────────────────── */}
+      {/* Modal Fechamento de Venda */}
       {isCloseDealModalOpen && currentLead && (
         <CloseDealValueModal
-          lead={currentLead}
           isOpen={isCloseDealModalOpen}
+          lead={currentLead}
           onClose={() => setIsCloseDealModalOpen(false)}
-          onConfirmSale={handleConfirmSale}
+          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, contractDate: string) => {
+            handleConfirmSale(leadId, dealValue, packageSold, contractDate);
+            setIsCloseDealModalOpen(false);
+          }}
         />
       )}
 
+      {/* Modal Nova Tarefa */}
       {isTaskModalOpen && currentLead && (
         <AdminTaskModal
           isOpen={isTaskModalOpen}
-          presetLeadId={currentLead.id}
           onClose={() => setIsTaskModalOpen(false)}
+          presetLeadId={currentLead.id}
         />
       )}
 
+      {/* Modal Confirmar Exclusão de Tarefa */}
       {taskToDelete && (
         <AdminConfirmModal
-          isOpen={!!taskToDelete}
+          isOpen={true}
           title="Excluir Tarefa"
-          message={`Tem certeza que deseja excluir a tarefa "${taskToDelete.title}"? Esta ação não pode ser desfeita.`}
-          confirmText="Excluir Tarefa"
+          message={`Tem certeza que deseja excluir a tarefa "${taskToDelete.title}"?`}
+          confirmText="Sim, Excluir"
           danger={true}
           onConfirm={() => {
             deleteLeadTask(taskToDelete.leadId, taskToDelete.taskId);
@@ -1003,6 +808,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
           onClose={() => setTaskToDelete(null)}
         />
       )}
+
     </div>
   );
 };
