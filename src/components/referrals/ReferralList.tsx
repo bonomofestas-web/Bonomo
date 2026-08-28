@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import { UserPlus, CheckCircle2, Clock, Filter, Phone, Tag, Sparkles, AlertCircle, Users } from 'lucide-react';
+import { UserPlus, CheckCircle2, Clock, Filter, Phone, Tag, AlertCircle, Users } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { ReferralFormModal } from './ReferralFormModal';
 
 export const ReferralList: React.FC = () => {
   const { 
     referrals, 
-    validateReferral, 
-    rejectReferral, 
     setIsReferralModalOpen,
     isReferralModalOpen,
     debutante 
@@ -398,35 +396,9 @@ export const ReferralList: React.FC = () => {
                   )}
 
                   {isPending && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span className="badge badge-in_progress" style={{ fontSize: '0.7rem' }}>
-                        ⏳ Em Análise
-                      </span>
-                      <button
-                        onClick={() => validateReferral(ref.id)}
-                        className="btn-secondary"
-                        style={{ padding: '4px 9px', fontSize: '0.7rem', borderColor: '#FFD700', color: '#FFD700' }}
-                        title="Simular validação desta indicação"
-                      >
-                        <Sparkles size={11} color="#FFD700" /> Aprovar
-                      </button>
-                      <button
-                        onClick={() => rejectReferral(ref.id)}
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          color: '#EF4444',
-                          padding: '4px 9px',
-                          borderRadius: '16px',
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                        title="Simular recusa desta indicação"
-                      >
-                        Recusar
-                      </button>
-                    </div>
+                    <span className="badge badge-in_progress" style={{ fontSize: '0.74rem' }}>
+                      ⏳ Em Análise da Equipe
+                    </span>
                   )}
                 </div>
               </div>
