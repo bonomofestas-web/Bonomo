@@ -413,14 +413,46 @@ export const debutanteService = {
     }
   },
 
-  async delete(id: string): Promise<boolean> {
+  async delete(idOrSlug: string): Promise<boolean> {
+    if (!idOrSlug) return false;
+
+    // 1. Call Serverless Backend API (executes with service role bypass)
     try {
-      await fetch(`/api/save-debutante?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/save-debutante?id=${encodeURIComponent(idOrSlug)}`, { method: 'DELETE' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.success) return true;
+      }
     } catch {}
 
+    // 2. Direct Supabase Client fallback
     if (!isSupabaseConfigured) return false;
     try {
-      const { error } = await supabase.from('debutantes').delete().eq('id', id);
+      let targetId = idOrSlug.trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+
+      if (!isUuid) {
+        const { data: found } = await supabase
+          .from('debutantes')
+          .select('id')
+          .or(`slug.eq.${targetId},id.eq.${targetId}`)
+          .maybeSingle();
+        if (found?.id) targetId = found.id;
+      }
+
+      // Cascade delete related records
+      await Promise.all([
+        supabase.from('guests').delete().eq('debutante_id', targetId),
+        supabase.from('referrals').delete().eq('debutante_id', targetId),
+        supabase.from('appointments').delete().eq('debutante_id', targetId).in('status', ['scheduled', 'pending']),
+        supabase.from('admin_tasks').delete().eq('debutante_id', targetId),
+      ]);
+
+      const { error } = await supabase
+        .from('debutantes')
+        .delete()
+        .or(`id.eq.${targetId},slug.eq.${idOrSlug}`);
+
       if (error) {
         console.error('Erro ao deletar debutante:', error);
         return false;

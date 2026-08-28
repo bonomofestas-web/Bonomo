@@ -23,10 +23,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'DELETE') {
       const { id } = req.query || req.body || {};
       if (!id) {
-        return res.status(400).json({ error: 'ID da debutante é obrigatório.' });
+        return res.status(400).json({ error: 'ID ou Slug da debutante é obrigatório.' });
       }
-      await supabase.from('debutantes').delete().eq('id', id);
-      return res.status(200).json({ success: true });
+
+      // 1. Resolve exact UUID if a slug or partial ID was passed
+      let targetId = String(id).trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      if (!isUuid) {
+        const { data: found } = await supabase
+          .from('debutantes')
+          .select('id')
+          .or(`slug.eq.${targetId},id.eq.${targetId}`)
+          .maybeSingle();
+        if (found?.id) {
+          targetId = found.id;
+        }
+      }
+
+      // 2. Cascade delete dependent tables
+      await Promise.all([
+        supabase.from('guests').delete().eq('debutante_id', targetId),
+        supabase.from('referrals').delete().eq('debutante_id', targetId),
+        supabase.from('appointments').delete().eq('debutante_id', targetId).in('status', ['scheduled', 'pending']),
+        supabase.from('admin_tasks').delete().eq('debutante_id', targetId),
+      ]);
+
+      // 3. Delete debutante record
+      const { error: debErr } = await supabase.from('debutantes').delete().or(`id.eq.${targetId},slug.eq.${id}`);
+      if (debErr) {
+        console.error('[API Save Debutante] Erro ao deletar:', debErr);
+        return res.status(500).json({ error: debErr.message });
+      }
+
+      return res.status(200).json({ success: true, deletedId: targetId });
     }
 
     if (req.method !== 'POST') {
