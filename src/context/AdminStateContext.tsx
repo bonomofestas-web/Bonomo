@@ -528,6 +528,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await taskService.getAll();
         if (isMounted) setTasks(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_activities' }, async () => {
+        const updated = await leadService.getAll();
+        if (isMounted && updated.length > 0) setLeads(updated);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_participants' }, async () => {
+        const updated = await leadService.getAll();
+        if (isMounted && updated.length > 0) setLeads(updated);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
         if (isMounted && updated.length > 0) setCollaborators(updated);
@@ -542,9 +550,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .subscribe();
 
+    // Heartbeat Polling inteligente a cada 6 segundos para multi-dispositivos
+    const adminPollingInterval = setInterval(async () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        const [updatedLeads, updatedDebs] = await Promise.all([
+          leadService.getAll(),
+          debutanteService.getAll(),
+        ]);
+        if (isMounted) {
+          if (updatedLeads.length > 0) setLeads(updatedLeads);
+          if (updatedDebs.length > 0) setDebutantes(updatedDebs);
+        }
+      }
+    }, 6000);
+
     return () => {
       isMounted = false;
       clearTimeout(debounceTimer);
+      clearInterval(adminPollingInterval);
       supabase.removeChannel(realtimeChannel);
       authListener?.subscription?.unsubscribe();
     };

@@ -73,8 +73,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     updateFunnel,
     deleteFunnel,
     updateLeadStage,
-    closeLeadSaleWithValue,
-    claimLeadIfUnassigned 
+    closeLeadSaleWithValue
   } = useAdminState();
 
   // Active Funnel selection: null = Hub de Funis (Cards), or 'indicacao', 'trafego', etc.
@@ -472,10 +471,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       alert(`Este lead já está sendo atendido por ${lead.assignedTo || 'outro SDR'}. Apenas Gerentes ou Master podem reatribuir.`);
       setDraggedLeadId(null);
       return;
-    }
-
-    if (lead.stage === 'new_lead' && targetStage !== 'new_lead') {
-      claimLeadIfUnassigned(leadId);
     }
 
     if (targetStage === 'contract_signed') {

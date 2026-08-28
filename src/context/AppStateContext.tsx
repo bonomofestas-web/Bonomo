@@ -398,14 +398,21 @@ export const AppStateProvider: React.FC<{
           }));
           if (fresh.guests) setGuests(fresh.guests);
           if (fresh.referrals) {
-            setReferrals(prev => {
-              const map = new Map<string, Referral>();
-              fresh.referrals.forEach(r => map.set(r.id, r));
-              prev.forEach(r => {
-                if (!map.has(r.id)) map.set(r.id, r);
-              });
-              return Array.from(map.values());
+            // Deduplica estritamente por ID ou telefone para eliminar duplicações no envio
+            const seenPhones = new Set<string>();
+            const seenIds = new Set<string>();
+            const deduplicated: Referral[] = [];
+
+            fresh.referrals.forEach(r => {
+              const cleanPhone = r.phone ? r.phone.replace(/\D/g, '') : '';
+              if (r.id && seenIds.has(r.id)) return;
+              if (cleanPhone && seenPhones.has(cleanPhone)) return;
+              if (r.id) seenIds.add(r.id);
+              if (cleanPhone) seenPhones.add(cleanPhone);
+              deduplicated.push(r);
             });
+
+            setReferrals(deduplicated);
           }
           if (fresh.milestones) setMilestones(fresh.milestones);
           if (fresh.vipRewards) setVipRewards(fresh.vipRewards);
@@ -415,15 +422,24 @@ export const AppStateProvider: React.FC<{
     };
 
     const debChannel = supabase
-      .channel(`debutante-realtime-${debutante.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes', filter: `id=eq.${debutante.id}` }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'guests', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+      .channel(`debutante-realtime-${debutante.id}-${Date.now()}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, refreshActiveDeb)
       .subscribe();
+
+    // Polling inteligente em background a cada 6 segundos para garantir 100% de sincronia
+    const pollingInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshActiveDeb();
+      }
+    }, 6000);
 
     return () => {
       isMounted = false;
       clearTimeout(debounceTimer);
+      clearInterval(pollingInterval);
       supabase.removeChannel(debChannel);
     };
   }, [debutante.id, debutante.slug]);
