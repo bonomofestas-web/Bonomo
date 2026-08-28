@@ -477,6 +477,85 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           )}
         </div>
 
+        {/* Bloco de Destaque: Validação de Indicação no Topo da Ficha */}
+        {Boolean(lead.debutanteName || lead.debutanteId) && (
+          <div style={{ marginTop: '10px' }}>
+            {lead.isValidated ? (
+              <div style={{
+                padding: '8px 12px',
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle2 size={15} color="#10B981" />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#10B981' }}>
+                    Indicação Validada (+1 Ponto na Jornada)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => invalidateLead(lead.id)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.6)',
+                    fontSize: '0.7rem',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                  }}
+                >
+                  Revogar
+                </button>
+              </div>
+            ) : (
+              <div style={{
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(212, 175, 55, 0.08) 100%)',
+                border: '1px solid rgba(245, 158, 11, 0.5)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={14} color="#F59E0B" />
+                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FDE68A' }}>
+                    Aguardando Validação
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => validateLead(lead.id)}
+                  style={{
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    borderRadius: '6px',
+                    padding: '5px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Check size={13} />
+                  <span>Validar Lead (+1 pt)</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab: Principal */}
         <div style={{ display: 'flex', gap: '16px', marginTop: '10px' }}>
           <span

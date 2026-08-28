@@ -72,12 +72,31 @@ export const funnelService = {
         payload.id = funnel.id;
         const { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
         if (insertErr) {
-          console.error('Erro ao inserir funil por UUID:', insertErr);
+          console.error('❌ Erro ao inserir funil no Supabase:', insertErr);
           return false;
         }
         return true;
+      } else {
+        // Se id não for UUID puro (ex: indicacao_venueId), busca pelo venue_id correspondente
+        const venueMatch = funnel.venueId || (funnel.id.includes('_') ? funnel.id.split('_')[1] : null);
+        if (venueMatch) {
+          const { data: found } = await supabase
+            .from('commercial_funnels')
+            .select('id')
+            .eq('venue_id', venueMatch)
+            .eq('is_primary', true)
+            .maybeSingle();
+
+          if (found?.id) {
+            const { error: updErr } = await supabase
+              .from('commercial_funnels')
+              .update(payload)
+              .eq('id', found.id);
+            if (!updErr) return true;
+          }
+        }
+        return false;
       }
-      return false;
     } catch (err) {
       console.error('Falha em funnelService.upsert:', err);
       return false;

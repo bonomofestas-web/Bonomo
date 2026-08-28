@@ -73,7 +73,14 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const filteredLeads = leads.filter(l => {
     const matchesVenue = !activeVenueId || l.venueId === activeVenueId;
     
+    if (filterTab === 'all') {
+      // Aba "Abertas": leads sem responsável/SDR atribuído
+      const hasSdr = Boolean(l.sdrId || (l.assignedTo && l.assignedTo.trim() !== '' && l.assignedTo !== 'Sem responsável' && l.assignedTo !== 'Não atribuído'));
+      if (hasSdr) return false;
+    }
+
     if (filterTab === 'mine') {
+      // Aba "Minhas": leads atribuídos ao usuário logado
       const isMine = (currentUser?.id && (l.sdrId === currentUser.id || l.closerId === currentUser.id)) ||
         (currentUser?.name && l.assignedTo?.toLowerCase() === currentUser.name.toLowerCase());
       if (!isMine) return false;
@@ -128,44 +135,38 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     setNoteText('');
   };
 
-  const leadTasks = currentLead?.tasks || [];
+  const leadTasks = (currentLead?.tasks || []).filter(t => t.status !== 'completed');
   const leadActivities = currentLead?.activities || [];
 
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: isMiddleCollapsed ? '290px 1fr' : '290px 400px 1fr',
-      gap: '0px',
+      gridTemplateColumns: isMiddleCollapsed ? '320px 1fr' : '320px 380px 1fr',
       height: '100%',
-      minHeight: 0,
-      flex: 1,
-      background: 'var(--adm-bg-app)',
-      border: '1px solid var(--adm-border)',
-      borderRadius: '16px',
+      width: '100%',
       overflow: 'hidden',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
-      position: 'relative',
+      background: 'var(--adm-bg-app)',
     }}>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* COLUNA 1 — INBOX / LISTA DE CONVERSAS (COMPACTO E LIMPO)                */}
+      {/* COLUNA 1 — LISTA DE CONVERSAS / LEADS (INBOX)                           */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{
-        background: 'var(--adm-bg-card)',
         borderRight: '1px solid var(--adm-border)',
         display: 'flex',
         flexDirection: 'column',
+        background: 'var(--adm-bg-card)',
         overflow: 'hidden',
         height: '100%',
       }}>
-        {/* Header Compacto: INBOX [Contador] e abas [Abertas] e [Minhas] */}
+        {/* Header do Inbox: Badge de Contagem + Abas [Abertas] [Minhas] */}
         <div style={{
-          padding: '12px 14px',
+          padding: '12px 16px',
           borderBottom: '1px solid var(--adm-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'var(--adm-bg-card)',
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -267,11 +268,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                   {/* Top Row: Avatar + Indicator + Name + Tag + Time */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                      {/* Avatar with WhatsApp dot */}
+                      {/* Avatar do Lead (sempre mostra a inicial do Lead) */}
                       <div style={{ position: 'relative', flexShrink: 0 }}>
                         <div style={{
-                          width: '28px',
-                          height: '28px',
+                          width: '30px',
+                          height: '30px',
                           borderRadius: '50%',
                           background: 'linear-gradient(135deg, #1E1B2E 0%, #0D0B14 100%)',
                           border: '1px solid rgba(212, 175, 55, 0.4)',
@@ -279,26 +280,37 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '0.72rem',
+                          fontSize: '0.74rem',
                           fontWeight: 800,
                           overflow: 'hidden',
                         }}>
-                          {sdrAvatar ? (
-                            <img src={sdrAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            lead.name.charAt(0).toUpperCase()
-                          )}
+                          {lead.name.charAt(0).toUpperCase()}
                         </div>
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '-1px',
-                          right: '-1px',
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          background: '#22C55E',
-                          border: '1.5px solid var(--adm-bg-card)',
-                        }} />
+                        {sdrAvatar ? (
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-2px',
+                            right: '-2px',
+                            width: '13px',
+                            height: '13px',
+                            borderRadius: '50%',
+                            border: '1.5px solid var(--adm-bg-card)',
+                            overflow: 'hidden',
+                          }}>
+                            <img src={sdrAvatar} alt={sdr?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </div>
+                        ) : (
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-1px',
+                            right: '-1px',
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: '#22C55E',
+                            border: '1.5px solid var(--adm-bg-card)',
+                          }} />
+                        )}
                       </div>
 
                       <div style={{ minWidth: 0, flex: 1 }}>
