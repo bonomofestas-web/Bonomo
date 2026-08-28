@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Sparkles, Crown, ArrowRight, Volume2, VolumeX, Play, 
+  Sparkles, Crown, ArrowRight, Volume2, VolumeX, 
   Smartphone, PlusSquare, MoreVertical, Download
 } from 'lucide-react';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
@@ -13,13 +13,43 @@ interface WelcomeVideoIntroViewProps {
   onStartJourney: () => void;
 }
 
+// ── PWA & Installation Guide Helpers ──────────────────────────────────────────
+const isPwaInstalled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const isStandaloneMatch = window.matchMedia('(display-mode: standalone)').matches;
+  const isIosStandalone = (window.navigator as any).standalone === true;
+  const isAndroidReferrer = document.referrer.includes('android-app://');
+  return Boolean(isStandaloneMatch || isIosStandalone || isAndroidReferrer);
+};
+
+const PWA_GUIDE_KEY = 'bonomo_pwa_guide_dismissed_';
+const hasDismissedPwaGuide = (slug: string): boolean => {
+  try {
+    return localStorage.getItem(`${PWA_GUIDE_KEY}${slug}`) === 'true';
+  } catch {
+    return false;
+  }
+};
+const markPwaGuideDismissed = (slug: string) => {
+  try {
+    localStorage.setItem(`${PWA_GUIDE_KEY}${slug}`, 'true');
+  } catch {}
+};
+
 export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   debutante,
   venue,
   onStartJourney,
 }) => {
   // Step: 'pwa_guide' | 'video'
-  const [step, setStep] = useState<'pwa_guide' | 'video'>('pwa_guide');
+  // If app is already installed/standalone OR if user already dismissed PWA guide, skip straight to video
+  const [step, setStep] = useState<'pwa_guide' | 'video'>(() => {
+    if (isPwaInstalled() || hasDismissedPwaGuide(debutante.slug)) {
+      return 'video';
+    }
+    return 'pwa_guide';
+  });
+
   const [deviceTab, setDeviceTab] = useState<'ios' | 'android'>('ios');
 
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
@@ -27,7 +57,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   const [videoError, setVideoError] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const venueName = venue?.name || 'Espaço Rio Lounge';
@@ -100,7 +129,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
   }, [debutante.welcomeVideoUrl, venue?.welcomeVideoUrl, debutante.avatarUrl, debutante.name]);
 
 
-  // When moving to video step, start video playback
+  // When moving to video step, start video playback automatically
   useEffect(() => {
     if (step !== 'video' || !resolvedSrc || !videoRef.current) return;
 
@@ -108,21 +137,19 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
     const playPromise = video.play();
     if (playPromise !== undefined) {
       playPromise
-        .then(() => {
-          setIsPlaying(true);
-        })
         .catch(() => {
-          // If browser blocked sound autoplay, fall back to muted
+          // If browser blocked sound autoplay, fall back to muted and play
           video.muted = true;
           setIsMuted(true);
-          video.play().then(() => setIsPlaying(true)).catch(() => {
-            setIsPlaying(false);
-          });
+          video.play().catch(() => {});
         });
     }
   }, [step, resolvedSrc]);
 
   const handleProceedToVideo = () => {
+    // Remember that user dismissed PWA guide so it never shows again across refreshes
+    markPwaGuideDismissed(debutante.slug);
+
     // If the debutante explicitly has journey disabled, skip video step completely!
     if (debutante.hasJourneyEnabled === false) {
       onStartJourney();
@@ -136,11 +163,11 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
         setIsMuted(false);
         const p = videoRef.current.play();
         if (p !== undefined) {
-          p.then(() => setIsPlaying(true)).catch(() => {
+          p.catch(() => {
             if (videoRef.current) {
               videoRef.current.muted = true;
               setIsMuted(true);
-              videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+              videoRef.current.play().catch(() => {});
             }
           });
         }
@@ -155,17 +182,7 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
     videoRef.current.muted = nextMuted;
     setIsMuted(nextMuted);
     if (videoRef.current.paused) {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  };
-
-  const handleTogglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      videoRef.current.play().catch(() => {});
     }
   };
 
@@ -467,7 +484,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
       {step === 'video' && (
         <div 
           className="vertical-stories-video-container"
-          onClick={handleTogglePlay}
           style={{
             position: 'relative',
             width: '100%',
@@ -484,7 +500,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'pointer',
             animation: 'fadeIn 0.3s ease-out',
           }}
         >
@@ -508,10 +523,14 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
                 }
               }}
               onPlay={() => {
-                setIsPlaying(true);
                 setVideoError(false);
               }}
-              onPause={() => setIsPlaying(false)}
+              onPause={() => {
+                // Keep playing if video was paused prematurely before ending
+                if (!isVideoEnded && videoRef.current) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
@@ -564,8 +583,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             </div>
           )}
 
-
-
           {/* Floating Sound Orientation Badge (Mandated by Audio 1) */}
           {!isVideoEnded && (
             <div
@@ -596,31 +613,6 @@ export const WelcomeVideoIntroView: React.FC<WelcomeVideoIntroViewProps> = ({
             </div>
           )}
 
-          {/* Play/Pause indicator on tap */}
-          {!isPlaying && !isVideoEnded && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(0,0,0,0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 25,
-            }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: 'rgba(212, 175, 55, 0.85)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#000',
-              }}>
-                <Play size={28} style={{ marginLeft: '4px' }} />
-              </div>
-            </div>
-          )}
 
           {/* Center "Concluído / Acessar Jornada" button — ONLY appears when video ends */}
           {isVideoEnded && (
