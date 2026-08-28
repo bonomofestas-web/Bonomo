@@ -462,9 +462,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
 
-    // Setup Realtime WebSocket Listener
+    // Setup Realtime WebSocket Listener with Debounce
+    let debounceTimer: any = null;
+    const triggerDebouncedSync = (fn: () => Promise<void>) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (isMounted) fn();
+      }, 150);
+    };
+
     const realtimeChannel = supabase
-      .channel('bonomo-realtime-sync')
+      .channel('bonomo-admin-realtime-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'venues' }, async () => {
         const updated = await venueService.getAll();
         if (isMounted && updated.length > 0) setVenues(updated);
@@ -475,15 +483,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async () => {
         const updated = await leadService.getAll();
-        if (isMounted && updated.length > 0) setLeads(updated);
+        if (isMounted) setLeads(updated);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, async () => {
         const updated = await debutanteService.getAll();
         if (isMounted && updated.length > 0) setDebutantes(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, async () => {
+        // Debutante cadastrou indicação -> atualiza debutantes e leads em tempo real
+        triggerDebouncedSync(async () => {
+          const [updatedDebs, updatedLeads] = await Promise.all([
+            debutanteService.getAll(),
+            leadService.getAll(),
+          ]);
+          if (isMounted) {
+            if (updatedDebs.length > 0) setDebutantes(updatedDebs);
+            if (updatedLeads.length > 0) setLeads(updatedLeads);
+          }
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, async () => {
+        // Convidado confirmou -> atualiza lista de convidados em tempo real
+        triggerDebouncedSync(async () => {
+          const updatedDebs = await debutanteService.getAll();
+          if (isMounted && updatedDebs.length > 0) setDebutantes(updatedDebs);
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, async () => {
+        // Agendamento criado ou atualizado
+        triggerDebouncedSync(async () => {
+          const updatedDebs = await debutanteService.getAll();
+          if (isMounted && updatedDebs.length > 0) setDebutantes(updatedDebs);
+        });
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_tasks' }, async () => {
         const updated = await taskService.getAll();
-        if (isMounted && updated.length > 0) setTasks(updated);
+        if (isMounted) setTasks(updated);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
@@ -501,6 +536,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     return () => {
       isMounted = false;
+      clearTimeout(debounceTimer);
       supabase.removeChannel(realtimeChannel);
       authListener?.subscription?.unsubscribe();
     };

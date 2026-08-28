@@ -29,6 +29,7 @@ import {
 } from '../data/mockData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { leadService } from '../services/leadService';
+import { debutanteService } from '../services/debutanteService';
 
 export type ScenarioKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'T2' | 'T3' | 'T9';
 
@@ -413,6 +414,56 @@ export const AppStateProvider: React.FC<{
       console.error('Error saving debutante to localStorage:', e);
     }
   }, [debutante, guests, referrals, milestones, vipRewards]);
+
+  // Realtime synchronization for active Debutante (Progress, Referrals, Guests)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !debutante.id) return;
+
+    let isMounted = true;
+    let debounceTimer: any = null;
+
+    const refreshActiveDeb = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        if (!isMounted) return;
+        const cleanSlug = debutante.slug || debutante.id;
+        const fresh = await debutanteService.getBySlug(cleanSlug);
+        if (fresh && isMounted) {
+          setDebutante(prev => ({
+            ...prev,
+            validReferrals: fresh.validReferrals,
+            totalTargetReferrals: fresh.totalTargetReferrals,
+            journeyProgressPercentage: fresh.journeyProgressPercentage,
+            convertedReferralSales: fresh.convertedReferralSales,
+            baseGuestLimit: fresh.baseGuestLimit,
+            extraGuestsUnlocked: fresh.extraGuestsUnlocked,
+            currentGuestLimit: fresh.currentGuestLimit,
+            journeyCycle: fresh.journeyCycle,
+            hasJourneyEnabled: fresh.hasJourneyEnabled,
+          }));
+          if (fresh.guests) setGuests(fresh.guests);
+          if (fresh.referrals) setReferrals(fresh.referrals);
+          if (fresh.milestones) setMilestones(fresh.milestones);
+          if (fresh.vipRewards) setVipRewards(fresh.vipRewards);
+          setConvertedReferralSalesState(fresh.convertedReferralSales || 0);
+        }
+      }, 150);
+    };
+
+    const debChannel = supabase
+      .channel(`debutante-realtime-${debutante.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes', filter: `id=eq.${debutante.id}` }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guests', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(debChannel);
+    };
+  }, [debutante.id, debutante.slug]);
+
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(false);
   const [conquestMilestone, setConquestMilestone] = useState<Milestone | null>(null);
   const [conquestVipReward, setConquestVipReward] = useState<VipReward | null>(null);
