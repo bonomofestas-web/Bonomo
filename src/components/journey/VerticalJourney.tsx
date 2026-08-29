@@ -7,12 +7,16 @@ import { JourneyCycleTimerBanner } from './JourneyCycleTimerBanner';
 import { CyclePausedOverlay } from './CyclePausedOverlay';
 
 export const VerticalJourney: React.FC = () => {
-  const { milestones, validatedReferralsCount, sentReferralsCount, debutante, journeySubTab, setActiveTab } = useAppState();
+  const { milestones, validatedReferralsCount, sentReferralsCount, debutante, journeySubTab, vipRewards, setActiveTab } = useAppState();
 
   const validCount = validatedReferralsCount ?? debutante.validReferrals;
   const sentCount  = sentReferralsCount;
   const isPaused = debutante.journeyCycle.journeyStatus === 'paused';
   const isClosed = debutante.journeyCycle.journeyStatus === 'closed';
+
+  const hasVipRewardsConfigured = vipRewards && vipRewards.length > 0;
+  const isShowingVipTab = hasVipRewardsConfigured && journeySubTab === 'vip_rewards';
+  const isShowingBenefitsTab = !isShowingVipTab;
 
   // State: Jornada Pendente de Vinculação
   if (debutante.isJourneyPending) {
@@ -267,7 +271,7 @@ export const VerticalJourney: React.FC = () => {
       <JourneyViewSelector />
 
       {/* ── SUB-TAB 1: BENEFÍCIOS (Default Journey Experience) ── */}
-      {journeySubTab === 'benefits' && (
+      {isShowingBenefitsTab && (
         isPaused || isClosed ? (
           <CyclePausedOverlay />
         ) : (
@@ -298,107 +302,85 @@ export const VerticalJourney: React.FC = () => {
                   border: validCount > 0 
                     ? '2.5px solid #FFFFFF' 
                     : sentCount > 0 
-                    ? '2.5px solid #FFB0C8' 
-                    : '2px solid rgba(255, 215, 0, 0.6)',
+                    ? '2px solid #FF5C9A' 
+                    : '1.5px solid rgba(255, 215, 0, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: validCount > 0 
-                    ? '0 0 20px rgba(221,168,75,0.55)' 
+                    ? '0 0 16px rgba(255, 215, 0, 0.6)' 
                     : sentCount > 0 
-                    ? '0 0 24px rgba(255,20,147,0.65)' 
-                    : '0 0 16px rgba(255, 215, 0, 0.35)',
+                    ? '0 0 14px rgba(255, 92, 154, 0.5)' 
+                    : 'none',
+                  flexShrink: 0,
+                  position: 'relative',
                   zIndex: 2,
-                  transition: 'all 0.35s ease',
                 }}>
-                  <Sparkles size={18} color={validCount > 0 ? '#3D2702' : '#FFD700'} />
+                  <Sparkles size={20} color={validCount > 0 ? '#3D2702' : sentCount > 0 ? '#FFF' : '#FFD700'} />
                 </div>
 
-                {/* Vertical Connecting Line from Start (0) to Meta 1 (5) */}
+                {/* Vertical Segment 0 Connecting to Meta 1 */}
                 <div style={{
+                  width: '6px',
+                  flex: 1,
+                  minHeight: '60px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  borderRadius: '3px',
+                  margin: '4px 0',
                   position: 'relative',
-                  width: '3px',
-                  height: '38px',
-                  marginTop: '4px',
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  borderLeft: (startGoldPct === 0 && startPinkPct === 0) ? '2px dashed rgba(255,255,255,0.2)' : 'none',
-                  borderRadius: '2px',
                   overflow: 'hidden',
                 }}>
-                  {/* Top Dourado Portion (Validadas) */}
-                  {startGoldPct > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: `${startGoldPct}%`,
-                      background: 'linear-gradient(180deg, #DDA84B 0%, #FFD700 100%)',
-                      boxShadow: '0 0 10px rgba(255, 215, 0, 0.8)',
-                      transition: 'height 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                      zIndex: 2,
-                    }} />
-                  )}
-
-                  {/* Middle Rosa Portion (Pendentes) */}
-                  {startPinkPct > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: `${startGoldPct}%`,
-                      left: 0,
-                      width: '100%',
-                      height: `${startPinkPct}%`,
-                      background: 'linear-gradient(180deg, #FF1493 0%, #FF6090 100%)',
-                      boxShadow: '0 0 10px rgba(255, 20, 147, 0.8)',
-                      transition: 'top 0.6s ease, height 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                      zIndex: 1,
-                    }} />
-                  )}
+                  {/* Gold fill (validated referrals) */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${startGoldPct}%`,
+                    background: 'linear-gradient(180deg, #FFD700 0%, #DDA84B 100%)',
+                    boxShadow: '0 0 8px rgba(255, 215, 0, 0.8)',
+                    borderRadius: '3px',
+                    transition: 'height 0.6s ease',
+                  }} />
+                  {/* Pink fill (pending referrals above gold) */}
+                  <div style={{
+                    position: 'absolute',
+                    top: `${startGoldPct}%`,
+                    left: 0,
+                    width: '100%',
+                    height: `${startPinkPct}%`,
+                    background: 'linear-gradient(180deg, #FF5C9A 0%, #FF1493 100%)',
+                    boxShadow: '0 0 8px rgba(255, 92, 154, 0.8)',
+                    borderRadius: '3px',
+                    transition: 'top 0.6s ease, height 0.6s ease',
+                  }} />
                 </div>
               </div>
 
-              {/* Start Point Header Banner */}
+              {/* Start Node Description */}
               <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 215, 0, 0.25)',
-                borderRadius: '14px',
-                padding: '10px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '8px',
-                marginBottom: '10px',
+                background: 'rgba(20, 11, 28, 0.65)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255, 215, 0, 0.2)',
+                borderRadius: '16px',
+                padding: '14px 18px',
+                marginBottom: '20px',
               }}>
-                <div>
-                  <div style={{
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    color: '#E8C98D',
-                    letterSpacing: '1px',
-                    textTransform: 'uppercase',
-                    fontFamily: 'Poppins, sans-serif'
-                  }}>
-                    ✨ Ponto de Partida da Jornada
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.7)', fontFamily: 'Poppins, sans-serif', marginTop: '1px' }}>
-                    {validCount === 0 && sentCount === 0
-                      ? 'Indique suas primeiras amigas para desbloquear as recompensas!'
-                      : `${validCount} de ${meta1Req} indicações validadas rumo à 1ª meta`}
-                  </div>
-                </div>
-
                 <div style={{
-                  background: validCount >= meta1Req ? 'rgba(221,168,75,0.2)' : 'rgba(255,92,154,0.15)',
-                  border: validCount >= meta1Req ? '1px solid #DDA84B' : '1px solid rgba(255,92,154,0.3)',
-                  borderRadius: '20px',
-                  padding: '3px 10px',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: validCount >= meta1Req ? '#FFD700' : '#FFB0C8',
-                  fontFamily: 'Poppins, sans-serif'
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  color: '#FFD700',
+                  letterSpacing: '0.8px',
+                  textTransform: 'uppercase',
+                  fontFamily: 'Poppins, sans-serif',
+                  marginBottom: '2px',
                 }}>
-                  {validCount >= meta1Req ? '1ª Meta Alcançada 🏆' : `Progresso 1ª Meta: ${Math.round((validInStart / meta1Req) * 100)}%`}
+                  Início da Sua Jornada
+                </div>
+                <div style={{ fontSize: '0.84rem', color: '#E8C98D', fontWeight: 600 }}>
+                  {validCount === 0 
+                    ? 'Indique suas amigas para começar a avançar e desbloquear benefícios exclusivos!' 
+                    : `Você já possui ${validCount} ${validCount === 1 ? 'indicação validada' : 'indicações validadas'}! Continue indicando para conquistar todos os benefícios.`}
                 </div>
               </div>
             </div>
@@ -439,7 +421,7 @@ export const VerticalJourney: React.FC = () => {
       )}
 
       {/* ── SUB-TAB 2: PRESENTES VIP (VIP Rewards Gallery - Always Trackable) ── */}
-      {journeySubTab === 'vip_rewards' && (
+      {isShowingVipTab && (
         <VipRewardsHub />
       )}
 

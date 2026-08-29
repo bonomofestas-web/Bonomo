@@ -147,6 +147,8 @@ export interface AdminContextType {
   }) => DebutanteAccount;
   updateDebutanteAccount: (id: string, data: Partial<DebutanteAccount>) => void;
   deleteDebutanteAccount: (id: string) => void;
+  setDebutanteStatus: (id: string, status: 'active' | 'inactive') => void;
+  toggleDebutanteStatus: (id: string) => void;
   updateDebutanteModuleToggle: (id: string, hasJourneyEnabled: boolean) => void;
   updateDebutanteMilestones: (id: string, milestones: Milestone[]) => void;
   updateDebutanteVipRewards: (id: string, vipRewards: VipReward[]) => void;
@@ -1156,6 +1158,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     debutanteService.delete(idOrSlug);
+  };
+
+  const setDebutanteStatus = (idOrSlug: string, status: 'active' | 'inactive') => {
+    setDebutantes(prev => {
+      const updated = prev.map(d => (d.id === idOrSlug || d.slug === idOrSlug) ? { ...d, status } : d);
+      safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
+      return updated;
+    });
+
+    debutanteService.setStatus(idOrSlug, status);
+  };
+
+  const toggleDebutanteStatus = (idOrSlug: string) => {
+    const current = debutantes.find(d => d.id === idOrSlug || d.slug === idOrSlug);
+    const nextStatus = (current?.status === 'inactive') ? 'active' : 'inactive';
+    setDebutanteStatus(idOrSlug, nextStatus);
   };
 
   const updateDebutanteModuleToggle = (id: string, hasJourneyEnabled: boolean) => {
@@ -2620,6 +2638,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addDebutanteAccount,
       updateDebutanteAccount,
       deleteDebutanteAccount,
+      setDebutanteStatus,
+      toggleDebutanteStatus,
       updateDebutanteModuleToggle,
       updateDebutanteMilestones,
       updateDebutanteVipRewards,

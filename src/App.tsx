@@ -16,6 +16,7 @@ import { ReferralFormModal } from './components/referrals/ReferralFormModal';
 import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPage';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
+import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
@@ -454,41 +455,12 @@ const RootAppRouter: React.FC = () => {
 
   // If debutante was requested by slug/URL but does not exist in DB or memory -> Inactive / Invalid link
   if (viewMode === 'debutante' && cleanSlug && !inMemoryDeb && !asyncDeb && !isLoadingSlug) {
-    return (
-      <div style={{
-        height: '100vh',
-        width: '100vw',
-        background: '#040307',
-        color: '#FFFFFF',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        textAlign: 'center',
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}>
-        <div style={{
-          width: '64px',
-          height: '64px',
-          borderRadius: '50%',
-          background: 'rgba(212, 175, 55, 0.08)',
-          border: '1px solid rgba(212, 175, 55, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: '16px',
-        }}>
-          <Crown size={28} color="#D4AF37" />
-        </div>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 8px 0' }}>
-          Link Inválido
-        </h1>
-        <p style={{ fontSize: '0.85rem', color: '#A0988A', margin: 0, maxWidth: '280px', lineHeight: 1.5 }}>
-          Este link encontra-se inválido ou foi desativado.
-        </p>
-      </div>
-    );
+    return <InactiveDebutanteView venue={activeVenue} reason="not_found" />;
+  }
+
+  // If debutante is inactive or expired
+  if (viewMode === 'debutante' && activeDeb && activeDeb.status === 'inactive') {
+    return <InactiveDebutanteView venue={activeVenue} reason={activeDeb.partyDaysLeft === 0 ? 'expired' : 'inactive'} />;
   }
 
   // Check if first-access video/PWA onboarding is required

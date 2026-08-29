@@ -40,24 +40,66 @@ export const generateBlackGoldPwaIcon = (logoUrl: string, venueName = 'Bonomo'):
         const ctx = canvas.getContext('2d');
         if (!ctx) return logoUrl || '/favicon.png';
 
-        // Solid luxury pure black background
-        ctx.fillStyle = '#050308';
+        // 1. Solid pure black background (eliminates any white background on iOS)
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, 512, 512);
 
-        // Subtle luxury gold outer circle
-        ctx.strokeStyle = '#D4AF37';
-        ctx.lineWidth = 6;
+        // 2. Luxury Outer Gold Ring with double stroke
+        const grad = ctx.createLinearGradient(100, 100, 412, 412);
+        grad.addColorStop(0, '#FFE89E');
+        grad.addColorStop(0.5, '#D4AF37');
+        grad.addColorStop(1, '#99771F');
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 8;
         ctx.beginPath();
-        ctx.arc(256, 256, 220, 0, Math.PI * 2);
+        ctx.arc(256, 256, 224, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Crown & Initial
-        const initial = venueName ? venueName.trim().charAt(0).toUpperCase() : 'B';
-        ctx.fillStyle = '#D4AF37';
-        ctx.font = "bold 160px 'Plus Jakarta Sans', sans-serif";
+        ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(256, 256, 208, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 3. Royal Imperial Crown Path
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        // Crown Base
+        ctx.roundRect(176, 300, 160, 16, 8);
+        ctx.fill();
+
+        // Crown Peaks
+        ctx.beginPath();
+        ctx.moveTo(176, 290);
+        ctx.lineTo(160, 200); // Left peak
+        ctx.lineTo(210, 240); // Left valley
+        ctx.lineTo(256, 170); // Center peak (highest)
+        ctx.lineTo(302, 240); // Right valley
+        ctx.lineTo(352, 200); // Right peak
+        ctx.lineTo(336, 290);
+        ctx.closePath();
+        ctx.fill();
+
+        // Crown Jewels / Pearls on peaks
+        [
+          { x: 160, y: 195, r: 9 },
+          { x: 256, y: 165, r: 12 },
+          { x: 352, y: 195, r: 9 },
+        ].forEach(jewel => {
+          ctx.beginPath();
+          ctx.arc(jewel.x, jewel.y, jewel.r, 0, Math.PI * 2);
+          ctx.fillStyle = '#FFE89E';
+          ctx.fill();
+        });
+
+        // 4. Venue Name Typography
+        const cleanName = venueName.toUpperCase().slice(0, 16);
+        ctx.fillStyle = '#FFE89E';
+        ctx.font = "bold 32px 'Plus Jakarta Sans', sans-serif";
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(initial, 256, 265);
+        ctx.fillText(cleanName, 256, 356);
 
         return canvas.toDataURL('image/png');
       } catch {

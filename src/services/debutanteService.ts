@@ -119,22 +119,30 @@ export const debutanteService = {
 
         const partyDate = row.party_date;
         let partyDaysLeft = 0;
+        let isExpiredByPartyDate = false;
         try {
           const pD = new Date(partyDate).getTime();
           const nD = new Date().getTime();
-          partyDaysLeft = Math.max(0, Math.ceil((pD - nD) / (1000 * 60 * 60 * 24)));
+          const diffDays = Math.ceil((pD - nD) / (1000 * 60 * 60 * 24));
+          partyDaysLeft = Math.max(0, diffDays);
+          // Se o evento passou há mais de 30 dias, inativa automaticamente
+          if (diffDays < -30) {
+            isExpiredByPartyDate = true;
+          }
         } catch {
           partyDaysLeft = 180;
         }
 
         const actualValidCount = debReferrals.filter(r => r.status === 'validated' && !r.isRenewalReferral).length;
-        const totalValid = Math.max(row.valid_referrals || 0, actualValidCount);
+        const totalValid = actualValidCount;
+        const finalStatus = (row.status === 'inactive' || isExpiredByPartyDate) ? 'inactive' : 'active';
 
         return {
           id: row.id,
           venueId: row.venue_id,
           name: row.name,
           slug: row.slug,
+          status: finalStatus,
           partyDate: row.party_date,
           partyDaysLeft,
           avatarUrl: row.avatar_url || '',
@@ -237,22 +245,29 @@ export const debutanteService = {
     }));
 
     let partyDaysLeft = 180;
+    let isExpiredByPartyDate = false;
     try {
       const pD = new Date(row.party_date).getTime();
       const nD = new Date().getTime();
-      partyDaysLeft = Math.max(0, Math.ceil((pD - nD) / (1000 * 60 * 60 * 24)));
+      const diffDays = Math.ceil((pD - nD) / (1000 * 60 * 60 * 24));
+      partyDaysLeft = Math.max(0, diffDays);
+      if (diffDays < -30) {
+        isExpiredByPartyDate = true;
+      }
     } catch {
       partyDaysLeft = 180;
     }
 
     const actualValidCount = debReferrals.filter(r => r.status === 'validated' && !r.isRenewalReferral).length;
-    const totalValid = Math.max(row.valid_referrals || 0, actualValidCount);
+    const totalValid = actualValidCount;
+    const finalStatus = (row.status === 'inactive' || isExpiredByPartyDate) ? 'inactive' : 'active';
 
     return {
       id: row.id,
       venueId: row.venue_id,
       name: row.name,
       slug: row.slug,
+      status: finalStatus,
       partyDate: row.party_date,
       partyDaysLeft,
       avatarUrl: row.avatar_url || '',
@@ -564,6 +579,25 @@ export const debutanteService = {
       return true;
     } catch (err) {
       console.error('Falha em debutanteService.delete:', err);
+      return false;
+    }
+  },
+
+  async setStatus(idOrSlug: string, status: 'active' | 'inactive'): Promise<boolean> {
+    if (!isSupabaseConfigured) return true;
+    try {
+      const { error } = await supabase
+        .from('debutantes')
+        .update({ status })
+        .or(`id.eq.${idOrSlug},slug.eq.${idOrSlug}`);
+
+      if (error) {
+        console.error('Erro ao atualizar status da debutante:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha em debutanteService.setStatus:', err);
       return false;
     }
   }

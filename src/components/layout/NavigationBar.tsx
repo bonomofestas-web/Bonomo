@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, UserPlus, Users, Calendar, Gift, Star, Settings } from 'lucide-react';
+import { Sparkles, UserPlus, Users, Calendar, Gift, Settings } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import type { TabType } from '../../types';
 
@@ -26,8 +26,6 @@ export const NavigationBar: React.FC = () => {
       setActiveTab('guests');
     }
   }, [isJourneyEnabled, activeTab, setActiveTab]);
-
-  const progressPct = debutante.journeyProgressPercentage;
 
   return (
     <>
@@ -134,35 +132,7 @@ export const NavigationBar: React.FC = () => {
           })}
         </nav>
 
-        {/* ── 4. Metrics Box in Sidebar (Desktop Reference) ── */}
-        {isJourneyEnabled && (
-          <div style={{
-            marginTop: 'auto',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 215, 0, 0.25)',
-            borderRadius: '18px',
-            padding: '16px',
-            marginBottom: '12px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-              <Star size={18} fill="#FFD700" color="#FFD700" style={{ filter: 'drop-shadow(0 0 6px rgba(255,215,0,0.7))' }} />
-              <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#FFF', fontFamily: 'Poppins, sans-serif', lineHeight: 1 }}>
-                {debutante.validReferrals}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'rgba(209,192,222,0.65)', fontWeight: 600, fontFamily: 'Poppins, sans-serif', marginBottom: '12px' }}>
-              indicações válidas
-            </div>
-
-            <div style={{ fontSize: '0.75rem', color: 'rgba(209,192,222,0.8)', fontFamily: 'Poppins, sans-serif', lineHeight: 1.4 }}>
-              Você já avançou <br />
-              <strong style={{ color: '#FF3B70', fontWeight: 800 }}>{progressPct}% da sua jornada!</strong>
-            </div>
-          </div>
-        )}
-
-        {/* ── 5. Settings ── */}
+        {/* ── 4. Settings ── */}
         <button
           style={{
             display: 'flex',

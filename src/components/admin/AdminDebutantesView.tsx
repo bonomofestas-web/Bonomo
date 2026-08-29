@@ -3,7 +3,7 @@ import {
   Users, Plus, Share2, Send, 
   Gift, Edit3, Trash2, Check, 
   ExternalLink, Building2, Search, LayoutGrid, List,
-  Calendar, Target
+  Calendar, Target, Power
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
@@ -17,17 +17,20 @@ import type { DebutanteAccount } from '../../types/admin';
 
 interface AdminDebutantesViewProps {
   onOpenDebutanteApp?: (slug: string) => void;
+  onOpenLead?: (leadId: string) => void;
   initialSubTab?: 'debutantes' | 'benefits' | 'templates' | 'appointments';
 }
 
 export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   initialSubTab = 'debutantes',
+  onOpenLead,
 }) => {
   const { 
     debutantes, 
     venues, 
     activeVenueId, 
     deleteDebutanteAccount,
+    toggleDebutanteStatus,
   } = useAdminState();
 
   // Sub-tabs: 'debutantes' | 'benefits' | 'templates' | 'appointments'
@@ -43,7 +46,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   const [debutanteToEdit, setDebutanteToEdit] = useState<DebutanteAccount | null>(null);
   const [debutanteToDelete, setDebutanteToDelete] = useState<{ id: string; name: string } | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
-  const [filterModule, setFilterModule] = useState<'all' | 'journey' | 'guests_only'>('all');
+  const [filterModule, setFilterModule] = useState<'all' | 'active' | 'inactive' | 'journey' | 'guests_only'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [filterState, setFilterState] = useState<FilterState>({
@@ -69,9 +72,12 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       const matchesVenue = !venueTarget || d.venueId === venueTarget;
       if (!matchesVenue) return false;
 
-      // 2. Module Filter
-      if (filterModule === 'journey' && !d.hasJourneyEnabled) return false;
-      if (filterModule === 'guests_only' && d.hasJourneyEnabled) return false;
+      // 2. Status / Module Filter
+      const isInactive = d.status === 'inactive';
+      if (filterModule === 'active' && isInactive) return false;
+      if (filterModule === 'inactive' && !isInactive) return false;
+      if (filterModule === 'journey' && (!d.hasJourneyEnabled || isInactive)) return false;
+      if (filterModule === 'guests_only' && (d.hasJourneyEnabled || isInactive)) return false;
 
       // 3. Search Query
       if (searchQuery.trim()) {
@@ -248,6 +254,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   setDebutanteToEdit(deb);
                   setIsModalOpen(true);
                 }}
+                onOpenLead={onOpenLead}
               />
             );
           })()
@@ -290,9 +297,11 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 {[
-                  { id: 'all', label: `Todas as Aniversariantes (${debutantes.length})` },
-                  { id: 'journey', label: `Com Jornada VIP Ativa (${debutantes.filter(d => d.hasJourneyEnabled).length})` },
-                  { id: 'guests_only', label: `Apenas Convidados & Agenda (${debutantes.filter(d => !d.hasJourneyEnabled).length})` },
+                  { id: 'all', label: `Todas (${debutantes.length})` },
+                  { id: 'active', label: `Ativas (${debutantes.filter(d => d.status !== 'inactive').length})` },
+                  { id: 'inactive', label: `Inativas / Encerradas (${debutantes.filter(d => d.status === 'inactive').length})` },
+                  { id: 'journey', label: `Com Jornada VIP (${debutantes.filter(d => d.hasJourneyEnabled && d.status !== 'inactive').length})` },
+                  { id: 'guests_only', label: `Apenas Convidados (${debutantes.filter(d => !d.hasJourneyEnabled && d.status !== 'inactive').length})` },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -453,31 +462,57 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                             {deb.name}
                           </h3>
 
-                          {deb.hasJourneyEnabled ? (
-                            <span style={{
-                              background: 'var(--adm-accent-bg)',
-                              color: 'var(--adm-accent)',
-                              borderRadius: '8px',
-                              padding: '2px 6px',
-                              fontSize: '0.64rem',
-                              fontWeight: 800,
-                              flexShrink: 0,
-                            }}>
-                              Jornada VIP
-                            </span>
-                          ) : (
-                            <span style={{
-                              background: 'var(--adm-bg-input)',
-                              color: 'var(--adm-text-muted)',
-                              borderRadius: '8px',
-                              padding: '2px 6px',
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}>
-                              Convidados
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            {deb.status === 'inactive' ? (
+                              <span style={{
+                                background: 'rgba(239, 68, 68, 0.15)',
+                                color: '#EF4444',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '8px',
+                                padding: '2px 6px',
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                              }}>
+                                Inativa
+                              </span>
+                            ) : (
+                              <span style={{
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                color: '#10B981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                borderRadius: '8px',
+                                padding: '2px 6px',
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                              }}>
+                                Ativa
+                              </span>
+                            )}
+
+                            {deb.hasJourneyEnabled ? (
+                              <span style={{
+                                background: 'var(--adm-accent-bg)',
+                                color: 'var(--adm-accent)',
+                                borderRadius: '8px',
+                                padding: '2px 6px',
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                              }}>
+                                Jornada VIP
+                              </span>
+                            ) : (
+                              <span style={{
+                                background: 'var(--adm-bg-input)',
+                                color: 'var(--adm-text-muted)',
+                                borderRadius: '8px',
+                                padding: '2px 6px',
+                                fontSize: '0.64rem',
+                                fontWeight: 700,
+                              }}>
+                                Convidados
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         <div style={{ fontSize: '0.72rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
@@ -555,6 +590,30 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       </button>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {/* Toggle Status (Ativar / Desativar) */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDebutanteStatus(deb.id);
+                          }}
+                          title={deb.status === 'inactive' ? 'Reativar acesso da debutante' : 'Desativar acesso da debutante'}
+                          style={{
+                            background: deb.status === 'inactive' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.12)',
+                            border: `1px solid ${deb.status === 'inactive' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            color: deb.status === 'inactive' ? '#10B981' : '#EF4444',
+                            borderRadius: '8px',
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Power size={13} />
+                        </button>
+
                         {/* Copy Link */}
                         <button
                           type="button"
@@ -695,6 +754,15 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           <span style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                             {deb.name}
                           </span>
+                          {deb.status === 'inactive' ? (
+                            <span style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', padding: '1px 6px', fontSize: '0.62rem', fontWeight: 800 }}>
+                              Inativa
+                            </span>
+                          ) : (
+                            <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', padding: '1px 6px', fontSize: '0.62rem', fontWeight: 800 }}>
+                              Ativa
+                            </span>
+                          )}
                           {deb.hasJourneyEnabled && (
                             <span style={{ background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', borderRadius: '6px', padding: '1px 6px', fontSize: '0.62rem', fontWeight: 800 }}>
                               Jornada VIP
@@ -741,6 +809,30 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       </button>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {/* Toggle Status */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDebutanteStatus(deb.id);
+                          }}
+                          title={deb.status === 'inactive' ? 'Reativar acesso' : 'Desativar acesso'}
+                          style={{
+                            background: deb.status === 'inactive' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.12)',
+                            border: `1px solid ${deb.status === 'inactive' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.3)'}`,
+                            color: deb.status === 'inactive' ? '#10B981' : '#EF4444',
+                            borderRadius: '8px',
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Power size={13} />
+                        </button>
+
                         <button
                           type="button"
                           onClick={(e) => handleCopyExclusiveLink(deb.slug, e)}

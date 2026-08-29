@@ -280,6 +280,7 @@ export interface DebutanteAccount {
   venueId: string;
   name: string;
   slug: string; // ex: 'maria-eduarda-2027' -> link exclusivo ?debutante=maria-eduarda-2027
+  status?: 'active' | 'inactive'; // Status ativo ou inativo
   partyDate: string; // YYYY-MM-DD
   partyDaysLeft: number;
   avatarUrl: string;

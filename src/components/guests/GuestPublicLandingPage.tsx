@@ -12,7 +12,7 @@ interface GuestPublicLandingPageProps {
 }
 
 export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ guestId }) => {
-  const { debutante, guests, selfRegisterGuest, confirmGuestRsvp } = useAppState();
+  const { debutante, currentTheme, guests, selfRegisterGuest, confirmGuestRsvp } = useAppState();
 
   const existingGuest = guestId ? guests.find(g => g.id === guestId) : null;
 
@@ -27,6 +27,19 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
   // Confirmed if guest is already confirmed or link is expired
   const isAlreadyConfirmed = Boolean(existingGuest && (existingGuest.status === 'confirmed' || existingGuest.isLinkExpired));
   const [isConfirmedState, setIsConfirmedState] = useState<boolean>(isAlreadyConfirmed);
+
+  // Dynamic Venue Details from active theme/venue
+  const venueObj = currentTheme as any;
+  const venueName = venueObj.name || 'Espaço Rio Lounge';
+  const venueLogo = venueObj.logoUrl || '/logo_riio_lounge.png';
+  const venueAddress = venueObj.address || "Av. das Américas, 1500 - Barra da Tijuca, Rio de Janeiro - RJ";
+  const venuePhoto = venueObj.photoUrl || venueObj.venueBallroomUrl || "/venue_ballroom.jpg";
+  const venueTagline = venueObj.tagline || "Mais do que uma casa de festas, uma experiência completa para o seu evento.";
+  const venueDescription = venueObj.description || "Transformamos celebrações em momentos inesquecíveis. Unimos uma estrutura moderna, atendimento personalizado, gastronomia de excelência e uma equipe comprometida para que cada evento aconteça com organização, tranquilidade e cuidado em cada detalhe.";
+  
+  const yearsInBusiness = venueObj.yearsInBusiness || 20;
+  const eventsCompleted = venueObj.eventsCompleted || 2200;
+  const guestsDelighted = venueObj.guestsDelighted || 300000;
 
   // When guest confirms, auto scroll smoothly to the newly unlocked venue info
   useEffect(() => {
@@ -64,16 +77,15 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
     setIsConfirmedState(true);
   };
 
-  const venueAddress = "Av. das Américas, 1500 - Barra da Tijuca, Rio de Janeiro - RJ";
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("Espaço Rio Lounge " + venueAddress)}`;
-  const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent("Espaço Rio Lounge " + venueAddress)}`;
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venueName} ${venueAddress}`)}`;
+  const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(`${venueName} ${venueAddress}`)}`;
 
   const debutantePhoto = (debutante.useCustomInvitePhoto && debutante.customInvitePhotoUrl)
     ? debutante.customInvitePhotoUrl
     : debutante.avatarUrl;
 
   const receptionMessage = debutante.receptionMessage || 
-    "É com muita alegria que convidamos você para celebrar esse momento tão especial na vida da Maria Eduarda. Esperamos você para tornar essa noite ainda mais inesquecível!";
+    `É com muita alegria que convidamos você para celebrar esse momento tão especial na vida de ${debutante.name}. Esperamos você para tornar essa noite ainda mais inesquecível!`;
 
   const isIndividualLink = Boolean(existingGuest);
 
@@ -121,13 +133,13 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
             Convite Oficial
           </div>
 
-          {/* Logo da Casa de Festa: Espaço Rio Lounge */}
+          {/* Logo Dinâmica da Casa de Festa */}
           <img 
-            src="/logo_riio_lounge.png" 
-            alt="Espaço Rio Lounge" 
+            src={venueLogo} 
+            alt={venueName} 
             style={{ 
-              width: '130px', 
-              height: 'auto', 
+              maxWidth: '180px',
+              height: '84px', 
               objectFit: 'contain',
               filter: 'drop-shadow(0 0 14px rgba(212, 175, 55, 0.55))',
               marginBottom: '6px' 
@@ -798,8 +810,8 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                   maxHeight: '340px',
                 }}>
                   <img
-                    src="/venue_ballroom.jpg"
-                    alt="Espaço Rio Lounge"
+                    src={venuePhoto}
+                    alt={venueName}
                     style={{
                       width: '100%',
                       height: '100%',
@@ -820,7 +832,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     textTransform: 'uppercase',
                     marginBottom: '8px',
                   }}>
-                    Espaço Rio Lounge
+                    {venueName}
                   </div>
 
                   <h3 style={{
@@ -832,7 +844,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     lineHeight: 1.25,
                     marginBottom: '16px',
                   }}>
-                    Mais do que uma casa de festas, uma experiência completa para o seu evento.
+                    {venueTagline}
                   </h3>
 
                   <p style={{
@@ -842,7 +854,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     marginBottom: '14px',
                     fontWeight: 400,
                   }}>
-                    O Espaço Rio Lounge nasceu com o propósito de transformar celebrações em momentos inesquecíveis. Unimos uma estrutura moderna, atendimento personalizado, gastronomia de excelência e uma equipe comprometida para que cada evento aconteça com organização, tranquilidade e cuidado em cada detalhe.
+                    {venueDescription}
                   </p>
 
                   <p style={{
@@ -875,7 +887,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     color: '#D4AF37',
                     lineHeight: 1,
                   }}>
-                    +20
+                    +{yearsInBusiness}
                   </div>
                   <div style={{
                     fontFamily: "'Cinzel', serif",
@@ -898,7 +910,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     color: '#D4AF37',
                     lineHeight: 1,
                   }}>
-                    +2,200
+                    +{eventsCompleted?.toLocaleString('pt-BR')}
                   </div>
                   <div style={{
                     fontFamily: "'Cinzel', serif",
@@ -921,7 +933,7 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                     color: '#D4AF37',
                     lineHeight: 1,
                   }}>
-                    +300,000
+                    +{guestsDelighted?.toLocaleString('pt-BR')}
                   </div>
                   <div style={{
                     fontFamily: "'Cinzel', serif",

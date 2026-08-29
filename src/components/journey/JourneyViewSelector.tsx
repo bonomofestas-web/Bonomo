@@ -3,7 +3,12 @@ import { Gift, Crown, Sparkles } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 
 export const JourneyViewSelector: React.FC = () => {
-  const { journeySubTab, setJourneySubTab, convertedReferralSales } = useAppState();
+  const { journeySubTab, setJourneySubTab, convertedReferralSales, vipRewards } = useAppState();
+
+  // If no VIP rewards configured for this debutante, do not show tab selector
+  if (!vipRewards || vipRewards.length === 0) {
+    return null;
+  }
 
   const isBenefits = journeySubTab === 'benefits';
   const isVip = journeySubTab === 'vip_rewards';

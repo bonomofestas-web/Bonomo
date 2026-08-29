@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import type { 
   TabType, 
@@ -31,6 +31,8 @@ import {
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { leadService } from '../services/leadService';
 import { debutanteService } from '../services/debutanteService';
+import { guestService } from '../services/guestService';
+import { playNotificationSound } from '../utils/audioUtils';
 
 export type ScenarioKey = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'T2' | 'T3' | 'T9';
 
@@ -227,6 +229,8 @@ interface AppStateContextType {
   updateInviteSettings: (data: { useCustomInvitePhoto: boolean; customInvitePhotoUrl?: string; receptionMessage?: string }) => void;
   claimBenefit: (benefitId: string) => void;
   claimMilestoneReward: (milestoneId: string) => void;
+  unreadNotificationsCount: number;
+  markNotificationsAsRead: () => void;
   resetState: () => void;
   loadDemoData: () => void;
   isMobileFrame: boolean;
@@ -333,6 +337,45 @@ export const AppStateProvider: React.FC<{
       ? initialAccount.vipRewards 
       : calculateVipRewards(mockVipRewards, initialAccount?.convertedReferralSales || 0)
   );
+
+  // ── Dynamic Notifications & Audio Alerts Tracking ──
+  const notifStorageKey = `bonomo_read_notifs_${debutante.slug || debutante.id || 'default'}`;
+  const [readNotifIds, setReadNotifIds] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(notifStorageKey) || '{}'); } catch { return {}; }
+  });
+
+  const prevNotifCountRef = useRef<number>(0);
+
+  // Compute active notification IDs list
+  const activeNotificationIds = useMemo(() => {
+    const list: string[] = [];
+    referrals.filter(r => r.status === 'validated').forEach(r => list.push(`val_${r.id}`));
+    referrals.filter(r => r.status === 'pending').forEach(r => list.push(`pend_${r.id}`));
+    const validCount = referrals.filter(r => r.status === 'validated').length;
+    milestones.filter(m => validCount >= m.requiredReferrals).forEach(m => list.push(`mile_${m.id}`));
+    const vipSales = convertedReferralSales || 0;
+    vipRewards.filter(v => vipSales >= v.requiredSales).forEach(v => list.push(`vip_${v.id}`));
+    return list;
+  }, [referrals, milestones, vipRewards, convertedReferralSales]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    return activeNotificationIds.filter((id: string) => !readNotifIds[id]).length;
+  }, [activeNotificationIds, readNotifIds]);
+
+  // Trigger audio alert when new notifications arrive
+  useEffect(() => {
+    if (prevNotifCountRef.current > 0 && activeNotificationIds.length > prevNotifCountRef.current) {
+      playNotificationSound();
+    }
+    prevNotifCountRef.current = activeNotificationIds.length;
+  }, [activeNotificationIds.length]);
+
+  const markNotificationsAsRead = useCallback(() => {
+    const updated: Record<string, boolean> = { ...readNotifIds };
+    activeNotificationIds.forEach((id: string) => { updated[id] = true; });
+    setReadNotifIds(updated);
+    try { localStorage.setItem(notifStorageKey, JSON.stringify(updated)); } catch {}
+  }, [activeNotificationIds, readNotifIds, notifStorageKey]);
 
   // Sync when initialAccount prop changes
   useEffect(() => {
@@ -1139,6 +1182,22 @@ export const AppStateProvider: React.FC<{
     };
 
     setGuests(prev => [mainGuest, ...companionGuests, ...prev]);
+
+    // Persist in Supabase
+    if (debutante.id) {
+      guestService.create(debutante.id, {
+        name: data.name,
+        phone: data.phone,
+        age: data.age,
+        gender: data.gender,
+        group: data.group,
+        plusOnes: companionsList.length,
+        companionNames: companionsList,
+        sweetMessage: data.sweetMessage,
+        isSelfRegistered: true,
+      });
+    }
+
     confetti({
       particleCount: 120,
       spread: 70,
@@ -1189,6 +1248,12 @@ export const AppStateProvider: React.FC<{
       const withoutOldCompanions = prev.filter(g => g.id !== guestId && g.parentGuestId !== guestId);
       return [updatedMain, ...newCompanionGuests, ...withoutOldCompanions];
     });
+
+    guestService.updateRsvp(guestId, {
+      status: 'confirmed',
+      sweetMessage,
+      companionNames,
+    });
   };
 
   const declineGuestRsvp = (guestId: string, declinedMessage?: string) => {
@@ -1197,6 +1262,11 @@ export const AppStateProvider: React.FC<{
       status: 'declined' as const,
       declinedMessage: declinedMessage || g.declinedMessage
     } : g));
+
+    guestService.updateRsvp(guestId, {
+      status: 'declined',
+      declinedMessage,
+    });
   };
 
   const updateInviteSettings = (data: {
@@ -1219,18 +1289,19 @@ export const AppStateProvider: React.FC<{
         ...b,
         status: 'claimed',
         voucherCode: `CUPOM-${b.id.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
-        claimedAt: new Date().toISOString().split('T')[0]
+        conquestDate: new Date().toISOString().split('T')[0]
       } : b)
     );
   };
 
-  // Claim a Milestone Reward (compatibility)
+  // Claim a Milestone Reward
   const claimMilestoneReward = (milestoneId: string) => {
-    setMilestones(prev =>
+    setMilestones(prev => 
       prev.map(m => m.id === milestoneId ? {
         ...m,
         status: 'completed',
-        badgeTag: 'CONCLUÍDO'
+        claimed: true,
+        conquestDate: new Date().toISOString().split('T')[0]
       } : m)
     );
   };
@@ -1349,6 +1420,8 @@ export const AppStateProvider: React.FC<{
       updateInviteSettings,
       claimBenefit,
       claimMilestoneReward,
+      unreadNotificationsCount,
+      markNotificationsAsRead,
       resetState,
       loadDemoData,
       isMobileFrame,

@@ -4,7 +4,18 @@ import { useAppState } from '../../context/AppStateContext';
 import { DebutanteNotificationsModal } from '../notifications/DebutanteNotificationsModal';
 
 export const Header: React.FC = () => {
-  const { debutante, currentTheme, activeTab, setActiveTab, setIsReferralModalOpen, referrals, benefits, vipRewards } = useAppState();
+  const { 
+    debutante, 
+    currentTheme, 
+    activeTab, 
+    setActiveTab, 
+    setIsReferralModalOpen, 
+    referrals, 
+    benefits, 
+    vipRewards,
+    unreadNotificationsCount,
+    markNotificationsAsRead,
+  } = useAppState();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const journeyStatus = debutante.journeyCycle.journeyStatus;
@@ -95,11 +106,11 @@ export const Header: React.FC = () => {
       {/* ── TOP HEADER CONTENT ── */}
       <div style={{ position: 'relative', zIndex: 10, marginBottom: '14px' }}>
 
-        {/* ── MOBILE ONLY HEADER BAR — symmetric: placeholder | logo | bell ── */}
+        {/* ── MOBILE ONLY HEADER BAR — with safe-area spacing ── */}
         <div className="mobile-only-header-bar" style={{
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '4px 0 10px 0',
+          padding: 'max(8px, env(safe-area-inset-top, 0px)) 0 10px 0',
           marginBottom: '10px',
         }}>
           {/* Left: icon placeholder balancing the bell */}
@@ -123,9 +134,12 @@ export const Header: React.FC = () => {
             />
           </div>
 
-          {/* Right: Bell notification */}
+          {/* Right: Bell notification with dynamic counter */}
           <div 
-            onClick={() => setIsNotificationsOpen(true)}
+            onClick={() => {
+              setIsNotificationsOpen(true);
+              markNotificationsAsRead();
+            }}
             style={{
               position: 'relative',
               width: '38px',
@@ -141,16 +155,28 @@ export const Header: React.FC = () => {
             }}
           >
             <Bell size={18} color="#FFF" />
-            <span style={{
-              position: 'absolute',
-              top: '2px',
-              right: '2px',
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              background: '#FF3B70',
-              boxShadow: '0 0 8px #FF3B70'
-            }} />
+            {unreadNotificationsCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-2px',
+                right: '-2px',
+                minWidth: '18px',
+                height: '18px',
+                borderRadius: '9px',
+                background: '#FF3B70',
+                boxShadow: '0 0 10px rgba(255, 59, 112, 0.8)',
+                color: '#FFF',
+                fontSize: '0.62rem',
+                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 4px',
+                fontFamily: 'Poppins, sans-serif',
+              }}>
+                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+              </span>
+            )}
           </div>
         </div>
 

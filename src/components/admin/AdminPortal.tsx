@@ -129,7 +129,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'debutantes':
-        return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} />;
+        return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
       case 'benefits':
         return <AdminBenefitsCatalogView />;
       case 'collaborators':
