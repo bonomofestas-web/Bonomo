@@ -51,6 +51,9 @@ export interface Venue {
   description: string;
   experienceText: string;
   address: string;
+  phone?: string;
+  whatsappNumber?: string;
+  email?: string;
   yearsInBusiness: number;
   eventsCompleted: number;
   guestsDelighted: number;
@@ -70,6 +73,12 @@ export interface Venue {
   leadDistributionMode?: 'queue' | 'round_robin'; // 'queue' = SDRs puxam, 'round_robin' = automático
   leadDistributionSdrIds?: string[]; // IDs dos SDRs ativos na distribuição desta casa
   roundRobinNextIndex?: number; // Índice do próximo SDR na fila round robin
+}
+
+export interface LeadGoal {
+  target: number;
+  deadline: string; // YYYY-MM-DD
+  title?: string;
 }
 
 export type CrmStage = 

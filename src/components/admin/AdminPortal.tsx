@@ -57,6 +57,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // CRM workspace: open lead directly from task click
   const [crmOpenLeadId, setCrmOpenLeadId] = useState<string | undefined>(undefined);
 
+  // Collapsible sidebar state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('bonomo_admin_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(next)); } catch {}
+      return next;
+    });
+  };
+
   const handleSelectTab = (tab: AdminTabType, funnelId?: string | null) => {
     setActiveTab(tab);
     if (tab === 'crm') {
@@ -171,6 +188,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             setIsMobileSidebarOpen(false);
           }}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
         />
       </div>
 

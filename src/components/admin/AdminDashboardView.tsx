@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  MoreHorizontal, ArrowUpRight, ArrowDownRight
+  MoreHorizontal, ArrowUpRight, Target
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
+import { AdminLeadGoalModal } from './AdminLeadGoalModal';
 import type { AdminTabType } from './AdminSidebar';
 
 interface AdminDashboardViewProps {
@@ -20,8 +21,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
     leads, 
     collaborators, 
     currentUser, 
-    activeVenueId
+    activeVenueId,
+    leadGoal,
   } = useAdminState();
+  
+  const [isLeadGoalModalOpen, setIsLeadGoalModalOpen] = useState(false);
   
   // High-performance filter state — defaults to 7 days (last week)
   const [filterState, setFilterState] = useState<FilterState>({
@@ -124,7 +128,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
     };
   });
 
-  // ── 1. Ranking de SDRs (Top 5 ordenado por reuniões e atendimentos) ──
+  // ── 1. Ranking de SDRs (Somente com reuniões > 0) ──
   const sdrRankings = useMemo(() => {
     return collaborators
       .filter(c => c.active && (c.role === 'sdr' || c.role === 'crm' || c.role === 'admin' || c.role === 'master'))
@@ -145,11 +149,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
           conversionRate: sdrLeads.length > 0 ? Math.round((meetings / sdrLeads.length) * 100) : 0,
         };
       })
+      .filter(sdr => sdr.meetingsScheduled > 0) // Só aparece quem tem resultado positivo
       .sort((a, b) => b.meetingsScheduled - a.meetingsScheduled || b.totalLeads - a.totalLeads)
       .slice(0, 5);
   }, [collaborators, scopedLeads, venues]);
 
-  // ── 2. Ranking de Closers (Top 5 ordenado por faturamento R$ e vendas) ──
+  // ── 2. Ranking de Closers (Somente com faturamento R$ ou vendas > 0) ──
   const closerRankings = useMemo(() => {
     return collaborators
       .filter(c => c.active && (c.role === 'closer' || c.role === 'crm' || c.role === 'admin' || c.role === 'master'))
@@ -168,6 +173,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
           avgTicket: closerSales.length > 0 ? Math.round(rev / closerSales.length) : 0,
         };
       })
+      .filter(closer => closer.revenue > 0 || closer.salesCount > 0) // Só aparece quem tem vendas/receita
       .sort((a, b) => b.revenue - a.revenue || b.salesCount - a.salesCount)
       .slice(0, 5);
   }, [collaborators, scopedLeads, venues]);
@@ -190,8 +196,24 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
     };
   }, [closerRankings]);
 
-  // Top Performers ("Today's Heroes")
-  const topHeroes = collaborators.filter(c => c.active).slice(0, 4);
+  // Top Performers ("Today's Heroes" - Apenas quem possui atividade comercial no período)
+  const topHeroes = useMemo(() => {
+    return collaborators
+      .filter(c => c.active)
+      .map(c => {
+        const cLeads = scopedLeads.filter(l => l.sdrId === c.id || l.closerId === c.id || l.assignedTo === c.name);
+        const sales = cLeads.filter(l => l.stage === 'contract_signed').length;
+        const meetings = cLeads.filter(l => l.stage === 'meeting_scheduled').length;
+        const score = sales * 3 + meetings * 2 + cLeads.length;
+        return {
+          ...c,
+          activityScore: score,
+        };
+      })
+      .filter(c => c.activityScore > 0)
+      .sort((a, b) => b.activityScore - a.activityScore)
+      .slice(0, 4);
+  }, [collaborators, scopedLeads]);
 
   return (
     <div className="admin-dashboard-container" style={{
@@ -480,7 +502,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
         gap: '18px',
       }}>
         
-        {/* Card 4: Leads do Mês & Progress Bar (from Reference: Orders this Month / 62%) */}
+        {/* Card 4: Leads do Mês & Progress Bar com Meta Configurável */}
         <div className="saas-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -489,57 +511,90 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
                   {totalLeads}
                 </span>
                 {totalLeads > 0 && (
-                  <span className="trend-pill-down">
-                    <ArrowDownRight size={12} />
-                    <span>2.2%</span>
+                  <span className="trend-pill-up">
+                    <ArrowUpRight size={12} />
+                    <span>+{totalLeads}</span>
                   </span>
                 )}
               </div>
-              <button style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer' }}>
-                <MoreHorizontal size={16} />
+              <button 
+                onClick={() => setIsLeadGoalModalOpen(true)}
+                title="Configurar Meta e Prazo de Leads"
+                style={{ 
+                  background: 'var(--adm-bg-input)', 
+                  border: '1px solid var(--adm-border)', 
+                  color: 'var(--adm-accent)', 
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  padding: '4px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Target size={13} />
+                <MoreHorizontal size={14} />
               </button>
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Leads & Indicações no Funil
+              {leadGoal?.title || 'Leads & Indicações no Funil'}
             </div>
           </div>
 
           <div style={{ marginTop: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
-              <span>{Math.max(0, 30 - totalLeads)} para a Meta</span>
-              <span style={{ color: '#10B981' }}>{Math.min(100, Math.round((totalLeads / 30) * 100))}%</span>
-            </div>
-            <div style={{
-              width: '100%',
-              height: '8px',
-              background: 'var(--adm-bg-input)',
-              borderRadius: '10px',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${Math.min(100, (totalLeads / 30) * 100)}%`,
-                height: '100%',
-                background: 'linear-gradient(90deg, #06B6D4 0%, #10B981 100%)',
-                borderRadius: '10px',
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
+            {(() => {
+              const targetGoal = leadGoal?.target || 30;
+              const remaining = Math.max(0, targetGoal - totalLeads);
+              const pct = Math.min(100, Math.round((totalLeads / targetGoal) * 100));
+              const deadlineFormatted = leadGoal?.deadline 
+                ? new Date(leadGoal.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+                : 'Fim do Mês';
+
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
+                    <span>
+                      {remaining === 0 ? '🏆 Meta Atingida!' : `${remaining} para a Meta (${targetGoal} até ${deadlineFormatted})`}
+                    </span>
+                    <span style={{ color: pct >= 100 ? '#10B981' : 'var(--adm-accent)' }}>{pct}%</span>
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    background: 'var(--adm-bg-input)',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: `${pct}%`,
+                      height: '100%',
+                      background: pct >= 100 ? 'linear-gradient(90deg, #10B981 0%, #059669 100%)' : 'linear-gradient(90deg, #06B6D4 0%, #10B981 100%)',
+                      borderRadius: '10px',
+                      transition: 'width 0.4s ease',
+                    }} />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
-        {/* Card 5: Novos Contatos & Destaques da Equipe (from Reference: Today's Heroes) */}
+        {/* Card 5: Novos Contatos & Destaques da Equipe (Apenas membros com resultados) */}
         <div className="saas-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
               <span style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.5px' }}>
                 {scopedDebutantes.length}
               </span>
-              <button style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer' }}>
-                <MoreHorizontal size={16} />
-              </button>
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700, background: 'var(--adm-accent-bg)', padding: '2px 8px', borderRadius: '12px' }}>
+                Ativas
+              </div>
             </div>
             <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Aniversariantes Ativas
+              Aniversariantes no Período
             </div>
           </div>
 
@@ -547,45 +602,53 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
             <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '8px' }}>
               Destaques da Equipe Comercial
             </div>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              {topHeroes.map((collab, index) => (
-                <img
-                  key={collab.id}
-                  src={collab.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
-                  alt={collab.name}
-                  style={{
+            {topHeroes.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {topHeroes.map((collab, index) => (
+                  <img
+                    key={collab.id}
+                    src={collab.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                    alt={collab.name}
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '50%',
+                      border: '2px solid var(--adm-bg-card)',
+                      marginLeft: index === 0 ? 0 : '-10px',
+                      objectFit: 'cover',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                    }}
+                    title={`${collab.name} (${collab.role.toUpperCase()})`}
+                  />
+                ))}
+                {topHeroes.length > 4 && (
+                  <div style={{
                     width: '34px',
                     height: '34px',
                     borderRadius: '50%',
+                    background: 'var(--adm-bg-elevated)',
                     border: '2px solid var(--adm-bg-card)',
-                    marginLeft: index === 0 ? 0 : '-10px',
-                    objectFit: 'cover',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-                  }}
-                  title={`${collab.name} (${collab.role.toUpperCase()})`}
-                />
-              ))}
-              <div style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '50%',
-                background: 'var(--adm-bg-elevated)',
-                border: '2px solid var(--adm-bg-card)',
-                marginLeft: '-10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.7rem',
-                fontWeight: 800,
-                color: 'var(--adm-text-muted)',
-              }}>
-                +{Math.max(0, collaborators.length - 4)}
+                    marginLeft: '-10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    color: 'var(--adm-text-muted)',
+                  }}>
+                    +{topHeroes.length - 4}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '6px 0' }}>
+                Sem destaques registrados no período
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Card 6: Desempenho & Evolução Comercial (from Reference: Discounted Product Sales) */}
+        {/* Card 6: Desempenho & Evolução Comercial */}
         <div className="saas-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
@@ -1208,8 +1271,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
             )}
           </div>
         </div>
-
       </div>
+
+      {/* Admin Lead Goal Modal */}
+      <AdminLeadGoalModal
+        isOpen={isLeadGoalModalOpen}
+        onClose={() => setIsLeadGoalModalOpen(false)}
+      />
 
       <style>{`
         @media (max-width: 900px) {

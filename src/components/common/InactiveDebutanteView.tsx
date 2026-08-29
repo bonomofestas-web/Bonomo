@@ -118,32 +118,40 @@ export const InactiveDebutanteView: React.FC<InactiveDebutanteViewProps> = ({
         </div>
 
         {/* WhatsApp Support Button */}
-        <a
-          href="https://wa.me/5521999999999?text=Ol%C3%A1%2C%20gostaria%20de%20informa%C3%A7%C3%B5es%20sobre%20o%20acesso%20ao%20aplicativo"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            width: '100%',
-            background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-            color: '#FFFFFF',
-            border: 'none',
-            borderRadius: '14px',
-            padding: '14px 20px',
-            fontSize: '0.88rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            textDecoration: 'none',
-            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.35)',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <MessageCircle size={18} />
-          <span>Falar com o Suporte da Casa</span>
-        </a>
+        {(() => {
+          const rawPhone = venue?.whatsappNumber || venue?.phone || '5521999999999';
+          const cleanPhone = rawPhone.replace(/\D/g, '');
+          const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+          const message = encodeURIComponent(`Olá, equipe do ${venueName}! Gostaria de informações sobre o acesso ao aplicativo da debutante.`);
+          return (
+            <a
+              href={`https://wa.me/${formattedPhone}?text=${message}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '14px',
+                padding: '14px 20px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                textDecoration: 'none',
+                boxShadow: '0 8px 24px rgba(16, 185, 129, 0.35)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <MessageCircle size={18} />
+              <span>Falar com o Suporte da Casa</span>
+            </a>
+          );
+        })()}
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ const STORAGE_KEY_VIP_CATALOG = 'bonomo_admin_vip_catalog_v7';
 const STORAGE_KEY_THEME = 'bonomo_admin_theme_v7';
 const STORAGE_KEY_TASKS = 'bonomo_admin_tasks_v7';
 const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
+const STORAGE_KEY_LEAD_GOAL = 'bonomo_admin_lead_goal_v7';
 
 export const generateUuid = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -233,6 +234,10 @@ export interface AdminContextType {
   updateTask: (id: string, data: Partial<AdminTask>) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
+
+  // Commercial Funnel Lead Goal
+  leadGoal: import('../types/admin').LeadGoal;
+  setLeadGoal: (goal: import('../types/admin').LeadGoal) => void;
 }
 
 const AdminStateContext = createContext<AdminContextType | undefined>(undefined);
@@ -304,6 +309,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const saved = localStorage.getItem(STORAGE_KEY_THEME) as ThemeMode | null;
     return saved || 'light'; // Default to light SaaS theme as requested
   });
+
+  const [leadGoal, setLeadGoalState] = useState<import('../types/admin').LeadGoal>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_LEAD_GOAL);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+    return { target: 30, deadline: endOfMonth, title: 'Meta Mensal de Leads' };
+  });
+
+  const setLeadGoal = (goal: import('../types/admin').LeadGoal) => {
+    setLeadGoalState(goal);
+    safeLocalStorageSet(STORAGE_KEY_LEAD_GOAL, JSON.stringify(goal));
+  };
 
   const [activeVenueId, setActiveVenueIdState] = useState<string | null>(() => {
     return localStorage.getItem(STORAGE_KEY_ACTIVE_VENUE) || null;
@@ -2693,6 +2712,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       getDebutanteBySlug,
       getVenueById,
       getCollaboratorById,
+      leadGoal,
+      setLeadGoal,
     }}>
       {children}
     </AdminStateContext.Provider>

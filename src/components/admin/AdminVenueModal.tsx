@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Building2, MapPin, AlignLeft } from 'lucide-react';
+import { X, Building2, MapPin, AlignLeft, Phone, MessageCircle, Mail } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
@@ -22,6 +22,12 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
   const [tagline, setTagline] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [yearsInBusiness, setYearsInBusiness] = useState<number>(10);
+  const [eventsCompleted, setEventsCompleted] = useState<number>(500);
+  const [guestsDelighted, setGuestsDelighted] = useState<number>(80000);
   const [logoUrl, setLogoUrl] = useState('');
   const [ballroomImageUrl, setBallroomImageUrl] = useState('');
   const [welcomeVideoUrl, setWelcomeVideoUrl] = useState('');
@@ -34,6 +40,12 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
       setTagline(venueToEdit.tagline);
       setDescription(venueToEdit.description || '');
       setAddress(venueToEdit.address);
+      setPhone(venueToEdit.phone || '');
+      setWhatsappNumber(venueToEdit.whatsappNumber || '');
+      setEmail(venueToEdit.email || '');
+      setYearsInBusiness(venueToEdit.yearsInBusiness || 10);
+      setEventsCompleted(venueToEdit.eventsCompleted || 500);
+      setGuestsDelighted(venueToEdit.guestsDelighted || 80000);
       setLogoUrl(venueToEdit.logoUrl || '');
       setBallroomImageUrl(venueToEdit.ballroomImageUrl);
       setWelcomeVideoUrl(venueToEdit.welcomeVideoUrl || '');
@@ -44,6 +56,12 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
       setTagline('Onde momentos exclusivos se transformam em memórias inesquecíveis');
       setDescription('Espaço requintado e sofisticado preparado especialmente para noites inesquecíveis.');
       setAddress('Av. das Américas, 1500 - Barra da Tijuca, Rio de Janeiro - RJ');
+      setPhone('(21) 3456-7890');
+      setWhatsappNumber('(21) 99999-9999');
+      setEmail('contato@espacoriodelounge.com.br');
+      setYearsInBusiness(10);
+      setEventsCompleted(500);
+      setGuestsDelighted(80000);
       setLogoUrl('');
       setBallroomImageUrl('https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&auto=format&fit=crop&q=80');
       setWelcomeVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
@@ -66,6 +84,12 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
         tagline: tagline.trim() || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
         description: description.trim() || 'Espaço requintado preparado especialmente para noites inesquecíveis.',
         address: address.trim() || 'Rio de Janeiro - RJ',
+        phone: phone.trim() || undefined,
+        whatsappNumber: whatsappNumber.trim() || undefined,
+        email: email.trim() || undefined,
+        yearsInBusiness: Number(yearsInBusiness) || 10,
+        eventsCompleted: Number(eventsCompleted) || 500,
+        guestsDelighted: Number(guestsDelighted) || 80000,
         logoUrl: logoUrl.trim() || undefined,
         ballroomImageUrl: ballroomImageUrl.trim() || fallbackBallroom,
         welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
@@ -78,13 +102,16 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
         tagline: tagline.trim() || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
         description: description.trim() || 'Espaço requintado preparado especialmente para noites inesquecíveis.',
         address: address.trim() || 'Rio de Janeiro - RJ',
+        phone: phone.trim() || undefined,
+        whatsappNumber: whatsappNumber.trim() || undefined,
+        email: email.trim() || undefined,
+        yearsInBusiness: Number(yearsInBusiness) || 10,
+        eventsCompleted: Number(eventsCompleted) || 500,
+        guestsDelighted: Number(guestsDelighted) || 80000,
         logoUrl: logoUrl.trim() || undefined,
         ballroomImageUrl: ballroomImageUrl.trim() || fallbackBallroom,
         welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
-        experienceText: 'Mais de 10 anos realizando sonhos.',
-        yearsInBusiness: 10,
-        eventsCompleted: 500,
-        guestsDelighted: 80000,
+        experienceText: `Mais de ${yearsInBusiness || 10} anos realizando sonhos inesquecíveis.`,
         googleMapsEmbedUrl: `https://maps.google.com/?q=${encodeURIComponent(name)}`,
         googleMapsLink: `https://maps.google.com/?q=${encodeURIComponent(name)}`,
         wazeLink: `https://waze.com/ul?q=${encodeURIComponent(name)}`,
@@ -269,6 +296,131 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
                   paddingLeft: '38px',
                 }}
               />
+            </div>
+          </div>
+
+          {/* Seção de Contato & Atendimento Oficial */}
+          <div style={{
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '12px',
+            padding: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              📞 Canais de Contato & Suporte da Casa
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* WhatsApp */}
+              <div>
+                <label style={labelStyle}>
+                  WhatsApp de Suporte / Atendimento *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <MessageCircle size={15} color="#22C55E" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <input
+                    type="text"
+                    placeholder="(21) 99999-9999"
+                    value={whatsappNumber}
+                    onChange={(e) => setWhatsappNumber(e.target.value)}
+                    style={{ ...inputStyle, paddingLeft: '36px', background: 'var(--adm-bg-card)' }}
+                  />
+                </div>
+              </div>
+
+              {/* Telefone Fixo */}
+              <div>
+                <label style={labelStyle}>
+                  Telefone Fixo / Recepção
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Phone size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <input
+                    type="text"
+                    placeholder="(21) 3456-7890"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    style={{ ...inputStyle, paddingLeft: '36px', background: 'var(--adm-bg-card)' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* E-mail */}
+            <div>
+              <label style={labelStyle}>
+                E-mail Institucional de Atendimento
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <input
+                  type="email"
+                  placeholder="contato@espacoriodelounge.com.br"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={{ ...inputStyle, paddingLeft: '36px', background: 'var(--adm-bg-card)' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção de Métricas & Tradição da Casa */}
+          <div style={{
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '12px',
+            padding: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              🏛️ Métricas & Autoridade da Casa (Exibidas no Convite)
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={labelStyle}>
+                  Anos no Mercado
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={yearsInBusiness}
+                  onChange={(e) => setYearsInBusiness(Number(e.target.value))}
+                  style={{ ...inputStyle, background: 'var(--adm-bg-card)', fontWeight: 800 }}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  Eventos Realizados
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={eventsCompleted}
+                  onChange={(e) => setEventsCompleted(Number(e.target.value))}
+                  style={{ ...inputStyle, background: 'var(--adm-bg-card)', fontWeight: 800 }}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  Convidados Atendidos
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={guestsDelighted}
+                  onChange={(e) => setGuestsDelighted(Number(e.target.value))}
+                  style={{ ...inputStyle, background: 'var(--adm-bg-card)', fontWeight: 800 }}
+                />
+              </div>
             </div>
           </div>
 
