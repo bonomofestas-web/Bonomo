@@ -17,6 +17,7 @@ import { AdminSettingsModal } from './AdminSettingsModal';
 import { AdminVenueGoalsView } from './AdminVenueGoalsView';
 import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
+import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { Menu, X, Building2 } from 'lucide-react';
@@ -144,6 +145,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onLeadOpened={() => setCrmOpenLeadId(undefined)}
           />
         );
+      case 'whatsapp':
+        return <AdminWhatsAppWorkspaceView />;
       case 'sources':
         return <AdminSourcesView />;
       case 'venues':

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { 
   AdminUser, 
   Collaborator,
@@ -122,6 +122,8 @@ export interface AdminContextType {
   updateSource: (id: string, data: Partial<Source>) => Promise<void>;
   deleteSource: (id: string) => Promise<void>;
   toggleSourceStatus: (id: string, active: boolean) => Promise<void>;
+  hasUnconfiguredSources: boolean;
+  unconfiguredSourcesCount: number;
 
   // Auth & Roles
   login: (email: string, pass: string, optUser?: Partial<AdminUser>) => boolean;
@@ -893,32 +895,62 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    // Create the mandatory primary referral funnel for this venue immediately
-    const primaryFunnel: CommercialFunnel = {
-      id: generateUuid(),
-      name: `Funil de Indicação • ${newVenue.name}`,
-      category: 'Indicações do App',
-      description: `Captação automatizada através das convidadas e debutantes VIP da unidade ${newVenue.name}.`,
+    // 1. Criar automaticamente o Funil Comercial Padrão para a nova casa de festa
+    const defaultFunnelId = generateUuid();
+    const defaultFunnel: CommercialFunnel = {
+      id: defaultFunnelId,
+      name: `Funil Comercial • ${newVenue.name}`,
+      category: 'Vendas & Atendimento',
+      description: `Funil padrão de captação e conversão da unidade ${newVenue.name}.`,
       venueId: id,
       allowedCollaboratorIds: [],
-      badge: `Principal • ${newVenue.name}`,
+      badge: `Padrão • ${newVenue.name}`,
       badgeColor: '#D4AF37',
-      icon: 'crown',
-      stagesCount: 4,
+      icon: 'target',
+      stagesCount: 5,
+      stages: [
+        { id: 'new_lead', name: 'Novo Lead', color: '#3B82F6', isFixed: true, order: 0 },
+        { id: 'qualificacao', name: 'Qualificação / Primeiro Contato', color: '#F59E0B', isFixed: false, order: 1 },
+        { id: 'visita_agendada', name: 'Visita / Degustação Agendada', color: '#8B5CF6', isFixed: false, order: 2 },
+        { id: 'deal_closed', name: 'Venda Fechada (Ganho)', color: '#10B981', isFixed: true, isWon: true, order: 3 },
+        { id: 'lost', name: 'Perdido / Não Realizado', color: '#EF4444', isFixed: true, isLoss: true, order: 4 },
+      ],
       isPrimary: true,
       isDemo: false,
       createdAt: newVenue.createdAt,
     };
 
     setFunnels(prev => {
-      const updated = [...prev.filter(f => f.id !== primaryFunnel.id && f.venueId !== 'all'), primaryFunnel];
+      const updated = [...prev, defaultFunnel];
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Criar automaticamente a Origem Nativa de Indicação vinculada a esse funil
+    const defaultReferralSource: Source = {
+      id: generateUuid(),
+      venueId: id,
+      name: `Indicações das Debutantes • ${newVenue.name}`,
+      type: 'referral',
+      funnelId: defaultFunnelId,
+      status: 'active',
+      configuration: {
+        systemManaged: true,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setSources(prev => {
+      const updated = [...prev, defaultReferralSource];
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
       return updated;
     });
 
     // Async sync with Supabase
     venueService.upsert(newVenue);
-    funnelService.upsert(primaryFunnel);
+    funnelService.upsert(defaultFunnel);
+    sourceService.upsert(defaultReferralSource);
 
     return id;
   };
@@ -936,8 +968,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (f.venueId === id && f.isPrimary) {
             const pf = {
               ...f,
-              name: `Funil de Indicação • ${venueData.name}`,
-              badge: `Principal • ${venueData.name}`,
+              name: `Funil Comercial • ${venueData.name}`,
+              badge: `Padrão • ${venueData.name}`,
               description: `Captação automatizada através das convidadas e debutantes VIP da unidade ${venueData.name}.`,
             };
             funnelService.upsert(pf);
@@ -1160,8 +1192,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    // Se houver origens apontando para este funil excluído, desconfigura e inativa para alertar o usuário
+    setSources(prev => {
+      const updated = prev.map(s => {
+        if (s.funnelId === id) {
+          const unconfigured = { ...s, funnelId: '', status: 'inactive' as const, updatedAt: new Date().toISOString() };
+          sourceService.upsert(unconfigured);
+          return unconfigured;
+        }
+        return s;
+      });
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
+
     funnelService.delete(id);
   };
+
+  // ── Unconfigured Sources Warning ───────────────────────────────────────────
+  const unconfiguredSources = useMemo(() => {
+    const validFunnelIds = new Set(funnels.map(f => f.id));
+    return sources.filter(s => !s.funnelId || s.funnelId === '' || !validFunnelIds.has(s.funnelId));
+  }, [sources, funnels]);
+
+  const hasUnconfiguredSources = unconfiguredSources.length > 0;
+  const unconfiguredSourcesCount = unconfiguredSources.length;
 
   // ── Sources CRUD ───────────────────────────────────────────────────────────
 
@@ -2722,6 +2777,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateSource,
       deleteSource,
       toggleSourceStatus,
+      hasUnconfiguredSources,
+      unconfiguredSourcesCount,
       updateLeadStage,
       addLeadNote,
       validateLead,

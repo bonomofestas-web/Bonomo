@@ -15,7 +15,7 @@ import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminCrmWorkspaceView } from './AdminCrmWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { ImageUploadField } from './ImageUploadField';
-import type { Lead, CrmStage, CommercialFunnel } from '../../types/admin';
+import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, FunnelCustomField, FunnelFieldType } from '../../types/admin';
 
 interface AdminCrmKanbanViewProps {
   initialLeadId?: string;
@@ -23,6 +23,14 @@ interface AdminCrmKanbanViewProps {
   onSelectFunnel?: (funnelId: string | null) => void;
   onLeadOpened?: () => void;
 }
+
+const DEFAULT_FORM_STAGES: FunnelStageConfig[] = [
+  { id: 'new_lead', name: 'Novo Lead', color: '#3B82F6', isFixed: true, order: 0 },
+  { id: 'qualificacao', name: 'Qualificação / Contato', color: '#F59E0B', isFixed: false, order: 1 },
+  { id: 'visita_agendada', name: 'Visita / Degustação Agendada', color: '#8B5CF6', isFixed: false, order: 2 },
+  { id: 'deal_closed', name: 'Venda Fechada (Ganho)', color: '#10B981', isFixed: true, isWon: true, order: 3 },
+  { id: 'lost', name: 'Perdido / Não Realizado', color: '#EF4444', isFixed: true, isLoss: true, order: 4 },
+];
 
 const AVAILABLE_FUNNEL_ICONS = [
   { id: 'target', label: 'Alvo / Meta', icon: Target },
@@ -96,6 +104,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [iconMode, setIconMode] = useState<'icon' | 'image'>('icon');
   const [formAccessMode, setFormAccessMode] = useState<'all' | 'custom'>('all');
   const [formAllowedCollaboratorIds, setFormAllowedCollaboratorIds] = useState<string[]>([]);
+  const [formStages, setFormStages] = useState<FunnelStageConfig[]>(DEFAULT_FORM_STAGES);
+  const [formCustomFields, setFormCustomFields] = useState<FunnelCustomField[]>([]);
 
   // View mode inside funnel
   const [viewMode, setViewMode] = useState<'workspace' | 'kanban' | 'list'>(initialLeadId ? 'workspace' : 'kanban');
@@ -158,7 +168,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Open Create Funnel Modal (optionally with pre-selected venue)
   const handleOpenCreateFunnel = (targetVenueId?: string) => {
     setFormFunnelName('');
-    setFormFunnelCategory('Marketing Digital');
+    setFormFunnelCategory('Vendas & Atendimento');
     setFormFunnelDescription('');
     setFormFunnelVenueId(targetVenueId || activeVenueId || (venues[0]?.id || ''));
     setFormFunnelIcon('target');
@@ -166,6 +176,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setIconMode('icon');
     setFormAccessMode('all');
     setFormAllowedCollaboratorIds([]);
+    setFormStages(DEFAULT_FORM_STAGES);
+    setFormCustomFields([]);
     setFunnelToConfigure(null);
     setIsCreateFunnelModalOpen(true);
   };
@@ -184,24 +196,57 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const hasCustomAccess = funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0;
     setFormAccessMode(hasCustomAccess ? 'custom' : 'all');
     setFormAllowedCollaboratorIds(funnel.allowedCollaboratorIds || []);
+    setFormStages(funnel.stages && funnel.stages.length > 0 ? funnel.stages : DEFAULT_FORM_STAGES);
+    setFormCustomFields(funnel.customFields || []);
     setIsCreateFunnelModalOpen(true);
+  };
+
+  // Stage Helpers
+  const handleAddIntermediateStage = () => {
+    const newStage: FunnelStageConfig = {
+      id: `stage_${Date.now()}`,
+      name: 'Nova Etapa',
+      color: '#8B5CF6',
+      isFixed: false,
+      order: formStages.length - 2, // Before won and loss
+    };
+    // Insert before the last two fixed stages (won and lost)
+    const fixedEnd = formStages.filter(s => s.isWon || s.isLoss);
+    const middleAndStart = formStages.filter(s => !s.isWon && !s.isLoss);
+    setFormStages([...middleAndStart, newStage, ...fixedEnd]);
+  };
+
+  const handleUpdateStage = (id: string, updates: Partial<FunnelStageConfig>) => {
+    setFormStages(formStages.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
+  const handleRemoveStage = (id: string) => {
+    setFormStages(formStages.filter(s => s.id !== id || s.isFixed));
+  };
+
+  // Custom Fields Helpers
+  const handleAddCustomField = () => {
+    const newField: FunnelCustomField = {
+      id: `field_${Date.now()}`,
+      label: 'Novo Campo',
+      type: 'text',
+      required: false,
+      placeholder: 'Preencha...',
+    };
+    setFormCustomFields([...formCustomFields, newField]);
+  };
+
+  const handleUpdateCustomField = (id: string, updates: Partial<FunnelCustomField>) => {
+    setFormCustomFields(formCustomFields.map(f => f.id === id ? { ...f, ...updates } : f));
+  };
+
+  const handleRemoveCustomField = (id: string) => {
+    setFormCustomFields(formCustomFields.filter(f => f.id !== id));
   };
 
   // Save Funnel (Create or Update)
   const handleSaveFunnel = (e: React.FormEvent) => {
     e.preventDefault();
-
-    const allowedIds = formAccessMode === 'custom' ? formAllowedCollaboratorIds : [];
-
-    // If Primary Funnel (Indicações do App), ONLY update allowed collaborator access list
-    if (funnelToConfigure?.isPrimary) {
-      updateFunnel(funnelToConfigure.id, {
-        allowedCollaboratorIds: allowedIds,
-      });
-      setIsCreateFunnelModalOpen(false);
-      setFunnelToConfigure(null);
-      return;
-    }
 
     if (!formFunnelName.trim()) return;
 
@@ -211,6 +256,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       return;
     }
 
+    const allowedIds = formAccessMode === 'custom' ? formAllowedCollaboratorIds : [];
     const finalCustomImage = iconMode === 'image' && formCustomImageUrl.trim() ? formCustomImageUrl.trim() : undefined;
 
     if (funnelToConfigure) {
@@ -222,6 +268,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         icon: formFunnelIcon,
         customImageUrl: finalCustomImage,
         allowedCollaboratorIds: allowedIds,
+        stages: formStages,
+        customFields: formCustomFields,
       });
     } else {
       addFunnel({
@@ -235,7 +283,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         icon: formFunnelIcon,
         customImageUrl: finalCustomImage,
         isPinned: false,
-        stagesCount: 4,
+        stagesCount: formStages.length,
+        stages: formStages,
+        customFields: formCustomFields,
         isPrimary: false,
         isDemo: false,
       });
@@ -903,6 +953,234 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 </div>
               </div>
             )}
+
+            {/* ── ETAPAS DO FUNIL (PIPELINE STAGES) ── */}
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '14px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Layers size={16} color="var(--adm-accent)" />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Etapas do Funil Comercial
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddIntermediateStage}
+                  style={{
+                    background: 'var(--adm-accent-bg)',
+                    border: '1px solid var(--adm-accent)',
+                    color: 'var(--adm-accent)',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Plus size={13} />
+                  <span>Nova Etapa</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {formStages.map((stg) => (
+                  <div
+                    key={stg.id}
+                    style={{
+                      background: 'var(--adm-bg-card)',
+                      border: `1px solid ${stg.isFixed ? 'rgba(212,175,55,0.2)' : 'var(--adm-border)'}`,
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <span style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: stg.color,
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      }} />
+                      {stg.isFixed ? (
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                          {stg.name} <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 500 }}>(Fixa)</span>
+                        </span>
+                      ) : (
+                        <input
+                          type="text"
+                          value={stg.name}
+                          onChange={(e) => handleUpdateStage(stg.id, { name: e.target.value })}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            color: 'var(--adm-text-title)',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            width: '100%',
+                            outline: 'none',
+                          }}
+                          onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                          onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                        />
+                      )}
+                    </div>
+
+                    {!stg.isFixed && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStage(stg.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#EF4444',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                        }}
+                        title="Remover etapa"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── CAMPOS PERSONALIZADOS DA FICHA DO LEAD ── */}
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '14px',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={16} color="var(--adm-accent)" />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Campos Extras da Ficha do Lead
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddCustomField}
+                  style={{
+                    background: 'var(--adm-accent-bg)',
+                    border: '1px solid var(--adm-accent)',
+                    color: 'var(--adm-accent)',
+                    borderRadius: '8px',
+                    padding: '4px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Plus size={13} />
+                  <span>Novo Campo</span>
+                </button>
+              </div>
+
+              {formCustomFields.length === 0 ? (
+                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '6px 0' }}>
+                  Nenhum campo personalizado adicionado a este funil.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {formCustomFields.map(field => (
+                    <div
+                      key={field.id}
+                      style={{
+                        background: 'var(--adm-bg-card)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
+                        display: 'grid',
+                        gridTemplateColumns: '1.2fr 1fr auto',
+                        gap: '8px',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Nome do campo..."
+                        value={field.label}
+                        onChange={(e) => handleUpdateCustomField(field.id, { label: e.target.value })}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '5px 8px',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.76rem',
+                          outline: 'none',
+                        }}
+                      />
+
+                      <select
+                        value={field.type}
+                        onChange={(e) => handleUpdateCustomField(field.id, { type: e.target.value as FunnelFieldType })}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '5px 8px',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.76rem',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="text">Texto Livre</option>
+                        <option value="date">Data</option>
+                        <option value="number">Número</option>
+                        <option value="todo">Checklist / Tarefa</option>
+                        <option value="select">Seleção (Dropdown)</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomField(field.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#EF4444',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                        }}
+                        title="Remover campo"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* ── CONTROLE DE ACESSO & PRIVACIDADE DO FUNIL (COM PROTEÇÃO HIERÁRQUICA) ── */}
             <div style={{

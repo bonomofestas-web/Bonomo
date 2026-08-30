@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
-  ShieldCheck, Star, ShoppingBag, Music, Camera, X
+  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION } from '../../types/admin';
@@ -16,6 +16,7 @@ export type AdminTabType =
   | 'home'
   | 'dashboard' 
   | 'crm' 
+  | 'whatsapp'
   | 'sources'
   | 'debutantes' 
   | 'venue-goals'
@@ -62,6 +63,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     activeVenueId, 
     setActiveVenueId,
     funnels,
+    hasUnconfiguredSources,
+    unconfiguredSourcesCount,
   } = useAdminState();
 
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
@@ -86,12 +89,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
   ];
 
-  const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
+  const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['master', 'admin', 'crm'] },
     { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
@@ -285,8 +289,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         <span style={{ color: isActive ? '#D4AF37' : '#9E988D', display: 'flex' }}>
           {item.icon}
         </span>
-        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {item.label}
+        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>{item.label}</span>
+          {item.id === 'sources' && hasUnconfiguredSources && (
+            <span
+              title={`${unconfiguredSourcesCount} origem(ns) sem funil configurado!`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#EF4444',
+                animation: 'pulse 1.5s infinite ease-in-out',
+              }}
+            >
+              <AlertTriangle size={14} />
+            </span>
+          )}
         </span>
         {isActive && <ChevronRight size={13} color="#D4AF37" />}
       </button>

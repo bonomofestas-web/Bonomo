@@ -3,7 +3,7 @@ import {
   ChevronDown, Trash2, Check,
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
-  CheckCircle2, Clock, X, MessageCircle
+  CheckCircle2, Clock, X, MessageCircle, Sparkles
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { 
@@ -33,11 +33,18 @@ const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string
 
 const STAGE_LIST: CrmStage[] = ['new_lead', 'in_analysis', 'meeting_scheduled', 'contract_signed', 'lost'];
 
-const CONTACT_ROLE_LABELS: Record<LeadContactRole, string> = {
+const CONTACT_ROLE_LABELS: Record<string, string> = {
+  aniversariante: 'Aniversariante',
   debutante: 'Debutante',
+  mae: 'Mãe',
+  pai: 'Pai',
   mother: 'Mãe',
   father: 'Pai',
+  tio: 'Tio(a)',
+  noivo: 'Noivo(a)',
+  responsavel: 'Responsável',
   decision_maker: 'Responsável / Decisor',
+  outro: 'Outro',
   other: 'Outro',
 };
 
@@ -53,6 +60,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     currentUser, 
     collaborators, 
     venues,
+    funnels,
     updateLeadData, 
     validateLead, 
     invalidateLead,
@@ -71,11 +79,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [isAddingTag, setIsAddingTag] = useState(false);
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
+  const leadFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : undefined;
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
   const isManagerOrMaster = currentUser?.role === 'master' || currentUser?.role === 'admin';
   const sdrList = collaborators.filter(c => c.active && (c.role === 'sdr' || c.role === 'admin' || c.role === 'master'));
   const closerList = collaborators.filter(c => c.active && (c.role === 'closer' || c.role === 'admin' || c.role === 'master'));
+
+  const isReferralLead = lead.source === 'indicacao' || Boolean(lead.debutanteName || lead.debutanteId);
 
   const handleUpdate = (updates: Partial<Lead>) => {
     updateLeadData(lead.id, updates);
@@ -477,8 +488,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           )}
         </div>
 
-        {/* Bloco de Destaque: Validação de Indicação no Topo da Ficha */}
-        {Boolean(lead.debutanteName || lead.debutanteId) && (
+        {/* Bloco de Destaque: Validação de Indicação no Topo da Ficha (Apenas para Leads de Indicação) */}
+        {isReferralLead && (
           <div style={{ marginTop: '10px' }}>
             {lead.isValidated ? (
               <div style={{
@@ -638,6 +649,21 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         <div style={sectionHeaderStyle}>
           <User size={13} color="var(--adm-accent)" />
           <span>2. Dados do Cliente</span>
+        </div>
+
+        {/* Nome do Cliente */}
+        <div style={rowStyle}>
+          <span style={rowLabelStyle}>Nome do Lead</span>
+          <div style={rowValueStyle}>
+            <input
+              type="text"
+              value={lead.name}
+              onChange={(e) => handleUpdate({ name: e.target.value })}
+              style={{ ...inlineInputStyle, fontWeight: 700 }}
+              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+            />
+          </div>
         </div>
 
         {/* WhatsApp com Link Direto Limpo */}
@@ -1027,13 +1053,16 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <select
                 value={newContactRole}
                 onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
-                style={{ ...inlineSelectStyle, width: '160px' }}
+                style={{ ...inlineSelectStyle, width: '180px' }}
               >
-                <option value="mother">Mãe</option>
-                <option value="father">Pai</option>
-                <option value="decision_maker">Responsável / Decisor</option>
+                <option value="aniversariante">Aniversariante</option>
                 <option value="debutante">Debutante</option>
-                <option value="other">Outro</option>
+                <option value="mae">Mãe</option>
+                <option value="pai">Pai</option>
+                <option value="tio">Tio(a)</option>
+                <option value="noivo">Noivo(a)</option>
+                <option value="responsavel">Responsável / Decisor</option>
+                <option value="outro">Outro</option>
               </select>
 
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -1056,7 +1085,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   type="submit"
                   style={{
                     background: 'var(--adm-accent)',
-                    color: '#FFF',
+                    color: '#000',
                     border: 'none',
                     borderRadius: '6px',
                     padding: '4px 12px',
@@ -1070,6 +1099,87 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
             </div>
           </form>
+        )}
+
+        {/* ── SEÇÃO 6: ⚙️ CAMPOS PERSONALIZADOS DO FUNIL ── */}
+        {leadFunnel && leadFunnel.customFields && leadFunnel.customFields.length > 0 && (
+          <>
+            <div style={sectionHeaderStyle}>
+              <Sparkles size={13} color="var(--adm-accent)" />
+              <span>6. Campos Personalizados ({leadFunnel.name})</span>
+            </div>
+
+            {leadFunnel.customFields.map(field => {
+              const currentValue = lead.customFieldValues?.[field.id] ?? '';
+
+              return (
+                <div key={field.id} style={rowStyle}>
+                  <span style={rowLabelStyle}>{field.label}</span>
+                  <div style={rowValueStyle}>
+                    {field.type === 'todo' ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(currentValue)}
+                          onChange={(e) => {
+                            const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.checked };
+                            handleUpdate({ customFieldValues: updatedCustom });
+                          }}
+                        />
+                        <span>{Boolean(currentValue) ? '✅ Concluído' : '⬜ Pendente'}</span>
+                      </label>
+                    ) : field.type === 'date' ? (
+                      <input
+                        type="date"
+                        value={currentValue}
+                        onChange={(e) => {
+                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                          handleUpdate({ customFieldValues: updatedCustom });
+                        }}
+                        style={inlineSelectStyle}
+                      />
+                    ) : field.type === 'number' ? (
+                      <input
+                        type="number"
+                        placeholder={field.placeholder || '0'}
+                        value={currentValue}
+                        onChange={(e) => {
+                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: Number(e.target.value) || 0 };
+                          handleUpdate({ customFieldValues: updatedCustom });
+                        }}
+                        style={inlineInputStyle}
+                      />
+                    ) : field.type === 'select' ? (
+                      <select
+                        value={currentValue}
+                        onChange={(e) => {
+                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                          handleUpdate({ customFieldValues: updatedCustom });
+                        }}
+                        style={inlineSelectStyle}
+                      >
+                        <option value="">Selecione...</option>
+                        {(field.options || []).map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        placeholder={field.placeholder || 'Preencha...'}
+                        value={currentValue}
+                        onChange={(e) => {
+                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                          handleUpdate({ customFieldValues: updatedCustom });
+                        }}
+                        style={inlineInputStyle}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </>
         )}
 
       </div>

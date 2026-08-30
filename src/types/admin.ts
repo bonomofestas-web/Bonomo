@@ -180,15 +180,48 @@ export interface LeadActivity {
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';
 export type LeadEventType = '15 Anos' | 'Casamento' | 'Infantil' | 'Formatura' | 'Corporativo' | 'Outro';
-export type LeadContactRole = 'debutante' | 'mother' | 'father' | 'decision_maker' | 'other';
+export type LeadContactRole = 
+  | 'aniversariante' 
+  | 'debutante' 
+  | 'mae' 
+  | 'pai' 
+  | 'tio' 
+  | 'noivo' 
+  | 'responsavel' 
+  | 'outro'
+  | string;
 
 export interface LeadContact {
   id: string;
   name: string;
   phone: string;
   email?: string;
+  neighborhood?: string;
   role: LeadContactRole;
+  roleCustomName?: string;
   isPrimaryDecisionMaker?: boolean;
+}
+
+export interface FunnelStageConfig {
+  id: string;
+  name: string;
+  color?: string;
+  isFixed?: boolean;  // 'new_lead' (inicial), 'deal_closed' (ganho) e 'lost' (perdido) são fixos
+  isWon?: boolean;    // Estágio de Sucesso/Ganho
+  isLoss?: boolean;   // Estágio de Perda
+  order?: number;
+}
+
+export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select';
+
+export interface FunnelCustomField {
+  id: string;
+  label: string;
+  type: FunnelFieldType;
+  options?: string[]; // Para campos tipo 'select'
+  required?: boolean;
+  placeholder?: string;
+  order?: number;
 }
 
 export interface Lead {
@@ -225,6 +258,9 @@ export interface Lead {
   temperature?: LeadTemperature;  // 'hot' (🔥 Quente) | 'warm' (🟡 Morno) | 'cold' (🔵 Frio)
   tags?: string[];                // Tags específicas do funil
 
+  // Campos Customizados definidos pelo Funil
+  customFieldValues?: Record<string, any>;
+
   age: number;
   group: string;
   notes?: string;
@@ -233,7 +269,7 @@ export interface Lead {
   pointsGranted: number; // 1 se válida, 0 se não
   rejectionReason?: string;
 
-  // Responsabilidade dupla SDR + Closer
+  // Responsabilidade dupla SDR + Closer (Obrigatórios)
   sdrId?: string;        // ID do SDR responsável pela captação/qualificação
   sdrName?: string;      // Nome do SDR
   closerId?: string;     // ID do Closer responsável pela venda
@@ -271,6 +307,8 @@ export interface CommercialFunnel {
   customImageUrl?: string; // Foto ou imagem customizada do funil (400x400)
   isPinned?: boolean; // Se o funil está fixado na Sidebar
   stagesCount?: number;
+  stages?: FunnelStageConfig[]; // Etapas customizadas do funil
+  customFields?: FunnelCustomField[]; // Campos extras personalizados para os leads deste funil
   isPrimary?: boolean;
   isDemo?: boolean;
   createdAt?: string;
