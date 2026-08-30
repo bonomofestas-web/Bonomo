@@ -16,6 +16,7 @@ export type AdminTabType =
   | 'home'
   | 'dashboard' 
   | 'crm' 
+  | 'sources'
   | 'debutantes' 
   | 'venue-goals'
   | 'master-dashboard'
@@ -85,6 +86,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['master', 'admin', 'crm'] },
   ];
 
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [

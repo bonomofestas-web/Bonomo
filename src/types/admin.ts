@@ -198,6 +198,7 @@ export interface Lead {
   debutanteSlug: string;
   venueId: string;
   funnelId?: string;     // Funil comercial ao qual o lead pertence
+  sourceId?: string;     // ID da Origem vinculada (Módulo de Origens)
   name: string;
   phone: string;
   email?: string;

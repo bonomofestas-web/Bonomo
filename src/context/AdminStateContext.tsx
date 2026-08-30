@@ -18,6 +18,7 @@ import type {
   TaskStatus,
   CommercialFunnel
 } from '../types/admin';
+import type { Source } from '../types/sources';
 import type { 
   Milestone, 
   VipReward, 
@@ -32,6 +33,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
 import { leadService } from '../services/leadService';
+import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService } from '../services/collaboratorService';
@@ -43,6 +45,7 @@ const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
 const STORAGE_KEY_VENUES = 'bonomo_admin_venues_v7';
 const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
 const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
+const STORAGE_KEY_SOURCES = 'bonomo_admin_sources_v1';
 const STORAGE_KEY_TEMPLATES = 'bonomo_admin_templates_v7';
 const STORAGE_KEY_ACTIVE_VENUE = 'bonomo_admin_active_venue_v7';
 const STORAGE_KEY_BENEFITS = 'bonomo_admin_benefits_catalog_v7';
@@ -108,10 +111,17 @@ export interface AdminContextType {
   benefitsCatalog: BenefitCatalogItem[];
   vipCatalog: VipRewardCatalogItem[];
   funnels: CommercialFunnel[];
+  sources: Source[];
   activeVenueId: string | null;
   activeDebutanteId: string | null;
   theme: ThemeMode;
   setTheme: (theme: ThemeMode) => void;
+
+  // Sources & Lead Tracking Module
+  addSource: (data: Omit<Source, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateSource: (id: string, data: Partial<Source>) => Promise<void>;
+  deleteSource: (id: string) => Promise<void>;
+  toggleSourceStatus: (id: string, active: boolean) => Promise<void>;
 
   // Auth & Roles
   login: (email: string, pass: string, optUser?: Partial<AdminUser>) => boolean;
@@ -384,6 +394,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(tasks));
   }, [tasks]);
 
+  const [sources, setSources] = useState<Source[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SOURCES);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(sources));
+  }, [sources]);
+
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(funnels));
   }, [funnels]);
@@ -396,7 +418,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates] = await Promise.all([
+        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources] = await Promise.all([
           venueService.getAll(),
           funnelService.getAll(),
           leadService.getAll(),
@@ -406,12 +428,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           catalogService.getAllBenefits(),
           catalogService.getAllVipRewards(),
           journeyTemplateService.getAll(),
+          sourceService.getAll(),
         ]);
 
         if (isMounted) {
           if (dbVenues.length > 0) setVenues(dbVenues);
           if (dbFunnels.length > 0) setFunnels(dbFunnels);
           if (dbLeads.length > 0) setLeads(dbLeads);
+          if (dbSources.length > 0) setSources(dbSources);
+
+          // Ensure each venue has a default referral source
+          sourceService.ensureDefaultReferralSources(dbVenues, dbFunnels);
 
           // Merge local debutantes with remote database to prevent any data loss
           const localDebsRaw = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
@@ -569,6 +596,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await catalogService.getAllVipRewards();
         if (isMounted && updated.length > 0) setVipCatalog(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sources' }, async () => {
+        const updated = await sourceService.getAll();
+        if (isMounted && updated.length > 0) setSources(updated);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'source_events' }, async () => {
+        const updated = await sourceService.getAll();
+        if (isMounted && updated.length > 0) setSources(updated);
+      })
       .subscribe();
 
     // Heartbeat Polling inteligente a cada 6 segundos para multi-dispositivos
@@ -594,59 +629,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, []);
 
-  // Reconcile and ensure every registered venue has strictly its primary referral funnel and no ghost/mock funnels
+  // Reconcile and clean up funnels associated with deleted venues
   useEffect(() => {
     setFunnels(prev => {
       const validVenueIds = new Set(venues.map(v => v.id));
-      // Remove mock/orphaned funnels
-      let filtered = prev.filter(f => 
+      const filtered = prev.filter(f => 
         f.id !== 'indicacao' && 
         f.id !== 'trafego' && 
         f.id !== 'parcerias' && 
-        f.venueId !== 'all' && 
-        validVenueIds.has(f.venueId)
+        (f.venueId === 'all' || validVenueIds.has(f.venueId))
       );
 
-      let changed = filtered.length !== prev.length;
-
-      for (const v of venues) {
-        const expectedName = `Funil de Indicação • ${v.name}`;
-        const expectedBadge = `Principal • ${v.name}`;
-        const expectedDesc = `Captação automatizada através das convidadas e debutantes VIP da unidade ${v.name}.`;
-
-        const existingPrimaryIdx = filtered.findIndex(f => f.venueId === v.id && f.isPrimary);
-        if (existingPrimaryIdx === -1) {
-          filtered.push({
-            id: `indicacao_${v.id}`,
-            name: expectedName,
-            category: 'Indicações do App',
-            description: expectedDesc,
-            venueId: v.id,
-            allowedCollaboratorIds: [],
-            badge: expectedBadge,
-            badgeColor: '#D4AF37',
-            icon: 'crown',
-            stagesCount: 4,
-            isPrimary: true,
-            isDemo: false,
-            createdAt: v.createdAt || new Date().toISOString().split('T')[0],
-          });
-          changed = true;
-        } else {
-          const pf = filtered[existingPrimaryIdx];
-          if (pf.name !== expectedName || pf.badge !== expectedBadge) {
-            filtered[existingPrimaryIdx] = {
-              ...pf,
-              name: expectedName,
-              badge: expectedBadge,
-              description: expectedDesc,
-            };
-            changed = true;
-          }
-        }
-      }
-
-      if (changed) {
+      if (filtered.length !== prev.length) {
         safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(filtered));
         return filtered;
       }
@@ -1169,6 +1163,54 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     funnelService.delete(id);
   };
 
+  // ── Sources CRUD ───────────────────────────────────────────────────────────
+
+  const addSource = async (data: Omit<Source, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const id = generateUuid();
+    const newSource: Source = {
+      ...data,
+      id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setSources(prev => {
+      const updated = [newSource, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
+
+    await sourceService.upsert(newSource);
+    return id;
+  };
+
+  const updateSource = async (id: string, data: Partial<Source>) => {
+    setSources(prev => {
+      const updated = prev.map(s => s.id === id ? { ...s, ...data, updatedAt: new Date().toISOString() } : s);
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
+
+    const target = sources.find(s => s.id === id);
+    if (target) {
+      await sourceService.upsert({ ...target, ...data, id });
+    }
+  };
+
+  const deleteSource = async (id: string) => {
+    setSources(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
+
+    await sourceService.delete(id);
+  };
+
+  const toggleSourceStatus = async (id: string, active: boolean) => {
+    await updateSource(id, { status: active ? 'active' : 'inactive' });
+  };
+
   const deleteDebutanteAccount = (idOrSlug: string) => {
     setDebutantes(prev => {
       const updated = prev.filter(d => d.id !== idOrSlug && d.slug !== idOrSlug);
@@ -1547,12 +1589,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     notes?: string;
   }): string => {
     const newLeadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    
+    // Procura a Origem de Indicação da casa de festa para obter o funil configurado
+    const venueReferralSource = sources.find(s => s.venueId === data.venueId && s.type === 'referral' && s.status === 'active');
+    const destinationFunnelId = venueReferralSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'indicacao';
+
     const newLead: Lead = {
       id: newLeadId,
       debutanteId: data.debutanteId,
       debutanteName: data.debutanteName,
       debutanteSlug: data.debutanteSlug,
       venueId: data.venueId,
+      funnelId: destinationFunnelId,
+      sourceId: venueReferralSource?.id,
+      source: 'indicacao',
       name: data.name,
       phone: data.phone,
       age: data.age,
@@ -2667,6 +2717,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addFunnel,
       updateFunnel,
       deleteFunnel,
+      sources,
+      addSource,
+      updateSource,
+      deleteSource,
+      toggleSourceStatus,
       updateLeadStage,
       addLeadNote,
       validateLead,

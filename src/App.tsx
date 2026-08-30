@@ -17,6 +17,8 @@ import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPa
 import { AdminPortal } from './components/admin/AdminPortal';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
+import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
+import { PublicFormLandingView } from './components/public/PublicFormLandingView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
@@ -216,10 +218,32 @@ export const AppContent: React.FC = () => {
   );
 };
 
-const parseRouteFromLocation = (): { mode: 'debutante' | 'admin'; slug?: string } => {
+const parseRouteFromLocation = (): { mode: 'debutante' | 'admin' | 'tracking_link' | 'form'; slug?: string } => {
   if (typeof window === 'undefined') return { mode: 'admin', slug: 'maria-eduarda-2027' };
 
   const urlParams = new URLSearchParams(window.location.search);
+  const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+
+  // 1. Link Rastreável (/r/:slug ou ?r=slug)
+  if (urlParams.has('r')) {
+    return { mode: 'tracking_link', slug: decodeURIComponent(urlParams.get('r') || '').trim() };
+  }
+  if (pathname.startsWith('r/')) {
+    const rSlug = pathname.replace(/^r\//, '').trim();
+    return { mode: 'tracking_link', slug: decodeURIComponent(rSlug).trim() };
+  }
+
+  // 2. Formulário Público (/f/:slug ou ?f=slug)
+  if (urlParams.has('f') || urlParams.has('form')) {
+    const fSlug = urlParams.get('f') || urlParams.get('form') || '';
+    return { mode: 'form', slug: decodeURIComponent(fSlug).trim() };
+  }
+  if (pathname.startsWith('f/')) {
+    const fSlug = pathname.replace(/^f\//, '').trim();
+    return { mode: 'form', slug: decodeURIComponent(fSlug).trim() };
+  }
+
+  // 3. Debutante App
   const paramSlug = urlParams.get('debutante') || urlParams.get('d') || urlParams.get('slug');
   if (paramSlug) {
     return { mode: 'debutante', slug: decodeURIComponent(paramSlug).trim() };
@@ -237,9 +261,8 @@ const parseRouteFromLocation = (): { mode: 'debutante' | 'admin'; slug?: string 
     return { mode: 'admin', slug: '' };
   }
 
-  const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
-  if (path && !path.startsWith('admin') && !path.startsWith('api') && !path.startsWith('assets') && !path.includes('.')) {
-    return { mode: 'debutante', slug: decodeURIComponent(path).trim() };
+  if (pathname && !pathname.startsWith('admin') && !pathname.startsWith('api') && !pathname.startsWith('assets') && !pathname.includes('.')) {
+    return { mode: 'debutante', slug: decodeURIComponent(pathname).trim() };
   }
 
   return { mode: 'admin', slug: 'maria-eduarda-2027' };
@@ -422,6 +445,14 @@ const RootAppRouter: React.FC = () => {
   };
 
   // ── Conditional rendering — AFTER all hooks ──
+
+  if (viewMode === 'tracking_link' && currentDebutanteSlug) {
+    return <PublicTrackingRedirectView slug={currentDebutanteSlug} />;
+  }
+
+  if (viewMode === 'form' && currentDebutanteSlug) {
+    return <PublicFormLandingView slug={currentDebutanteSlug} />;
+  }
 
   if (viewMode === 'admin') {
     return <AdminPortal onOpenDebutanteApp={handleOpenDebutanteApp} />;
