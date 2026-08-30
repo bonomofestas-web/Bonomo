@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  LogOut, CheckSquare,
+  LogOut, CheckSquare, Crown,
   ChevronRight, ChevronLeft, Settings,
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
@@ -17,6 +17,8 @@ export type AdminTabType =
   | 'dashboard' 
   | 'crm' 
   | 'debutantes' 
+  | 'venue-goals'
+  | 'master-dashboard'
   | 'venues' 
   | 'benefits'
   | 'collaborators' 
@@ -87,9 +89,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['master', 'admin', 'crm'] },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
+    { id: 'master-dashboard', label: 'Dashboard Master', icon: <Crown size={17} />, roles: ['master'] },
     { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={17} />, roles: ['master'] },
     { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={17} />, roles: ['master'] },
   ];
@@ -696,18 +700,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         </div>
 
-        {/* 2. Venue Group: Aniversariantes */}
+        {/* 2. Venue Group: Aniversariantes & Metas da Casa */}
         <div>
           {!isCollapsed && (
             <div style={{
               fontSize: '0.62rem',
               fontWeight: 800,
               textTransform: 'uppercase',
-              color: '#9E988D',
+              color: '#D4AF37',
               letterSpacing: '0.8px',
               padding: '0 8px 6px 8px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}>
-              Eventos & Debutantes
+              {activeVenue ? activeVenue.name : 'Gestão da Casa'}
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -715,7 +722,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         </div>
 
-        {/* 3. Master Administration: Colaboradores, Casas de Festa */}
+        {/* 3. Master Administration: Dashboard Master, Colaboradores, Casas de Festa */}
         {userRole === 'master' && (
           <div>
             {!isCollapsed && (
@@ -727,7 +734,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 letterSpacing: '0.8px',
                 padding: '0 8px 6px 8px',
               }}>
-                Rede & Gestão
+                Master
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>

@@ -14,6 +14,8 @@ import { AdminLoginView } from './AdminLoginView';
 import { AdminVenueModal } from './AdminVenueModal';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminSettingsModal } from './AdminSettingsModal';
+import { AdminVenueGoalsView } from './AdminVenueGoalsView';
+import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { Menu, X, Building2 } from 'lucide-react';
@@ -152,6 +154,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         );
       case 'debutantes':
         return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+      case 'venue-goals':
+        return <AdminVenueGoalsView />;
+      case 'master-dashboard':
+        return <AdminMasterDashboardView />;
       case 'benefits':
         return <AdminBenefitsCatalogView />;
       case 'collaborators':

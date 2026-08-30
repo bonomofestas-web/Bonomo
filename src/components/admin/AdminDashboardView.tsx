@@ -18,7 +18,9 @@ interface AdminDashboardViewProps {
   onOpenLead?: (leadId: string) => void;
 }
 
-export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
+export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
+  onNavigateTab,
+}) => {
   const { 
     venues, 
     debutantes, 
@@ -393,7 +395,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
                 ? `Dashboard do Closer • ${currentUser?.name}`
                 : isSdr 
                 ? `Dashboard do SDR • ${currentUser?.name}`
-                : 'Dashboard Master • Gestão Executiva'}
+                : 'Painel Comercial & Performance'}
             </h1>
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontWeight: 500 }}>
@@ -402,15 +404,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
                 Unidade: {activeVenueObj.name}
               </span>
             ) : (
-              <span>Visão Consolidada de Todas as Casas (Rede Geral)</span>
+              <span>Visão Operacional da Equipe • Faturamento, Vendas e Pódios</span>
             )}
           </div>
         </div>
 
-        {/* Action Button: Edit Goals */}
+        {/* Action Button: Go to Venue Goals */}
         <button
           type="button"
-          onClick={() => setSelectedVenueForGoals(activeVenueObj || venues[0] || null)}
+          onClick={() => onNavigateTab ? onNavigateTab('venue-goals') : setSelectedVenueForGoals(activeVenueObj || venues[0] || null)}
           className="adm-btn-secondary"
           style={{
             display: 'flex',
@@ -425,7 +427,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = () => {
           }}
         >
           <Target size={15} />
-          <span>Configurar Metas da Casa</span>
+          <span>Ver Metas da Casa</span>
         </button>
       </div>
 
