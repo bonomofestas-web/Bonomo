@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 
-export type PeriodFilterType = '7d' | 'today' | '30d' | 'this_month' | 'all' | 'custom';
+export type PeriodFilterType = '7d' | 'today' | 'yesterday' | '30d' | 'this_month' | '6m' | 'all' | 'custom';
 
 export interface FilterState {
   period: PeriodFilterType;
@@ -134,8 +134,10 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
     switch (p) {
       case '7d': return 'Últimos 7 Dias (Semana)';
       case 'today': return 'Hoje';
+      case 'yesterday': return 'Ontem';
       case '30d': return 'Últimos 30 Dias';
       case 'this_month': return 'Este Mês';
+      case '6m': return 'Últimos 6 Meses';
       case 'all': return 'Todo o Período';
       case 'custom': 
         if (filters.customStartDate && filters.customEndDate) {
@@ -155,7 +157,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
     filters.period !== '7d' || 
     selectedVenueIds.length > 0 || 
     selectedCollabIds.length > 0 || 
-    selectedDebIds.length > 0 ||
+    selectedDebIds.length > 0 || 
     (filters.category && filters.category !== 'all');
 
   return (
@@ -233,10 +235,12 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                 </div>
 
                 {[
-                  { id: '7d', label: 'Últimos 7 Dias (Padrão)', desc: 'Visualização da semana atual' },
-                  { id: 'today', label: 'Hoje', desc: 'Atividades e dados do dia' },
-                  { id: '30d', label: 'Últimos 30 Dias', desc: 'Desempenho no último mês corrido' },
-                  { id: 'this_month', label: 'Este Mês', desc: 'Do dia 1º até hoje' },
+                  { id: '7d', label: 'Últimos 7 Dias (Padrão)', desc: 'Visualização da semana vs semana anterior' },
+                  { id: 'today', label: 'Hoje', desc: 'Atividades do dia vs ontem' },
+                  { id: 'yesterday', label: 'Ontem', desc: 'Atividades de ontem vs anteontem' },
+                  { id: '30d', label: 'Últimos 30 Dias', desc: 'Desempenho no último mês vs mês anterior' },
+                  { id: 'this_month', label: 'Este Mês', desc: 'Do dia 1º até hoje vs mês anterior' },
+                  { id: '6m', label: 'Últimos 6 Meses', desc: 'Visão semestral vs semestre anterior' },
                   { id: 'all', label: 'Todo o Período', desc: 'Histórico completo acumulado' },
                 ].map(opt => {
                   const isSelected = filters.period === opt.id;

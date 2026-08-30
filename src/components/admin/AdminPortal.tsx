@@ -38,10 +38,15 @@ const ROLE_COLORS: Record<string, string> = {
   closer: '#F97316',
 };
 
+import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
+
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
   const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, funnels } = useAdminState();
+  
+  // Track active focus time for collaborators
+  useActiveTimeTracker(currentUser);
   const [activeTab, setActiveTab] = useState<AdminTabType>('home');
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);

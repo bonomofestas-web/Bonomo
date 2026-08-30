@@ -73,7 +73,34 @@ export interface Venue {
   leadDistributionMode?: 'queue' | 'round_robin'; // 'queue' = SDRs puxam, 'round_robin' = automático
   leadDistributionSdrIds?: string[]; // IDs dos SDRs ativos na distribuição desta casa
   roundRobinNextIndex?: number; // Índice do próximo SDR na fila round robin
+  goals?: VenueGoals; // Metas individuais da casa
 }
+
+export interface VenueGoals {
+  revenueTarget: number;            // Meta de faturamento em R$ (ex: R$ 150.000)
+  salesTarget: number;              // Meta de vendas/fechamentos (ex: 12)
+  leadsTarget: number;              // Meta de leads captados (ex: 60)
+  responseTimeTargetMinutes: number; // Meta de tempo de resposta em minutos (ex: 15 min)
+  period: 'monthly' | 'quarterly' | 'yearly';
+  deadlineDate?: string;
+}
+
+export interface CollaboratorTimeLog {
+  collaboratorId: string;
+  collaboratorName: string;
+  date: string; // YYYY-MM-DD
+  activeSeconds: number; // Segundos com a aba ativa e focada
+  lastActiveTimestamp: number;
+}
+
+export type LeadSource = 
+  | 'indicacao'      // Indicação da Debutante / App
+  | 'instagram'      // Redes Sociais / Instagram Direct
+  | 'trafego_pago'   // Anúncios Meta Ads / Google Ads
+  | 'whatsapp'       // WhatsApp Direto
+  | 'parceria'       // Parceiros / Cerimonialistas
+  | 'evento_externo' // Evento / Feira
+  | 'outro';
 
 export interface LeadGoal {
   target: number;
@@ -174,6 +201,8 @@ export interface Lead {
   name: string;
   phone: string;
   email?: string;
+  source?: LeadSource;       // Origem do Lead (Indicação, Instagram, Tráfego Pago, WhatsApp, etc)
+  responseTimeMinutes?: number; // Tempo de resposta do atendimento em minutos
   neighborhood?: string; // Bairro
   address?: string;      // Endereço completo
 

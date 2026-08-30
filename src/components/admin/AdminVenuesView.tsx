@@ -8,6 +8,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { AdminVenueGoalsModal } from './AdminVenueGoalsModal';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
 import type { Venue } from '../../types/admin';
 
@@ -178,6 +179,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [venueToDelete, setVenueToDelete] = useState<Venue | null>(null);
   const [isPlayingVideoModal, setIsPlayingVideoModal] = useState(false);
+  const [venueForGoalsModal, setVenueForGoalsModal] = useState<Venue | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -555,6 +557,24 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setVenueForGoalsModal(selectedVenue)}
+              className="adm-btn-secondary"
+              style={{
+                borderRadius: '10px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                borderColor: 'var(--adm-accent)',
+                color: 'var(--adm-accent)',
+              }}
+            >
+              <Target size={14} />
+              <span>Metas da Casa</span>
+            </button>
             <button
               type="button"
               onClick={() => handleOpenEdit(selectedVenue)}
@@ -1332,6 +1352,13 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         title="Remover Casa de Festa"
         itemName={venueToDelete?.name}
         message={venueToDelete ? `Tem certeza que deseja remover a casa de festa "${venueToDelete.name}"? Esta ação não poderá ser desfeita.` : undefined}
+      />
+
+      {/* Modal de Metas da Casa */}
+      <AdminVenueGoalsModal
+        isOpen={!!venueForGoalsModal}
+        onClose={() => setVenueForGoalsModal(null)}
+        venue={venueForGoalsModal}
       />
     </div>
   );
