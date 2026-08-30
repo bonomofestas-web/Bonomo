@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION } from '../../types/admin';
+import type { Venue } from '../../types/admin';
 
 export type AdminTabType = 
   | 'home'
@@ -75,7 +76,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   }, []);
 
   const userRole = currentUser?.role || 'master';
-  const activeVenue = venues.find(v => v.id === activeVenueId);
+  const activeVenue = venues.find(v => v.id === activeVenueId) || null;
 
   // Grouped Navigation Items with updated concise labels
   const globalItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
@@ -107,7 +108,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     });
   }, [funnels, activeVenueId]);
 
-  const renderSidebarFunnelIcon = (iconName: string, size = 15, color = '#D4AF37') => {
+  const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
     switch (iconName) {
       case 'sparkles': return <Sparkles size={size} color={color} />;
       case 'flame': return <Flame size={size} color={color} />;
@@ -127,6 +128,79 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       case 'camera': return <Camera size={size} color={color} />;
       default: return <Target size={size} color={color} />;
     }
+  };
+
+  // Helper to render Venue Logo / Icon with Square Background
+  const renderVenueIconBadge = (v?: Venue | null, size = 28, isRound = false) => {
+    if (!v || !v.id || v.id === 'all') {
+      return (
+        <div style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: isRound ? '50%' : '8px',
+          background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%)',
+          border: '1px solid rgba(212, 175, 55, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Globe size={Math.round(size * 0.55)} color="#D4AF37" />
+        </div>
+      );
+    }
+
+    if (v.logoUrl) {
+      return (
+        <div style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: isRound ? '50%' : '8px',
+          background: '#1A1622',
+          border: '1px solid rgba(212, 175, 55, 0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          overflow: 'hidden',
+          padding: '2px',
+          boxSizing: 'border-box',
+        }}>
+          <img
+            src={v.logoUrl}
+            alt={v.name}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              borderRadius: isRound ? '50%' : '6px',
+              display: 'block',
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Fallback Monogram
+    return (
+      <div style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: isRound ? '50%' : '8px',
+        background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(212, 175, 55, 0.08) 100%)',
+        border: '1px solid rgba(212, 175, 55, 0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        color: '#D4AF37',
+        fontWeight: 900,
+        fontSize: `${Math.round(size * 0.42)}px`,
+        fontFamily: "'Cinzel', serif",
+      }}>
+        {v.name.slice(0, 1).toUpperCase()}
+      </div>
+    );
   };
 
   const handleTabClick = (tabId: AdminTabType, funnelId?: string | null) => {
@@ -247,7 +321,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       color: '#FFFFFF',
       transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     }}>
-      {/* Brand Header with Reduced Logo, Collapse Toggle & Mobile Close */}
+      {/* Brand Header: Collapsed shows 'B' on top + Arrow Button below / Expanded shows logo + toggle */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -258,22 +332,73 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         position: 'relative',
       }}>
         {isCollapsed && !isMobileOverlay ? (
-          <div 
-            onClick={onToggleCollapse}
-            title="Expandir Menu Lateral"
-            style={{ 
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
-              background: 'rgba(212, 175, 55, 0.12)',
-              border: '1px solid rgba(212, 175, 55, 0.3)',
-            }}
-          >
-            <Sparkles size={18} color="#D4AF37" />
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            width: '100%',
+          }}>
+            {/* Letra B Dourada no Topo */}
+            <div 
+              title="Bonomo Festas"
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                background: '#141118',
+                border: '1.5px solid #D4AF37',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 14px rgba(212, 175, 55, 0.25)',
+                overflow: 'hidden',
+              }}
+            >
+              <img
+                src="/logo_b_transparent.png"
+                alt="Bonomo"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+
+            {/* Botãozinho com a setinha para abrir de novo */}
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Expandir Menu Lateral"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(212, 175, 55, 0.3)',
+                color: '#D4AF37',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              <ChevronRight size={18} />
+            </button>
           </div>
         ) : (
           <>
@@ -349,29 +474,30 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         )}
       </div>
 
-      {/* Luxury Custom Venue Switcher Popover */}
+      {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
       {(userRole === 'master' || allowedVenues.length > 1) && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '14px' }}>
           {isCollapsed && !isMobileOverlay ? (
             <button
               type="button"
               onClick={() => setIsVenueDropdownOpen(v => !v)}
-              title={activeVenue?.name || 'Todas as Casas'}
+              title={activeVenue?.name || 'Todas as Casas (Rede Geral)'}
               style={{
                 width: '44px',
                 height: '44px',
                 margin: '0 auto',
                 background: '#141118',
-                border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                borderRadius: '10px',
+                border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.3)'}`,
+                borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                color: '#D4AF37',
+                padding: 0,
+                transition: 'all 0.15s ease',
               }}
             >
-              <Building2 size={18} />
+              {renderVenueIconBadge(activeVenue, 36)}
             </button>
           ) : (
             <button
@@ -393,19 +519,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                <div style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '7px',
-                  background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%)',
-                  border: '1px solid rgba(212, 175, 55, 0.4)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Building2 size={13} color="#D4AF37" />
-                </div>
+                {renderVenueIconBadge(activeVenue, 28)}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: '0.58rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
                     Unidade
@@ -441,7 +555,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               top: '100%',
               left: isCollapsed ? '50px' : 0,
               right: isCollapsed ? undefined : 0,
-              width: isCollapsed ? '210px' : undefined,
+              width: isCollapsed ? '220px' : undefined,
               marginTop: '6px',
               background: '#141118',
               border: '1px solid rgba(212, 175, 55, 0.35)',
@@ -476,7 +590,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     gap: '8px',
                   }}
                 >
-                  <Globe size={13} color="#D4AF37" />
+                  {renderVenueIconBadge(null, 24)}
                   <span>Todas as Casas (Rede Geral)</span>
                 </button>
               )}
@@ -507,7 +621,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       gap: '8px',
                     }}
                   >
-                    <Building2 size={13} color={isSelected ? '#D4AF37' : '#9E988D'} />
+                    {renderVenueIconBadge(venue, 24)}
                     <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {venue.name}
                     </span>
@@ -570,7 +684,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      <span>{renderSidebarFunnelIcon(f.icon || 'target', 13, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
+                      <span>{renderSidebarFunnelIcon(f.icon, 13, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
                       <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {f.name}
                       </span>
