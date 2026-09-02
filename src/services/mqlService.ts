@@ -139,27 +139,7 @@ export const mqlService = {
     }
   },
 
-  async ensureDefaultQuestions(venues: Venue[]): Promise<MqlQuestion[]> {
-    if (!isSupabaseConfigured || venues.length === 0) return [];
-    try {
-      const existing = await this.getAll();
-      const allDefaults: MqlQuestion[] = [];
-
-      for (const venue of venues) {
-        const hasQuestions = existing.some(q => q.venueId === venue.id);
-        if (!hasQuestions) {
-          const defaults = createDefaultMqlQuestionsForVenue(venue.id);
-          for (const q of defaults) {
-            await this.upsert(q);
-            allDefaults.push(q);
-          }
-        }
-      }
-
-      return [...existing, ...allDefaults];
-    } catch (err) {
-      console.error('Falha ao garantir perguntas padrão de MQL:', err);
-      return [];
-    }
+  async ensureDefaultQuestions(_venues: Venue[]): Promise<MqlQuestion[]> {
+    return [];
   },
 };

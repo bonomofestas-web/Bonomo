@@ -1,22 +1,47 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Target, DollarSign, Award, Users, Clock, 
-  Building2
+  Plus, Calendar, CheckCircle2,
+  TrendingUp, Edit3, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminVenueGoalsModal } from './AdminVenueGoalsModal';
 import type { VenueGoals } from '../../types/admin';
 
-export const AdminVenueGoalsView: React.FC = () => {
-  const { venues, activeVenueId, leads, debutantes } = useAdminState();
+interface GoalCardConfig {
+  id: string;
+  type: 'sales' | 'revenue' | 'leads' | 'visits' | 'qualifications';
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  iconColor: string;
+  iconBg: string;
+  currentValue: number;
+  targetValue: number;
+  unit: string;
+  prefix?: string;
+  deadline?: string;
+}
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+export const AdminVenueGoalsView: React.FC = () => {
+  const { venues, activeVenueId, leads, updateVenue } = useAdminState();
+
+  const isAllVenues = !activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi';
 
   const selectedVenue = useMemo(() => {
     return venues.find(v => v.id === activeVenueId) || venues[0] || null;
   }, [venues, activeVenueId]);
 
-  const venueGoals: VenueGoals = useMemo(() => {
+  // Modal State for Adding/Editing a Goal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalGoalType, setModalGoalType] = useState<'sales' | 'revenue' | 'leads' | 'visits'>('sales');
+  const [modalTargetValue, setModalTargetValue] = useState<number>(15);
+  const [modalDeadlineDate, setModalDeadlineDate] = useState<string>(() => {
+    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+    return endOfMonth.toISOString().split('T')[0];
+  });
+
+  // Current Goals Config for the venue
+  const goals: VenueGoals = useMemo(() => {
     if (selectedVenue?.goals) return selectedVenue.goals;
     return {
       revenueTarget: 150000,
@@ -24,411 +49,476 @@ export const AdminVenueGoalsView: React.FC = () => {
       leadsTarget: 60,
       responseTimeTargetMinutes: 15,
       period: 'monthly',
+      deadlineDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
     };
   }, [selectedVenue]);
 
-  // Scoped metrics for this specific venue
-  const venueLeads = useMemo(() => {
-    if (!selectedVenue) return leads;
-    return leads.filter(l => l.venueId === selectedVenue.id);
-  }, [leads, selectedVenue]);
-
-  const venueDebutantes = useMemo(() => {
-    if (!selectedVenue) return debutantes;
-    return debutantes.filter(d => d.venueId === selectedVenue.id);
-  }, [debutantes, selectedVenue]);
+  // Scoped metrics
+  const scopedLeads = useMemo(() => {
+    if (isAllVenues) return leads;
+    return leads.filter(l => l.venueId === selectedVenue?.id);
+  }, [leads, isAllVenues, selectedVenue]);
 
   const soldLeads = useMemo(() => {
-    return venueLeads.filter(l => l.stage === 'contract_signed');
-  }, [venueLeads]);
+    return scopedLeads.filter(l => l.stage === 'contract_signed');
+  }, [scopedLeads]);
 
   const totalRevenue = useMemo(() => {
     return soldLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
   }, [soldLeads]);
 
   const totalSalesCount = soldLeads.length;
-  const totalLeadsCount = venueLeads.length;
-  const meetingLeads = venueLeads.filter(l => l.stage === 'meeting_scheduled');
+  const totalLeadsCount = scopedLeads.length;
+  const meetingLeadsCount = scopedLeads.filter(l => l.stage === 'meeting_scheduled').length;
+  const qualifiedIcpCount = scopedLeads.filter(l => (l.mqlScore ?? 0) >= 50 || l.mqlLevel === 'top' || l.mqlLevel === 'qualified').length;
 
-  // Percentages towards goals
-  const revenuePct = Math.min(100, Math.round((totalRevenue / (venueGoals.revenueTarget || 1)) * 100));
-  const salesPct = Math.min(100, Math.round((totalSalesCount / (venueGoals.salesTarget || 1)) * 100));
-  const leadsPct = Math.min(100, Math.round((totalLeadsCount / (venueGoals.leadsTarget || 1)) * 100));
-  const avgResponseTime = 12; // Minutos médio de atendimento calculado
+  // Build Stacked Goal Cards
+  const goalCards: GoalCardConfig[] = useMemo(() => {
+    return [
+      {
+        id: 'goal_sales',
+        type: 'sales',
+        title: 'Meta de Contratos Fechados',
+        subtitle: 'Número de celebrações e contratos fechados pela equipe',
+        icon: <Award size={22} />,
+        iconColor: '#10B981',
+        iconBg: 'rgba(16, 185, 129, 0.15)',
+        currentValue: totalSalesCount,
+        targetValue: goals.salesTarget || 12,
+        unit: 'contratos',
+        deadline: goals.deadlineDate,
+      },
+      {
+        id: 'goal_revenue',
+        type: 'revenue',
+        title: 'Meta de Faturamento Bruto',
+        subtitle: 'Volume total de faturamento gerado em contratos fechados',
+        icon: <DollarSign size={22} />,
+        iconColor: '#D4AF37',
+        iconBg: 'rgba(212, 175, 55, 0.15)',
+        currentValue: totalRevenue,
+        targetValue: goals.revenueTarget || 150000,
+        unit: '',
+        prefix: 'R$ ',
+        deadline: goals.deadlineDate,
+      },
+      {
+        id: 'goal_leads',
+        type: 'leads',
+        title: 'Meta de Captação de Leads',
+        subtitle: 'Novos contatos e oportunidades comerciais captadas no período',
+        icon: <Users size={22} />,
+        iconColor: '#3B82F6',
+        iconBg: 'rgba(59, 130, 246, 0.15)',
+        currentValue: totalLeadsCount,
+        targetValue: goals.leadsTarget || 60,
+        unit: 'leads',
+        deadline: goals.deadlineDate,
+      },
+      {
+        id: 'goal_visits',
+        type: 'visits',
+        title: 'Meta de Visitas & Degustações',
+        subtitle: 'Reuniões presenciais e visitas ao espaço agendadas',
+        icon: <Calendar size={22} />,
+        iconColor: '#8B5CF6',
+        iconBg: 'rgba(139, 92, 246, 0.15)',
+        currentValue: meetingLeadsCount,
+        targetValue: Math.round((goals.salesTarget || 12) * 1.8),
+        unit: 'visitas',
+        deadline: goals.deadlineDate,
+      },
+      {
+        id: 'goal_qualifications',
+        type: 'qualifications',
+        title: 'Meta de Leads Qualificados (ICP A e B)',
+        subtitle: 'Leads com alta e média probabilidade identificados pelo SDR',
+        icon: <CheckCircle2 size={22} />,
+        iconColor: '#EC4899',
+        iconBg: 'rgba(236, 72, 153, 0.15)',
+        currentValue: qualifiedIcpCount,
+        targetValue: Math.round((goals.leadsTarget || 60) * 0.4),
+        unit: 'leads ICP',
+        deadline: goals.deadlineDate,
+      },
+    ];
+  }, [totalSalesCount, totalRevenue, totalLeadsCount, meetingLeadsCount, qualifiedIcpCount, goals]);
+
+  // Calculate Days Remaining
+  const getDaysRemaining = (deadline?: string) => {
+    if (!deadline) return null;
+    const target = new Date(deadline);
+    const now = new Date();
+    const diffTime = target.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return 'Prazo encerrado';
+    if (diffDays === 0) return 'Termina hoje';
+    return `${diffDays} dias restantes`;
+  };
+
+  const handleOpenAddModal = (type?: 'sales' | 'revenue' | 'leads' | 'visits') => {
+    if (type) {
+      setModalGoalType(type);
+      if (type === 'sales') setModalTargetValue(goals.salesTarget || 15);
+      if (type === 'revenue') setModalTargetValue(goals.revenueTarget || 180000);
+      if (type === 'leads') setModalTargetValue(goals.leadsTarget || 80);
+      if (type === 'visits') setModalTargetValue(25);
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSaveGoal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVenue) return;
+
+    const currentGoals = selectedVenue.goals || goals;
+    const updatedGoals: VenueGoals = {
+      ...currentGoals,
+      deadlineDate: modalDeadlineDate,
+      period: 'monthly',
+    };
+
+    if (modalGoalType === 'sales') updatedGoals.salesTarget = Number(modalTargetValue);
+    if (modalGoalType === 'revenue') updatedGoals.revenueTarget = Number(modalTargetValue);
+    if (modalGoalType === 'leads') updatedGoals.leadsTarget = Number(modalTargetValue);
+
+    updateVenue(selectedVenue.id, {
+      goals: updatedGoals,
+    });
+
+    setIsModalOpen(false);
+  };
 
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       gap: '24px',
-      padding: '24px 32px 60px 32px',
-      maxWidth: '1440px',
+      padding: '28px 32px 60px',
+      maxWidth: '1200px',
       margin: '0 auto',
-      animation: 'fadeIn 0.25s ease-out',
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      width: '100%',
       boxSizing: 'border-box',
+      animation: 'fadeIn 0.2s ease-out',
     }}>
       
-      {/* ── Header: Venue Title & Edit Goals Button ───────────────────────── */}
+      {/* ── HEADER ── */}
       <div style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'space-between',
+        gap: '20px',
         flexWrap: 'wrap',
-        gap: '16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {selectedVenue?.logoUrl ? (
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '14px',
-              background: '#1A1622',
-              border: '1.5px solid rgba(212, 175, 55, 0.4)',
-              padding: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-            }}>
-              <img
-                src={selectedVenue.logoUrl}
-                alt={selectedVenue.name}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
-            </div>
-          ) : (
-            <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '14px',
-              background: 'var(--adm-accent-bg)',
-              border: '1.5px solid var(--adm-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--adm-accent)',
-            }}>
-              <Building2 size={24} />
-            </div>
-          )}
-
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%)',
+            border: '1px solid rgba(212, 175, 55, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#D4AF37',
+            flexShrink: 0,
+          }}>
+            <Target size={24} />
+          </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{
-                fontSize: '1.45rem',
-                fontWeight: 900,
-                color: 'var(--adm-text-title)',
-                margin: 0,
-                letterSpacing: '-0.4px',
-              }}>
-                Metas & Desempenho • {selectedVenue?.name || 'Casa de Festas'}
-              </h1>
-              <span style={{
-                background: 'var(--adm-accent-bg)',
-                color: 'var(--adm-accent)',
-                fontSize: '0.68rem',
-                fontWeight: 800,
-                padding: '2px 8px',
-                borderRadius: '8px',
-                border: '1px solid rgba(212,175,55,0.3)',
-                textTransform: 'uppercase',
-              }}>
-                {venueGoals.period === 'monthly' ? 'Ciclo Mensal' : venueGoals.period === 'quarterly' ? 'Trimestral' : 'Anual'}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Acompanhamento de metas comerciais, captação de indicações e tempo de resposta
-            </div>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
+              Metas Comerciais • {isAllVenues ? 'Todas as Casas' : selectedVenue?.name}
+            </h1>
+            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '4px' }}>
+              Acompanhe o progresso em tempo real das metas de fechamento, faturamento, captação e visitas.
+            </p>
           </div>
         </div>
 
+        {/* Action Button: Adicionar / Editar Meta */}
         <button
           type="button"
-          onClick={() => setIsEditModalOpen(true)}
+          onClick={() => handleOpenAddModal()}
           className="adm-btn-primary"
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '10px 18px',
+            padding: '10px 20px',
             borderRadius: '12px',
-            fontSize: '0.82rem',
+            fontSize: '0.84rem',
             fontWeight: 800,
+            boxShadow: '0 4px 16px rgba(212, 175, 55, 0.25)',
           }}
         >
-          <Target size={16} />
-          <span>Configurar Metas da Unidade</span>
+          <Plus size={16} />
+          <span>Configurar Metas</span>
         </button>
       </div>
 
-      {/* ── 4 CARDS PRINCIPAIS DE METAS DA CASA ───────────────────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '18px',
-      }}>
-        
-        {/* Card 1: Faturamento R$ */}
-        <div className="saas-card" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(16, 185, 129, 0.05) 100%)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '20px',
-          gap: '14px',
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Faturamento em Contratos
-              </span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-                <DollarSign size={18} />
-              </div>
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '6px', letterSpacing: '-0.5px' }}>
-              R$ {totalRevenue.toLocaleString('pt-BR')}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Alvo da Casa: <strong style={{ color: 'var(--adm-text-title)' }}>R$ {venueGoals.revenueTarget.toLocaleString('pt-BR')}</strong>
-            </div>
-          </div>
+      {/* ── STACKED GOALS CARDS (Cards Empilhados um acima do outro) ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {goalCards.map((g) => {
+          const pct = Math.min(100, Math.round((g.currentValue / (g.targetValue || 1)) * 100));
+          const isCompleted = pct >= 100;
+          const daysInfo = getDaysRemaining(g.deadline);
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px' }}>
-              <span style={{ color: 'var(--adm-text-muted)' }}>Progresso da Meta</span>
-              <span style={{ color: revenuePct >= 100 ? '#10B981' : 'var(--adm-accent)', fontWeight: 800 }}>{revenuePct}%</span>
-            </div>
-            <div style={{ height: '8px', background: 'var(--adm-bg-input)', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${revenuePct}%`, height: '100%', background: 'linear-gradient(90deg, #10B981 0%, #059669 100%)', borderRadius: '10px', transition: 'width 0.4s ease' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Vendas Fechadas */}
-        <div className="saas-card" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(212, 175, 55, 0.05) 100%)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '20px',
-          gap: '14px',
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Vendas / Contratos Fechados
-              </span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--adm-accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-accent)' }}>
-                <Award size={18} />
-              </div>
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '6px', letterSpacing: '-0.5px' }}>
-              {totalSalesCount} <span style={{ fontSize: '0.9rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>contratos</span>
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Alvo da Casa: <strong style={{ color: 'var(--adm-text-title)' }}>{venueGoals.salesTarget} vendas</strong>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px' }}>
-              <span style={{ color: 'var(--adm-text-muted)' }}>Progresso da Meta</span>
-              <span style={{ color: salesPct >= 100 ? '#10B981' : 'var(--adm-accent)', fontWeight: 800 }}>{salesPct}%</span>
-            </div>
-            <div style={{ height: '8px', background: 'var(--adm-bg-input)', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${salesPct}%`, height: '100%', background: 'linear-gradient(90deg, #D4AF37 0%, #B89628 100%)', borderRadius: '10px', transition: 'width 0.4s ease' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Leads & Captação */}
-        <div className="saas-card" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(59, 130, 246, 0.05) 100%)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '20px',
-          gap: '14px',
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Leads & Indicações no Funil
-              </span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
-                <Users size={18} />
-              </div>
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '6px', letterSpacing: '-0.5px' }}>
-              {totalLeadsCount} <span style={{ fontSize: '0.9rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>leads</span>
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Alvo da Casa: <strong style={{ color: 'var(--adm-text-title)' }}>{venueGoals.leadsTarget} leads</strong>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px' }}>
-              <span style={{ color: 'var(--adm-text-muted)' }}>Progresso da Meta</span>
-              <span style={{ color: leadsPct >= 100 ? '#10B981' : '#3B82F6', fontWeight: 800 }}>{leadsPct}%</span>
-            </div>
-            <div style={{ height: '8px', background: 'var(--adm-bg-input)', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${leadsPct}%`, height: '100%', background: 'linear-gradient(90deg, #3B82F6 0%, #1D4ED8 100%)', borderRadius: '10px', transition: 'width 0.4s ease' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Tempo de Resposta (TMA) */}
-        <div className="saas-card" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(245, 158, 11, 0.05) 100%)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '20px',
-          gap: '14px',
-        }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Tempo de Resposta (TMA)
-              </span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F59E0B' }}>
-                <Clock size={18} />
-              </div>
-            </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#10B981', marginTop: '6px', letterSpacing: '-0.5px' }}>
-              {avgResponseTime} <span style={{ fontSize: '0.9rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>minutos</span>
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Tempo Máx Permitido: <strong style={{ color: 'var(--adm-text-title)' }}>{venueGoals.responseTimeTargetMinutes} min</strong>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px' }}>
-              <span style={{ color: 'var(--adm-text-muted)' }}>Status de Eficiência</span>
-              <span style={{ color: '#10B981', fontWeight: 800 }}>⚡ Dentro da Meta</span>
-            </div>
-            <div style={{ height: '8px', background: 'var(--adm-bg-input)', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: '85%', height: '100%', background: 'linear-gradient(90deg, #10B981 0%, #059669 100%)', borderRadius: '10px' }} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── DETALHES DE PERFORMANCE & ANIVERSARIANTES VINCULADAS ──────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '20px',
-      }}>
-        {/* Resumo do Funil da Casa */}
-        <div className="saas-card" style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-            Etapas do Funil da Casa
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--adm-text-body)' }}>Novos Leads Recebidos</span>
-              <strong style={{ color: 'var(--adm-text-title)' }}>{totalLeadsCount}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--adm-text-body)' }}>Reuniões & Degustações Agendadas</span>
-              <strong style={{ color: '#8B5CF6' }}>{meetingLeads.length}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--adm-text-body)' }}>Contratos Fechados</span>
-              <strong style={{ color: '#10B981' }}>{totalSalesCount}</strong>
-            </div>
-          </div>
-        </div>
-
-        {/* Aniversariantes Ativas da Casa */}
-        <div className="saas-card" style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '20px',
-          padding: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-              Aniversariantes Vinculadas
-            </h3>
-            <span style={{ background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.72rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px' }}>
-              {venueDebutantes.length} ativas
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {venueDebutantes.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px', color: 'var(--adm-text-muted)', fontSize: '0.82rem' }}>
-                Nenhuma aniversariante cadastrada nesta unidade.
-              </div>
-            ) : (
-              venueDebutantes.slice(0, 4).map(deb => (
-                <div
-                  key={deb.id}
-                  style={{
+          return (
+            <div
+              key={g.id}
+              style={{
+                background: 'var(--adm-bg-card)',
+                border: isCompleted ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--adm-border)',
+                borderRadius: '18px',
+                padding: '22px 24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+                boxShadow: isCompleted ? '0 8px 24px rgba(16, 185, 129, 0.08)' : '0 4px 14px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {/* Card Top Row: Icon, Title & Actions */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '12px',
+                    background: g.iconBg,
+                    color: g.iconColor,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    background: 'var(--adm-bg-input)',
-                    borderRadius: '10px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img
-                      src={deb.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop&q=80'}
-                      alt={deb.name}
-                      style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                        {deb.name}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                        {deb.partyDate ? new Date(deb.partyDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Data a definir'}
-                      </div>
-                    </div>
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {g.icon}
                   </div>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)' }}>
-                    {(deb as any).points || 0} pts
+                  <div>
+                    <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
+                      {g.title}
+                    </h3>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '2px' }}>
+                      {g.subtitle}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Status & Edit Button */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {g.deadline && (
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      background: 'var(--adm-bg-input)',
+                      color: 'var(--adm-text-muted)',
+                      border: '1px solid var(--adm-border)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}>
+                      <Clock size={12} />
+                      <span>{daysInfo}</span>
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddModal(g.type as any)}
+                    className="adm-btn-secondary"
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <Edit3 size={13} />
+                    <span>Ajustar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress & Values Row */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap',
+              }}>
+                {/* Current vs Target Value */}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--adm-text-title)', fontFamily: "'Poppins', sans-serif" }}>
+                    {g.prefix ? `${g.prefix}${g.currentValue.toLocaleString('pt-BR')}` : g.currentValue.toLocaleString('pt-BR')}
+                  </span>
+                  <span style={{ fontSize: '0.92rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
+                    / {g.prefix ? `${g.prefix}${g.targetValue.toLocaleString('pt-BR')}` : `${g.targetValue.toLocaleString('pt-BR')} ${g.unit}`}
                   </span>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+
+                {/* Percentage Achieved Badge */}
+                <div style={{
+                  fontSize: '0.86rem',
+                  fontWeight: 900,
+                  padding: '4px 12px',
+                  borderRadius: '8px',
+                  background: isCompleted ? 'rgba(16, 185, 129, 0.15)' : pct >= 50 ? 'rgba(212, 175, 55, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: isCompleted ? '#10B981' : pct >= 50 ? '#D4AF37' : '#60A5FA',
+                  border: `1px solid ${isCompleted ? 'rgba(16, 185, 129, 0.3)' : pct >= 50 ? 'rgba(212, 175, 55, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <TrendingUp size={15} />
+                  <span>{pct}% Atingido</span>
+                </div>
+              </div>
+
+              {/* Visual Progress Bar */}
+              <div style={{
+                width: '100%',
+                height: '8px',
+                borderRadius: '4px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${Math.max(pct, 3)}%`,
+                  height: '100%',
+                  background: isCompleted
+                    ? 'linear-gradient(90deg, #10B981 0%, #34D399 100%)'
+                    : pct >= 50
+                    ? 'linear-gradient(90deg, #D4AF37 0%, #F59E0B 100%)'
+                    : 'linear-gradient(90deg, #3B82F6 0%, #60A5FA 100%)',
+                  borderRadius: '4px',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Modal de Configuração de Metas */}
-      <AdminVenueGoalsModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        venue={selectedVenue}
-      />
+      {/* ── MODAL: CONFIGURAR META ── */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px',
+        }}>
+          <div style={{
+            background: '#141118',
+            border: '1.5px solid rgba(212, 175, 55, 0.4)',
+            borderRadius: '20px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '18px',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.9)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Target size={20} color="var(--adm-accent)" />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
+                  Definir Meta da Casa
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#9E988D', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveGoal} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Goal Type */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
+                  Tipo de Meta
+                </label>
+                <select
+                  value={modalGoalType}
+                  onChange={(e) => setModalGoalType(e.target.value as any)}
+                  className="adm-input"
+                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
+                >
+                  <option value="sales">Meta de Contratos Fechados</option>
+                  <option value="revenue">Meta de Faturamento (R$)</option>
+                  <option value="leads">Meta de Captação de Leads</option>
+                  <option value="visits">Meta de Visitas & Degustações</option>
+                </select>
+              </div>
+
+              {/* Target Value */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
+                  Valor Alvo {modalGoalType === 'revenue' ? '(em R$)' : '(Quantidade)'} *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={modalTargetValue}
+                  onChange={(e) => setModalTargetValue(Number(e.target.value))}
+                  className="adm-input"
+                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 800 }}
+                  required
+                />
+              </div>
+
+              {/* Deadline Date */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
+                  Data Limite / Fim do Período *
+                </label>
+                <input
+                  type="date"
+                  value={modalDeadlineDate}
+                  onChange={(e) => setModalDeadlineDate(e.target.value)}
+                  className="adm-input"
+                  style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
+                  required
+                />
+              </div>
+
+              {/* Form Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="adm-btn-secondary"
+                  style={{ padding: '10px 18px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 700 }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="adm-btn-primary"
+                  style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 900 }}
+                >
+                  Salvar Meta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

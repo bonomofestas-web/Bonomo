@@ -2274,12 +2274,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           {viewMode === 'kanban' && (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, minmax(220px, 1fr))',
-              gap: '12px',
+              gridTemplateColumns: `repeat(${columns.length}, minmax(260px, 1fr))`,
+              gap: '14px',
               overflowX: 'auto',
-              paddingBottom: '16px',
-              minHeight: '520px',
+              paddingBottom: '20px',
               width: '100%',
+              boxSizing: 'border-box',
             }}>
               {columns.map(col => {
                 const columnLeads = filteredLeads.filter(l => l.stage === col.id);
@@ -2295,8 +2295,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       borderRadius: '14px',
                       display: 'flex',
                       flexDirection: 'column',
-                      maxHeight: '75vh',
-                      minWidth: '220px',
+                      height: 'calc(100vh - 270px)',
+                      minHeight: '520px',
+                      minWidth: '260px',
                     }}
                   >
                     {/* Column Header */}
@@ -2484,7 +2485,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 </span>
                               </div>
 
-                              {/* MQL Progress Bar in Kanban Card Bottom */}
+                              {/* ICP Progress Bar in Kanban Card Bottom */}
                               {(() => {
                                 const score = lead.mqlScore ?? 0;
                                 const isTop = score >= 80 || lead.mqlLevel === 'top';
@@ -2492,7 +2493,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 const color = isTop ? '#10B981' : isQualified ? '#F59E0B' : '#EF4444';
                                 const bgBadge = isTop ? 'rgba(16, 185, 129, 0.15)' : isQualified ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
                                 const borderBadge = isTop ? 'rgba(16, 185, 129, 0.3)' : isQualified ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                                const label = isTop ? 'Top' : isQualified ? 'Qualificado' : 'Frio';
+                                const label = isTop ? 'ICP A' : isQualified ? 'ICP B' : 'ICP C';
 
                                 return (
                                   <div style={{
@@ -2506,7 +2507,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.66rem' }}>
                                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                                         <Thermometer size={12} color={color} />
-                                        <span>MQL {label}</span>
+                                        <span>{label}</span>
                                       </span>
                                       <span style={{
                                         fontWeight: 800,

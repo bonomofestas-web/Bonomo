@@ -97,7 +97,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['master', 'admin', 'crm'] },
     { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['master', 'admin', 'crm'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
-    { id: 'mql', label: 'MQL', icon: <Thermometer size={17} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'mql', label: 'ICP', icon: <Thermometer size={17} />, roles: ['master', 'admin', 'crm'] },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
@@ -347,7 +347,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       color: '#FFFFFF',
       transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     }}>
-      {/* Brand Header: Collapsed shows 'B' on top + Arrow Button below / Expanded shows logo + toggle */}
+      {/* Brand Header: F5 System Logo */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -365,35 +365,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             gap: '10px',
             width: '100%',
           }}>
-            {/* Letra B Dourada no Topo */}
+            {/* F5 Quadrado Dourado no Topo */}
             <div 
-              title="Bonomo Festas"
+              title="F5 System"
               style={{
                 width: '40px',
                 height: '40px',
                 borderRadius: '10px',
-                background: '#141118',
+                background: 'linear-gradient(135deg, #1C1724 0%, #100D14 100%)',
                 border: '1.5px solid #D4AF37',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 14px rgba(212, 175, 55, 0.25)',
-                overflow: 'hidden',
+                boxShadow: '0 0 16px rgba(212, 175, 55, 0.3)',
+                color: '#D4AF37',
+                fontWeight: 900,
+                fontSize: '1rem',
+                fontFamily: "'Poppins', sans-serif",
+                letterSpacing: '-0.5px',
               }}
             >
-              <img
-                src="/logo_b_transparent.png"
-                alt="Bonomo"
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  objectFit: 'contain',
-                  display: 'block',
-                }}
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
+              F5
             </div>
 
             {/* Botãozinho com a setinha para abrir de novo */}
@@ -428,19 +420,50 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         ) : (
           <>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', minWidth: 0 }}>
-              <img
-                src="/logo_horizontal.png"
-                alt="Bonomo Festas"
-                style={{
-                  width: 'auto',
-                  maxWidth: '130px',
-                  height: 'auto',
-                  maxHeight: '34px',
-                  objectFit: 'contain',
-                  display: 'block',
-                }}
-              />
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              {/* Quadrado F5 em Dourado */}
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '9px',
+                background: 'linear-gradient(135deg, #1C1724 0%, #100D14 100%)',
+                border: '1.5px solid #D4AF37',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#D4AF37',
+                fontWeight: 900,
+                fontSize: '0.95rem',
+                fontFamily: "'Poppins', sans-serif",
+                boxShadow: '0 0 14px rgba(212, 175, 55, 0.25)',
+                flexShrink: 0,
+              }}>
+                F5
+              </div>
+
+              {/* Texto SYSTEM */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{
+                  fontSize: '1rem',
+                  fontWeight: 900,
+                  letterSpacing: '2.5px',
+                  color: '#FFFFFF',
+                  fontFamily: "'Poppins', sans-serif",
+                  lineHeight: '1',
+                }}>
+                  SYSTEM
+                </span>
+                <span style={{
+                  fontSize: '0.55rem',
+                  fontWeight: 800,
+                  letterSpacing: '1px',
+                  color: '#D4AF37',
+                  textTransform: 'uppercase',
+                  marginTop: '2px',
+                }}>
+                  Comercial & CRM
+                </span>
+              </div>
             </div>
 
             {/* Desktop Collapse Toggle Button */}

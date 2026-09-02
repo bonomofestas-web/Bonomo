@@ -739,16 +739,16 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             }}
           >
             <Thermometer size={13} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
-            <span>MQL</span>
+            <span>ICP</span>
             <span style={{
               fontSize: '0.6rem',
               background: mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
               color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
               padding: '1px 5px',
               borderRadius: '4px',
-              fontWeight: 800,
+              fontWeight: 800
             }}>
-              {mqlResult.score}%
+              {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} ({mqlResult.score}%)
             </span>
           </button>
         </div>
@@ -1637,7 +1637,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         {activeTab === 'mql' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* MQL Score Gauge Banner */}
+            {/* ICP Score Gauge Banner */}
             <div style={{
               background: mqlResult.level === 'top'
                 ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)'
@@ -1656,7 +1656,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             }}>
               <div>
                 <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--adm-text-muted)' }}>
-                  Classificação MQL do Lead
+                  Nota do Perfil de Cliente Ideal (ICP)
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <span style={{
@@ -1664,15 +1664,15 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     fontWeight: 900,
                     color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
                   }}>
-                    {mqlResult.level === 'top' ? '🟢 Lead Top (Alta Prioridade)' : mqlResult.level === 'qualified' ? '🟡 Lead Qualificado' : '🔴 Lead Frio / Inicial'}
+                    {mqlResult.level === 'top' ? '🟢 Nota ICP A (Lead Top)' : mqlResult.level === 'qualified' ? '🟡 Nota ICP B (Médio)' : '🔴 Nota ICP C (Baixo / Ruim)'}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
                   {mqlResult.level === 'top'
-                    ? 'Lead com alta propensão de fechamento e investimento aprovado.'
+                    ? 'Lead com perfil ideal, alta urgência e alinhamento com a casa.'
                     : mqlResult.level === 'qualified'
-                    ? 'Lead com interesse real, em fase de decisão de data ou pacote.'
-                    : 'Lead em estágio inicial ou com baixo alinhamento orçamentário.'}
+                    ? 'Lead com perfil intermediário, em negociação de data ou proposta.'
+                    : 'Lead com baixo alinhamento orçamentário ou apenas pesquisando valores.'}
                 </div>
               </div>
 
@@ -1689,8 +1689,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF' }}>{mqlResult.score}%</span>
-                <span style={{ fontSize: '0.55rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>MQL</span>
+                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF' }}>{mqlResult.score}%</span>
+                <span style={{ fontSize: '0.6rem', fontWeight: 800, color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444' }}>
+                  {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'}
+                </span>
               </div>
             </div>
 
@@ -1698,7 +1700,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  Questionário de Qualificação Comercial
+                  Critérios de Qualificação ICP
                 </span>
                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
                   {venueMqlQuestions.length} perguntas cadastradas
@@ -1707,7 +1709,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
               {venueMqlQuestions.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
-                  Nenhuma pergunta de MQL configurada para esta casa de festas.
+                  Nenhum critério de ICP configurado para esta casa de festas.
                 </div>
               ) : (
                 venueMqlQuestions.map((q, qIdx) => {
