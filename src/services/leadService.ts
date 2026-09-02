@@ -51,6 +51,10 @@ export const leadService = {
           id: row.id,
           funnelId: row.funnel_id,
           venueId: row.venue_id,
+          sourceId: row.source_id,
+          sourceName: row.source_name,
+          subSource: row.sub_source,
+          source: row.source,
           debutanteId: row.debutante_id || '',
           debutanteName: row.debutante_name || 'Indicação Externa',
           debutanteSlug: row.debutante_slug || '',
@@ -114,6 +118,11 @@ export const leadService = {
       if (lead.pointsGranted !== undefined) payload.points_granted = lead.pointsGranted;
       if (lead.rejectionReason !== undefined) payload.rejection_reason = lead.rejectionReason;
       
+      if (lead.sourceId !== undefined) payload.source_id = isUuid(lead.sourceId) ? lead.sourceId : null;
+      if (lead.source !== undefined) payload.source = lead.source;
+      if (lead.sourceName !== undefined) payload.source_name = lead.sourceName;
+      if (lead.subSource !== undefined) payload.sub_source = lead.subSource;
+
       if (lead.sdrId !== undefined) payload.sdr_id = isUuid(lead.sdrId) ? lead.sdrId : null;
       if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName;
       if (lead.closerId !== undefined) payload.closer_id = isUuid(lead.closerId) ? lead.closerId : null;

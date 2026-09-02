@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ChevronDown, Trash2, Check,
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
-  CheckCircle2, Clock, X, MessageCircle, Sparkles
+  CheckCircle2, Clock, X, MessageCircle, Sparkles,
+  Globe, Target, ExternalLink, Award, FileText
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { 
@@ -12,7 +13,8 @@ import type {
   LeadContactRole,
   LeadContact,
   LeadEventType,
-  LeadTemperature
+  LeadTemperature,
+  LeadMqlLevel
 } from '../../types/admin';
 
 interface AdminLeadInspectorProps {
@@ -61,15 +63,19 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     collaborators, 
     venues,
     funnels,
+    sources,
+    mqlQuestions,
     updateLeadData, 
     validateLead, 
     invalidateLead,
     assignLeadSdr,
     assignLeadCloser,
     removeLeadSdr,
-    removeLeadCloser
+    removeLeadCloser,
+    saveLeadMqlAnswers
   } = useAdminState();
 
+  const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql'>('principal');
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -80,6 +86,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
   const leadFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : undefined;
+  const leadSource = lead.sourceId ? sources.find(s => s.id === lead.sourceId) : undefined;
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
   const isManagerOrMaster = currentUser?.role === 'master' || currentUser?.role === 'admin';
@@ -87,6 +94,64 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const closerList = collaborators.filter(c => c.active && (c.role === 'closer' || c.role === 'admin' || c.role === 'master'));
 
   const isReferralLead = lead.source === 'indicacao' || Boolean(lead.debutanteName || lead.debutanteId);
+
+  // MQL Questions for this venue
+  const venueMqlQuestions = useMemo(() => {
+    return mqlQuestions.filter(q => q.venueId === lead.venueId || q.venueId === 'all');
+  }, [mqlQuestions, lead.venueId]);
+
+  // Current MQL state
+  const [mqlAnswers, setMqlAnswers] = useState<Record<string, string>>(lead.mqlAnswers || {});
+
+  // Calculate MQL dynamically
+  const mqlResult = useMemo(() => {
+    if (venueMqlQuestions.length === 0) {
+      return { score: lead.mqlScore || 0, level: lead.mqlLevel || 'cold' };
+    }
+    let totalMax = 0;
+    let earned = 0;
+
+    venueMqlQuestions.forEach(q => {
+      const maxPts = q.options.length > 0 ? Math.max(...q.options.map(o => o.points)) : 100;
+      totalMax += maxPts;
+      const selectedId = mqlAnswers[q.id];
+      if (selectedId) {
+        const opt = q.options.find(o => o.id === selectedId);
+        if (opt) earned += opt.points;
+      }
+    });
+
+    const score = totalMax > 0 ? Math.round((earned / totalMax) * 100) : 0;
+    let level: LeadMqlLevel = 'cold';
+    if (score >= 80) level = 'top';
+    else if (score >= 50) level = 'qualified';
+
+    return { score, level };
+  }, [venueMqlQuestions, mqlAnswers, lead.mqlScore, lead.mqlLevel]);
+
+  const handleSelectMqlOption = (questionId: string, optionId: string) => {
+    const updated = { ...mqlAnswers, [questionId]: optionId };
+    setMqlAnswers(updated);
+
+    // Compute updated score
+    let totalMax = 0;
+    let earned = 0;
+    venueMqlQuestions.forEach(q => {
+      const maxPts = q.options.length > 0 ? Math.max(...q.options.map(o => o.points)) : 100;
+      totalMax += maxPts;
+      const optId = updated[q.id];
+      if (optId) {
+        const opt = q.options.find(o => o.id === optId);
+        if (opt) earned += opt.points;
+      }
+    });
+    const score = totalMax > 0 ? Math.round((earned / totalMax) * 100) : 0;
+    let level: LeadMqlLevel = 'cold';
+    if (score >= 80) level = 'top';
+    else if (score >= 50) level = 'qualified';
+
+    saveLeadMqlAnswers(lead.id, updated, score, level);
+  };
 
   const handleUpdate = (updates: Partial<Lead>) => {
     updateLeadData(lead.id, updates);
@@ -292,8 +357,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
         </div>
 
-        {/* Venue & Debutante info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        {/* Venue & Debutante info + Origin Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
           <span style={{
             fontSize: '0.74rem',
             color: '#A0988A',
@@ -301,6 +366,39 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           }}>
             🏢 {leadVenue?.name || 'Bonomo Festas'} • <strong style={{ color: '#D4AF37' }}>👑 Indicada por: {lead.debutanteName}</strong>
           </span>
+
+          {/* Origin Badge */}
+          {lead.subSource ? (
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: '8px',
+              background: 'rgba(16, 185, 129, 0.2)',
+              color: '#10B981',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}>
+              📱 WhatsApp / {lead.subSource}
+            </span>
+          ) : (
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: '8px',
+              background: (lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(212, 175, 55, 0.2)',
+              color: (lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? '#10B981' : '#D4AF37',
+              border: `1px solid ${(lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(212, 175, 55, 0.4)'}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}>
+              {(lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? '📱 WhatsApp' : lead.sourceName || lead.source || '👑 Indicação'}
+            </span>
+          )}
         </div>
 
         {/* Pipeline Stage Dropdown with Colored Indicator */}
@@ -567,619 +665,1152 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
         )}
 
-        {/* Tab: Principal */}
-        <div style={{ display: 'flex', gap: '16px', marginTop: '10px' }}>
-          <span
-            style={{
-              borderBottom: '2px solid #D4AF37',
-              paddingBottom: '4px',
-              color: '#FFFFFF',
-              fontSize: '0.8rem',
-              fontWeight: 800,
-            }}
-          >
-            Ficha Cadastral do Lead
-          </span>
-        </div>
-      </div>
-
-      {/* ── 2. SEÇÕES TEMÁTICAS COM DIVISORES CLAROS ────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-        {/* ── SEÇÃO 1: 🛡️ RESPONSÁVEIS ── */}
-        <div style={sectionHeaderStyle}>
-          <Shield size={13} color="var(--adm-accent)" />
-          <span>1. Responsáveis Comerciais</span>
-        </div>
-
-        {/* SDR */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>SDR</span>
-          <div style={rowValueStyle}>
-            {isManagerOrMaster || !lead.sdrId ? (
-              <select
-                value={lead.sdrId || ''}
-                onChange={(e) => {
-                  if (e.target.value) assignLeadSdr(lead.id, e.target.value);
-                  else removeLeadSdr(lead.id);
-                }}
-                style={inlineSelectStyle}
-              >
-                <option value="">Nenhum SDR atribuído...</option>
-                {sdrList.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
-                ))}
-              </select>
-            ) : (
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                {sdrCollab?.name || 'Nenhum SDR'}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Closer */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Closer</span>
-          <div style={rowValueStyle}>
-            {isManagerOrMaster || lead.stage === 'meeting_scheduled' || lead.stage === 'contract_signed' ? (
-              <select
-                value={lead.closerId || ''}
-                onChange={(e) => {
-                  if (e.target.value) assignLeadCloser(lead.id, e.target.value);
-                  else removeLeadCloser(lead.id);
-                }}
-                style={inlineSelectStyle}
-              >
-                <option value="">Nenhum closer atribuído...</option>
-                {closerList.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} (Closer)</option>
-                ))}
-              </select>
-            ) : (
-              <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                Disponível na etapa de Reunião
-              </span>
-            )}
-          </div>
-        </div>
-
-
-        {/* ── SEÇÃO 2: 👤 DADOS DO CLIENTE ── */}
-        <div style={sectionHeaderStyle}>
-          <User size={13} color="var(--adm-accent)" />
-          <span>2. Dados do Cliente</span>
-        </div>
-
-        {/* Nome do Cliente */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Nome do Lead</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              value={lead.name}
-              onChange={(e) => handleUpdate({ name: e.target.value })}
-              style={{ ...inlineInputStyle, fontWeight: 700 }}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* WhatsApp com Link Direto Limpo */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>WhatsApp</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              value={lead.phone}
-              onChange={(e) => handleUpdate({ phone: e.target.value })}
-              style={{ ...inlineInputStyle, fontWeight: 700 }}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-            {lead.phone && (
-              <button
-                type="button"
-                onClick={() => handleOpenDirectWhatsApp(lead.phone)}
-                title="Abrir chat do WhatsApp diretamente"
-                style={{
-                  background: '#25D366',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  flexShrink: 0,
-                }}
-              >
-                <MessageCircle size={12} />
-                <span>Conversar</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* E-mail */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>E-mail</span>
-          <div style={rowValueStyle}>
-            <input
-              type="email"
-              placeholder="cliente@email.com"
-              value={lead.email || ''}
-              onChange={(e) => handleUpdate({ email: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Bairro */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Bairro</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              placeholder="Ex: Recreio, Barra, Tijuca..."
-              value={lead.neighborhood || ''}
-              onChange={(e) => handleUpdate({ neighborhood: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Endereço Completo */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Endereço</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              placeholder="Rua, número, complemento..."
-              value={lead.address || ''}
-              onChange={(e) => handleUpdate({ address: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-
-        {/* ── SEÇÃO 3: 🎉 DADOS DO EVENTO ── */}
-        <div style={sectionHeaderStyle}>
-          <PartyPopper size={13} color="var(--adm-accent)" />
-          <span>3. Dados do Evento</span>
-        </div>
-
-        {/* Tipo de Evento */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Tipo de evento</span>
-          <div style={rowValueStyle}>
-            <select
-              value={lead.eventType || '15 Anos'}
-              onChange={(e) => handleUpdate({ eventType: e.target.value as LeadEventType })}
-              style={inlineSelectStyle}
-            >
-              {EVENT_TYPE_OPTIONS.map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Data do Evento */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Data do evento</span>
-          <div style={rowValueStyle}>
-            <input
-              type="date"
-              value={lead.eventDate || lead.partyDate || ''}
-              onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
-              style={inlineSelectStyle}
-            />
-          </div>
-        </div>
-
-        {/* Aniversário da Debutante */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Aniversário deb.</span>
-          <div style={rowValueStyle}>
-            <input
-              type="date"
-              value={lead.debutanteBirthDate || ''}
-              onChange={(e) => handleUpdate({ debutanteBirthDate: e.target.value })}
-              style={inlineSelectStyle}
-            />
-          </div>
-        </div>
-
-        {/* Quantidade Estimada de Convidados */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Qtd. convidados</span>
-          <div style={rowValueStyle}>
-            <input
-              type="number"
-              min="0"
-              placeholder="Ex: 150, 200, 250..."
-              value={lead.estimatedGuests || ''}
-              onChange={(e) => handleUpdate({ estimatedGuests: Number(e.target.value) || undefined })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Período Desejado */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Período desejado</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              placeholder="Ex: 2º Semestre 2027, Fins de semana..."
-              value={lead.desiredPeriod || ''}
-              onChange={(e) => handleUpdate({ desiredPeriod: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-
-        {/* ── SEÇÃO 4: 💰 DADOS COMERCIAIS ── */}
-        <div style={sectionHeaderStyle}>
-          <DollarSign size={13} color="var(--adm-accent)" />
-          <span>4. Dados Comerciais</span>
-        </div>
-
-        {/* Venda / Orçamento Estimado */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Venda / Orçamento</span>
-          <div style={rowValueStyle}>
-            <span style={{ color: '#10B981', fontWeight: 900, marginRight: '2px' }}>R$</span>
-            <input
-              type="number"
-              min="0"
-              step="500"
-              placeholder="0,00"
-              value={lead.estimatedBudget || lead.dealValue || ''}
-              onChange={(e) => {
-                const val = Number(e.target.value) || 0;
-                handleUpdate({ estimatedBudget: val, dealValue: val });
-              }}
-              style={{ ...inlineInputStyle, color: '#10B981', fontWeight: 900, fontSize: '0.88rem' }}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = '#10B981'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Interesse / Pacote Desejado */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Interesse</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              placeholder="Ex: Pacote Diamante com Lounge Open Bar"
-              value={lead.interestService || lead.packageSold || ''}
-              onChange={(e) => handleUpdate({ interestService: e.target.value, packageSold: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Pagamento */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Pagamento</span>
-          <div style={rowValueStyle}>
-            <input
-              type="text"
-              placeholder="Ex: Entrada 20% + 24x sem juros"
-              value={lead.paymentMethod || ''}
-              onChange={(e) => handleUpdate({ paymentMethod: e.target.value })}
-              style={inlineInputStyle}
-              onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
-              onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-            />
-          </div>
-        </div>
-
-        {/* Temperatura */}
-        <div style={rowStyle}>
-          <span style={rowLabelStyle}>Temperatura</span>
-          <div style={rowValueStyle}>
-            <select
-              value={lead.temperature || 'warm'}
-              onChange={(e) => handleUpdate({ temperature: e.target.value as LeadTemperature })}
-              style={inlineSelectStyle}
-            >
-              <option value="hot">🔥 Quente (Alta intenção)</option>
-              <option value="warm">🟡 Morno (Pesquisando datas)</option>
-              <option value="cold">🔵 Frio (Contato inicial)</option>
-            </select>
-          </div>
-        </div>
-
-
-        {/* ── SEÇÃO 5: 👥 CONTATOS VINCULADOS ── */}
-        <div style={{ ...sectionHeaderStyle, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users size={13} color="var(--adm-accent)" />
-            <span>5. Contatos Vinculados</span>
-          </div>
+        {/* 3 Top Tabs: Principal | Origem | MQL */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '2px' }}>
           <button
             type="button"
-            onClick={() => setIsAddingContact(true)}
+            onClick={() => setActiveTab('principal')}
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--adm-accent)',
-              fontSize: '0.72rem',
-              fontWeight: 800,
+              borderBottom: activeTab === 'principal' ? '2px solid #D4AF37' : '2px solid transparent',
+              padding: '6px 10px',
+              color: activeTab === 'principal' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
+              fontSize: '0.76rem',
+              fontWeight: activeTab === 'principal' ? 800 : 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '2px',
-              padding: 0,
+              gap: '6px',
+              transition: 'all 0.15s ease',
             }}
           >
-            <Plus size={12} /> Adicionar
+            <FileText size={13} color={activeTab === 'principal' ? '#D4AF37' : 'currentColor'} />
+            <span>Principal</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('origem')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'origem' ? '2px solid #D4AF37' : '2px solid transparent',
+              padding: '6px 10px',
+              color: activeTab === 'origem' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
+              fontSize: '0.76rem',
+              fontWeight: activeTab === 'origem' ? 800 : 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Globe size={13} color={activeTab === 'origem' ? '#D4AF37' : 'currentColor'} />
+            <span>Origem</span>
+            {isReferralLead ? (
+              <span style={{ fontSize: '0.6rem', background: 'rgba(212, 175, 55, 0.2)', color: '#D4AF37', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                Indicação
+              </span>
+            ) : leadSource ? (
+              <span style={{ fontSize: '0.6rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                Rastreamento
+              </span>
+            ) : null}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('mql')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'mql' ? '2px solid #D4AF37' : '2px solid transparent',
+              padding: '6px 10px',
+              color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
+              fontSize: '0.76rem',
+              fontWeight: activeTab === 'mql' ? 800 : 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Target size={13} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
+            <span>MQL</span>
+            <span style={{
+              fontSize: '0.6rem',
+              background: mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+              color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
+              padding: '1px 5px',
+              borderRadius: '4px',
+              fontWeight: 800,
+            }}>
+              {mqlResult.score}%
+            </span>
           </button>
         </div>
+      </div>
 
-        {/* Lista de Contatos */}
-        {(lead.contacts || []).map(contact => (
-          <div key={contact.id} style={{
-            ...rowStyle,
-            justifyContent: 'space-between',
-            background: contact.isPrimaryDecisionMaker ? 'rgba(212, 175, 55, 0.05)' : 'transparent',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <strong style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>{contact.name}</strong>
-                <span style={{
-                  fontSize: '0.64rem',
-                  fontWeight: 700,
-                  color: 'var(--adm-accent)',
-                  background: 'rgba(212, 175, 55, 0.12)',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                }}>
-                  {CONTACT_ROLE_LABELS[contact.role] || contact.role}
-                </span>
-                {contact.isPrimaryDecisionMaker && (
-                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#10B981' }}>★ Decisor</span>
-                )}
-              </div>
-              <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{contact.phone}</span>
+      {/* ── 2. CONTEÚDO DA ABA SELECIONADA ─────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* ABA 1: 📋 PRINCIPAL                                                  */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'principal' && (
+          <>
+            {/* ── SEÇÃO 1: 🛡️ RESPONSÁVEIS ── */}
+            <div style={sectionHeaderStyle}>
+              <Shield size={13} color="var(--adm-accent)" />
+              <span>1. Responsáveis Comerciais</span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => handleOpenDirectWhatsApp(contact.phone)}
-                title="Conversar no WhatsApp"
-                style={{
-                  background: '#25D366',
-                  color: '#FFF',
-                  border: 'none',
-                  borderRadius: '6px',
-                  padding: '3px 6px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <MessageCircle size={12} />
-              </button>
+            {/* SDR */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>SDR</span>
+              <div style={rowValueStyle}>
+                {isManagerOrMaster || !lead.sdrId ? (
+                  <select
+                    value={lead.sdrId || ''}
+                    onChange={(e) => {
+                      if (e.target.value) assignLeadSdr(lead.id, e.target.value);
+                      else removeLeadSdr(lead.id);
+                    }}
+                    style={inlineSelectStyle}
+                  >
+                    <option value="">Nenhum SDR atribuído...</option>
+                    {sdrList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    {sdrCollab?.name || 'Nenhum SDR'}
+                  </span>
+                )}
+              </div>
+            </div>
 
-              {!contact.isPrimaryDecisionMaker && (
-                <button
-                  type="button"
-                  onClick={() => handleSetPrimaryDecisor(contact)}
-                  style={{
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-muted)',
-                    borderRadius: '6px',
-                    padding: '3px 6px',
-                    fontSize: '0.68rem',
-                    cursor: 'pointer',
-                  }}
+            {/* Closer */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Closer</span>
+              <div style={rowValueStyle}>
+                {isManagerOrMaster || lead.stage === 'meeting_scheduled' || lead.stage === 'contract_signed' ? (
+                  <select
+                    value={lead.closerId || ''}
+                    onChange={(e) => {
+                      if (e.target.value) assignLeadCloser(lead.id, e.target.value);
+                      else removeLeadCloser(lead.id);
+                    }}
+                    style={inlineSelectStyle}
+                  >
+                    <option value="">Nenhum closer atribuído...</option>
+                    {closerList.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} (Closer)</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                    Disponível na etapa de Reunião
+                  </span>
+                )}
+              </div>
+            </div>
+
+
+            {/* ── SEÇÃO 2: 👤 DADOS DO CLIENTE ── */}
+            <div style={sectionHeaderStyle}>
+              <User size={13} color="var(--adm-accent)" />
+              <span>2. Dados do Cliente</span>
+            </div>
+
+            {/* Nome do Cliente */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Nome do Lead</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  value={lead.name}
+                  onChange={(e) => handleUpdate({ name: e.target.value })}
+                  style={{ ...inlineInputStyle, fontWeight: 700 }}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* WhatsApp com Link Direto Limpo */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>WhatsApp</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  value={lead.phone}
+                  onChange={(e) => handleUpdate({ phone: e.target.value })}
+                  style={{ ...inlineInputStyle, fontWeight: 700 }}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+                {lead.phone && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDirectWhatsApp(lead.phone)}
+                    title="Abrir chat do WhatsApp diretamente"
+                    style={{
+                      background: '#25D366',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <MessageCircle size={12} />
+                    <span>Conversar</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* E-mail */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>E-mail</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="email"
+                  placeholder="cliente@email.com"
+                  value={lead.email || ''}
+                  onChange={(e) => handleUpdate({ email: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Bairro */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Bairro</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  placeholder="Ex: Recreio, Barra, Tijuca..."
+                  value={lead.neighborhood || ''}
+                  onChange={(e) => handleUpdate({ neighborhood: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Endereço Completo */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Endereço</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  placeholder="Rua, número, complemento..."
+                  value={lead.address || ''}
+                  onChange={(e) => handleUpdate({ address: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+
+            {/* ── SEÇÃO 3: 🎉 DADOS DO EVENTO ── */}
+            <div style={sectionHeaderStyle}>
+              <PartyPopper size={13} color="var(--adm-accent)" />
+              <span>3. Dados do Evento</span>
+            </div>
+
+            {/* Tipo de Evento */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Tipo de evento</span>
+              <div style={rowValueStyle}>
+                <select
+                  value={lead.eventType || '15 Anos'}
+                  onChange={(e) => handleUpdate({ eventType: e.target.value as LeadEventType })}
+                  style={inlineSelectStyle}
                 >
-                  Tornar Decisor
-                </button>
-              )}
+                  {EVENT_TYPE_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
+            {/* Data do Evento */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Data do evento</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="date"
+                  value={lead.eventDate || lead.partyDate || ''}
+                  onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
+                  style={inlineSelectStyle}
+                />
+              </div>
+            </div>
+
+            {/* Aniversário da Debutante */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Aniversário deb.</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="date"
+                  value={lead.debutanteBirthDate || ''}
+                  onChange={(e) => handleUpdate({ debutanteBirthDate: e.target.value })}
+                  style={inlineSelectStyle}
+                />
+              </div>
+            </div>
+
+            {/* Quantidade Estimada de Convidados */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Qtd. convidados</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Ex: 150, 200, 250..."
+                  value={lead.estimatedGuests || ''}
+                  onChange={(e) => handleUpdate({ estimatedGuests: Number(e.target.value) || undefined })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Período Desejado */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Período desejado</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  placeholder="Ex: 2º Semestre 2027, Fins de semana..."
+                  value={lead.desiredPeriod || ''}
+                  onChange={(e) => handleUpdate({ desiredPeriod: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+
+            {/* ── SEÇÃO 4: 💰 DADOS COMERCIAIS ── */}
+            <div style={sectionHeaderStyle}>
+              <DollarSign size={13} color="var(--adm-accent)" />
+              <span>4. Dados Comerciais</span>
+            </div>
+
+            {/* Venda / Orçamento Estimado */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Venda / Orçamento</span>
+              <div style={rowValueStyle}>
+                <span style={{ color: '#10B981', fontWeight: 900, marginRight: '2px' }}>R$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  placeholder="0,00"
+                  value={lead.estimatedBudget || lead.dealValue || ''}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 0;
+                    handleUpdate({ estimatedBudget: val, dealValue: val });
+                  }}
+                  style={{ ...inlineInputStyle, color: '#10B981', fontWeight: 900, fontSize: '0.88rem' }}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = '#10B981'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Interesse / Pacote Desejado */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Interesse</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  placeholder="Ex: Pacote Diamante com Lounge Open Bar"
+                  value={lead.interestService || lead.packageSold || ''}
+                  onChange={(e) => handleUpdate({ interestService: e.target.value, packageSold: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Pagamento */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Pagamento</span>
+              <div style={rowValueStyle}>
+                <input
+                  type="text"
+                  placeholder="Ex: Entrada 20% + 24x sem juros"
+                  value={lead.paymentMethod || ''}
+                  onChange={(e) => handleUpdate({ paymentMethod: e.target.value })}
+                  style={inlineInputStyle}
+                  onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
+                  onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
+                />
+              </div>
+            </div>
+
+            {/* Temperatura */}
+            <div style={rowStyle}>
+              <span style={rowLabelStyle}>Temperatura</span>
+              <div style={rowValueStyle}>
+                <select
+                  value={lead.temperature || 'warm'}
+                  onChange={(e) => handleUpdate({ temperature: e.target.value as LeadTemperature })}
+                  style={inlineSelectStyle}
+                >
+                  <option value="hot">🔥 Quente (Alta intenção)</option>
+                  <option value="warm">🟡 Morno (Pesquisando datas)</option>
+                  <option value="cold">🔵 Frio (Contato inicial)</option>
+                </select>
+              </div>
+            </div>
+
+
+            {/* ── SEÇÃO 5: 👥 CONTATOS VINCULADOS ── */}
+            <div style={{ ...sectionHeaderStyle, justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={13} color="var(--adm-accent)" />
+                <span>5. Contatos Vinculados</span>
+              </div>
               <button
                 type="button"
-                onClick={() => handleRemoveSubContact(contact.id)}
+                onClick={() => setIsAddingContact(true)}
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: 'var(--adm-red)',
+                  color: 'var(--adm-accent)',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
                   cursor: 'pointer',
-                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  padding: 0,
                 }}
               >
-                <Trash2 size={13} />
+                <Plus size={12} /> Adicionar
               </button>
             </div>
-          </div>
-        ))}
 
-        {/* Modal / Formulário inline de Adição de Contato */}
-        {isAddingContact && (
-          <form onSubmit={handleAddSubContact} style={{
-            padding: '12px 16px',
-            background: 'var(--adm-bg-input)',
-            borderBottom: '1px solid var(--adm-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <input
-                type="text"
-                required
-                placeholder="Nome do contato..."
-                value={newContactName}
-                onChange={(e) => setNewContactName(e.target.value)}
-                style={{ ...inlineInputStyle, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}
-              />
-              <input
-                type="text"
-                required
-                placeholder="WhatsApp / Telefone..."
-                value={newContactPhone}
-                onChange={(e) => setNewContactPhone(e.target.value)}
-                style={{ ...inlineInputStyle, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <select
-                value={newContactRole}
-                onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
-                style={{ ...inlineSelectStyle, width: '180px' }}
-              >
-                <option value="aniversariante">Aniversariante</option>
-                <option value="debutante">Debutante</option>
-                <option value="mae">Mãe</option>
-                <option value="pai">Pai</option>
-                <option value="tio">Tio(a)</option>
-                <option value="noivo">Noivo(a)</option>
-                <option value="responsavel">Responsável / Decisor</option>
-                <option value="outro">Outro</option>
-              </select>
-
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingContact(false)}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-muted)',
-                    borderRadius: '6px',
-                    padding: '4px 10px',
-                    fontSize: '0.72rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    background: 'var(--adm-accent)',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '4px 12px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-
-        {/* ── SEÇÃO 6: ⚙️ CAMPOS PERSONALIZADOS DO FUNIL ── */}
-        {leadFunnel && leadFunnel.customFields && leadFunnel.customFields.length > 0 && (
-          <>
-            <div style={sectionHeaderStyle}>
-              <Sparkles size={13} color="var(--adm-accent)" />
-              <span>6. Campos Personalizados ({leadFunnel.name})</span>
-            </div>
-
-            {leadFunnel.customFields.map(field => {
-              const currentValue = lead.customFieldValues?.[field.id] ?? '';
-
-              return (
-                <div key={field.id} style={rowStyle}>
-                  <span style={rowLabelStyle}>{field.label}</span>
-                  <div style={rowValueStyle}>
-                    {field.type === 'todo' ? (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(currentValue)}
-                          onChange={(e) => {
-                            const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.checked };
-                            handleUpdate({ customFieldValues: updatedCustom });
-                          }}
-                        />
-                        <span>{Boolean(currentValue) ? '✅ Concluído' : '⬜ Pendente'}</span>
-                      </label>
-                    ) : field.type === 'date' ? (
-                      <input
-                        type="date"
-                        value={currentValue}
-                        onChange={(e) => {
-                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
-                          handleUpdate({ customFieldValues: updatedCustom });
-                        }}
-                        style={inlineSelectStyle}
-                      />
-                    ) : field.type === 'number' ? (
-                      <input
-                        type="number"
-                        placeholder={field.placeholder || '0'}
-                        value={currentValue}
-                        onChange={(e) => {
-                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: Number(e.target.value) || 0 };
-                          handleUpdate({ customFieldValues: updatedCustom });
-                        }}
-                        style={inlineInputStyle}
-                      />
-                    ) : field.type === 'select' ? (
-                      <select
-                        value={currentValue}
-                        onChange={(e) => {
-                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
-                          handleUpdate({ customFieldValues: updatedCustom });
-                        }}
-                        style={inlineSelectStyle}
-                      >
-                        <option value="">Selecione...</option>
-                        {(field.options || []).map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder={field.placeholder || 'Preencha...'}
-                        value={currentValue}
-                        onChange={(e) => {
-                          const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
-                          handleUpdate({ customFieldValues: updatedCustom });
-                        }}
-                        style={inlineInputStyle}
-                      />
+            {/* Lista de Contatos */}
+            {(lead.contacts || []).map(contact => (
+              <div key={contact.id} style={{
+                ...rowStyle,
+                justifyContent: 'space-between',
+                background: contact.isPrimaryDecisionMaker ? 'rgba(212, 175, 55, 0.05)' : 'transparent',
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>{contact.name}</strong>
+                    <span style={{
+                      fontSize: '0.64rem',
+                      fontWeight: 700,
+                      color: 'var(--adm-accent)',
+                      background: 'rgba(212, 175, 55, 0.12)',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                    }}>
+                      {CONTACT_ROLE_LABELS[contact.role] || contact.role}
+                    </span>
+                    {contact.isPrimaryDecisionMaker && (
+                      <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#10B981' }}>★ Decisor</span>
                     )}
                   </div>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{contact.phone}</span>
                 </div>
-              );
-            })}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDirectWhatsApp(contact.phone)}
+                    title="Conversar no WhatsApp"
+                    style={{
+                      background: '#25D366',
+                      color: '#FFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '3px 6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <MessageCircle size={12} />
+                  </button>
+
+                  {!contact.isPrimaryDecisionMaker && (
+                    <button
+                      type="button"
+                      onClick={() => handleSetPrimaryDecisor(contact)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-muted)',
+                        borderRadius: '6px',
+                        padding: '3px 6px',
+                        fontSize: '0.68rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Tornar Decisor
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSubContact(contact.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--adm-red)',
+                      cursor: 'pointer',
+                      padding: '2px',
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Formulário inline de Adição de Contato */}
+            {isAddingContact && (
+              <form onSubmit={handleAddSubContact} style={{
+                padding: '12px 16px',
+                background: 'var(--adm-bg-input)',
+                borderBottom: '1px solid var(--adm-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nome do contato..."
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
+                    style={{ ...inlineInputStyle, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="WhatsApp / Telefone..."
+                    value={newContactPhone}
+                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    style={{ ...inlineInputStyle, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <select
+                    value={newContactRole}
+                    onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
+                    style={{ ...inlineSelectStyle, width: '180px' }}
+                  >
+                    <option value="aniversariante">Aniversariante</option>
+                    <option value="debutante">Debutante</option>
+                    <option value="mae">Mãe</option>
+                    <option value="pai">Pai</option>
+                    <option value="tio">Tio(a)</option>
+                    <option value="noivo">Noivo(a)</option>
+                    <option value="responsavel">Responsável / Decisor</option>
+                    <option value="outro">Outro</option>
+                  </select>
+
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingContact(false)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-muted)',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        background: 'var(--adm-accent)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '4px 12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Salvar
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* ── SEÇÃO 6: ⚙️ CAMPOS PERSONALIZADOS DO FUNIL ── */}
+            {leadFunnel && leadFunnel.customFields && leadFunnel.customFields.length > 0 && (
+              <>
+                <div style={sectionHeaderStyle}>
+                  <Sparkles size={13} color="var(--adm-accent)" />
+                  <span>6. Campos Personalizados ({leadFunnel.name})</span>
+                </div>
+
+                {leadFunnel.customFields.map(field => {
+                  const currentValue = lead.customFieldValues?.[field.id] ?? '';
+
+                  return (
+                    <div key={field.id} style={rowStyle}>
+                      <span style={rowLabelStyle}>{field.label}</span>
+                      <div style={rowValueStyle}>
+                        {field.type === 'todo' ? (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(currentValue)}
+                              onChange={(e) => {
+                                const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.checked };
+                                handleUpdate({ customFieldValues: updatedCustom });
+                              }}
+                            />
+                            <span>{Boolean(currentValue) ? '✅ Concluído' : '⬜ Pendente'}</span>
+                          </label>
+                        ) : field.type === 'date' ? (
+                          <input
+                            type="date"
+                            value={currentValue}
+                            onChange={(e) => {
+                              const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                              handleUpdate({ customFieldValues: updatedCustom });
+                            }}
+                            style={inlineSelectStyle}
+                          />
+                        ) : field.type === 'number' ? (
+                          <input
+                            type="number"
+                            placeholder={field.placeholder || '0'}
+                            value={currentValue}
+                            onChange={(e) => {
+                              const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: Number(e.target.value) || 0 };
+                              handleUpdate({ customFieldValues: updatedCustom });
+                            }}
+                            style={inlineInputStyle}
+                          />
+                        ) : field.type === 'select' ? (
+                          <select
+                            value={currentValue}
+                            onChange={(e) => {
+                              const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                              handleUpdate({ customFieldValues: updatedCustom });
+                            }}
+                            style={inlineSelectStyle}
+                          >
+                            <option value="">Selecione...</option>
+                            {(field.options || []).map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            placeholder={field.placeholder || 'Preencha...'}
+                            value={currentValue}
+                            onChange={(e) => {
+                              const updatedCustom = { ...(lead.customFieldValues || {}), [field.id]: e.target.value };
+                              handleUpdate({ customFieldValues: updatedCustom });
+                            }}
+                            style={inlineInputStyle}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* ABA 2: 🌐 ORIGEM & RASTREAMENTO                                       */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'origem' && (
+          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            
+            {/* Card Principal: Tipo de Origem */}
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '14px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  Canal de Entrada
+                </span>
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  background: isReferralLead ? 'rgba(212, 175, 55, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: isReferralLead ? '#D4AF37' : '#60A5FA',
+                }}>
+                  {isReferralLead ? '👑 Indicação de Debutante' : leadSource ? `🌐 ${leadSource.name}` : (lead.source || 'Entrada Direta')}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', fontWeight: 700 }}>
+                {isReferralLead
+                  ? `Lead gerado pelo programa de indicações da anfitriã ${lead.debutanteName}.`
+                  : leadSource
+                  ? `Lead captado através da origem rastreada "${leadSource.name}".`
+                  : 'Lead inserido diretamente pela equipe ou formulário institucional.'}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
+                <div>
+                  <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Casa Vinculada:</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    {leadVenue?.name || 'Bonomo Festas'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Funil de Destino:</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    {leadFunnel?.name || 'Funil Comercial Padrão'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco Específico: Indicação de Debutante */}
+            {isReferralLead && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(20, 17, 24, 0.6) 100%)',
+                border: '1.5px solid rgba(212, 175, 55, 0.35)',
+                borderRadius: '14px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Award size={16} color="#D4AF37" />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#D4AF37', textTransform: 'uppercase' }}>
+                    Dados da Anfitriã / Debutante Indicadora
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#FFFFFF' }}>{lead.debutanteName}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Anfitriã • ID: {lead.debutanteId || 'N/A'}</div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: lead.isValidated ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    color: lead.isValidated ? '#10B981' : '#F59E0B',
+                    border: `1px solid ${lead.isValidated ? '#10B981' : '#F59E0B'}`,
+                  }}>
+                    {lead.isValidated ? '✓ Validada (+1 Ponto)' : '⏳ Aguardando Validação'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  {lead.isValidated ? (
+                    <button
+                      type="button"
+                      onClick={() => invalidateLead(lead.id)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid rgba(239,68,68,0.4)',
+                        color: '#EF4444',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Revogar Ponto de Indicação
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => validateLead(lead.id)}
+                      style={{
+                        background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        color: '#FFF',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '7px 16px',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                      }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Validar Lead (+1 Ponto)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Bloco Específico: Sub-origem & WhatsApp API */}
+            {(lead.subSource || lead.source === 'whatsapp' || leadSource?.type === 'whatsapp_api') && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(20, 17, 24, 0.6) 100%)',
+                border: '1.5px solid rgba(16, 185, 129, 0.35)',
+                borderRadius: '14px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Globe size={16} color="#10B981" />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#10B981', textTransform: 'uppercase' }}>
+                      Identificação de Sub-origem WhatsApp
+                    </span>
+                  </div>
+                  {lead.subSource && (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      color: '#10B981',
+                      border: '1px solid #10B981',
+                    }}>
+                      🏷️ {lead.subSource}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Origem Principal:</span>
+                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)' }}>
+                      📱 {lead.sourceName || leadSource?.name || 'WhatsApp API'}
+                    </strong>
+                  </div>
+
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Sub-origem / Canal:</span>
+                    <strong style={{ fontSize: '0.82rem', color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)' }}>
+                      {lead.subSource ? `🏷️ ${lead.subSource}` : 'Sem sub-origem (Direto)'}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Sub-source editor / selector */}
+                {leadSource?.configuration?.subSources && leadSource.configuration.subSources.length > 0 && (
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
+                      Alterar Sub-origem do Lead
+                    </label>
+                    <select
+                      value={lead.subSource || ''}
+                      onChange={(e) => handleUpdate({ subSource: e.target.value || undefined })}
+                      className="adm-input"
+                      style={{ width: '100%', height: '32px', fontSize: '0.76rem', borderRadius: '6px' }}
+                    >
+                      <option value="">Nenhuma sub-origem (WhatsApp Direto)</option>
+                      {leadSource.configuration.subSources.map(sub => (
+                        <option key={sub.id} value={sub.name}>🏷️ {sub.name} (Gatilho: "{sub.keyword}")</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bloco Específico: Formulário */}
+            {leadSource?.type === 'form' && (
+              <div style={{
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '14px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={16} color="var(--adm-accent)" />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>
+                    Dados do Formulário Público
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Link Público:</span>
+                    <strong style={{ fontSize: '0.78rem', color: 'var(--adm-accent)' }}>/f/{leadSource.slug}</strong>
+                  </div>
+
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Campos do Form:</span>
+                    <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>
+                      {leadSource.configuration?.fields?.length || 5} campos configurados
+                    </strong>
+                  </div>
+                </div>
+
+                {leadSource.slug && (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <a
+                      href={`/f/${leadSource.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        background: 'var(--adm-bg-card)',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-accent)',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <ExternalLink size={12} />
+                      <span>Abrir Formulário /f/{leadSource.slug}</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* ABA 3: 🎯 MQL (MARKETING QUALIFIED LEAD)                             */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'mql' && (
+          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            {/* MQL Score Gauge Banner */}
+            <div style={{
+              background: mqlResult.level === 'top'
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)'
+                : mqlResult.level === 'qualified'
+                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)'
+                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)',
+              border: `1.5px solid ${
+                mqlResult.level === 'top' ? 'rgba(16, 185, 129, 0.4)' : mqlResult.level === 'qualified' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)'
+              }`,
+              borderRadius: '16px',
+              padding: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+            }}>
+              <div>
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--adm-text-muted)' }}>
+                  Classificação MQL do Lead
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <span style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 900,
+                    color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
+                  }}>
+                    {mqlResult.level === 'top' ? '🟢 Lead Top (Alta Prioridade)' : mqlResult.level === 'qualified' ? '🟡 Lead Qualificado' : '🔴 Lead Frio / Inicial'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
+                  {mqlResult.level === 'top'
+                    ? 'Lead com alta propensão de fechamento e investimento aprovado.'
+                    : mqlResult.level === 'qualified'
+                    ? 'Lead com interesse real, em fase de decisão de data ou pacote.'
+                    : 'Lead em estágio inicial ou com baixo alinhamento orçamentário.'}
+                </div>
+              </div>
+
+              {/* Score Badge */}
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(0,0,0,0.4)',
+                border: `3px solid ${mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF' }}>{mqlResult.score}%</span>
+                <span style={{ fontSize: '0.55rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>MQL</span>
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  Questionário de Qualificação Comercial
+                </span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                  {venueMqlQuestions.length} perguntas cadastradas
+                </span>
+              </div>
+
+              {venueMqlQuestions.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '12px' }}>
+                  Nenhuma pergunta de MQL configurada para esta casa de festas.
+                </div>
+              ) : (
+                venueMqlQuestions.map((q, qIdx) => {
+                  const selectedOptId = mqlAnswers[q.id];
+
+                  return (
+                    <div
+                      key={q.id}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '14px',
+                        padding: '14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <span style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          background: 'var(--adm-accent-bg)',
+                          color: 'var(--adm-accent)',
+                          fontSize: '0.7rem',
+                          fontWeight: 900,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {qIdx + 1}
+                        </span>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                            {q.title}
+                          </div>
+                          {q.description && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                              {q.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Options Grid */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                        {q.options.map((opt) => {
+                          const isOptionSelected = selectedOptId === opt.id;
+
+                          return (
+                            <div
+                              key={opt.id}
+                              onClick={() => handleSelectMqlOption(q.id, opt.id)}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                border: `1.5px solid ${isOptionSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                                background: isOptionSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                transition: 'all 0.12s ease',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                  type="radio"
+                                  name={`mql_q_${q.id}`}
+                                  checked={isOptionSelected}
+                                  onChange={() => handleSelectMqlOption(q.id, opt.id)}
+                                  style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
+                                />
+                                <span style={{
+                                  fontSize: '0.76rem',
+                                  fontWeight: isOptionSelected ? 800 : 500,
+                                  color: isOptionSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                                }}>
+                                  {opt.label}
+                                </span>
+                              </div>
+
+                              <span style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                color: opt.points >= 75 ? '#10B981' : opt.points >= 50 ? '#F59E0B' : '#EF4444',
+                              }}>
+                                {opt.points} pts
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+          </div>
         )}
 
       </div>

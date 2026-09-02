@@ -251,5 +251,40 @@ export const sourceService = {
     } catch (err) {
       console.error('Falha ao sincronizar origens padrão de indicação:', err);
     }
+  },
+
+  /**
+   * Identifica a sub-origem e o funil de destino com base na mensagem de entrada do WhatsApp
+   */
+  matchWhatsAppSubSource(source: Source, messageText: string): { subSource?: string; funnelId: string } {
+    const defaultFunnelId = source.funnelId;
+    if (!messageText || !source.configuration?.subSources || source.configuration.subSources.length === 0) {
+      return { subSource: undefined, funnelId: defaultFunnelId };
+    }
+
+    const cleanMsg = messageText
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    for (const sub of source.configuration.subSources) {
+      if (!sub.keyword) continue;
+
+      const cleanKey = sub.keyword
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+
+      if (cleanKey && cleanMsg.includes(cleanKey)) {
+        return {
+          subSource: sub.name,
+          funnelId: sub.funnelId || defaultFunnelId,
+        };
+      }
+    }
+
+    return { subSource: undefined, funnelId: defaultFunnelId };
   }
 };
+

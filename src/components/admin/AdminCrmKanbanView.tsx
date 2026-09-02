@@ -7,7 +7,7 @@ import {
   Crown, Megaphone, Handshake, Sparkles, Target,
   Settings, Shield, Lock, Trash2, Pin,
   Flame, Zap, Rocket, Heart,
-  Trophy, Radio, PhoneCall, MessageSquare, Gift,
+  Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
   Compass, ShieldCheck, Star, ShoppingBag, Music, Camera
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -81,8 +81,191 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     updateFunnel,
     deleteFunnel,
     updateLeadStage,
-    closeLeadSaleWithValue
+    closeLeadSaleWithValue,
   } = useAdminState();
+
+  const renderLeadOriginBadge = (lead: Lead) => {
+    // Se tiver sub-origem mapeada (ex: WhatsApp / Instagram)
+    if (lead.subSource) {
+      return (
+        <span
+          title={`Origem: ${lead.sourceName || 'WhatsApp'} • Sub-origem: ${lead.subSource}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            color: '#10B981',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <PhoneCall size={10} style={{ flexShrink: 0 }} />
+          <span>WhatsApp / {lead.subSource}</span>
+        </span>
+      );
+    }
+
+    // Se for do WhatsApp (direto sem sub-origem)
+    if ((lead.source as string) === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) {
+      return (
+        <span
+          title="Origem: WhatsApp"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            color: '#10B981',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <PhoneCall size={10} style={{ flexShrink: 0 }} />
+          <span>WhatsApp</span>
+        </span>
+      );
+    }
+
+    // Se for do Instagram
+    if ((lead.source as string) === 'instagram' || lead.sourceName?.toLowerCase().includes('instagram')) {
+      return (
+        <span
+          title="Origem: Instagram"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'rgba(236, 72, 153, 0.12)',
+            border: '1px solid rgba(236, 72, 153, 0.35)',
+            color: '#EC4899',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <Camera size={10} style={{ flexShrink: 0 }} />
+          <span>Instagram</span>
+        </span>
+      );
+    }
+
+    // Se for de Formulário
+    if ((lead.source as string) === 'form' || lead.sourceName?.toLowerCase().includes('formulário') || lead.sourceName?.toLowerCase().includes('form')) {
+      return (
+        <span
+          title={`Origem: ${lead.sourceName || 'Formulário'}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'rgba(59, 130, 246, 0.12)',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
+            color: '#60A5FA',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <FileText size={10} style={{ flexShrink: 0 }} />
+          <span>Formulário</span>
+        </span>
+      );
+    }
+
+    // Se for de Indicação
+    if (lead.source === 'indicacao' || (lead.debutanteName && lead.debutanteName !== 'Indicação Externa' && lead.debutanteName !== 'WhatsApp Direto')) {
+      return (
+        <span
+          title={`Indicada por: ${lead.debutanteName}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'var(--adm-accent-bg)',
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            color: 'var(--adm-accent)',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <Gift size={10} style={{ flexShrink: 0 }} />
+          <span>Indicação</span>
+        </span>
+      );
+    }
+
+    // Se for Tráfego Pago
+    if (lead.source === 'trafego_pago') {
+      return (
+        <span
+          title="Origem: Tráfego Pago"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 7px',
+            borderRadius: '8px',
+            fontSize: '0.64rem',
+            fontWeight: 800,
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            color: '#F59E0B',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          <Target size={10} style={{ flexShrink: 0 }} />
+          <span>Tráfego Pago</span>
+        </span>
+      );
+    }
+
+    // Fallback
+    const displaySource = lead.sourceName || lead.source || 'Direto';
+    return (
+      <span
+        title={`Origem: ${displaySource}`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '2px 7px',
+          borderRadius: '8px',
+          fontSize: '0.64rem',
+          fontWeight: 800,
+          background: 'rgba(148, 163, 184, 0.12)',
+          border: '1px solid rgba(148, 163, 184, 0.35)',
+          color: '#94A3B8',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        <Compass size={10} style={{ flexShrink: 0 }} />
+        <span>{displaySource}</span>
+      </span>
+    );
+  };
 
   // Active Funnel selection: null = Hub de Funis (Cards), or 'indicacao', 'trafego', etc.
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(
@@ -2200,11 +2383,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 e.currentTarget.style.transform = 'translateY(0)';
                               }}
                             >
-                              {/* Name */}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              {/* Header: Name & Origin Badge on Top-Right */}
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', flex: 1, wordBreak: 'break-word' }}>
                                   {lead.name}
                                 </span>
+                                {renderLeadOriginBadge(lead)}
                               </div>
                               {/* Casa de Festa Badge */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -2346,7 +2530,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       >
                         <td style={{ padding: '12px 18px', fontWeight: 800, color: 'var(--adm-text-title)' }}>{lead.name}</td>
                         <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)' }}>{lead.phone}</td>
-                        <td style={{ padding: '12px 18px', color: 'var(--adm-text-muted)' }}>{lead.age} anos ({lead.group})</td>
+                        <td style={{ padding: '12px 18px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                            <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.74rem' }}>{lead.age} anos ({lead.group})</span>
+                            {renderLeadOriginBadge(lead)}
+                          </div>
+                        </td>
                         <td style={{ padding: '12px 18px', color: 'var(--adm-accent)', fontWeight: 600 }}>{lead.debutanteName}</td>
                         <td style={{ padding: '12px 18px' }}>
                           {hasNoAssignee ? (

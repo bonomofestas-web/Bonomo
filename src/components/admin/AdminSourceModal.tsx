@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  X, Compass, PhoneCall, Link2, FileText, Gift,
-  AlertCircle, Plus, Trash2
+  X, Compass, PhoneCall, FileText, Gift,
+  AlertCircle, Plus, Trash2, KeyRound
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import type { Source, SourceType, FormField, FormFieldType } from '../../types/sources';
+import type { Source, SourceType, FormField, FormFieldType, WhatsAppSubSource } from '../../types/sources';
 
 interface AdminSourceModalProps {
   isOpen: boolean;
@@ -29,15 +29,17 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
 
   const [name, setName] = useState('');
   const [venueId, setVenueId] = useState('');
-  const [type, setType] = useState<SourceType>('tracking_link');
+  const [type, setType] = useState<SourceType>('form');
   const [funnelId, setFunnelId] = useState('');
   const [whatsappInstanceId, setWhatsappInstanceId] = useState('');
   const [slug, setSlug] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
-  // Tracking Link Specifics
-  const [targetPhone, setTargetPhone] = useState('');
-  const [message, setMessage] = useState('');
+  // WhatsApp Sub-sources
+  const [subSources, setSubSources] = useState<WhatsAppSubSource[]>([]);
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubKeyword, setNewSubKeyword] = useState('');
+  const [newSubFunnelId, setNewSubFunnelId] = useState('');
 
   // Form Specifics
   const [formTitle, setFormTitle] = useState('Solicite seu Orçamento');
@@ -55,15 +57,14 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
     if (sourceToEdit) {
       setName(sourceToEdit.name || '');
       setVenueId(sourceToEdit.venueId || (venues[0]?.id || ''));
-      setType(sourceToEdit.type || 'tracking_link');
+      setType((sourceToEdit.type === 'tracking_link' ? 'whatsapp_api' : sourceToEdit.type) || 'form');
       setFunnelId(sourceToEdit.funnelId || '');
       setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
       setSlug(sourceToEdit.slug || '');
       setStatus(sourceToEdit.status || 'active');
 
       const config = sourceToEdit.configuration || {};
-      setTargetPhone(config.targetPhone || '');
-      setMessage(config.message || '');
+      setSubSources(config.subSources || []);
       setFormTitle(config.title || 'Solicite seu Orçamento');
       setFormDescription(config.description || '');
       setFormFields(config.fields && config.fields.length > 0 ? config.fields : DEFAULT_FORM_FIELDS);
@@ -78,13 +79,15 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
 
       setName('');
       setVenueId(defaultVenue);
-      setType('tracking_link');
+      setType('whatsapp_api');
       setFunnelId(availableFunnels[0]?.id || 'comercial');
       setWhatsappInstanceId('');
       setSlug('');
       setStatus('active');
-      setTargetPhone('');
-      setMessage('Olá! Gostaria de mais informações sobre festas e eventos.');
+      setSubSources([]);
+      setNewSubName('');
+      setNewSubKeyword('');
+      setNewSubFunnelId('');
       setFormTitle('Solicite seu Orçamento');
       setFormDescription('Preencha os dados abaixo e nossa equipe entrará em contato rapidamente.');
       setFormFields(DEFAULT_FORM_FIELDS);
@@ -100,10 +103,10 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
     return funnels.filter(f => f.venueId === venueId || f.venueId === 'all');
   }, [funnels, venueId]);
 
-  // Auto-generate slug when typing name
+  // Auto-generate slug when typing name for forms
   const handleNameChange = (val: string) => {
     setName(val);
-    if (!sourceToEdit && !slug) {
+    if (!sourceToEdit && !slug && type === 'form') {
       const generated = val
         .toLowerCase()
         .normalize('NFD')
@@ -133,6 +136,34 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
     setFormFields(formFields.map(f => f.id === fieldId ? { ...f, ...updates } : f));
   };
 
+  const handleAddSubSource = () => {
+    if (!newSubName.trim()) {
+      setErrorMsg('Informe o nome da sub-origem (ex: Instagram, Google Ads, TikTok).');
+      return;
+    }
+    if (!newSubKeyword.trim()) {
+      setErrorMsg('Informe a palavra-chave ou frase de identificação da primeira mensagem.');
+      return;
+    }
+
+    const sub: WhatsAppSubSource = {
+      id: `sub_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name: newSubName.trim(),
+      keyword: newSubKeyword.trim().toLowerCase(),
+      funnelId: newSubFunnelId || undefined,
+    };
+
+    setSubSources(prev => [...prev, sub]);
+    setNewSubName('');
+    setNewSubKeyword('');
+    setNewSubFunnelId('');
+    setErrorMsg('');
+  };
+
+  const handleRemoveSubSource = (subId: string) => {
+    setSubSources(prev => prev.filter(s => s.id !== subId));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -146,17 +177,12 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
       return;
     }
     if (!funnelId) {
-      setErrorMsg('Selecione o Funil de Destino obrigatório para onde os leads serão enviados.');
+      setErrorMsg('Selecione o Funil de Destino padrão para onde os leads serão enviados.');
       return;
     }
 
-    if (type === 'tracking_link' && !targetPhone.trim()) {
-      setErrorMsg('Informe o número de WhatsApp de destino para o link rastreável.');
-      return;
-    }
-
-    if ((type === 'tracking_link' || type === 'form') && !slug.trim()) {
-      setErrorMsg('Informe um slug único para a URL pública.');
+    if (type === 'form' && !slug.trim()) {
+      setErrorMsg('Informe um slug único para a URL pública do formulário.');
       return;
     }
 
@@ -166,9 +192,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
       const formattedSlug = slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
       const configuration = {
-        ...(type === 'tracking_link' ? { targetPhone, message } : {}),
+        ...(type === 'whatsapp_api' ? { instanceName: whatsappInstanceId, subSources } : {}),
         ...(type === 'form' ? { title: formTitle, description: formDescription, fields: formFields, successMessage, buttonText } : {}),
-        ...(type === 'whatsapp_api' ? { instanceName: whatsappInstanceId } : {}),
         ...(type === 'referral' ? { systemManaged: true } : {}),
       };
 
@@ -180,7 +205,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
           funnelId,
           whatsappInstanceId: whatsappInstanceId || undefined,
           status,
-          slug: (type === 'tracking_link' || type === 'form') ? formattedSlug : undefined,
+          slug: type === 'form' ? formattedSlug : undefined,
           configuration,
         });
       } else {
@@ -191,7 +216,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
           funnelId,
           whatsappInstanceId: whatsappInstanceId || undefined,
           status,
-          slug: (type === 'tracking_link' || type === 'form') ? formattedSlug : undefined,
+          slug: type === 'form' ? formattedSlug : undefined,
           configuration,
         });
       }
@@ -223,8 +248,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
         border: '1px solid var(--adm-border)',
         borderRadius: '24px',
         width: '100%',
-        maxWidth: '680px',
-        maxHeight: '90vh',
+        maxWidth: '720px',
+        maxHeight: '92vh',
         overflowY: 'auto',
         boxShadow: '0 24px 60px rgba(0, 0, 0, 0.4)',
         display: 'flex',
@@ -242,8 +267,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '38px',
-              height: '38px',
+              width: '40px',
+              height: '40px',
               borderRadius: '12px',
               background: 'var(--adm-accent-bg)',
               color: 'var(--adm-accent)',
@@ -251,14 +276,14 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <Compass size={20} />
+              <Compass size={22} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
                 {sourceToEdit ? 'Editar Origem' : 'Nova Origem de Leads'}
               </h2>
               <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                Configure a porta de entrada e o funil de destino dos leads
+                Configure a porta de entrada comercial e o roteamento por funil
               </div>
             </div>
           </div>
@@ -299,23 +324,22 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           )}
 
-          {/* 1. Tipo de Origem (Selector) */}
+          {/* 1. Tipo de Origem (3 Opções Principais) */}
           <div>
             <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
               Tipo de Origem
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
               {[
-                { id: 'tracking_link', label: 'Link Rastreável', icon: <Link2 size={16} />, desc: 'Redireciona para WhatsApp' },
-                { id: 'form', label: 'Formulário', icon: <FileText size={16} />, desc: 'Página ou Embed externa' },
-                { id: 'whatsapp_api', label: 'WhatsApp API', icon: <PhoneCall size={16} />, desc: 'Instância / Conexão futura' },
+                { id: 'whatsapp_api', label: 'WhatsApp API', icon: <PhoneCall size={16} />, desc: 'Número, sub-origens & palavras-chave' },
+                { id: 'form', label: 'Formulário Público', icon: <FileText size={16} />, desc: 'Landing page ou Embed externa' },
                 { id: 'referral', label: 'Indicação no App', icon: <Gift size={16} />, desc: 'Indicações de Debutantes' },
               ].map(t => (
                 <div
                   key={t.id}
                   onClick={() => setType(t.id as SourceType)}
                   style={{
-                    padding: '12px',
+                    padding: '14px 12px',
                     borderRadius: '14px',
                     border: type === t.id ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
                     background: type === t.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
@@ -330,7 +354,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                     {t.icon}
                     <span>{t.label}</span>
                   </div>
-                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
                     {t.desc}
                   </div>
                 </div>
@@ -338,7 +362,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Casa de Festa e Funil de Destino (Obrigatórios) */}
+          {/* 2. Casa de Festa e Funil Padrão (Obrigatórios) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
@@ -365,7 +389,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
 
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                Funil de Destino do Lead <span style={{ color: '#EF4444' }}>*</span>
+                Funil de Destino Padrão <span style={{ color: '#EF4444' }}>*</span>
               </label>
               <select
                 value={funnelId}
@@ -391,7 +415,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Ex: Instagram — Campanha 15 Anos"
+                placeholder={type === 'whatsapp_api' ? 'Ex: WhatsApp Comercial Principal' : 'Ex: Formulário Site Oficial'}
                 className="adm-input"
                 style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
                 required
@@ -414,68 +438,188 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           </div>
 
-          {/* 4. Configuração Específica: Link Rastreável */}
-          {type === 'tracking_link' && (
+          {/* 4. Configuração Específica: WhatsApp API com Sub-origens Inteligentes */}
+          {type === 'whatsapp_api' && (
             <div style={{
               background: 'var(--adm-bg-input)',
               border: '1px solid var(--adm-border)',
               borderRadius: '16px',
-              padding: '16px',
+              padding: '18px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '14px',
+              gap: '16px',
             }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Link2 size={16} color="var(--adm-accent)" />
-                <span>Configuração do Link Rastreável</span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                    WhatsApp de Destino (Com DDD) <span style={{ color: '#EF4444' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={targetPhone}
-                    onChange={(e) => setTargetPhone(e.target.value)}
-                    placeholder="Ex: 5521999999999"
-                    className="adm-input"
-                    style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
-                  />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <PhoneCall size={16} color="var(--adm-accent)" />
+                  <span>Conexão WhatsApp & Sub-origens Inteligentes</span>
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                    Slug / Link Único (/r/:slug) <span style={{ color: '#EF4444' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="insta-15anos"
-                    className="adm-input"
-                    style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
-                  />
-                </div>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  Rastreio Automático
+                </span>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                  Mensagem Pré-configurada do WhatsApp
+                  Número ou Identificador da Instância
                 </label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Olá! Vim pelo Instagram e gostaria de solicitar um orçamento..."
-                  rows={2}
+                <input
+                  type="text"
+                  value={whatsappInstanceId}
+                  onChange={(e) => setWhatsappInstanceId(e.target.value)}
+                  placeholder="Ex: 5521999999999 ou WhatsApp 01 - Comercial"
                   className="adm-input"
-                  style={{ width: '100%', borderRadius: '8px', fontSize: '0.8rem', padding: '8px 12px' }}
+                  style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
                 />
               </div>
 
-              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', background: 'var(--adm-accent-bg)', padding: '8px 12px', borderRadius: '8px' }}>
-                🔗 URL pública gerada: <strong>{typeof window !== 'undefined' ? window.location.origin : ''}/r/{slug || 'seu-slug'}</strong>
+              {/* Sub-origens Manager */}
+              <div style={{
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '14px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <KeyRound size={14} color="var(--adm-accent)" />
+                      <span>Sub-origens com Palavras-chave & Roteamento por Funil</span>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                      A primeira mensagem enviada pelo lead é lida automaticamente. Se contiver a palavra-chave, a sub-origem é atribuída e o lead vai para o funil configurado.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-sources List */}
+                {subSources.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {subSources.map(sub => {
+                      const subFunnel = funnels.find(f => f.id === sub.funnelId);
+                      return (
+                        <div
+                          key={sub.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 12px',
+                            background: 'var(--adm-bg-input)',
+                            borderRadius: '10px',
+                            border: '1px solid var(--adm-border)',
+                            fontSize: '0.76rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              🏷️ {sub.name}
+                            </span>
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: '6px',
+                              background: 'rgba(59, 130, 246, 0.12)',
+                              color: '#3B82F6',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              fontFamily: 'monospace'
+                            }}>
+                              "{sub.keyword}"
+                            </span>
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: '6px',
+                              background: 'rgba(212, 175, 55, 0.1)',
+                              color: 'var(--adm-accent)',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                            }}>
+                              🎯 {subFunnel?.name || 'Funil Padrão da Origem'}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubSource(sub.id)}
+                            style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                            title="Remover sub-origem"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '16px',
+                    textAlign: 'center',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.74rem',
+                    background: 'var(--adm-bg-input)',
+                    borderRadius: '10px',
+                    border: '1px dashed var(--adm-border)',
+                  }}>
+                    Nenhuma sub-origem cadastrada. Leads recebidos sem palavra-chave serão identificados apenas como <strong>WhatsApp</strong>.
+                  </div>
+                )}
+
+                {/* Add Sub-source Form */}
+                <div style={{
+                  padding: '12px',
+                  background: 'var(--adm-bg-input)',
+                  borderRadius: '10px',
+                  border: '1px solid var(--adm-border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    + Adicionar Nova Sub-origem
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1.5fr auto', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={newSubName}
+                      onChange={(e) => setNewSubName(e.target.value)}
+                      placeholder="Ex: Instagram"
+                      className="adm-input"
+                      style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
+                    />
+                    <input
+                      type="text"
+                      value={newSubKeyword}
+                      onChange={(e) => setNewSubKeyword(e.target.value)}
+                      placeholder="Palavra-chave: ex: insta"
+                      className="adm-input"
+                      style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
+                    />
+                    <select
+                      value={newSubFunnelId}
+                      onChange={(e) => setNewSubFunnelId(e.target.value)}
+                      className="adm-input"
+                      style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
+                    >
+                      <option value="">🎯 Funil Padrão ({scopedFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
+                      {scopedFunnels.map(f => (
+                        <option key={f.id} value={f.id}>🎯 {f.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddSubSource}
+                      className="adm-btn-primary"
+                      style={{ height: '34px', padding: '0 12px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap' }}
+                    >
+                      <Plus size={14} />
+                      <span>Adicionar</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -631,43 +775,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           )}
 
-          {/* 6. Configuração Específica: WhatsApp API */}
-          {type === 'whatsapp_api' && (
-            <div style={{
-              background: 'var(--adm-bg-input)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '16px',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-            }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <PhoneCall size={16} color="var(--adm-accent)" />
-                <span>Instância do WhatsApp API (Desacoplado)</span>
-              </div>
-
-              <div style={{ padding: '14px', background: 'rgba(212, 175, 55, 0.08)', borderRadius: '10px', border: '1px dashed var(--adm-accent)', color: 'var(--adm-text-title)', fontSize: '0.78rem', lineHeight: '1.4' }}>
-                ℹ️ <strong>Integração de WhatsApp API:</strong> A estrutura do módulo de Origens já está 100% pronta. Quando a API for conectada futuramente, você poderá vincular a instância diretamente a esta origem.
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                  Identificador / Número de Atendimento
-                </label>
-                <input
-                  type="text"
-                  value={whatsappInstanceId}
-                  onChange={(e) => setWhatsappInstanceId(e.target.value)}
-                  placeholder="Ex: WhatsApp 01 - Comercial"
-                  className="adm-input"
-                  style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 7. Configuração Específica: Indicação */}
+          {/* 6. Configuração Específica: Indicação */}
           {type === 'referral' && (
             <div style={{
               background: 'var(--adm-bg-input)',

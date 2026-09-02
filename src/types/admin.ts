@@ -224,6 +224,24 @@ export interface FunnelCustomField {
   order?: number;
 }
 
+export type LeadMqlLevel = 'top' | 'qualified' | 'cold';
+
+export interface MqlOption {
+  id: string;
+  label: string;
+  points: number; // 0 a 100
+}
+
+export interface MqlQuestion {
+  id: string;
+  venueId: string;
+  title: string;
+  description?: string;
+  options: MqlOption[];
+  weight?: number;
+  order?: number;
+}
+
 export interface Lead {
   id: string;
   debutanteId: string;
@@ -232,6 +250,8 @@ export interface Lead {
   venueId: string;
   funnelId?: string;     // Funil comercial ao qual o lead pertence
   sourceId?: string;     // ID da Origem vinculada (Módulo de Origens)
+  sourceName?: string;   // Nome amigável da Origem (ex: "WhatsApp Principal", "Formulário Site")
+  subSource?: string;    // Nome da Sub-origem (ex: "Instagram", "Google Ads", "Bio")
   name: string;
   phone: string;
   email?: string;
@@ -257,6 +277,11 @@ export interface Lead {
   paymentMethod?: string;         // Forma de pagamento
   temperature?: LeadTemperature;  // 'hot' (🔥 Quente) | 'warm' (🟡 Morno) | 'cold' (🔵 Frio)
   tags?: string[];                // Tags específicas do funil
+
+  // Qualificação MQL (Marketing Qualified Lead)
+  mqlScore?: number;               // Porcentagem calculada (0 a 100%)
+  mqlLevel?: LeadMqlLevel;         // 'top' (🟢 Top) | 'qualified' (🟡 Qualificado) | 'cold' (🔴 Frio)
+  mqlAnswers?: Record<string, string>; // questionId -> optionId
 
   // Campos Customizados definidos pelo Funil
   customFieldValues?: Record<string, any>;

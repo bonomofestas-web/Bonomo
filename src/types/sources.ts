@@ -1,4 +1,12 @@
-export type SourceType = 'whatsapp_api' | 'tracking_link' | 'form' | 'referral';
+export type SourceType = 'form' | 'whatsapp_api' | 'referral' | 'tracking_link';
+
+export interface WhatsAppSubSource {
+  id: string;
+  name: string; // Ex: "Instagram", "Google Ads", "TikTok", "Site Oficial", "Bio do Insta"
+  keyword: string; // Ex: "instagram", "insta", "quero orçamento", "festa15"
+  funnelId?: string; // Funil de destino específico (se vazio, usa o funil padrão da origem)
+  color?: string; // Cor opcional para badge
+}
 
 export type FormFieldType = 'text' | 'phone' | 'email' | 'date' | 'number' | 'select' | 'textarea';
 
@@ -12,9 +20,10 @@ export interface FormField {
 }
 
 export interface SourceConfiguration {
-  // Tracking Link specifics
-  targetPhone?: string;
-  message?: string;
+  // WhatsApp API specifics
+  instanceName?: string;
+  defaultStageId?: string;
+  subSources?: WhatsAppSubSource[]; // Sub-origens inteligentes mapeadas por palavra-chave
 
   // Form specifics
   title?: string;
@@ -24,12 +33,17 @@ export interface SourceConfiguration {
   successMessage?: string;
   buttonText?: string;
 
-  // WhatsApp API specifics (Desacoplado)
-  instanceName?: string;
-  defaultStageId?: string;
-
   // Referral specifics
   systemManaged?: boolean;
+
+  // Legacy Tracking Link specifics (mantido para compatibilidade histórica)
+  targetPhone?: string;
+  message?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmContent?: string;
+  utmTerm?: string;
 }
 
 export interface Source {

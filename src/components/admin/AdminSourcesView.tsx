@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Compass, Plus, Link2, FileText, PhoneCall, Gift,
+  Compass, Plus, FileText, PhoneCall, Gift,
   Copy, Check, Code, Edit3, Trash2,
   CheckCircle2, XCircle, Search, Building2
 } from 'lucide-react';
@@ -57,9 +57,7 @@ export const AdminSourcesView: React.FC = () => {
 
   const handleCopyLink = (source: Source) => {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://app.bonomofestas.com.br';
-    const link = source.type === 'tracking_link' 
-      ? `${baseUrl}/r/${source.slug || source.id}`
-      : `${baseUrl}/f/${source.slug || source.id}`;
+    const link = `${baseUrl}/f/${source.slug || source.id}`;
 
     navigator.clipboard.writeText(link);
     setCopiedId(source.id);
@@ -78,20 +76,6 @@ export const AdminSourcesView: React.FC = () => {
 
   const renderTypeBadge = (type: Source['type']) => {
     switch (type) {
-      case 'tracking_link':
-        return (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-            <Link2 size={12} />
-            <span>Link Rastreável</span>
-          </span>
-        );
-      case 'form':
-        return (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899', border: '1px solid rgba(236, 72, 153, 0.3)' }}>
-            <FileText size={12} />
-            <span>Formulário</span>
-          </span>
-        );
       case 'whatsapp_api':
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
@@ -99,11 +83,25 @@ export const AdminSourcesView: React.FC = () => {
             <span>WhatsApp API</span>
           </span>
         );
+      case 'form':
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+            <FileText size={12} />
+            <span>Formulário</span>
+          </span>
+        );
       case 'referral':
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', border: '1px solid rgba(212, 175, 55, 0.3)' }}>
             <Gift size={12} />
             <span>Indicação no App</span>
+          </span>
+        );
+      default:
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, background: 'rgba(100, 116, 139, 0.12)', color: '#94A3B8', border: '1px solid rgba(100, 116, 139, 0.3)' }}>
+            <Compass size={12} />
+            <span>{type}</span>
           </span>
         );
     }
@@ -249,9 +247,8 @@ export const AdminSourcesView: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto' }}>
           {[
             { id: 'all', label: 'Todas' },
-            { id: 'tracking_link', label: 'Links' },
-            { id: 'form', label: 'Formulários' },
             { id: 'whatsapp_api', label: 'WhatsApp API' },
+            { id: 'form', label: 'Formulários' },
             { id: 'referral', label: 'Indicações' },
           ].map(f => (
             <button
@@ -290,7 +287,7 @@ export const AdminSourcesView: React.FC = () => {
               Nenhuma origem encontrada
             </div>
             <div style={{ fontSize: '0.78rem', marginTop: '4px', maxWidth: '380px', margin: '4px auto 0 auto' }}>
-              Crie links rastreáveis para WhatsApp, formulários públicos ou conecte novas origens para captar leads automaticamente.
+              Conecte números de WhatsApp com sub-origens inteligentes, crie formulários públicos ou utilize as indicações nativas das debutantes.
             </div>
           </div>
         ) : (
@@ -301,10 +298,10 @@ export const AdminSourcesView: React.FC = () => {
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Origem</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Tipo</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Casa de Festa</th>
-                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Funil de Destino</th>
-                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>WhatsApp / Destino</th>
+                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Funil Padrão</th>
+                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Configuração / Sub-origens</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Status</th>
-                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Entradas / Leads</th>
+                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Leads Captados</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
@@ -313,6 +310,7 @@ export const AdminSourcesView: React.FC = () => {
                   const venue = venues.find(v => v.id === source.venueId);
                   const funnel = funnels.find(f => f.id === source.funnelId);
                   const isCopied = copiedId === source.id;
+                  const subSources = source.configuration?.subSources || [];
 
                   return (
                     <tr
@@ -329,9 +327,9 @@ export const AdminSourcesView: React.FC = () => {
                         <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
                           {source.name}
                         </div>
-                        {source.slug && (
+                        {source.slug && source.type === 'form' && (
                           <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
-                            /{source.type === 'tracking_link' ? 'r' : 'f'}/{source.slug}
+                            /f/{source.slug}
                           </div>
                         )}
                       </td>
@@ -367,26 +365,48 @@ export const AdminSourcesView: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* WhatsApp / Destino */}
+                      {/* Configuração & Sub-origens */}
                       <td style={{ padding: '14px 18px' }}>
-                        {source.type === 'tracking_link' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)' }}>
-                            📱 {source.configuration?.targetPhone || 'Não configurado'}
-                          </div>
-                        )}
                         {source.type === 'whatsapp_api' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)' }}>
-                            ⚡ {source.whatsappInstanceId || 'Nenhuma instância'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)', fontWeight: 700 }}>
+                              ⚡ {source.whatsappInstanceId || 'Instância Ativa'}
+                            </div>
+                            {subSources.length > 0 ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                {subSources.map(sub => (
+                                  <span
+                                    key={sub.id}
+                                    title={`Palavra-chave: "${sub.keyword}"`}
+                                    style={{
+                                      fontSize: '0.64rem',
+                                      fontWeight: 800,
+                                      padding: '1px 6px',
+                                      borderRadius: '6px',
+                                      background: 'rgba(16, 185, 129, 0.12)',
+                                      color: '#10B981',
+                                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                                    }}
+                                  >
+                                    🏷️ {sub.name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                                Sem sub-origens (Rastreio Direto)
+                              </span>
+                            )}
                           </div>
                         )}
                         {source.type === 'form' && (
                           <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                            {source.configuration?.fields?.length || 5} campos configurados
+                            📝 {source.configuration?.fields?.length || 5} campos • Link público ativo
                           </div>
                         )}
                         {source.type === 'referral' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                            App das Debutantes
+                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
+                            👑 App das Aniversariantes & Debutantes
                           </div>
                         )}
                       </td>
@@ -428,32 +448,31 @@ export const AdminSourcesView: React.FC = () => {
                       {/* Ações */}
                       <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                          {/* Copiar Link */}
-                          {(source.type === 'tracking_link' || source.type === 'form') && (
-                            <button
-                              type="button"
-                              onClick={() => handleCopyLink(source)}
-                              title="Copiar link público"
-                              className="adm-btn-secondary"
-                              style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                              {isCopied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
-                              <span>{isCopied ? 'Copiado!' : 'Link'}</span>
-                            </button>
-                          )}
-
-                          {/* Código Embed */}
+                          {/* Copiar Link (Apenas Formulários) */}
                           {source.type === 'form' && (
-                            <button
-                              type="button"
-                              onClick={() => setEmbedModalSource(source)}
-                              title="Gerar código Embed"
-                              className="adm-btn-secondary"
-                              style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                              <Code size={13} />
-                              <span>Embed</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyLink(source)}
+                                title="Copiar link do formulário público"
+                                className="adm-btn-secondary"
+                                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                {isCopied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
+                                <span>{isCopied ? 'Copiado!' : 'Link'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setEmbedModalSource(source)}
+                                title="Gerar código Embed"
+                                className="adm-btn-secondary"
+                                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Code size={13} />
+                                <span>Embed</span>
+                              </button>
+                            </>
                           )}
 
                           {/* Editar */}
@@ -463,7 +482,7 @@ export const AdminSourcesView: React.FC = () => {
                               setSourceToEdit(source);
                               setIsModalOpen(true);
                             }}
-                            title="Editar origem"
+                            title="Editar origem e sub-origens"
                             style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-body)', cursor: 'pointer', padding: '6px', borderRadius: '6px' }}
                           >
                             <Edit3 size={15} />

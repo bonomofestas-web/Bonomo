@@ -18,6 +18,7 @@ import { AdminVenueGoalsView } from './AdminVenueGoalsView';
 import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
+import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { Menu, X, Building2 } from 'lucide-react';
@@ -149,6 +150,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminWhatsAppWorkspaceView />;
       case 'sources':
         return <AdminSourcesView />;
+      case 'mql':
+        return <AdminMqlConfigView />;
       case 'venues':
         return (
           <AdminVenuesView
@@ -286,8 +289,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               let title = 'Meu Dia • Início';
               if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
+              else if (activeTab === 'whatsapp') { category = 'Comunicação'; title = 'WhatsApp Workspace'; }
+              else if (activeTab === 'sources') { category = 'Gestão da Casa'; title = 'Origens & Rastreamento'; }
+              else if (activeTab === 'mql') { category = 'Gestão da Casa'; title = 'MQL • Qualificação de Leads'; }
+              else if (activeTab === 'venue-goals') { category = 'Gestão da Casa'; title = 'Metas Comerciais da Casa'; }
               else if (activeTab === 'venues') { category = 'Unidades'; title = 'Casas de Festa & Espaços'; }
               else if (activeTab === 'debutantes') { category = 'Debutantes'; title = 'Central de Aniversariantes • 15 Anos'; }
+              else if (activeTab === 'master-dashboard') { category = 'Master'; title = 'Dashboard Executivo Master'; }
               else if (activeTab === 'benefits') { category = 'Catálogo'; title = 'Catálogo de Benefícios & Recompensas'; }
               else if (activeTab === 'collaborators') { category = 'Gestão'; title = 'Equipe Comercial & Permissões'; }
               else if (activeTab === 'templates') { category = 'Jornadas'; title = 'Configurações de Jornadas VIP'; }
@@ -853,7 +861,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         </header>
 
         {/* Content Area */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', background: 'var(--adm-bg-app)', height: 'calc(100vh - 64px)' }}>
+        <div style={{
+          flex: 1,
+          overflowY: (activeTab === 'whatsapp' || activeTab === 'crm') ? 'hidden' : 'auto',
+          overflowX: 'hidden',
+          background: 'var(--adm-bg-app)',
+          height: 'calc(100vh - 64px)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
           {renderContent()}
         </div>
       </main>

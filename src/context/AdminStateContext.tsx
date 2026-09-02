@@ -16,7 +16,9 @@ import type {
   ThemeMode,
   AdminTask,
   TaskStatus,
-  CommercialFunnel
+  CommercialFunnel,
+  MqlQuestion,
+  LeadMqlLevel
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -54,6 +56,63 @@ const STORAGE_KEY_THEME = 'bonomo_admin_theme_v7';
 const STORAGE_KEY_TASKS = 'bonomo_admin_tasks_v7';
 const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
 const STORAGE_KEY_LEAD_GOAL = 'bonomo_admin_lead_goal_v7';
+const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
+
+export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
+  {
+    id: `mql_q1_${venueId}`,
+    venueId,
+    title: 'Qual a previsão de contratação / fechamento da festa?',
+    description: 'Avalia a urgência e janela de oportunidade comercial',
+    weight: 1,
+    order: 0,
+    options: [
+      { id: 'opt_1_1', label: 'Imediata (próximos 7 a 15 dias)', points: 100 },
+      { id: 'opt_1_2', label: 'Em até 30 a 60 dias', points: 75 },
+      { id: 'opt_1_3', label: 'Em até 6 meses', points: 50 },
+      { id: 'opt_1_4', label: 'Apenas pesquisando sem prazo definido', points: 15 },
+    ],
+  },
+  {
+    id: `mql_q2_${venueId}`,
+    venueId,
+    title: 'O orçamento / investimento estimado está alinhado?',
+    description: 'Verifica poder de investimento e alinhamento com pacotes da casa',
+    weight: 1,
+    order: 1,
+    options: [
+      { id: 'opt_2_1', label: 'Orçamento totalmente aprovado e com recurso disponível', points: 100 },
+      { id: 'opt_2_2', label: 'Orçamento pré-definido dentro da média dos pacotes', points: 70 },
+      { id: 'opt_2_3', label: 'Buscando menor preço / sem orçamento definido', points: 30 },
+    ],
+  },
+  {
+    id: `mql_q3_${venueId}`,
+    venueId,
+    title: 'Os decisores financeiros principais estão no contato?',
+    description: 'Mede o nível de acesso aos reais tomadores de decisão',
+    weight: 1,
+    order: 2,
+    options: [
+      { id: 'opt_3_1', label: 'Sim, o decisor financeiro principal está diretamente na conversa', points: 100 },
+      { id: 'opt_3_2', label: 'Sim, o decisor está ciente e participará da visita/reunião', points: 75 },
+      { id: 'opt_3_3', label: 'Não, anfitrião(ã) ainda não alinhou com os responsáveis', points: 20 },
+    ],
+  },
+  {
+    id: `mql_q4_${venueId}`,
+    venueId,
+    title: 'A data do evento já está definida?',
+    description: 'Identifica a maturidade da contratação da data',
+    weight: 1,
+    order: 3,
+    options: [
+      { id: 'opt_4_1', label: 'Data fixa definida e inegociável', points: 100 },
+      { id: 'opt_4_2', label: 'Mês ou semestre já escolhido com opções flexíveis', points: 70 },
+      { id: 'opt_4_3', label: 'Sem previsão ou data ainda incerta', points: 25 },
+    ],
+  },
+];
 
 export const generateUuid = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -189,6 +248,13 @@ export interface AdminContextType {
     group: string;
     notes?: string;
   }) => string;
+  createLeadFromWhatsApp: (data: {
+    venueId: string;
+    phone: string;
+    name?: string;
+    firstMessage?: string;
+    sourceId?: string;
+  }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
   closeLeadSale: (leadId: string) => void;
@@ -247,6 +313,13 @@ export interface AdminContextType {
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
 
+  // MQL (Marketing Qualified Lead) System
+  mqlQuestions: MqlQuestion[];
+  addMqlQuestion: (data: Omit<MqlQuestion, 'id'>) => string;
+  updateMqlQuestion: (id: string, data: Partial<MqlQuestion>) => void;
+  deleteMqlQuestion: (id: string) => void;
+  saveLeadMqlAnswers: (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => void;
+
   // Commercial Funnel Lead Goal
   leadGoal: import('../types/admin').LeadGoal;
   setLeadGoal: (goal: import('../types/admin').LeadGoal) => void;
@@ -278,6 +351,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
     return saved ? JSON.parse(saved) : DEFAULT_LEADS;
+  });
+
+  const [mqlQuestions, setMqlQuestions] = useState<MqlQuestion[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_MQL_QUESTIONS);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    const savedVenues = localStorage.getItem(STORAGE_KEY_VENUES);
+    const existingVenues: Venue[] = savedVenues ? JSON.parse(savedVenues) : DEFAULT_VENUES;
+    const initialQuestions = existingVenues.flatMap(v => createDefaultMqlQuestionsForVenue(v.id));
+    if (initialQuestions.length > 0) {
+      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(initialQuestions));
+    }
+    return initialQuestions;
   });
 
   const [templates, setTemplates] = useState<JourneyTemplate[]>(() => {
@@ -947,12 +1038,60 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    // 3. Criar automaticamente as Perguntas Padrão de MQL da nova casa de festa
+    const defaultMqlQuestions = createDefaultMqlQuestionsForVenue(id);
+    setMqlQuestions(prev => {
+      const updated = [...prev, ...defaultMqlQuestions];
+      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
+      return updated;
+    });
+
     // Async sync with Supabase
     venueService.upsert(newVenue);
     funnelService.upsert(defaultFunnel);
     sourceService.upsert(defaultReferralSource);
 
     return id;
+  };
+
+  // MQL Questions Management
+  const addMqlQuestion = (data: Omit<MqlQuestion, 'id'>): string => {
+    const id = generateUuid();
+    const newQuestion: MqlQuestion = {
+      ...data,
+      id,
+      order: data.order ?? mqlQuestions.filter(q => q.venueId === data.venueId).length,
+    };
+    setMqlQuestions(prev => {
+      const updated = [...prev, newQuestion];
+      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
+      return updated;
+    });
+    return id;
+  };
+
+  const updateMqlQuestion = (id: string, data: Partial<MqlQuestion>) => {
+    setMqlQuestions(prev => {
+      const updated = prev.map(q => q.id === id ? { ...q, ...data } : q);
+      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const deleteMqlQuestion = (id: string) => {
+    setMqlQuestions(prev => {
+      const updated = prev.filter(q => q.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const saveLeadMqlAnswers = (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => {
+    updateLeadData(leadId, {
+      mqlAnswers: answers,
+      mqlScore: score,
+      mqlLevel: level,
+    });
   };
 
   const updateVenue = (id: string, venueData: Partial<Venue>) => {
@@ -1683,6 +1822,84 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     setLeads(prev => [newLead, ...prev]);
+    return newLeadId;
+  };
+
+  const createLeadFromWhatsApp = async (data: {
+    venueId: string;
+    phone: string;
+    name?: string;
+    firstMessage?: string;
+    sourceId?: string;
+  }): Promise<string> => {
+    const newLeadId = generateUuid();
+    
+    // Procura a Origem do WhatsApp (pelo ID específico ou da casa de festa)
+    const waSource = (data.sourceId ? sources.find(s => s.id === data.sourceId) : null)
+      || sources.find(s => s.venueId === data.venueId && s.type === 'whatsapp_api' && s.status === 'active')
+      || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
+    
+    let matchedSubSource: string | undefined = undefined;
+    let targetFunnelId = waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'comercial';
+
+    if (waSource && data.firstMessage) {
+      const match = sourceService.matchWhatsAppSubSource(waSource, data.firstMessage);
+      matchedSubSource = match.subSource;
+      targetFunnelId = match.funnelId || targetFunnelId;
+    }
+
+    const cleanName = data.name?.trim() || `Lead WhatsApp (${data.phone.slice(-4)})`;
+
+    const newLead: Lead = {
+      id: newLeadId,
+      debutanteId: '',
+      debutanteName: 'WhatsApp Direto',
+      debutanteSlug: '',
+      venueId: data.venueId,
+      funnelId: targetFunnelId,
+      sourceId: waSource?.id,
+      source: 'whatsapp',
+      sourceName: waSource?.name || 'WhatsApp API',
+      subSource: matchedSubSource,
+      name: cleanName,
+      phone: data.phone,
+      age: 15,
+      group: 'WhatsApp',
+      notes: data.firstMessage ? `Primeira mensagem: "${data.firstMessage}"` : undefined,
+      stage: 'new_lead',
+      isValidated: false,
+      pointsGranted: 0,
+      participants: [],
+      tasks: [],
+      activities: [
+        {
+          id: generateUuid(),
+          leadId: newLeadId,
+          timestamp: new Date().toISOString(),
+          type: 'creation',
+          title: matchedSubSource ? `Lead captado via WhatsApp / ${matchedSubSource}` : 'Lead captado via WhatsApp API',
+          text: data.firstMessage ? `Mensagem inicial: "${data.firstMessage}"` : undefined,
+          authorName: 'WhatsApp API',
+        }
+      ],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+
+    setLeads(prev => [newLead, ...prev]);
+
+    if (isSupabaseConfigured) {
+      await leadService.upsert(newLead);
+      if (waSource?.id) {
+        await sourceService.recordEvent(waSource.id, data.venueId, 'lead_created', newLeadId, {
+          sourceName: waSource.name,
+          subSource: matchedSubSource,
+          funnelId: targetFunnelId,
+          phone: data.phone,
+        });
+      }
+    }
+
     return newLeadId;
   };
 
@@ -2784,6 +3001,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       validateLead,
       invalidateLead,
       createLeadFromReferral,
+      createLeadFromWhatsApp,
       rejectLead,
       deleteLead,
       closeLeadSale,
@@ -2824,6 +3042,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       getDebutanteBySlug,
       getVenueById,
       getCollaboratorById,
+      mqlQuestions,
+      addMqlQuestion,
+      updateMqlQuestion,
+      deleteMqlQuestion,
+      saveLeadMqlAnswers,
       leadGoal,
       setLeadGoal,
     }}>

@@ -452,6 +452,15 @@ export const AdminWhatsAppWorkspaceView: React.FC = () => {
                       <span style={{ fontSize: '0.64rem', padding: '1px 6px', borderRadius: '6px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
                         {venue?.name || 'Unidade'}
                       </span>
+                      {lead.subSource ? (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                          WhatsApp / {lead.subSource}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981' }}>
+                          WhatsApp
+                        </span>
+                      )}
                       {lead.temperature === 'hot' && (
                         <span style={{ fontSize: '0.64rem', padding: '1px 6px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' }}>
                           🔥 Quente
@@ -502,10 +511,48 @@ export const AdminWhatsAppWorkspaceView: React.FC = () => {
                 </div>
 
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <h3 style={{ fontSize: '0.98rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
                       {selectedLead.name}
                     </h3>
+                    {selectedLead.subSource ? (
+                      <span style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10B981',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                      }}>
+                        📱 WhatsApp / {selectedLead.subSource}
+                      </span>
+                    ) : (
+                      <span style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: '#10B981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                      }}>
+                        📱 WhatsApp API
+                      </span>
+                    )}
+                    {selectedLead.mqlScore !== undefined && (
+                      <span style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        padding: '2px 7px',
+                        borderRadius: '6px',
+                        background: selectedLead.mqlLevel === 'top' ? 'rgba(16,185,129,0.15)' : selectedLead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: selectedLead.mqlLevel === 'top' ? '#10B981' : selectedLead.mqlLevel === 'qualified' ? '#F59E0B' : '#EF4444',
+                        border: `1px solid ${selectedLead.mqlLevel === 'top' ? 'rgba(16,185,129,0.3)' : selectedLead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                      }}>
+                        {selectedLead.mqlScore}% MQL
+                      </span>
+                    )}
                     <a
                       href={getCleanWhatsappUrl(selectedLead.phone)}
                       target="_blank"
@@ -542,7 +589,7 @@ export const AdminWhatsAppWorkspaceView: React.FC = () => {
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', fontSize: '0.76rem', fontWeight: 800 }}
                 >
                   <FileText size={14} />
-                  <span>Ver Ficha Completa</span>
+                  <span>Ficha do Lead</span>
                 </button>
               </div>
             </div>
