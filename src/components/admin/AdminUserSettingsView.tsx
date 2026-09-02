@@ -91,9 +91,9 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
   return (
     <div style={{
       width: '100%',
-      maxWidth: '780px',
+      maxWidth: '1100px',
       margin: '0 auto',
-      padding: '24px 16px 60px 16px',
+      padding: '28px 32px 60px',
       boxSizing: 'border-box',
       fontFamily: "'Poppins', sans-serif",
       color: 'var(--adm-text-title)',

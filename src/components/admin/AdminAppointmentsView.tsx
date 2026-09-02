@@ -187,8 +187,8 @@ export const AdminAppointmentsView: React.FC = () => {
       flexDirection: 'column',
       gap: '20px',
       padding: '24px 32px 60px 32px',
-      maxWidth: '1560px',
-      margin: '0 auto',
+      width: '100%',
+      boxSizing: 'border-box',
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>

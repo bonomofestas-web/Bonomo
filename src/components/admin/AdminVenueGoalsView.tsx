@@ -195,8 +195,6 @@ export const AdminVenueGoalsView: React.FC = () => {
       flexDirection: 'column',
       gap: '24px',
       padding: '28px 32px 60px',
-      maxWidth: '1200px',
-      margin: '0 auto',
       width: '100%',
       boxSizing: 'border-box',
       animation: 'fadeIn 0.2s ease-out',

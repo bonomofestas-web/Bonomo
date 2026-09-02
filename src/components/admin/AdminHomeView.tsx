@@ -209,8 +209,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       flexDirection: 'column',
       gap: '24px',
       padding: '24px 32px 60px 32px',
-      maxWidth: '1440px',
-      margin: '0 auto',
+      width: '100%',
+      boxSizing: 'border-box',
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>

@@ -140,9 +140,7 @@ export const AdminMqlConfigView: React.FC = () => {
   if (isAllVenues) {
     return (
       <div style={{
-        padding: '32px',
-        maxWidth: '1000px',
-        margin: '0 auto',
+        padding: '28px 32px 60px',
         width: '100%',
         boxSizing: 'border-box',
         display: 'flex',
@@ -258,8 +256,6 @@ export const AdminMqlConfigView: React.FC = () => {
       flexDirection: 'column',
       gap: '24px',
       padding: '28px 32px 60px',
-      maxWidth: '1200px',
-      margin: '0 auto',
       width: '100%',
       boxSizing: 'border-box',
     }}>
@@ -531,10 +527,10 @@ export const AdminMqlConfigView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 4 Options Grid/Vertical Breakdown */}
+                {/* 4 Options Vertical Stack (Like a Questionnaire / Form) */}
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  display: 'flex',
+                  flexDirection: 'column',
                   gap: '8px',
                   padding: '14px',
                   background: 'var(--adm-bg-input)',
@@ -551,32 +547,47 @@ export const AdminMqlConfigView: React.FC = () => {
                           background: 'var(--adm-bg-card)',
                           border: `1px solid ${conf.border}`,
                           borderRadius: '10px',
-                          padding: '10px 12px',
+                          padding: '11px 14px',
                           display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          width: '100%',
+                          boxSizing: 'border-box',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                           <span style={{
-                            fontSize: '0.66rem',
+                            fontSize: '0.68rem',
                             fontWeight: 800,
-                            padding: '2px 6px',
-                            borderRadius: '5px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
                             background: conf.bg,
                             color: conf.color,
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            flexShrink: 0,
+                            minWidth: '85px',
+                            justifyContent: 'center',
                           }}>
                             {conf.icon} {conf.label}
                           </span>
-                          <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
-                            {conf.points}%
+                          <span style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', fontWeight: 600, lineHeight: 1.3 }}>
+                            {opt.label}
                           </span>
                         </div>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600, lineHeight: 1.3 }}>
-                          {opt.label}
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          color: conf.color,
+                          background: conf.bg,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          border: `1px solid ${conf.border}`,
+                          flexShrink: 0,
+                        }}>
+                          {conf.points}% pts
                         </span>
                       </div>
                     );
