@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Target, Plus, Trash2, Edit2, X
+  Thermometer, Plus, Trash2, Edit2, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { MqlQuestion, MqlOption } from '../../types/admin';
@@ -101,7 +101,7 @@ export const AdminMqlConfigView: React.FC = () => {
         title: questionTitle.trim(),
         description: questionDescription.trim() || undefined,
         options: validOptions,
-        weight: 1,
+        order: venueQuestions.length,
       });
     }
 
@@ -109,47 +109,64 @@ export const AdminMqlConfigView: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '24px',
+      padding: '28px 32px 60px',
+      maxWidth: '1200px',
+      margin: '0 auto',
+      width: '100%',
+      boxSizing: 'border-box',
+    }}>
       
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%)',
-              border: '1px solid rgba(212, 175, 55, 0.35)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--adm-accent)',
-            }}>
-              <Target size={22} />
-            </div>
-            <div>
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: '20px',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%)',
+            border: '1px solid rgba(212, 175, 55, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#D4AF37',
+            flexShrink: 0,
+          }}>
+            <Thermometer size={24} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-                MQL • Qualificação de Leads
+                Qualificação MQL (Marketing Qualified Lead)
               </h1>
-              <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '2px' }}>
-                Defina os critérios e perguntas-chave para calcular automaticamente a porcentagem de qualificação dos leads da casa.
-              </p>
             </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '4px' }}>
+              Configure o termômetro de perguntas e pontuações para classificar a maturidade e probabilidade de fechamento de cada lead.
+            </p>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Right Actions: Venue Selector & Add Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {venues.length > 1 && (
             <select
-              value={activeVenueId || currentVenue?.id || ''}
-              onChange={(e) => setActiveVenueId(e.target.value)}
+              value={targetVenueId}
+              onChange={(e) => setActiveVenueId(e.target.value === 'all' ? null : e.target.value)}
               className="adm-input"
-              style={{ height: '40px', fontSize: '0.82rem', fontWeight: 700, borderRadius: '10px', minWidth: '180px' }}
+              style={{ height: '40px', fontSize: '0.82rem', borderRadius: '10px', padding: '0 12px' }}
             >
+              <option value="all">Todas as Unidades</option>
               {venues.map(v => (
-                <option key={v.id} value={v.id}>{v.name}</option>
+                <option key={v.id} value={v.id}>🏢 {v.name}</option>
               ))}
             </select>
           )}
@@ -158,19 +175,27 @@ export const AdminMqlConfigView: React.FC = () => {
             type="button"
             onClick={handleOpenNewModal}
             className="adm-btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 800 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+            }}
           >
             <Plus size={16} />
-            <span>Nova Pergunta MQL</span>
+            <span>Nova Pergunta</span>
           </button>
         </div>
       </div>
 
-      {/* ── MQL SCORE TIERS BANNER ── */}
+      {/* ── MQL SCORE TIERS EXPLANATION ── */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '16px',
+        gap: '14px',
       }}>
         {/* Tier 1: Lead Top */}
         <div style={{
@@ -304,7 +329,7 @@ export const AdminMqlConfigView: React.FC = () => {
             alignItems: 'center',
             gap: '12px',
           }}>
-            <Target size={36} color="var(--adm-text-muted)" style={{ opacity: 0.4 }} />
+            <Thermometer size={36} color="var(--adm-text-muted)" style={{ opacity: 0.4 }} />
             <div style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
               Nenhuma pergunta de qualificação cadastrada para esta casa
             </div>
@@ -397,15 +422,18 @@ export const AdminMqlConfigView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Options Breakdown */}
+              {/* Options Breakdown (Vertical Form-Style List) */}
               <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                display: 'flex',
+                flexDirection: 'column',
                 gap: '8px',
-                padding: '12px',
+                padding: '14px',
                 background: 'var(--adm-bg-input)',
                 borderRadius: '12px',
               }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
+                  Alternativas de Resposta:
+                </div>
                 {q.options.map(opt => (
                   <div
                     key={opt.id}
@@ -413,23 +441,25 @@ export const AdminMqlConfigView: React.FC = () => {
                       background: 'var(--adm-bg-card)',
                       border: '1px solid var(--adm-border)',
                       borderRadius: '8px',
-                      padding: '8px 12px',
+                      padding: '10px 14px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      gap: '8px',
+                      gap: '12px',
                     }}
                   >
-                    <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>
-                      {opt.label}
+                    <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>
+                      • {opt.label}
                     </span>
                     <span style={{
-                      fontSize: '0.7rem',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
                       background: opt.points >= 75 ? 'rgba(16,185,129,0.15)' : opt.points >= 50 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
                       color: opt.points >= 75 ? '#10B981' : opt.points >= 50 ? '#F59E0B' : '#EF4444',
+                      border: `1px solid ${opt.points >= 75 ? 'rgba(16,185,129,0.3)' : opt.points >= 50 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                      flexShrink: 0,
                     }}>
                       {opt.points} pts
                     </span>
@@ -470,7 +500,7 @@ export const AdminMqlConfigView: React.FC = () => {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Target size={20} color="var(--adm-accent)" />
+                <Thermometer size={20} color="var(--adm-accent)" />
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
                   {editingQuestionId ? 'Editar Pergunta MQL' : 'Nova Pergunta MQL'}
                 </h3>

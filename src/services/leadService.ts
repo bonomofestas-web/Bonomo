@@ -91,6 +91,9 @@ export const leadService = {
           packageSold: row.package_sold,
           contractDate: row.contract_date,
           partyDate: row.party_date,
+          mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
+          mqlLevel: row.mql_level || undefined,
+          mqlAnswers: row.mql_answers || undefined,
           participants: leadParticipants,
           tasks: [],
           activities: leadActivities,
@@ -122,6 +125,10 @@ export const leadService = {
       if (lead.source !== undefined) payload.source = lead.source;
       if (lead.sourceName !== undefined) payload.source_name = lead.sourceName;
       if (lead.subSource !== undefined) payload.sub_source = lead.subSource;
+
+      if (lead.mqlScore !== undefined) payload.mql_score = lead.mqlScore;
+      if (lead.mqlLevel !== undefined) payload.mql_level = lead.mqlLevel;
+      if (lead.mqlAnswers !== undefined) payload.mql_answers = lead.mqlAnswers;
 
       if (lead.sdrId !== undefined) payload.sdr_id = isUuid(lead.sdrId) ? lead.sdrId : null;
       if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName;

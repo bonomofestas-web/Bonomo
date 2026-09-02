@@ -40,6 +40,7 @@ import { debutanteService, taskService } from '../services/debutanteService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
+import { mqlService } from '../services/mqlService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
@@ -272,11 +273,12 @@ export interface AdminContextType {
   // Lead Distribution (Round Robin)
   distributeLeadRoundRobin: (venueId: string) => Collaborator | null;
 
-  // Lead Tasks
+  // Lead Tasks & Activities
   addLeadTask: (leadId: string, task: Omit<LeadTask, 'id' | 'leadId' | 'createdAt' | 'status'>) => string;
   updateLeadTask: (leadId: string, taskId: string, updates: Partial<LeadTask>) => void;
   completeLeadTask: (leadId: string, taskId: string) => void;
   deleteLeadTask: (leadId: string, taskId: string) => void;
+  addLeadActivity: (leadId: string, activity: Omit<LeadActivity, 'id' | 'timestamp' | 'leadId'>) => void;
 
   // Query Helpers
   getLeadsByCollaborator: (collaboratorId: string) => Lead[];
@@ -511,7 +513,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources] = await Promise.all([
+        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources, dbMql] = await Promise.all([
           venueService.getAll(),
           funnelService.getAll(),
           leadService.getAll(),
@@ -522,6 +524,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           catalogService.getAllVipRewards(),
           journeyTemplateService.getAll(),
           sourceService.getAll(),
+          mqlService.getAll(),
         ]);
 
         if (isMounted) {
@@ -529,6 +532,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (dbFunnels.length > 0) setFunnels(dbFunnels);
           if (dbLeads.length > 0) setLeads(dbLeads);
           if (dbSources.length > 0) setSources(dbSources);
+          if (dbMql.length > 0) {
+            setMqlQuestions(dbMql);
+          } else if (dbVenues.length > 0) {
+            mqlService.ensureDefaultQuestions(dbVenues).then(defaults => {
+              if (defaults.length > 0) setMqlQuestions(defaults);
+            });
+          }
 
           // Ensure each venue has a default referral source
           sourceService.ensureDefaultReferralSources(dbVenues, dbFunnels);
@@ -1067,12 +1077,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
       return updated;
     });
+    mqlService.upsert(newQuestion);
     return id;
   };
 
   const updateMqlQuestion = (id: string, data: Partial<MqlQuestion>) => {
     setMqlQuestions(prev => {
-      const updated = prev.map(q => q.id === id ? { ...q, ...data } : q);
+      const updated = prev.map(q => {
+        if (q.id === id) {
+          const merged = { ...q, ...data };
+          mqlService.upsert(merged);
+          return merged;
+        }
+        return q;
+      });
       safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
       return updated;
     });
@@ -1084,6 +1102,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
       return updated;
     });
+    mqlService.delete(id);
   };
 
   const saveLeadMqlAnswers = (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => {
@@ -2581,6 +2600,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const addLeadActivity = (leadId: string, activity: Omit<LeadActivity, 'id' | 'timestamp' | 'leadId'>) => {
+    const author = activity.authorName || currentUser?.name || 'Administrador';
+    const authorId = activity.authorId || currentUser?.id;
+    const authorAvatar = activity.authorAvatarUrl || currentUser?.avatarUrl;
+    const now = new Date().toISOString();
+
+    const newAct: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now,
+      type: activity.type,
+      title: activity.title,
+      text: activity.text,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        if (lead.id !== leadId) return lead;
+        return {
+          ...lead,
+          activities: [newAct, ...(lead.activities || [])],
+          updatedAt: now.split('T')[0],
+        };
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      leadService.addActivity(leadId, newAct).catch(err => console.error('Erro ao adicionar atividade:', err));
+    }
+  };
+
   // ── Benefits & VIP Catalogs CRUD ─────────────────────────────────────────────
 
   const addBenefitCatalogItem = (data: Omit<BenefitCatalogItem, 'id' | 'createdAt'>): string => {
@@ -3018,6 +3073,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateLeadTask,
       completeLeadTask,
       deleteLeadTask,
+      addLeadActivity,
       addTask,
       updateTask,
       deleteTask,

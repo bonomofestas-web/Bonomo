@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
   CheckCircle2, Clock, X, MessageCircle, Sparkles,
-  Globe, Target, ExternalLink, Award, FileText
+  Globe, ExternalLink, Award, FileText, Thermometer
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { 
@@ -738,7 +738,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               transition: 'all 0.15s ease',
             }}
           >
-            <Target size={13} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
+            <Thermometer size={13} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
             <span>MQL</span>
             <span style={{
               fontSize: '0.6rem',

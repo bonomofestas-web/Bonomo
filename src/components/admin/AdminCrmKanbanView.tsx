@@ -8,11 +8,11 @@ import {
   Settings, Shield, Lock, Trash2, Pin,
   Flame, Zap, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
-  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera
+  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera, Thermometer
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
-import { AdminCrmWorkspaceView } from './AdminCrmWorkspaceView';
+import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { ImageUploadField } from './ImageUploadField';
 import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, FunnelCustomField, FunnelFieldType } from '../../types/admin';
@@ -2249,10 +2249,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       )}
 
       {viewMode === 'workspace' ? (
-        <AdminCrmWorkspaceView 
+        <AdminWhatsAppWorkspaceView 
           initialLeadId={activeLeadIdForWorkspace || undefined}
-          isMiddleInitiallyOpen={!!activeLeadIdForWorkspace}
+          activeFunnelId={selectedFunnelId || undefined}
           searchQuery={search}
+          isEmbeddedInFunnel={true}
         />
       ) : (
         <>
@@ -2482,6 +2483,60 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   {lead.activities?.length || 0} notas
                                 </span>
                               </div>
+
+                              {/* MQL Progress Bar in Kanban Card Bottom */}
+                              {(() => {
+                                const score = lead.mqlScore ?? 0;
+                                const isTop = score >= 80 || lead.mqlLevel === 'top';
+                                const isQualified = (score >= 50 && score < 80) || lead.mqlLevel === 'qualified';
+                                const color = isTop ? '#10B981' : isQualified ? '#F59E0B' : '#EF4444';
+                                const bgBadge = isTop ? 'rgba(16, 185, 129, 0.15)' : isQualified ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                                const borderBadge = isTop ? 'rgba(16, 185, 129, 0.3)' : isQualified ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                                const label = isTop ? 'Top' : isQualified ? 'Qualificado' : 'Frio';
+
+                                return (
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '5px',
+                                    paddingTop: '8px',
+                                    borderTop: '1px dashed var(--adm-border)',
+                                    marginTop: '2px',
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.66rem' }}>
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                        <Thermometer size={12} color={color} />
+                                        <span>MQL {label}</span>
+                                      </span>
+                                      <span style={{
+                                        fontWeight: 800,
+                                        color,
+                                        background: bgBadge,
+                                        border: `1px solid ${borderBadge}`,
+                                        padding: '1px 6px',
+                                        borderRadius: '4px'
+                                      }}>
+                                        {score}%
+                                      </span>
+                                    </div>
+                                    <div style={{
+                                      width: '100%',
+                                      height: '4px',
+                                      borderRadius: '2px',
+                                      background: 'rgba(255, 255, 255, 0.08)',
+                                      overflow: 'hidden',
+                                    }}>
+                                      <div style={{
+                                        width: `${Math.max(score, 5)}%`,
+                                        height: '100%',
+                                        background: color,
+                                        borderRadius: '2px',
+                                        transition: 'width 0.3s ease',
+                                      }} />
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })

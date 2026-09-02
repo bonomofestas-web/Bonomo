@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Building2, Users, Target, 
   LogOut, CheckSquare, Crown,
   ChevronRight, ChevronLeft, Settings,
-  ChevronDown, Globe,
+  ChevronDown, Globe, Thermometer,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
   ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle
@@ -97,7 +97,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['master', 'admin', 'crm'] },
     { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['master', 'admin', 'crm'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
-    { id: 'mql', label: 'MQL', icon: <Sparkles size={17} />, roles: ['master', 'admin', 'crm'] },
+    { id: 'mql', label: 'MQL', icon: <Thermometer size={17} />, roles: ['master', 'admin', 'crm'] },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
