@@ -4,9 +4,11 @@ import {
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
   CheckCircle2, Clock, X, MessageCircle, Sparkles,
-  Globe, ExternalLink, Award, FileText, Thermometer
+  Globe, ExternalLink, Award, FileText
 } from 'lucide-react';
+import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
+import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import type { 
   Lead, 
   CrmStage, 
@@ -738,7 +740,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               transition: 'all 0.15s ease',
             }}
           >
-            <Thermometer size={13} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
+            <IcpTargetUserIcon size={14} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
             <span>ICP</span>
             <span style={{
               fontSize: '0.6rem',
@@ -1760,48 +1762,62 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
                         {q.options.map((opt) => {
                           const isOptionSelected = selectedOptId === opt.id;
+                          const sit = opt.situation || (opt.points >= 90 ? 'ideal' : opt.points >= 65 ? 'good' : opt.points >= 30 ? 'medium' : 'bad');
+                          const conf = ICP_SITUATION_CONFIG[sit];
 
                           return (
                             <div
                               key={opt.id}
                               onClick={() => handleSelectMqlOption(q.id, opt.id)}
                               style={{
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                border: `1.5px solid ${isOptionSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                                background: isOptionSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                                padding: '9px 12px',
+                                borderRadius: '10px',
+                                border: `1.5px solid ${isOptionSelected ? conf.color : 'var(--adm-border)'}`,
+                                background: isOptionSelected ? conf.bg : 'var(--adm-bg-card)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
-                                gap: '8px',
+                                gap: '10px',
                                 transition: 'all 0.12s ease',
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input
-                                  type="radio"
-                                  name={`mql_q_${q.id}`}
-                                  checked={isOptionSelected}
-                                  onChange={() => handleSelectMqlOption(q.id, opt.id)}
-                                  style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
-                                />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                                 <span style={{
-                                  fontSize: '0.76rem',
-                                  fontWeight: isOptionSelected ? 800 : 500,
-                                  color: isOptionSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 800,
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  background: conf.bg,
+                                  color: conf.color,
+                                  border: `1px solid ${conf.border}`,
+                                  flexShrink: 0,
+                                }}>
+                                  {conf.icon} {conf.label}
+                                </span>
+                                <span style={{
+                                  fontSize: '0.78rem',
+                                  color: isOptionSelected ? 'var(--adm-text-title)' : 'var(--adm-text-body)',
+                                  fontWeight: isOptionSelected ? 700 : 500,
+                                  lineHeight: 1.3,
                                 }}>
                                   {opt.label}
                                 </span>
                               </div>
 
-                              <span style={{
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                color: opt.points >= 75 ? '#10B981' : opt.points >= 50 ? '#F59E0B' : '#EF4444',
+                              <div style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '50%',
+                                border: `2px solid ${isOptionSelected ? conf.color : 'var(--adm-border)'}`,
+                                background: isOptionSelected ? conf.color : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
                               }}>
-                                {opt.points} pts
-                              </span>
+                                {isOptionSelected && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
+                              </div>
                             </div>
                           );
                         })}

@@ -8,8 +8,9 @@ import {
   Settings, Shield, Lock, Trash2, Pin,
   Flame, Zap, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
-  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera, Thermometer
+  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera
 } from 'lucide-react';
+import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
@@ -2506,7 +2507,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.66rem' }}>
                                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                        <Thermometer size={12} color={color} />
+                                        <IcpTargetUserIcon size={13} color={color} />
                                         <span>{label}</span>
                                       </span>
                                       <span style={{

@@ -2,8 +2,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   MessageSquare, Search, SlidersHorizontal, Send, Mic, Phone,
   ExternalLink, FileText, ChevronRight, ChevronLeft, Calendar,
-  Plus, Thermometer, Check, X, CheckSquare, Clock
+  Plus, Check, X, CheckSquare, Clock
 } from 'lucide-react';
+import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import type { LeadActivity, CrmStage } from '../../types/admin';
@@ -790,9 +791,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         border: `1px solid ${icpRating.border}`,
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '3px',
+                        gap: '4px',
                       }}>
-                        <Thermometer size={11} /> {icpRating.label} ({icpRating.score}%)
+                        <IcpTargetUserIcon size={12} color={icpRating.color} /> {icpRating.label} ({icpRating.score}%)
                       </span>
                     )}
                     <a

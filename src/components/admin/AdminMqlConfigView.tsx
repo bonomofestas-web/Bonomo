@@ -1,9 +1,23 @@
 import React, { useState } from 'react';
 import { 
-  Thermometer, Plus, Trash2, Edit2, X, Building2, ArrowRight
+  Plus, Trash2, Edit2, X, Building2, ArrowRight
 } from 'lucide-react';
+import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
-import type { MqlQuestion, MqlOption } from '../../types/admin';
+import { ICP_SITUATION_CONFIG } from '../../types/admin';
+import type { MqlQuestion, MqlOption, MqlOptionSituation } from '../../types/admin';
+
+interface FixedOptionFormState {
+  situation: MqlOptionSituation;
+  label: string;
+}
+
+const DEFAULT_FIXED_OPTIONS: FixedOptionFormState[] = [
+  { situation: 'ideal', label: '' },
+  { situation: 'good', label: '' },
+  { situation: 'medium', label: '' },
+  { situation: 'bad', label: '' },
+];
 
 export const AdminMqlConfigView: React.FC = () => {
   const { 
@@ -27,20 +41,17 @@ export const AdminMqlConfigView: React.FC = () => {
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [questionTitle, setQuestionTitle] = useState('');
   const [questionDescription, setQuestionDescription] = useState('');
-  const [options, setOptions] = useState<MqlOption[]>([
-    { id: 'opt_1', label: 'Opção de Alta Prioridade (ICP A)', points: 100 },
-    { id: 'opt_2', label: 'Opção Intermediária (ICP B)', points: 60 },
-    { id: 'opt_3', label: 'Opção Baixa / Fora do Perfil (ICP C)', points: 0 },
-  ]);
+  const [formOptions, setFormOptions] = useState<FixedOptionFormState[]>(DEFAULT_FIXED_OPTIONS);
 
   const handleOpenNewModal = () => {
     setEditingQuestionId(null);
     setQuestionTitle('');
     setQuestionDescription('');
-    setOptions([
-      { id: `opt_${Date.now()}_1`, label: '', points: 100 },
-      { id: `opt_${Date.now()}_2`, label: '', points: 60 },
-      { id: `opt_${Date.now()}_3`, label: '', points: 0 },
+    setFormOptions([
+      { situation: 'ideal', label: '' },
+      { situation: 'good', label: '' },
+      { situation: 'medium', label: '' },
+      { situation: 'bad', label: '' },
     ]);
     setIsModalOpen(true);
   };
@@ -49,31 +60,37 @@ export const AdminMqlConfigView: React.FC = () => {
     setEditingQuestionId(q.id);
     setQuestionTitle(q.title);
     setQuestionDescription(q.description || '');
-    setOptions(q.options.map(opt => ({ ...opt })));
+
+    // Map existing options or fallback to 4 fixed situations
+    const mapped: FixedOptionFormState[] = [
+      {
+        situation: 'ideal',
+        label: q.options.find(o => o.situation === 'ideal' || o.points >= 90)?.label || '',
+      },
+      {
+        situation: 'good',
+        label: q.options.find(o => o.situation === 'good' || (o.points >= 65 && o.points < 90))?.label || '',
+      },
+      {
+        situation: 'medium',
+        label: q.options.find(o => o.situation === 'medium' || (o.points >= 30 && o.points < 65))?.label || '',
+      },
+      {
+        situation: 'bad',
+        label: q.options.find(o => o.situation === 'bad' || o.points < 30)?.label || '',
+      },
+    ];
+
+    setFormOptions(mapped);
     setIsModalOpen(true);
   };
 
-  const handleAddOptionRow = () => {
-    setOptions(prev => [
-      ...prev,
-      { id: `opt_${Date.now()}`, label: '', points: 50 },
-    ]);
-  };
-
-  const handleRemoveOptionRow = (optId: string) => {
-    if (options.length <= 2) {
-      alert('A pergunta deve conter pelo menos 2 alternativas.');
-      return;
-    }
-    setOptions(prev => prev.filter(o => o.id !== optId));
-  };
-
-  const handleOptionChange = (optId: string, field: 'label' | 'points', value: string | number) => {
-    setOptions(prev => prev.map(o => {
-      if (o.id === optId) {
-        return { ...o, [field]: value };
+  const handleOptionLabelChange = (situation: MqlOptionSituation, text: string) => {
+    setFormOptions(prev => prev.map(opt => {
+      if (opt.situation === situation) {
+        return { ...opt, label: text };
       }
-      return o;
+      return opt;
     }));
   };
 
@@ -84,24 +101,34 @@ export const AdminMqlConfigView: React.FC = () => {
       return;
     }
 
-    const validOptions = options.filter(o => o.label.trim().length > 0);
-    if (validOptions.length < 2) {
-      alert('Por favor, preencha pelo menos 2 alternativas válidas.');
+    const filledOptions = formOptions.filter(o => o.label.trim().length > 0);
+    if (filledOptions.length < 2) {
+      alert('Por favor, preencha pelo menos 2 situações para a pergunta.');
       return;
     }
+
+    // Convert form options to MqlOption array with automated weights
+    const finalOptions: MqlOption[] = formOptions
+      .filter(o => o.label.trim().length > 0)
+      .map((o, idx) => ({
+        id: `opt_${Date.now()}_${idx}`,
+        label: o.label.trim(),
+        situation: o.situation,
+        points: ICP_SITUATION_CONFIG[o.situation].points,
+      }));
 
     if (editingQuestionId) {
       updateMqlQuestion(editingQuestionId, {
         title: questionTitle.trim(),
         description: questionDescription.trim() || undefined,
-        options: validOptions,
+        options: finalOptions,
       });
     } else {
       addMqlQuestion({
         venueId: targetVenueId,
         title: questionTitle.trim(),
         description: questionDescription.trim() || undefined,
-        options: validOptions,
+        options: finalOptions,
         order: venueQuestions.length,
       });
     }
@@ -135,14 +162,14 @@ export const AdminMqlConfigView: React.FC = () => {
             color: '#D4AF37',
             flexShrink: 0,
           }}>
-            <Thermometer size={24} />
+            <IcpTargetUserIcon size={24} />
           </div>
           <div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
               Qualificação ICP (Perfil de Cliente Ideal)
             </h1>
             <p style={{ fontSize: '0.84rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '4px' }}>
-              Selecione uma casa de festas para configurar ou visualizar o questionário de qualificação ICP.
+              Selecione uma casa de festas para configurar o alvo de qualificação comercial.
             </p>
           </div>
         </div>
@@ -257,129 +284,105 @@ export const AdminMqlConfigView: React.FC = () => {
             color: '#D4AF37',
             flexShrink: 0,
           }}>
-            <Thermometer size={24} />
+            <IcpTargetUserIcon size={24} />
           </div>
           <div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
               Qualificação ICP • {currentVenue?.name || 'Unidade'}
             </h1>
             <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '4px' }}>
-              Configure o termômetro de perguntas para classificar o lead nas notas ICP A, ICP B ou ICP C.
+              Defina as 4 situações para cada pergunta. O sistema calcula automaticamente a porcentagem e a nota ICP A, B ou C.
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── ICP SCORE TIERS EXPLANATION ── */}
+      {/* ── 4 SITUAÇÕES PADRONIZADAS & NOTAS ICP ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '14px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '12px',
       }}>
-        {/* Tier 1: ICP A */}
+        {/* Ideal */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--adm-bg-card) 100%)',
-          border: '1.5px solid rgba(16, 185, 129, 0.3)',
-          borderRadius: '16px',
-          padding: '16px 18px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: '14px',
+          padding: '14px 16px',
           display: 'flex',
           alignItems: 'center',
-          gap: '14px',
+          gap: '12px',
         }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#10B981',
-            fontWeight: 900,
-            fontSize: '1rem',
-            flexShrink: 0,
-          }}>
-            🟢
-          </div>
+          <span style={{ fontSize: '1.4rem' }}>🟢</span>
           <div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#10B981' }}>
-              ICP A (80% a 100%) • Top / Bom
+            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#10B981' }}>
+              Situação Ideal (100%)
             </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Alta urgência de contratação, orçamento alinhado e decisor presente.
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              Perfil perfeito com urgência e decisor.
             </div>
           </div>
         </div>
 
-        {/* Tier 2: ICP B */}
+        {/* Bom */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, var(--adm-bg-card) 100%)',
-          border: '1.5px solid rgba(245, 158, 11, 0.3)',
-          borderRadius: '16px',
-          padding: '16px 18px',
+          background: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '14px',
+          padding: '14px 16px',
           display: 'flex',
           alignItems: 'center',
-          gap: '14px',
+          gap: '12px',
         }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(245, 158, 11, 0.15)',
-            border: '1px solid rgba(245, 158, 11, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#F59E0B',
-            fontWeight: 900,
-            fontSize: '1rem',
-            flexShrink: 0,
-          }}>
-            🟡
-          </div>
+          <span style={{ fontSize: '1.4rem' }}>🔵</span>
           <div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#F59E0B' }}>
-              ICP B (50% a 79%) • Médio / Qualificado
+            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#60A5FA' }}>
+              Situação Boa (70%)
             </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Interesse concreto em negociação com data flexível ou proposta pendente.
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              Perfil favorável com pequenos ajustes.
             </div>
           </div>
         </div>
 
-        {/* Tier 3: ICP C */}
+        {/* Médio */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, var(--adm-bg-card) 100%)',
-          border: '1.5px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: '16px',
-          padding: '16px 18px',
+          background: 'rgba(245, 158, 11, 0.08)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          borderRadius: '14px',
+          padding: '14px 16px',
           display: 'flex',
           alignItems: 'center',
-          gap: '14px',
+          gap: '12px',
         }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#EF4444',
-            fontWeight: 900,
-            fontSize: '1rem',
-            flexShrink: 0,
-          }}>
-            🔴
-          </div>
+          <span style={{ fontSize: '1.4rem' }}>🟡</span>
           <div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#EF4444' }}>
-              ICP C (0% a 49%) • Baixo / Ruim
+            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#F59E0B' }}>
+              Situação Média (40%)
             </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Apenas pesquisando valores sem prazo ou descompasso orçamentário.
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              Data aberta ou orçamento justo.
+            </div>
+          </div>
+        </div>
+
+        {/* Ruim */}
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '14px',
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+        }}>
+          <span style={{ fontSize: '1.4rem' }}>🔴</span>
+          <div>
+            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#EF4444' }}>
+              Situação Ruim (0%)
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              Fora do perfil ou apenas curioso.
             </div>
           </div>
         </div>
@@ -420,14 +423,14 @@ export const AdminMqlConfigView: React.FC = () => {
               justifyContent: 'center',
               color: '#D4AF37',
             }}>
-              <Thermometer size={28} />
+              <IcpTargetUserIcon size={28} />
             </div>
             <div>
               <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
                 Monte o ICP do {currentVenue?.name || 'Espaço'}
               </div>
-              <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', maxWidth: '440px', margin: '6px auto 0' }}>
-                Defina as perguntas e alternativas com pontuação para o time comercial qualificar os leads com precisão (ICP A, B ou C).
+              <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', maxWidth: '460px', margin: '6px auto 0' }}>
+                Defina as perguntas e as 4 respostas da sua casa (Ideal, Bom, Médio e Ruim). O sistema calculará automaticamente o enquadramento de cada lead em ICP A, B ou C.
               </p>
             </div>
             <button
@@ -528,49 +531,56 @@ export const AdminMqlConfigView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Options Breakdown (Vertical Form-Style List) */}
+                {/* 4 Options Grid/Vertical Breakdown */}
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                   gap: '8px',
                   padding: '14px',
                   background: 'var(--adm-bg-input)',
                   borderRadius: '12px',
                 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '2px' }}>
-                    Alternativas de Resposta:
-                  </div>
-                  {q.options.map(opt => (
-                    <div
-                      key={opt.id}
-                      style={{
-                        background: 'var(--adm-bg-card)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '8px',
-                        padding: '10px 14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>
-                        • {opt.label}
-                      </span>
-                      <span style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        background: opt.points >= 75 ? 'rgba(16,185,129,0.15)' : opt.points >= 50 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-                        color: opt.points >= 75 ? '#10B981' : opt.points >= 50 ? '#F59E0B' : '#EF4444',
-                        border: `1px solid ${opt.points >= 75 ? 'rgba(16,185,129,0.3)' : opt.points >= 50 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                        flexShrink: 0,
-                      }}>
-                        {opt.points} pts
-                      </span>
-                    </div>
-                  ))}
+                  {q.options.map(opt => {
+                    const sit: MqlOptionSituation = opt.situation || (opt.points >= 90 ? 'ideal' : opt.points >= 65 ? 'good' : opt.points >= 30 ? 'medium' : 'bad');
+                    const conf = ICP_SITUATION_CONFIG[sit];
+
+                    return (
+                      <div
+                        key={opt.id}
+                        style={{
+                          background: 'var(--adm-bg-card)',
+                          border: `1px solid ${conf.border}`,
+                          borderRadius: '10px',
+                          padding: '10px 12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 800,
+                            padding: '2px 6px',
+                            borderRadius: '5px',
+                            background: conf.bg,
+                            color: conf.color,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}>
+                            {conf.icon} {conf.label}
+                          </span>
+                          <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
+                            {conf.points}%
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600, lineHeight: 1.3 }}>
+                          {opt.label}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -600,7 +610,7 @@ export const AdminMqlConfigView: React.FC = () => {
         )}
       </div>
 
-      {/* ── MODAL: CRIAR / EDITAR PERGUNTA ICP ── */}
+      {/* ── MODAL: CRIAR / EDITAR PERGUNTA ICP (4 SITUAÇÕES FIXAS) ── */}
       {isModalOpen && (
         <div style={{
           position: 'fixed',
@@ -617,7 +627,7 @@ export const AdminMqlConfigView: React.FC = () => {
             background: '#141118',
             border: '1.5px solid rgba(212, 175, 55, 0.4)',
             borderRadius: '20px',
-            maxWidth: '640px',
+            maxWidth: '680px',
             width: '100%',
             maxHeight: '90vh',
             overflowY: 'auto',
@@ -629,7 +639,7 @@ export const AdminMqlConfigView: React.FC = () => {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Thermometer size={20} color="var(--adm-accent)" />
+                <IcpTargetUserIcon size={22} color="#D4AF37" />
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
                   {editingQuestionId ? 'Editar Pergunta ICP' : 'Nova Pergunta ICP'}
                 </h3>
@@ -653,7 +663,7 @@ export const AdminMqlConfigView: React.FC = () => {
                   type="text"
                   value={questionTitle}
                   onChange={(e) => setQuestionTitle(e.target.value)}
-                  placeholder="Ex: Qual a previsão de data da festa?"
+                  placeholder="Ex: Qual a previsão de data da celebração?"
                   className="adm-input"
                   style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
                   required
@@ -669,96 +679,79 @@ export const AdminMqlConfigView: React.FC = () => {
                   type="text"
                   value={questionDescription}
                   onChange={(e) => setQuestionDescription(e.target.value)}
-                  placeholder="Ex: Avalia urgência e momento de fechamento"
+                  placeholder="Ex: Avalia urgência de decisão e maturidade do cliente"
                   className="adm-input"
                   style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
                 />
               </div>
 
-              {/* Options Section */}
+              {/* 4 Standardized Situations Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF' }}>
-                    Alternativas de Resposta e Pontuação
+                    Defina o Texto para as 4 Situações Comerciais:
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleAddOptionRow}
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid rgba(212, 175, 55, 0.4)',
-                      color: '#D4AF37',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      fontSize: '0.7rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Plus size={12} />
-                    <span>Adicionar Opção</span>
-                  </button>
+                  <span style={{ fontSize: '0.68rem', color: '#D4AF37', fontWeight: 700 }}>
+                    Cálculo automatizado pelo sistema
+                  </span>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {options.map((opt, oIdx) => (
-                    <div
-                      key={opt.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        borderRadius: '10px',
-                        padding: '8px 10px',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.72rem', color: '#9E988D', fontWeight: 700, width: '16px' }}>
-                        {oIdx + 1}.
-                      </span>
-                      <input
-                        type="text"
-                        value={opt.label}
-                        onChange={(e) => handleOptionChange(opt.id, 'label', e.target.value)}
-                        placeholder="Texto da alternativa..."
-                        className="adm-input"
-                        style={{ flex: 1, height: '36px', borderRadius: '8px', fontSize: '0.78rem' }}
-                        required
-                      />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '90px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={opt.points}
-                          onChange={(e) => handleOptionChange(opt.id, 'points', Number(e.target.value))}
-                          className="adm-input"
-                          style={{ width: '100%', height: '36px', borderRadius: '8px', fontSize: '0.78rem', textAlign: 'center' }}
-                          required
-                        />
-                        <span style={{ fontSize: '0.68rem', color: '#9E988D', fontWeight: 800 }}>pts</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveOptionRow(opt.id)}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {formOptions.map((opt) => {
+                    const conf = ICP_SITUATION_CONFIG[opt.situation];
+
+                    return (
+                      <div
+                        key={opt.situation}
                         style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'rgba(239, 68, 68, 0.7)',
-                          cursor: 'pointer',
-                          padding: '4px',
                           display: 'flex',
                           alignItems: 'center',
+                          gap: '10px',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: `1px solid ${conf.border}`,
+                          borderRadius: '12px',
+                          padding: '10px 12px',
                         }}
                       >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
+                        {/* Situation Badge */}
+                        <div style={{
+                          width: '110px',
+                          flexShrink: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                        }}>
+                          <span style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 900,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: conf.bg,
+                            color: conf.color,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}>
+                            {conf.icon} {conf.label}
+                          </span>
+                          <span style={{ fontSize: '0.62rem', color: '#9E988D', marginLeft: '4px' }}>
+                            Peso: {conf.points}%
+                          </span>
+                        </div>
+
+                        {/* Input for this situation */}
+                        <input
+                          type="text"
+                          value={opt.label}
+                          onChange={(e) => handleOptionLabelChange(opt.situation, e.target.value)}
+                          placeholder={`Texto da resposta ${conf.label.toLowerCase()} (ex: Data nos próximos 6 meses)...`}
+                          className="adm-input"
+                          style={{ flex: 1, height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
+                          required
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -777,7 +770,7 @@ export const AdminMqlConfigView: React.FC = () => {
                   className="adm-btn-primary"
                   style={{ padding: '10px 22px', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 900 }}
                 >
-                  {editingQuestionId ? 'Salvar Alterações' : 'Criar Pergunta ICP'}
+                  {editingQuestionId ? 'Salvar Pergunta' : 'Criar Pergunta ICP'}
                 </button>
               </div>
             </form>
