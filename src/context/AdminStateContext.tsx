@@ -20,7 +20,8 @@ import type {
   MqlQuestion,
   LeadMqlLevel,
   FeatureFlagId,
-  FeatureFlagStatus
+  FeatureFlagStatus,
+  SystemAnnouncement
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -59,9 +60,11 @@ const STORAGE_KEY_VIP_CATALOG = 'bonomo_admin_vip_catalog_v7';
 const STORAGE_KEY_THEME = 'bonomo_admin_theme_v7';
 const STORAGE_KEY_TASKS = 'bonomo_admin_tasks_v7';
 const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
-const STORAGE_KEY_LEAD_GOAL = 'bonomo_admin_lead_goal_v7';
+const STORAGE_KEY_LEAD_GOAL = 'bonomo_admin_lead_goal';
+const STORAGE_KEY_FEATURE_FLAGS = 'bonomo_system_feature_flags';
+const STORAGE_KEY_FEATURE_DESCRIPTIONS = 'bonomo_system_feature_descriptions';
+const STORAGE_KEY_ANNOUNCEMENTS = 'bonomo_system_announcements';
 const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
-const STORAGE_KEY_FEATURE_FLAGS = 'f5_system_feature_flags_v1';
 
 export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
   {
@@ -335,13 +338,22 @@ export interface AdminContextType {
 
   // Feature Flags (Developer Controlled)
   featureFlags: Record<FeatureFlagId, FeatureFlagStatus>;
-  updateFeatureFlag: (featureId: FeatureFlagId, status: FeatureFlagStatus) => void;
+  updateFeatureFlag: (featureId: FeatureFlagId, status: FeatureFlagStatus, comingSoonMessage?: string) => void;
   getFeatureStatus: (featureId: FeatureFlagId) => FeatureFlagStatus;
+  featureDescriptions: Record<FeatureFlagId, string>;
+  updateFeatureComingSoonMessage: (flagId: FeatureFlagId, message: string) => void;
+
+  // System Announcements (Developer Broadcast & Read Receipts)
+  announcements: SystemAnnouncement[];
+  createAnnouncement: (data: Omit<SystemAnnouncement, 'id' | 'createdAt' | 'readReceipts' | 'authorId'>) => Promise<string>;
+  markAnnouncementAsRead: (announcementId: string) => Promise<void>;
 
   // Multi-Tenant & Developer Management
   allCollaborators: Collaborator[];
   allVenues: Venue[];
   allDebutantes: DebutanteAccount[];
+  allLeads: Lead[];
+  allTasks: AdminTask[];
   allSources: Source[];
   allMqlQuestions: MqlQuestion[];
   addMasterAccount: (name: string, email: string) => string;
@@ -465,12 +477,91 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return DEFAULT_FEATURE_FLAGS;
   });
 
-  const updateFeatureFlag = (featureId: FeatureFlagId, status: FeatureFlagStatus) => {
+  const [featureDescriptions, setFeatureDescriptions] = useState<Record<FeatureFlagId, string>>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_FEATURE_DESCRIPTIONS);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {} as Record<FeatureFlagId, string>;
+  });
+
+  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
+
+  const updateFeatureComingSoonMessage = (flagId: FeatureFlagId, message: string) => {
+    setFeatureDescriptions(prev => {
+      const updated = { ...prev, [flagId]: message };
+      safeLocalStorageSet(STORAGE_KEY_FEATURE_DESCRIPTIONS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const createAnnouncement = async (data: Omit<SystemAnnouncement, 'id' | 'createdAt' | 'readReceipts' | 'authorId'>): Promise<string> => {
+    const id = generateUuid();
+    const newAnn: SystemAnnouncement = {
+      ...data,
+      id,
+      createdAt: new Date().toISOString(),
+      authorId: currentUser?.id || 'dev',
+      readReceipts: [],
+    };
+    setAnnouncements(prev => {
+      const updated = [newAnn, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(updated));
+      return updated;
+    });
+    return id;
+  };
+
+  const markAnnouncementAsRead = async (announcementId: string): Promise<void> => {
+    if (!currentUser) return;
+    setAnnouncements(prev => {
+      const updated = prev.map(a => {
+        if (a.id === announcementId) {
+          const alreadyRead = a.readReceipts.some(r => r.userId === currentUser.id);
+          if (alreadyRead) return a;
+          const newReceipt = {
+            userId: currentUser.id,
+            userName: currentUser.name || 'Usuário',
+            userEmail: currentUser.email || '',
+            userRole: currentUser.role || 'master',
+            readAt: new Date().toISOString(),
+          };
+          return {
+            ...a,
+            readReceipts: [...a.readReceipts, newReceipt],
+          };
+        }
+        return a;
+      });
+      safeLocalStorageSet(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const updateFeatureFlag = (featureId: FeatureFlagId, status: FeatureFlagStatus, comingSoonMessage?: string) => {
     setFeatureFlags(prev => {
       const updated = { ...prev, [featureId]: status };
       safeLocalStorageSet(STORAGE_KEY_FEATURE_FLAGS, JSON.stringify(updated));
       return updated;
     });
+
+    if (comingSoonMessage !== undefined) {
+      updateFeatureComingSoonMessage(featureId, comingSoonMessage);
+    }
+
+    // Disparar sincronização instantânea em tempo real para toda a aplicação
+    try {
+      window.dispatchEvent(new CustomEvent('bonomo_feature_flag_changed', {
+        detail: { featureId, status, comingSoonMessage }
+      }));
+    } catch {}
+
     featureFlagService.update(featureId, status);
 
     if (isSupabaseConfigured) {
@@ -955,6 +1046,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.removeItem('bonomo_admin_user_v6');
       localStorage.removeItem('bonomo_admin_user_v5');
       localStorage.removeItem('f5_system_user');
+      localStorage.removeItem('bonomo_admin_active_tab'); // Limpa a aba ativa para abrir sempre em início
       sessionStorage.clear();
       if (isSupabaseConfigured) {
         supabase.auth.signOut().catch(() => {});
@@ -3388,6 +3480,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       featureFlags,
       updateFeatureFlag,
       getFeatureStatus,
+      featureDescriptions,
+      updateFeatureComingSoonMessage,
+      announcements,
+      createAnnouncement,
+      markAnnouncementAsRead,
+      allLeads: leads,
+      allTasks: tasks,
       addMasterAccount,
       toggleMasterAccountStatus,
     }}>

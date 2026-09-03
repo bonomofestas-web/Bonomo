@@ -3,12 +3,14 @@ import { Sparkles, ArrowLeft } from 'lucide-react';
 
 interface ComingSoonOverlayProps {
   featureTitle?: string;
+  description?: string;
   onBack?: () => void;
   isInline?: boolean;
 }
 
 export const ComingSoonOverlay: React.FC<ComingSoonOverlayProps> = ({
   featureTitle = 'Recurso em Desenvolvimento',
+  description,
   onBack,
   isInline = false,
 }) => {
@@ -76,7 +78,7 @@ export const ComingSoonOverlay: React.FC<ComingSoonOverlayProps> = ({
         margin: '0 0 28px 0',
         fontFamily: "'Poppins', sans-serif",
       }}>
-        Este recurso está em desenvolvimento e em breve estará disponível.
+        {description || 'Este recurso está em desenvolvimento e em breve estará disponível.'}
       </p>
 
       {onBack && (

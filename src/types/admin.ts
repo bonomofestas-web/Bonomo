@@ -31,6 +31,26 @@ export interface FeatureFlagConfig {
   description: string;
   category: 'Comercial & CRM' | 'Atendimento' | 'Inteligência' | 'Administrativo';
   status: FeatureFlagStatus;
+  comingSoonMessage?: string;
+}
+
+export interface AnnouncementReadReceipt {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  readAt: string;
+}
+
+export interface SystemAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  type: 'update' | 'feature' | 'maintenance' | 'general';
+  targetAudience: 'all' | 'masters';
+  createdAt: string;
+  authorId: string;
+  readReceipts: AnnouncementReadReceipt[];
 }
 
 export type ThemeMode = 'dark' | 'light';

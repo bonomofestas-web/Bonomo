@@ -30,7 +30,8 @@ export type AdminTabType =
   | 'appointments'
   | 'settings'
   | 'dev-features'
-  | 'dev-users';
+  | 'dev-users'
+  | 'dev-announcements';
 
 interface AdminSidebarProps {
   activeTab: AdminTabType;
@@ -108,6 +109,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const devItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'dev-features', label: 'Feature Flags (Dev)', icon: <Sliders size={17} />, roles: ['dev'] },
     { id: 'dev-users', label: 'Gestão de Usuários (Dev)', icon: <Users size={17} />, roles: ['dev'] },
+    { id: 'dev-announcements', label: 'Comunicados do App (Dev)', icon: <Radio size={17} />, roles: ['dev'] },
   ];
 
   // Grouped Navigation Items with updated concise labels
@@ -345,13 +347,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <span style={{
               fontSize: '0.62rem',
               fontWeight: 800,
-              padding: '1px 6px',
+              padding: '2px 6px',
               borderRadius: '4px',
               background: 'rgba(20, 169, 215, 0.2)',
               color: '#14A9D7',
               border: '1px solid rgba(20, 169, 215, 0.4)',
               textTransform: 'uppercase',
               letterSpacing: '0.3px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}>
               Em Breve
             </span>
@@ -380,7 +384,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     ? '100vw' 
     : isCollapsed 
     ? '68px' 
-    : '220px';
+    : '254px';
 
   return (
     <aside style={{
@@ -428,27 +432,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             gap: '10px',
             width: '100%',
           }}>
-            {/* F5 Official Símbolo/Mark */}
+            {/* F5 Official Símbolo/Mark - Limpo, sem caixa nem neon */}
             <div 
               title="F5 System"
+              onClick={onToggleCollapse}
               style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: 'rgba(20, 169, 215, 0.12)',
-                border: '1.5px solid #14A9D7',
+                width: '38px',
+                height: '38px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 16px rgba(20, 169, 215, 0.3)',
-                padding: '4px',
                 boxSizing: 'border-box',
+                cursor: 'pointer',
               }}
             >
               <img
                 src="/f5_mark.png"
                 alt="F5"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                style={{ width: '34px', height: '34px', objectFit: 'contain' }}
               />
             </div>
 
@@ -561,24 +562,34 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {isCollapsed && !isMobileOverlay ? (
             <button
               type="button"
-              onClick={() => setIsVenueDropdownOpen(v => !v)}
-              title={activeVenue?.name || 'Todas as Casas (Rede Geral)'}
+              onClick={() => {
+                if (onToggleCollapse) onToggleCollapse();
+                onSelectTab('venues');
+              }}
+              title={activeVenue?.name || 'Todas as Casas (Rede Geral) - Clique para abrir configurações'}
               style={{
                 width: '44px',
                 height: '44px',
                 margin: '0 auto',
                 background: '#141118',
-                border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.3)'}`,
+                border: '1px solid rgba(20, 169, 215, 0.35)',
                 borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                padding: 0,
                 transition: 'all 0.15s ease',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#14A9D7';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.35)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
             >
-              {renderVenueIconBadge(activeVenue, 36)}
+              {activeVenue ? renderVenueIconBadge(activeVenue, 36) : <Globe size={20} color="#14A9D7" />}
             </button>
           ) : (
             <button

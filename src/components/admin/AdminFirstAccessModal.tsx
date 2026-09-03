@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   KeyRound, Lock, Eye, EyeOff, ShieldCheck, RefreshCw, Check, 
-  ArrowRight, X, AlertCircle, Sparkles, User, Camera, UploadCloud 
+  ArrowRight, X, AlertCircle, Sparkles, User, Camera, UploadCloud,
+  Loader2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { cloudflareR2Service } from '../../lib/cloudflareR2';
 
 interface AdminFirstAccessModalProps {
   initialEmail?: string;
@@ -50,6 +52,8 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({
 
   // Profile Avatar State
   const [avatarUrl, setAvatarUrl] = useState<string>('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Status & Error
@@ -192,20 +196,104 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({
     setStep('profile');
   };
 
-  // Photo upload simulation / local file reader
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Fast client-side image compression and conversion to WebP
+  const compressImage = (file: File): Promise<{ base64: string; blob: Blob }> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (!result) return resolve({ base64: '', blob: file });
+
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800; // Profile photos max 800px
+
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve({ base64: result, blob: file });
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const webpBase64 = canvas.toDataURL('image/webp', 0.85);
+                resolve({ base64: webpBase64, blob });
+              } else {
+                resolve({ base64: result, blob: file });
+              }
+            },
+            'image/webp',
+            0.85
+          );
+        };
+        img.onerror = () => resolve({ base64: result, blob: file });
+        img.src = result;
+      };
+      reader.onerror = () => resolve({ base64: '', blob: file });
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Photo upload directly to Cloudflare R2
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAvatarUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    setIsUploadingPhoto(true);
+    setUploadSuccess(false);
+    setErrorMessage('');
+
+    try {
+      // 1. Instant compression to lightweight WebP
+      const { base64, blob } = await compressImage(file);
+      if (base64) setAvatarUrl(base64);
+
+      // 2. Direct upload to Cloudflare R2
+      const webpFile = new File([blob], `${file.name.split('.')[0]}.webp`, {
+        type: 'image/webp',
+      });
+      const r2Url = await cloudflareR2Service.uploadFile(webpFile, 'avatars');
+
+      if (r2Url && r2Url.startsWith('http')) {
+        setAvatarUrl(r2Url);
+        setUploadSuccess(true);
+        setTimeout(() => setUploadSuccess(false), 3000);
+      } else {
+        throw new Error('Servidor não retornou uma URL válida do R2.');
+      }
+    } catch (err: any) {
+      console.error('[AdminFirstAccessModal] Falha no upload R2:', err);
+      setErrorMessage(err?.message || 'Falha ao enviar foto para o Cloudflare R2. Tente novamente.');
+      setAvatarUrl('');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   // Final Complete Step: saves password, avatar, sets isFirstAccess: false, and logs in
   const handleFinalizeActivation = async () => {
+    if (avatarUrl.startsWith('data:') || isUploadingPhoto) {
+      setErrorMessage('Aguarde a conclusão do envio da foto para o Cloudflare R2.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage('');
 
@@ -691,6 +779,7 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({
             <div style={{ textAlign: 'center' }}>
               <button
                 type="button"
+                disabled={isUploadingPhoto}
                 onClick={() => fileInputRef.current?.click()}
                 style={{
                   background: 'rgba(20, 169, 215, 0.12)',
@@ -700,17 +789,35 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({
                   padding: '8px 16px',
                   fontSize: '0.78rem',
                   fontWeight: 700,
-                  cursor: 'pointer',
+                  cursor: isUploadingPhoto ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                 }}
               >
-                <UploadCloud size={15} />
-                <span>Carregar Foto do Computador</span>
+                {isUploadingPhoto ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>Enviando para o R2...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={15} />
+                    <span>Carregar Foto do Computador</span>
+                  </>
+                )}
               </button>
-              <div style={{ fontSize: '0.7rem', color: '#8096A8', marginTop: '6px' }}>
-                Opcional • Você pode definir ou alterar sua foto a qualquer momento no perfil.
+              <div style={{ fontSize: '0.7rem', color: uploadSuccess || (avatarUrl && !avatarUrl.startsWith('data:')) ? '#10B981' : isUploadingPhoto ? '#14A9D7' : '#8096A8', marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                {isUploadingPhoto ? (
+                  <span>Otimizando & enviando para o Cloudflare R2...</span>
+                ) : uploadSuccess || (avatarUrl && !avatarUrl.startsWith('data:')) ? (
+                  <>
+                    <Check size={12} />
+                    <span>Foto salva no Cloudflare R2</span>
+                  </>
+                ) : (
+                  <span>Opcional • Você pode definir ou alterar sua foto a qualquer momento no perfil.</span>
+                )}
               </div>
             </div>
 

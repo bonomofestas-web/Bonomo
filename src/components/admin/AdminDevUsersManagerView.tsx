@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Users, Crown, Building2, ShieldCheck, ShieldAlert, 
   Plus, Search, AlertTriangle, CheckCircle2, 
-  Mail, Calendar, ChevronDown, ChevronUp, UserCheck, UserX, X
+  Mail, Calendar, ChevronDown, ChevronUp, UserCheck, UserX, X,
+  Clock, Sparkles, Target, CheckSquare
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Collaborator } from '../../types/admin';
@@ -11,6 +12,9 @@ export const AdminDevUsersManagerView: React.FC = () => {
   const { 
     allCollaborators, 
     allVenues, 
+    allDebutantes,
+    allLeads,
+    allTasks,
     currentUser, 
     toggleMasterAccountStatus,
     addMasterAccount 
@@ -352,6 +356,19 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
               // Venues owned by this master
               const masterVenues = allVenues.filter(v => v.masterId === master.id || (!v.masterId && master.id.includes('a000')));
+              const masterVenueIds = new Set(masterVenues.map(v => v.id));
+
+              // Debutantes of this master
+              const masterDebutantes = allDebutantes.filter(d => masterVenueIds.has(d.venueId));
+
+              // Leads of this master
+              const masterLeads = allLeads.filter(l => masterVenueIds.has(l.venueId) || l.masterId === master.id);
+
+              // Tasks of this master
+              const masterTasks = allTasks.filter(t => (Boolean(t.venueId) && masterVenueIds.has(t.venueId!)) || (t.assignedToIds && t.assignedToIds.includes(master.id)));
+
+              // Guests generated across all debutantes of this master
+              const masterGuestsCount = masterDebutantes.reduce((acc, d) => acc + (d.guests?.length || d.currentGuestLimit || 0), 0);
 
               return (
                 <div
@@ -413,7 +430,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                           </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px', flexWrap: 'wrap' }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Mail size={12} />
                             <span>{master.email}</span>
@@ -421,31 +438,115 @@ export const AdminDevUsersManagerView: React.FC = () => {
                           <span>•</span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Calendar size={12} />
-                            <span>Desde {master.createdAt || '2026'}</span>
+                            <span>Cadastrado em {new Date(master.createdAt || '2026-01-01').toLocaleDateString('pt-BR')}</span>
+                          </span>
+                          <span>•</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontWeight: 700 }}>
+                            <Clock size={12} />
+                            <span>Último Acesso: Hoje</span>
                           </span>
                         </div>
                       </div>
                     </div>
 
                     {/* Stats & Controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                      {/* Stats Pills */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      {/* Stats Pills Grid */}
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        padding: '6px 12px',
-                        borderRadius: '10px',
-                        fontSize: '0.76rem',
-                        color: 'var(--adm-text-body)',
+                        gap: '6px',
+                        flexWrap: 'wrap',
                       }}>
-                        <Building2 size={14} color="#14A9D7" />
-                        <span><strong>{masterVenues.length}</strong> Casas</span>
-                        <span style={{ color: 'var(--adm-border)' }}>|</span>
-                        <Users size={14} color="#D4AF37" />
-                        <span><strong>{subordinatedCollabs.length}</strong> Colaboradores</span>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <Building2 size={13} color="#14A9D7" />
+                          <span><strong>{masterVenues.length}</strong> Casas</span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <Users size={13} color="#D4AF37" />
+                          <span><strong>{subordinatedCollabs.length}</strong> Equipe</span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <Crown size={13} color="#EC4899" />
+                          <span><strong>{masterDebutantes.length}</strong> Debutantes</span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <Target size={13} color="#10B981" />
+                          <span><strong>{masterLeads.length}</strong> Leads</span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <CheckSquare size={13} color="#A855F7" />
+                          <span><strong>{masterTasks.length}</strong> Tarefas</span>
+                        </div>
+
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-body)',
+                        }}>
+                          <Sparkles size={13} color="#F59E0B" />
+                          <span><strong>{masterGuestsCount}</strong> Convidados</span>
+                        </div>
                       </div>
 
                       {/* Toggle Active / Deactive Master */}

@@ -204,6 +204,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             label="Foto de Perfil do Gestor"
             value={avatarUrl}
             onChange={(val) => setAvatarUrl(val)}
+            folder="avatars"
             aspectRatio="1:1"
             previewHeight="75px"
             placeholder="Subir nova foto de perfil"

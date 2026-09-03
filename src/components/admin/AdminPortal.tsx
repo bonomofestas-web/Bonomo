@@ -23,6 +23,8 @@ import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
 import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
+import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
+import { AdminAnnouncementModal } from './AdminAnnouncementModal';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { Menu, X, Building2 } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
@@ -54,11 +56,33 @@ import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, allCollaborators, funnels, getFeatureStatus } = useAdminState();
+  const { 
+    currentUser, 
+    switchUserRoleDemo, 
+    switchCollaborator, 
+    theme, 
+    leads, 
+    tasks, 
+    venues, 
+    debutantes, 
+    collaborators, 
+    allCollaborators, 
+    funnels, 
+    getFeatureStatus,
+    featureDescriptions,
+    announcements,
+    markAnnouncementAsRead,
+  } = useAdminState();
   
   // Track active focus time for collaborators
   useActiveTimeTracker(currentUser);
-  const [activeTab, setActiveTab] = useState<AdminTabType>('home');
+  const [activeTab, setActiveTab] = useState<AdminTabType>(() => {
+    try {
+      const saved = localStorage.getItem('bonomo_admin_active_tab') as AdminTabType | null;
+      if (saved) return saved;
+    } catch {}
+    return 'home';
+  });
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -92,6 +116,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   const handleSelectTab = (tab: AdminTabType, funnelId?: string | null) => {
     setActiveTab(tab);
+    try {
+      localStorage.setItem('bonomo_admin_active_tab', tab);
+    } catch {}
     if (tab === 'crm') {
       setActiveFunnelId(funnelId !== undefined ? funnelId : null);
     }
@@ -105,11 +132,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const userRole = currentUser.role;
   const roleColor = ROLE_COLORS[userRole] || '#D4AF37';
 
+  // Selected announcement to view/re-read from notifications
+  const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
+
+  // Check for unread announcement directed at this user (Audio 6 & 7)
+  const unreadAnnouncement = React.useMemo(() => {
+    if (!currentUser) return null;
+    return announcements.find(a => {
+      const isTarget = a.targetAudience === 'all' || (a.targetAudience === 'masters' && currentUser.role === 'master');
+      if (!isTarget) return false;
+      const alreadyRead = a.readReceipts.some(r => r.userId === currentUser.id);
+      return !alreadyRead;
+    }) || null;
+  }, [announcements, currentUser]);
+
   // Notifications calculation
   const todayStr = new Date().toISOString().split('T')[0];
   const dueTodayTasks = tasks.filter(t => t.status !== 'completed' && t.dueDate === todayStr);
   const newUnassignedLeads = leads.filter(l => l.stage === 'new_lead');
-  const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length;
+  const userAnnouncements = announcements.filter(a => a.targetAudience === 'all' || (a.targetAudience === 'masters' && currentUser.role === 'master'));
+  const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length + (unreadAnnouncement ? 1 : 0);
 
   // Global search filtering
   const cleanSearch = globalSearch.trim().toLowerCase();
@@ -162,7 +204,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (flagId && currentUser?.role !== 'dev') {
       const status = getFeatureStatus(flagId);
       if (status === 'coming_soon') {
-        return <ComingSoonOverlay onBack={() => setActiveTab('home')} />;
+        return (
+          <ComingSoonOverlay 
+            featureTitle={activeTab.toUpperCase()} 
+            description={featureDescriptions[flagId]}
+            onBack={() => setActiveTab('home')} 
+          />
+        );
       }
       if (status === 'disabled') {
         return <AdminHomeView onOpenLead={handleOpenLeadFromTask} onNavigateTab={(tab) => handleSelectTab(tab)} />;
@@ -230,6 +278,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminDevFeatureFlagsView />;
       case 'dev-users':
         return <AdminDevUsersManagerView />;
+      case 'dev-announcements':
+        return <AdminDevAnnouncementsView />;
       default:
         return (
           <AdminHomeView
@@ -251,6 +301,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       position: 'relative',
     }}>
+      {/* Pop-up de Comunicado Geral no Primeiro Acesso (Audio 6 & 7) */}
+      {(unreadAnnouncement || selectedAnnouncementDetail) && (
+        <AdminAnnouncementModal
+          announcement={selectedAnnouncementDetail || unreadAnnouncement!}
+          onDismiss={() => {
+            if (unreadAnnouncement && (!selectedAnnouncementDetail || selectedAnnouncementDetail.id === unreadAnnouncement.id)) {
+              markAnnouncementAsRead(unreadAnnouncement.id);
+            }
+            setSelectedAnnouncementDetail(null);
+          }}
+        />
+      )}
+
       {/* Desktop Sidebar */}
       <div className="admin-desktop-sidebar" style={{ height: '100vh', flexShrink: 0, overflow: 'hidden' }}>
         <AdminSidebar
@@ -297,15 +360,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         background: 'var(--adm-bg-app)',
         boxSizing: 'border-box',
       }}>
-        {/* Top Header Bar (Sticky & Seamless - Adapts to Theme with High Contrast) */}
+        {/* Top Header Bar (Fixed & Always Black #0B090E as specified in Audio 1) */}
         <header className="admin-portal-header" style={{
           position: 'sticky',
           top: 0,
           width: '100%',
           height: '64px',
           flexShrink: 0,
-          background: 'var(--adm-bg-header)',
-          borderBottom: '1px solid var(--adm-border)',
+          background: '#0B090E',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           padding: '0 24px',
           display: 'flex',
           alignItems: 'center',
@@ -359,14 +422,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'appointments') { category = 'Agenda'; title = 'Agenda & Visitas / Degustações'; }
               else if (activeTab === 'settings') { category = 'Sistema'; title = 'Configurações Gerais'; }
               else if (activeTab === 'dev-features') { category = 'Desenvolvedor'; title = 'Feature Flags & Controle de Módulos'; }
+              else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários (Masters & Equipe)'; }
+              else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais do App'; }
 
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent, #14A9D7)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#14A9D7', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {category}
                   </span>
-                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.8rem' }}>/</span>
-                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.2px' }}>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>/</span>
+                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.2px' }}>
                     {title}
                   </h1>
                 </div>
@@ -697,9 +762,38 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                    {totalNotificationsCount === 0 ? (
+                    {/* Avisos e Comunicados Gerais salvos */}
+                    {userAnnouncements.slice(0, 2).map(ann => (
+                      <div
+                        key={ann.id}
+                        onClick={() => {
+                          setSelectedAnnouncementDetail(ann);
+                          setIsNotificationsOpen(false);
+                        }}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '10px',
+                          background: 'rgba(20, 169, 215, 0.12)',
+                          border: '1px solid rgba(20, 169, 215, 0.35)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#14A9D7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>📢 {ann.title}</span>
+                          <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>Clique para ler</span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ann.content}
+                        </div>
+                      </div>
+                    ))}
+
+                    {totalNotificationsCount === 0 && userAnnouncements.length === 0 ? (
                       <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                        🎉 Nenhuma pendência ou novo lead no momento!
+                        🎉 Nenhuma pendência ou comunicado no momento!
                       </div>
                     ) : (
                       <>

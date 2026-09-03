@@ -2,14 +2,21 @@ import React, { useState } from 'react';
 import { 
   Sliders, ShieldCheck, CheckCircle2, Clock, EyeOff, 
   MessageSquare, Target, Users, Compass, 
-  Building2, Crown, LayoutDashboard, Check
+  Building2, Crown, LayoutDashboard, CheckSquare,
+  AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { FeatureFlagId, FeatureFlagStatus, FeatureFlagConfig } from '../../types/admin';
 
 export const AdminDevFeatureFlagsView: React.FC = () => {
-  const { featureFlags, updateFeatureFlag } = useAdminState();
+  const { featureFlags, updateFeatureFlag, featureDescriptions, updateFeatureComingSoonMessage } = useAdminState();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [pendingChange, setPendingChange] = useState<{
+    id: FeatureFlagId;
+    status: FeatureFlagStatus;
+    name: string;
+    currentStatus: FeatureFlagStatus;
+  } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -104,6 +111,8 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
 
   const getFeatureIcon = (id: FeatureFlagId) => {
     switch (id) {
+      case 'home': return <CheckSquare size={20} color="#14A9D7" />;
+      case 'dashboard': return <LayoutDashboard size={20} color="#14A9D7" />;
       case 'whatsapp': return <MessageSquare size={20} color="#14A9D7" />;
       case 'icp': return <Target size={20} color="#14A9D7" />;
       case 'sources': return <Compass size={20} color="#14A9D7" />;
@@ -113,6 +122,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       case 'master_dashboard': return <Crown size={20} color="#14A9D7" />;
       case 'collaborators': return <ShieldCheck size={20} color="#14A9D7" />;
       case 'venues': return <Building2 size={20} color="#14A9D7" />;
+      default: return <Sliders size={20} color="#14A9D7" />;
     }
   };
 
@@ -142,7 +152,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
           gap: '8px',
           animation: 'fadeIn 0.2s ease-out',
         }}>
-          <Check size={16} color="#FFF" />
+          <CheckCircle2 size={16} color="#FFF" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -320,12 +330,14 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Status Pill Indicator */}
+                  {/* Status Pill Indicator - Linha única sem quebra */}
                   <span style={{
                     fontSize: '0.68rem',
                     fontWeight: 800,
                     padding: '3px 8px',
                     borderRadius: '6px',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
                     background: 
                       currentStatus === 'active' ? 'rgba(34, 197, 94, 0.15)' :
                       currentStatus === 'coming_soon' ? 'rgba(20, 169, 215, 0.18)' :
@@ -352,6 +364,61 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                 }}>
                   {f.description}
                 </p>
+
+                {/* Editor de Mensagem de "Em Breve" (Teaser para gerar Hype) */}
+                {currentStatus === 'coming_soon' && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '10px 12px',
+                    background: 'rgba(20, 169, 215, 0.08)',
+                    border: '1px solid rgba(20, 169, 215, 0.25)',
+                    borderRadius: '12px',
+                  }}>
+                    <label style={{ display: 'block', fontSize: '0.66rem', color: '#14A9D7', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Descrição de "Em Breve" (visível aos usuários):
+                    </label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        placeholder="Ex: Estamos preparando novidades exclusivas para sua unidade..."
+                        defaultValue={featureDescriptions[f.id] || ''}
+                        id={`desc-input-${f.id}`}
+                        style={{
+                          flex: 1,
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-title)',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById(`desc-input-${f.id}`) as HTMLInputElement;
+                          if (input) {
+                            updateFeatureComingSoonMessage(f.id, input.value.trim());
+                            showToast(`Mensagem de "Em Breve" salva para ${f.name}!`);
+                          }
+                        }}
+                        style={{
+                          background: 'var(--adm-accent)',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Salvar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 3-State Toggle Segment */}
@@ -367,7 +434,10 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                 {/* 1. Ativo */}
                 <button
                   type="button"
-                  onClick={() => handleStatusChange(f.id, 'active', f.name)}
+                  onClick={() => {
+                    if (currentStatus === 'active') return;
+                    setPendingChange({ id: f.id, status: 'active', name: f.name, currentStatus });
+                  }}
                   style={{
                     background: currentStatus === 'active' ? '#22C55E' : 'transparent',
                     color: currentStatus === 'active' ? '#FFFFFF' : 'var(--adm-text-muted)',
@@ -392,7 +462,10 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                 {/* 2. Em Breve */}
                 <button
                   type="button"
-                  onClick={() => handleStatusChange(f.id, 'coming_soon', f.name)}
+                  onClick={() => {
+                    if (currentStatus === 'coming_soon') return;
+                    setPendingChange({ id: f.id, status: 'coming_soon', name: f.name, currentStatus });
+                  }}
                   style={{
                     background: currentStatus === 'coming_soon' ? '#14A9D7' : 'transparent',
                     color: currentStatus === 'coming_soon' ? '#FFFFFF' : 'var(--adm-text-muted)',
@@ -417,7 +490,10 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
                 {/* 3. Desativado */}
                 <button
                   type="button"
-                  onClick={() => handleStatusChange(f.id, 'disabled', f.name)}
+                  onClick={() => {
+                    if (currentStatus === 'disabled') return;
+                    setPendingChange({ id: f.id, status: 'disabled', name: f.name, currentStatus });
+                  }}
                   style={{
                     background: currentStatus === 'disabled' ? '#EF4444' : 'transparent',
                     color: currentStatus === 'disabled' ? '#FFFFFF' : 'var(--adm-text-muted)',
@@ -443,6 +519,137 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
           );
         })}
       </div>
+
+      {/* ── MODAL: CONFIRMAÇÃO DE ALTERAÇÃO DE RECURSO ───────────────────────── */}
+      {pendingChange && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(3, 7, 18, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          zIndex: 999999,
+          animation: 'fadeIn 0.15s ease-out',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: `1.5px solid ${
+              pendingChange.status === 'disabled' ? 'rgba(239, 68, 68, 0.5)' :
+              pendingChange.status === 'coming_soon' ? 'rgba(20, 169, 215, 0.5)' :
+              'rgba(34, 197, 94, 0.5)'
+            }`,
+            borderRadius: '24px',
+            maxWidth: '460px',
+            width: '100%',
+            padding: '28px',
+            color: 'var(--adm-text-title)',
+            textAlign: 'center',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            position: 'relative',
+          }}>
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '16px',
+              background: 
+                pendingChange.status === 'disabled' ? 'rgba(239, 68, 68, 0.15)' :
+                pendingChange.status === 'coming_soon' ? 'rgba(20, 169, 215, 0.15)' :
+                'rgba(34, 197, 94, 0.15)',
+              border: `1px solid ${
+                pendingChange.status === 'disabled' ? '#EF4444' :
+                pendingChange.status === 'coming_soon' ? '#14A9D7' :
+                '#22C55E'
+              }`,
+              color: 
+                pendingChange.status === 'disabled' ? '#EF4444' :
+                pendingChange.status === 'coming_soon' ? '#14A9D7' :
+                '#22C55E',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px auto',
+            }}>
+              <AlertTriangle size={26} />
+            </div>
+
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 8px 0', color: 'var(--adm-text-title)' }}>
+              Confirmar Alteração de Recurso
+            </h3>
+
+            <p style={{ fontSize: '0.86rem', color: 'var(--adm-text-muted)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+              Você tem certeza que deseja alterar o status do recurso <strong>"{pendingChange.name}"</strong> para{' '}
+              <strong style={{
+                color: 
+                  pendingChange.status === 'disabled' ? '#EF4444' :
+                  pendingChange.status === 'coming_soon' ? '#14A9D7' :
+                  '#22C55E'
+              }}>
+                {pendingChange.status === 'active' ? '🟢 Ativo' : pendingChange.status === 'coming_soon' ? '🟡 Em Breve' : '🔴 Desativado (Oculto)'}
+              </strong>?
+            </p>
+
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              fontSize: '0.74rem',
+              color: 'var(--adm-text-muted)',
+              marginBottom: '20px',
+              textAlign: 'left',
+            }}>
+              ℹ️ A alteração será aplicada <strong>instantaneamente em tempo real</strong> para todos os usuários abaixo do Desenvolvedor no ecossistema F5 System.
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setPendingChange(null)}
+                style={{
+                  flex: 1,
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleStatusChange(pendingChange.id, pendingChange.status, pendingChange.name);
+                  setPendingChange(null);
+                }}
+                style={{
+                  flex: 1,
+                  background: 
+                    pendingChange.status === 'disabled' ? '#EF4444' :
+                    pendingChange.status === 'coming_soon' ? '#14A9D7' :
+                    '#22C55E',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  fontSize: '0.84rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Confirmar Alteração
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

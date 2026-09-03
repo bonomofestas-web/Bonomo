@@ -481,6 +481,7 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
             label="Foto de Perfil / Avatar"
             value={avatarUrl}
             onChange={setAvatarUrl}
+            folder="avatars"
             aspectRatio="1:1"
             previewHeight="70px"
             placeholder="Clique para enviar sua foto"
