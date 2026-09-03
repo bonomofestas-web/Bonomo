@@ -42,7 +42,14 @@ export interface VenueTheme {
   id: string;
   name: string;
   tagline: string;
+  description?: string;
+  address?: string;
   logoUrl?: string;
+  photoUrl?: string;
+  venueBallroomUrl?: string;
+  yearsInBusiness?: number;
+  eventsCompleted?: number;
+  guestsDelighted?: number;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -176,6 +183,8 @@ export interface Guest {
   companionMode?: CompanionMode; // 'fill_now' (preenchido pela debutante) ou 'fill_later' (convidado preenche depois)
   confirmationSource?: ConfirmationSource; // 'guest' ou 'debutante'
   isLinkExpired?: boolean; // Se true, o link individual não permite nova confirmação
+  isReferred?: boolean; // Se esta convidada (12 a 14 anos) já foi indicada como futura debutante
+  referralId?: string; // ID da indicação vinculada
 
   // Relacionamento de Acompanhante como convidado independente:
   isCompanion?: boolean; // Se true, este registro é um acompanhante

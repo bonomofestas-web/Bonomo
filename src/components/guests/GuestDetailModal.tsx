@@ -21,6 +21,7 @@ export const GuestDetailModal: React.FC<GuestDetailModalProps> = ({
 }) => {
   const { 
     debutante, 
+    currentTheme,
     confirmGuestByDebutante, 
     deleteGuest 
   } = useAppState();
@@ -35,7 +36,8 @@ export const GuestDetailModal: React.FC<GuestDetailModalProps> = ({
   const isDeclined = guest.status === 'declined';
 
   // Build the individual exclusive link
-  const individualInviteUrl = `${window.location.origin}${window.location.pathname}?convite=maria-eduarda&guestId=${guest.id}`;
+  const debSlug = debutante.slug || encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'));
+  const individualInviteUrl = `${window.location.origin}/?convite=${debSlug}&guestId=${guest.id}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(individualInviteUrl);
@@ -44,7 +46,8 @@ export const GuestDetailModal: React.FC<GuestDetailModalProps> = ({
   };
 
   const handleSendWhatsAppInvite = () => {
-    const text = `Olá, ${guest.name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no Espaço Rio Lounge! 👑✨\n\nConfira seu convite personalizado e confirme sua presença no link:\n${individualInviteUrl}`;
+    const venueName = currentTheme?.name || 'Casa de Festas';
+    const text = `Olá, ${guest.name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no ${venueName}! 👑✨\n\nConfira seu convite personalizado e confirme sua presença no link:\n${individualInviteUrl}`;
     const cleanPhone = guest.phone.replace(/\D/g, '');
     const url = cleanPhone 
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`

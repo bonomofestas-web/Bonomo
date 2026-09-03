@@ -240,75 +240,77 @@ body {
 }
 
 /* ========================================================================= */
-/* ADMIN PORTAL SAAS DARK DESIGN SYSTEM (PLUS JAKARTA SANS + SLATE NAVY)     */
+/* ADMIN PORTAL F5 SYSTEM DESIGN SYSTEM (POPPINS + CYAN/TEAL BRAND PALETTE)  */
 /* ========================================================================= */
 
 .admin-portal {
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: 'Poppins', sans-serif !important;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
 }
 
 .admin-portal * {
-  font-family: inherit;
+  font-family: 'Poppins', sans-serif !important;
 }
 
-/* Dark Theme Variables (Onyx Black & Royal Gold Luxury Design System) */
+/* Dark Theme Variables (F5 Deep Slate Navy & Vibrant Cyan/Aqua System) */
 .admin-theme-dark {
-  --adm-bg-app: #08060B;
-  --adm-bg-sidebar: #0C0A10;
-  --adm-bg-header: #0C0A10;
-  --adm-bg-card: #120F17;
-  --adm-bg-card-hover: #191520;
-  --adm-bg-input: #100D14;
-  --adm-bg-elevated: #1B1724;
-  --adm-border: rgba(212, 175, 55, 0.18);
-  --adm-border-hover: rgba(212, 175, 55, 0.45);
+  --adm-bg-app: #080C14;
+  --adm-bg-sidebar: #0B111A;
+  --adm-bg-header: #0B111A;
+  --adm-bg-card: #0F1724;
+  --adm-bg-card-hover: #141F30;
+  --adm-bg-input: #0A1018;
+  --adm-bg-elevated: #152236;
+  --adm-border: rgba(20, 169, 215, 0.22);
+  --adm-border-hover: rgba(20, 169, 215, 0.5);
   --adm-text-title: #FFFFFF;
-  --adm-text-body: #E2DDD5;
-  --adm-text-muted: #9E988D;
-  --adm-accent: #D4AF37;
-  --adm-accent-hover: #AA7C11;
-  --adm-accent-bg: rgba(212, 175, 55, 0.14);
+  --adm-text-body: #D3E0EA;
+  --adm-text-muted: #8096A8;
+  --adm-accent: #14A9D7;
+  --adm-accent-hover: #0E8DB5;
+  --adm-accent-bg: rgba(20, 169, 215, 0.14);
+  --adm-accent-gradient: linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%);
   --adm-green: #22C55E;
   --adm-green-bg: rgba(34, 197, 94, 0.14);
   --adm-red: #EF4444;
   --adm-red-bg: rgba(239, 68, 68, 0.14);
-  --adm-cyan: #06B6D4;
-  --adm-cyan-bg: rgba(6, 182, 212, 0.14);
-  --adm-gold: #D4AF37;
-  --adm-gold-bg: rgba(212, 175, 55, 0.15);
-  --adm-table-stripe: #0E0C12;
-  --adm-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  --adm-cyan: #14A9D7;
+  --adm-cyan-bg: rgba(20, 169, 215, 0.14);
+  --adm-gold: #14A9D7;
+  --adm-gold-bg: rgba(20, 169, 215, 0.14);
+  --adm-table-stripe: #0A0F17;
+  --adm-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
 }
 
-/* Light Theme Variables */
+/* Light Theme Variables (Clean Corporate Tech Light) */
 .admin-theme-light {
-  --adm-bg-app: #F7F5F0;
+  --adm-bg-app: #F4F8FA;
   --adm-bg-sidebar: #FFFFFF;
   --adm-bg-header: #FFFFFF;
   --adm-bg-card: #FFFFFF;
-  --adm-bg-card-hover: #FAFAF8;
-  --adm-bg-input: #F3F1EC;
-  --adm-bg-elevated: #EAE6DE;
-  --adm-border: #E2DDD3;
-  --adm-border-hover: #C5BFA8;
-  --adm-text-title: #141118;
-  --adm-text-body: #3E3832;
-  --adm-text-muted: #7A7268;
-  --adm-accent: #AA7C11;
-  --adm-accent-hover: #8C640A;
-  --adm-accent-bg: rgba(170, 124, 17, 0.12);
+  --adm-bg-card-hover: #F8FBFC;
+  --adm-bg-input: #EEF4F7;
+  --adm-bg-elevated: #E1ECF0;
+  --adm-border: #D1E1E8;
+  --adm-border-hover: #97C5D6;
+  --adm-text-title: #0A1E29;
+  --adm-text-body: #2C424E;
+  --adm-text-muted: #647E8C;
+  --adm-accent: #14A9D7;
+  --adm-accent-hover: #0E8DB5;
+  --adm-accent-bg: rgba(20, 169, 215, 0.12);
+  --adm-accent-gradient: linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%);
   --adm-green: #16A34A;
   --adm-green-bg: rgba(22, 163, 74, 0.12);
   --adm-red: #DC2626;
   --adm-red-bg: rgba(220, 38, 38, 0.12);
-  --adm-cyan: #0284C7;
-  --adm-cyan-bg: rgba(2, 132, 199, 0.12);
-  --adm-gold: #D4AF37;
-  --adm-gold-bg: rgba(212, 175, 55, 0.1);
-  --adm-table-stripe: #F9F8F5;
-  --adm-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  --adm-cyan: #14A9D7;
+  --adm-cyan-bg: rgba(20, 169, 215, 0.12);
+  --adm-gold: #14A9D7;
+  --adm-gold-bg: rgba(20, 169, 215, 0.12);
+  --adm-table-stripe: #F0F6F9;
+  --adm-shadow: 0 2px 12px rgba(20, 169, 215, 0.08);
 }
 
 /* Modern SaaS Utility Classes */
@@ -349,13 +351,13 @@ body {
   font-weight: 700;
 }
 
-/* Corporate Buttons */
+/* Corporate Buttons - F5 System */
 .adm-btn-primary {
-  background: linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%);
-  color: #000000;
+  background: linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%);
+  color: #FFFFFF !important;
   border: none;
   border-radius: 10px;
-  padding: 8px 18px;
+  padding: 9px 20px;
   font-weight: 800;
   font-size: 0.82rem;
   cursor: pointer;
@@ -363,20 +365,22 @@ body {
   align-items: center;
   gap: 6px;
   transition: all 0.18s ease;
-  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3);
+  box-shadow: 0 4px 16px rgba(20, 169, 215, 0.35);
+  font-family: 'Poppins', sans-serif;
 }
 
 .adm-btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.45);
+  box-shadow: 0 6px 22px rgba(20, 169, 215, 0.5);
+  filter: brightness(1.06);
 }
 
 .adm-btn-secondary {
-  background: #141118;
-  color: #D4AF37;
-  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: var(--adm-bg-card, #0F1724);
+  color: var(--adm-accent, #14A9D7);
+  border: 1px solid var(--adm-border, rgba(20, 169, 215, 0.3));
   border-radius: 10px;
-  padding: 8px 16px;
+  padding: 9px 18px;
   font-weight: 700;
   font-size: 0.82rem;
   cursor: pointer;
@@ -384,12 +388,34 @@ body {
   align-items: center;
   gap: 6px;
   transition: all 0.15s ease;
+  font-family: 'Poppins', sans-serif;
 }
 
 .adm-btn-secondary:hover {
-  border-color: #D4AF37;
-  background: rgba(212, 175, 55, 0.12);
-  color: #F3E5AB;
+  border-color: var(--adm-accent, #14A9D7);
+  background: var(--adm-accent-bg, rgba(20, 169, 215, 0.12));
+  color: var(--adm-accent, #14A9D7);
+}
+
+/* Corporate Inputs */
+.adm-input {
+  background: var(--adm-bg-input, #EEF4F7);
+  border: 1px solid var(--adm-border, #D1E1E8);
+  color: var(--adm-text-title, #0A1E29);
+  font-family: 'Poppins', sans-serif !important;
+  outline: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.adm-input:focus {
+  border-color: var(--adm-accent, #14A9D7);
+  box-shadow: 0 0 0 2px var(--adm-accent-bg, rgba(20, 169, 215, 0.2));
+}
+
+.adm-input::placeholder {
+  color: var(--adm-text-muted, #647E8C);
+  opacity: 0.8;
 }
 
 /* Corporate Card */

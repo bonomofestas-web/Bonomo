@@ -18,7 +18,9 @@ import type {
   TaskStatus,
   CommercialFunnel,
   MqlQuestion,
-  LeadMqlLevel
+  LeadMqlLevel,
+  FeatureFlagId,
+  FeatureFlagStatus
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -38,7 +40,7 @@ import { leadService } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { catalogService } from '../services/catalogService';
-import { collaboratorService } from '../services/collaboratorService';
+import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
 import { mqlService } from '../services/mqlService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
@@ -58,6 +60,7 @@ const STORAGE_KEY_TASKS = 'bonomo_admin_tasks_v7';
 const STORAGE_KEY_FUNNELS = 'bonomo_admin_funnels_v7';
 const STORAGE_KEY_LEAD_GOAL = 'bonomo_admin_lead_goal_v7';
 const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
+const STORAGE_KEY_FEATURE_FLAGS = 'f5_system_feature_flags_v1';
 
 export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
   {
@@ -130,17 +133,42 @@ export const generateUuid = (): string => {
 
 const DEFAULT_COLLABORATORS: Collaborator[] = [
   {
+    id: 'd0000000-0000-0000-0000-000000000001',
+    name: 'F5 Developer',
+    email: 'bonomofestas@gmail.com',
+    role: 'dev',
+    venueId: 'all',
+    avatarUrl: '/f5_mark.png',
+    phone: '(21) 99999-9999',
+    password: 'Bonomo#2026',
+    active: true,
+    createdAt: '2026-01-01',
+  },
+  {
     id: 'a0000000-0000-0000-0000-000000000001',
-    name: 'Dev Master',
+    name: 'F5 Master',
     email: 'dev@bonomoapp.com',
     role: 'master',
     venueId: 'all',
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     phone: '(21) 99999-9999',
+    password: 'Bonomo#2026',
     active: true,
     createdAt: '2026-01-01',
   }
 ];
+
+const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
+  whatsapp: 'active',
+  icp: 'active',
+  sources: 'active',
+  debutantes: 'active',
+  venue_goals: 'active',
+  funnels: 'active',
+  master_dashboard: 'active',
+  collaborators: 'active',
+  venues: 'active',
+};
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
 
@@ -325,6 +353,11 @@ export interface AdminContextType {
   // Commercial Funnel Lead Goal
   leadGoal: import('../types/admin').LeadGoal;
   setLeadGoal: (goal: import('../types/admin').LeadGoal) => void;
+
+  // Feature Flags (Developer Controlled)
+  featureFlags: Record<FeatureFlagId, FeatureFlagStatus>;
+  updateFeatureFlag: (featureId: FeatureFlagId, status: FeatureFlagStatus) => void;
+  getFeatureStatus: (featureId: FeatureFlagId) => FeatureFlagStatus;
 }
 
 const AdminStateContext = createContext<AdminContextType | undefined>(undefined);
@@ -427,6 +460,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const setLeadGoal = (goal: import('../types/admin').LeadGoal) => {
     setLeadGoalState(goal);
     safeLocalStorageSet(STORAGE_KEY_LEAD_GOAL, JSON.stringify(goal));
+  };
+
+  const [featureFlags, setFeatureFlags] = useState<Record<FeatureFlagId, FeatureFlagStatus>>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_FEATURE_FLAGS);
+    if (saved) {
+      try { return { ...DEFAULT_FEATURE_FLAGS, ...JSON.parse(saved) }; } catch {}
+    }
+    return DEFAULT_FEATURE_FLAGS;
+  });
+
+  const updateFeatureFlag = (featureId: FeatureFlagId, status: FeatureFlagStatus) => {
+    setFeatureFlags(prev => {
+      const updated = { ...prev, [featureId]: status };
+      safeLocalStorageSet(STORAGE_KEY_FEATURE_FLAGS, JSON.stringify(updated));
+      return updated;
+    });
+    featureFlagService.update(featureId, status);
+  };
+
+  const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
+    // DEV role ALWAYS sees and accesses every feature
+    if (currentUser?.role === 'dev') return 'active';
+    return featureFlags[featureId] || 'active';
   };
 
   const [activeVenueId, setActiveVenueIdState] = useState<string | null>(() => {
@@ -760,53 +816,87 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // ── Auth Methods ────────────────────────────────────────────────────────────
+  // ── Auth Methods (Strict Password Validation) ──────────────────────────────
 
-  const login = (email: string, _pass: string, optUser?: Partial<AdminUser>): boolean => {
+  const login = (email: string, pass: string, optUser?: Partial<AdminUser>): boolean => {
     const cleanEmail = email.trim().toLowerCase();
-    
-    // Check registered collaborators
+    const cleanPass = pass.trim();
+
+    if (!cleanPass) return false;
+
+    // 1. Dedicated Dev Super-Role Account (bonomofestas@gmail.com)
+    if (cleanEmail === 'bonomofestas@gmail.com') {
+      if (cleanPass !== 'Bonomo#2026') {
+        return false;
+      }
+      const devUser: AdminUser = {
+        id: 'd0000000-0000-0000-0000-000000000001',
+        name: 'F5 Developer',
+        email: 'bonomofestas@gmail.com',
+        role: 'dev',
+        avatarUrl: '/f5_mark.png',
+        venueIds: [],
+      };
+      setCurrentUser(devUser);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(devUser));
+      return true;
+    }
+
+    // 2. Dedicated Master Account (dev@bonomoapp.com or master@bonomofestas.com)
+    if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'master@bonomofestas.com' || cleanEmail === 'master@f5system.com') {
+      if (cleanPass !== 'Bonomo#2026') {
+        return false;
+      }
+      const masterUser: AdminUser = {
+        id: 'a0000000-0000-0000-0000-000000000001',
+        name: 'F5 Master',
+        email: cleanEmail,
+        role: 'master',
+        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+        venueIds: [],
+      };
+      setCurrentUser(masterUser);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(masterUser));
+      return true;
+    }
+
+    // 3. Registered Collaborators in system
     const foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
     if (foundCollab) {
+      const expectedPass = foundCollab.password || 'Bonomo#2026';
+      if (cleanPass !== expectedPass) {
+        return false;
+      }
+
       const user: AdminUser = {
         id: optUser?.id || foundCollab.id,
         name: optUser?.name || foundCollab.name,
         email: foundCollab.email,
         role: (optUser?.role || foundCollab.role) as any,
         avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
-        venueIds: foundCollab.venueId === 'all' ? [] : [foundCollab.venueId],
+        venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
       };
       setCurrentUser(user);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
       if (foundCollab.venueId !== 'all') {
         setActiveVenueId(foundCollab.venueId);
       }
       return true;
     }
 
+    // 4. OptUser fallback if password is correct
     if (optUser && optUser.id) {
+      if (cleanPass !== 'Bonomo#2026') return false;
       const user: AdminUser = {
         id: optUser.id,
-        name: optUser.name || 'Dev Master',
+        name: optUser.name || 'F5 Master',
         email: cleanEmail,
         role: optUser.role || 'master',
         avatarUrl: optUser.avatarUrl,
         venueIds: optUser.venueIds || [],
       };
       setCurrentUser(user);
-      return true;
-    }
-
-    // Dev Master Test Account (dev@bonomoapp.com or dev@bonomofestas.com)
-    if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'dev@bonomofestas.com') {
-      const devUser: AdminUser = {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        name: 'Dev Master',
-        email: cleanEmail,
-        role: 'master',
-        avatarUrl: optUser?.avatarUrl,
-        venueIds: [],
-      };
-      setCurrentUser(devUser);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
       return true;
     }
 
@@ -3105,6 +3195,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       saveLeadMqlAnswers,
       leadGoal,
       setLeadGoal,
+      featureFlags,
+      updateFeatureFlag,
+      getFeatureStatus,
     }}>
       {children}
     </AdminStateContext.Provider>

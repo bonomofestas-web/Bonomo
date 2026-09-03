@@ -18,7 +18,7 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
   onSendWhatsApp,
   onReferral,
 }) => {
-  const { debutante } = useAppState();
+  const { debutante, referrals } = useAppState();
   const [offsetX, setOffsetX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -29,9 +29,18 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
   const isPending = guest.status === 'pending';
   const isDeclined = guest.status === 'declined';
 
-  // Regra de Indicação: Meninas de 12 a 15 anos + Jornada Ativada no Painel
+  // Regra de Indicação: Meninas de 12 a 14 anos + Jornada Ativada no Painel
   const isJourneyEnabled = debutante.hasJourneyEnabled !== false;
-  const isEligibleForReferral = isJourneyEnabled && (guest.gender === 'female' || !guest.gender) && guest.age >= 12 && guest.age <= 15;
+  const isEligibleAgeAndGender = (guest.gender === 'female' || !guest.gender) && guest.age >= 12 && guest.age <= 14;
+  
+  const cleanPhone = guest.phone ? guest.phone.replace(/\D/g, '') : '';
+  const isAlreadyReferred = Boolean(
+    guest.isReferred || 
+    (cleanPhone && referrals.some(r => r.phone.replace(/\D/g, '') === cleanPhone))
+  );
+
+  const showReferralButton = isJourneyEnabled && isEligibleAgeAndGender && !isAlreadyReferred;
+  const showAlreadyReferredBadge = isJourneyEnabled && isEligibleAgeAndGender && isAlreadyReferred;
 
   const triggerDelete = () => {
     setIsDeleting(true);
@@ -308,8 +317,8 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
               </button>
             )}
 
-            {/* ✨ Botão "Indicar Amiga" para meninas de 12 a 15 anos */}
-            {isEligibleForReferral && (
+            {/* ✨ Botão "Indicar Amiga" para meninas de 12 a 14 anos */}
+            {showReferralButton && (
               <button
                 onClick={(e) => onReferral(guest, e)}
                 style={{
@@ -326,11 +335,33 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
                   gap: '5px',
                   boxShadow: '0 2px 10px rgba(255, 92, 154, 0.25)',
                 }}
-                title="Indicar esta amiga debutante para ganhar pontos e benefícios na jornada!"
+                title="Indicar esta amiga para ganhar pontos e benefícios na jornada!"
               >
                 <Sparkles size={12} color="#FF5C9A" />
-                <span>Indicar Amiga</span>
+                <span>Indicar Amiga (15 Anos)</span>
               </button>
+            )}
+
+            {/* 👑 Badge "Amiga Indicada" quando já foi indicada (sem botão para evitar duplicidade) */}
+            {showAlreadyReferredBadge && (
+              <span
+                style={{
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#10B981',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+                title="Esta amiga já foi indicada pela debutante para a Casa de Festas"
+              >
+                <CheckCircle2 size={12} color="#10B981" />
+                <span>Amiga Indicada ✨</span>
+              </span>
             )}
           </div>
 

@@ -3,7 +3,7 @@ import {
   Users, Plus, Share2, Send, 
   Gift, Edit3, Trash2, Check, 
   ExternalLink, Building2, Search, LayoutGrid, List,
-  Calendar, Target, Power
+  Calendar, Target, Power, Sparkles
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
@@ -144,6 +144,11 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   const handleOpenAppDirect = (slug: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     window.open(`/?debutante=${encodeURIComponent(slug)}`, '_blank');
+  };
+
+  const handleOpenInviteDirect = (slug: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    window.open(`/?convite=${encodeURIComponent(slug)}`, '_blank');
   };
 
   return (
@@ -567,27 +572,52 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       borderTop: '1px solid var(--adm-border)',
                       gap: '6px',
                     }}>
-                      {/* Open App */}
-                      <button
-                        type="button"
-                        onClick={(e) => handleOpenAppDirect(deb.slug, e)}
-                        style={{
-                          background: 'rgba(212, 175, 55, 0.12)',
-                          border: '1px solid rgba(212, 175, 55, 0.35)',
-                          color: 'var(--adm-accent)',
-                          borderRadius: '10px',
-                          padding: '6px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                        }}
-                      >
-                        <ExternalLink size={13} />
-                        <span>Visualizar App</span>
-                      </button>
+                      {/* Open App & Open Invite Buttons */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenAppDirect(deb.slug, e)}
+                          title="Abrir o App da Debutante"
+                          style={{
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            border: '1px solid rgba(212, 175, 55, 0.35)',
+                            color: 'var(--adm-accent)',
+                            borderRadius: '10px',
+                            padding: '6px 9px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <ExternalLink size={12} />
+                          <span>App</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenInviteDirect(deb.slug, e)}
+                          title="Abrir a Página do Convite Oficial"
+                          style={{
+                            background: 'rgba(168, 85, 247, 0.12)',
+                            border: '1px solid rgba(168, 85, 247, 0.35)',
+                            color: '#C084FC',
+                            borderRadius: '10px',
+                            padding: '6px 9px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Sparkles size={12} />
+                          <span>Convite</span>
+                        </button>
+                      </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {/* Toggle Status (Ativar / Desativar) */}

@@ -9,6 +9,7 @@ import {
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
+import { ComingSoonOverlay } from './ComingSoonOverlay';
 import type { 
   Lead, 
   CrmStage, 
@@ -74,10 +75,22 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     assignLeadCloser,
     removeLeadSdr,
     removeLeadCloser,
-    saveLeadMqlAnswers
+    saveLeadMqlAnswers,
+    getFeatureStatus,
   } = useAdminState();
 
+  const isIcpDisabled = getFeatureStatus('icp') === 'disabled' && currentUser?.role !== 'dev';
+  const isIcpComingSoon = getFeatureStatus('icp') === 'coming_soon' && currentUser?.role !== 'dev';
+  const isSourcesDisabled = getFeatureStatus('sources') === 'disabled' && currentUser?.role !== 'dev';
+  const isSourcesComingSoon = getFeatureStatus('sources') === 'coming_soon' && currentUser?.role !== 'dev';
+
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql'>('principal');
+
+  // Fallback if current tab gets disabled
+  React.useEffect(() => {
+    if (isIcpDisabled && activeTab === 'mql') setActiveTab('principal');
+    if (isSourcesDisabled && activeTab === 'origem') setActiveTab('principal');
+  }, [isIcpDisabled, isSourcesDisabled, activeTab]);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -675,9 +688,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             style={{
               background: 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'principal' ? '2px solid #D4AF37' : '2px solid transparent',
+              borderBottom: activeTab === 'principal' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
               padding: '6px 10px',
-              color: activeTab === 'principal' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
+              color: activeTab === 'principal' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
               fontSize: '0.76rem',
               fontWeight: activeTab === 'principal' ? 800 : 600,
               cursor: 'pointer',
@@ -687,72 +700,78 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               transition: 'all 0.15s ease',
             }}
           >
-            <FileText size={13} color={activeTab === 'principal' ? '#D4AF37' : 'currentColor'} />
+            <FileText size={13} color={activeTab === 'principal' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
             <span>Principal</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('origem')}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeTab === 'origem' ? '2px solid #D4AF37' : '2px solid transparent',
-              padding: '6px 10px',
-              color: activeTab === 'origem' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
-              fontSize: '0.76rem',
-              fontWeight: activeTab === 'origem' ? 800 : 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Globe size={13} color={activeTab === 'origem' ? '#D4AF37' : 'currentColor'} />
-            <span>Origem</span>
-            {isReferralLead ? (
-              <span style={{ fontSize: '0.6rem', background: 'rgba(212, 175, 55, 0.2)', color: '#D4AF37', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
-                Indicação
-              </span>
-            ) : leadSource ? (
-              <span style={{ fontSize: '0.6rem', background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
-                Rastreamento
-              </span>
-            ) : null}
-          </button>
+          {!isSourcesDisabled && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('origem')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === 'origem' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
+                padding: '6px 10px',
+                color: activeTab === 'origem' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
+                fontSize: '0.76rem',
+                fontWeight: activeTab === 'origem' ? 800 : 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Globe size={13} color={activeTab === 'origem' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
+              <span>Origem</span>
+              {isSourcesComingSoon && (
+                <span style={{ fontSize: '0.58rem', background: 'rgba(20,169,215,0.2)', color: '#14A9D7', padding: '1px 4px', borderRadius: '4px' }}>
+                  Em Breve
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('mql')}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeTab === 'mql' ? '2px solid #D4AF37' : '2px solid transparent',
-              padding: '6px 10px',
-              color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.5)',
-              fontSize: '0.76rem',
-              fontWeight: activeTab === 'mql' ? 800 : 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <IcpTargetUserIcon size={14} color={activeTab === 'mql' ? '#D4AF37' : 'currentColor'} />
-            <span>ICP</span>
-            <span style={{
-              fontSize: '0.6rem',
-              background: mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
-              color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
-              padding: '1px 5px',
-              borderRadius: '4px',
-              fontWeight: 800
-            }}>
-              {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} ({mqlResult.score}%)
-            </span>
-          </button>
+          {!isIcpDisabled && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('mql')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === 'mql' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
+                padding: '6px 10px',
+                color: activeTab === 'mql' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
+                fontSize: '0.76rem',
+                fontWeight: activeTab === 'mql' ? 800 : 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <IcpTargetUserIcon size={14} color={activeTab === 'mql' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
+              <span>ICP</span>
+              {isIcpComingSoon ? (
+                <span style={{ fontSize: '0.58rem', background: 'rgba(20,169,215,0.2)', color: '#14A9D7', padding: '1px 4px', borderRadius: '4px' }}>
+                  Em Breve
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '0.6rem',
+                  background: mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                  color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  fontWeight: 800
+                }}>
+                  {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} ({mqlResult.score}%)
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1637,17 +1656,16 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         {/* ABA 3: 🎯 MQL (MARKETING QUALIFIED LEAD)                             */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'mql' && (
+          isIcpComingSoon ? (
+            <ComingSoonOverlay featureTitle="Qualificação ICP & MQL" isInline={true} />
+          ) : (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* ICP Score Gauge Banner */}
+            {/* ICP Score Gauge Banner (Clean, High-Contrast Card) */}
             <div style={{
-              background: mqlResult.level === 'top'
-                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)'
-                : mqlResult.level === 'qualified'
-                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)'
-                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(20, 17, 24, 0.8) 100%)',
+              background: 'var(--adm-bg-card)',
               border: `1.5px solid ${
-                mqlResult.level === 'top' ? 'rgba(16, 185, 129, 0.4)' : mqlResult.level === 'qualified' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)'
+                mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444'
               }`,
               borderRadius: '16px',
               padding: '18px',
@@ -1655,6 +1673,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '16px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
             }}>
               <div>
                 <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--adm-text-muted)' }}>
@@ -1683,7 +1702,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 width: '64px',
                 height: '64px',
                 borderRadius: '50%',
-                background: 'rgba(0,0,0,0.4)',
+                background: 'var(--adm-bg-input)',
                 border: `3px solid ${mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444'}`,
                 display: 'flex',
                 flexDirection: 'column',
@@ -1691,7 +1710,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF' }}>{mqlResult.score}%</span>
+                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{mqlResult.score}%</span>
                 <span style={{ fontSize: '0.6rem', fontWeight: 800, color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444' }}>
                   {mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'}
                 </span>
@@ -1829,6 +1848,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             </div>
 
           </div>
+          )
         )}
 
       </div>

@@ -7,12 +7,33 @@ import type {
   JourneyCycleState 
 } from './index';
 
-// All roles in the system (sdr/closer are operational roles under crm)
-export type AdminRole = 'master' | 'admin' | 'crm' | 'sdr' | 'closer';
+// All roles in the system (dev is the exclusive root developer super-role)
+export type AdminRole = 'dev' | 'master' | 'admin' | 'crm' | 'sdr' | 'closer';
+
+export type FeatureFlagId = 
+  | 'whatsapp'
+  | 'icp'
+  | 'sources'
+  | 'debutantes'
+  | 'venue_goals'
+  | 'collaborators'
+  | 'venues'
+  | 'funnels'
+  | 'master_dashboard';
+
+export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
+
+export interface FeatureFlagConfig {
+  id: FeatureFlagId;
+  name: string;
+  description: string;
+  category: 'Comercial & CRM' | 'Atendimento' | 'Inteligência' | 'Administrativo';
+  status: FeatureFlagStatus;
+}
 
 export type ThemeMode = 'dark' | 'light';
 
-export const APP_VERSION = '1.0.1 (Beta)';
+export const APP_VERSION = '1.2.0 (F5 System)';
 
 export interface AdminUser {
   id: string;

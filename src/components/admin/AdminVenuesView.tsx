@@ -191,6 +191,9 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
   const [welcomeVideoUrl, setWelcomeVideoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#6366F1');
   const [accentColor, setAccentColor] = useState('#06B6D4');
+  const [yearsInBusiness, setYearsInBusiness] = useState<number>(15);
+  const [eventsCompleted, setEventsCompleted] = useState<number>(1200);
+  const [guestsDelighted, setGuestsDelighted] = useState<number>(80000);
 
   const selectedVenue = venues.find(v => v.id === selectedVenueId) || null;
 
@@ -204,6 +207,9 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
     setWelcomeVideoUrl('');
     setPrimaryColor('#6366F1');
     setAccentColor('#06B6D4');
+    setYearsInBusiness(15);
+    setEventsCompleted(1200);
+    setGuestsDelighted(80000);
     setIsEditingExisting(false);
     setViewMode('form');
   };
@@ -219,6 +225,9 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
     setWelcomeVideoUrl(v.welcomeVideoUrl || '');
     setPrimaryColor(v.primaryColor || '#6366F1');
     setAccentColor(v.accentColor || '#06B6D4');
+    setYearsInBusiness(v.yearsInBusiness || 15);
+    setEventsCompleted(v.eventsCompleted || 1200);
+    setGuestsDelighted(v.guestsDelighted || 80000);
     setIsEditingExisting(true);
     setViewMode('form');
   };
@@ -249,6 +258,9 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
         primaryColor,
         accentColor,
+        yearsInBusiness: Number(yearsInBusiness) || 15,
+        eventsCompleted: Number(eventsCompleted) || 1200,
+        guestsDelighted: Number(guestsDelighted) || 80000,
       });
       setViewMode('detail');
     } else {
@@ -261,9 +273,9 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         ballroomImageUrl: ballroomImageUrl.trim() || fallbackBallroom,
         welcomeVideoUrl: welcomeVideoUrl.trim() || undefined,
         experienceText: 'Mais de 10 anos realizando sonhos.',
-        yearsInBusiness: 10,
-        eventsCompleted: 500,
-        guestsDelighted: 80000,
+        yearsInBusiness: Number(yearsInBusiness) || 15,
+        eventsCompleted: Number(eventsCompleted) || 1200,
+        guestsDelighted: Number(guestsDelighted) || 80000,
         googleMapsEmbedUrl: `https://maps.google.com/?q=${encodeURIComponent(name)}`,
         googleMapsLink: `https://maps.google.com/?q=${encodeURIComponent(name)}`,
         wazeLink: `https://waze.com/ul?q=${encodeURIComponent(name)}`,
@@ -289,8 +301,8 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         flexDirection: 'column',
         gap: '20px',
         padding: '24px 32px 60px 32px',
-        maxWidth: '1000px',
-        margin: '0 auto',
+        width: '100%',
+        boxSizing: 'border-box',
         animation: 'fadeIn 0.2s ease-out',
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}>
@@ -445,6 +457,104 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
               label="Vídeo da Casa de Festas"
               customKey={selectedVenueId ? `video_apresentacao_${selectedVenueId}.mp4` : undefined}
             />
+          </div>
+
+          {/* Seção de Métricas & Autoridade da Casa (Exibidas no Convite) */}
+          <div style={{
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                🏛️ Métricas & Autoridade da Casa (Exibidas no Convite)
+              </div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                Números reais que aparecem para os convidados da debutante
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  ⏳ Anos de Mercado / Tradição
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  placeholder="Ex: 15"
+                  value={yearsInBusiness}
+                  onChange={(e) => setYearsInBusiness(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  🎉 Eventos Realizados
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Ex: 1200"
+                  value={eventsCompleted}
+                  onChange={(e) => setEventsCompleted(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  👥 Convidados Atendidos / Total
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Ex: 80000"
+                  value={guestsDelighted}
+                  onChange={(e) => setGuestsDelighted(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Description */}

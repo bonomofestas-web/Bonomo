@@ -21,13 +21,17 @@ import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
+import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
+import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { Menu, X, Building2 } from 'lucide-react';
+import type { FeatureFlagId } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  dev: 'Desenvolvedor',
   master: 'Master',
   admin: 'Gerente',
   crm: 'CRM',
@@ -36,7 +40,8 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  master: '#D4AF37',
+  dev: '#14A9D7',
+  master: '#14A9D7',
   admin: '#3B82F6',
   crm: '#10B981',
   sdr: '#8B5CF6',
@@ -48,7 +53,7 @@ import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, funnels } = useAdminState();
+  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, funnels, getFeatureStatus } = useAdminState();
   
   // Track active focus time for collaborators
   useActiveTimeTracker(currentUser);
@@ -120,6 +125,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const renderContent = () => {
+    // Feature Flag Check for non-dev users
+    const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
+      whatsapp: 'whatsapp',
+      crm: 'funnels',
+      debutantes: 'debutantes',
+      'venue-goals': 'venue_goals',
+      sources: 'sources',
+      mql: 'icp',
+      'master-dashboard': 'master_dashboard',
+      collaborators: 'collaborators',
+      venues: 'venues',
+    };
+
+    const flagId = TAB_FEATURE_FLAG[activeTab];
+    if (flagId && currentUser?.role !== 'dev') {
+      const status = getFeatureStatus(flagId);
+      if (status === 'coming_soon') {
+        return <ComingSoonOverlay onBack={() => setActiveTab('home')} />;
+      }
+      if (status === 'disabled') {
+        return <AdminHomeView onOpenLead={handleOpenLeadFromTask} onNavigateTab={(tab) => handleSelectTab(tab)} />;
+      }
+    }
+
     switch (activeTab) {
       case 'home':
         return (
@@ -177,6 +206,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminAppointmentsView />;
       case 'settings':
         return <AdminUserSettingsView onBack={() => handleSelectTab('home')} />;
+      case 'dev-features':
+        return <AdminDevFeatureFlagsView />;
       default:
         return (
           <AdminHomeView
@@ -301,14 +332,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'templates') { category = 'Jornadas'; title = 'Configurações de Jornadas VIP'; }
               else if (activeTab === 'appointments') { category = 'Agenda'; title = 'Agenda & Visitas / Degustações'; }
               else if (activeTab === 'settings') { category = 'Sistema'; title = 'Configurações Gerais'; }
+              else if (activeTab === 'dev-features') { category = 'Desenvolvedor'; title = 'Feature Flags & Controle de Módulos'; }
 
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: '0.72rem', color: '#D4AF37', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent, #14A9D7)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {category}
                   </span>
                   <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.8rem' }}>/</span>
-                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.2px' }}>
+                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title, #FFFFFF)', margin: 0, letterSpacing: '-0.2px' }}>
                     {title}
                   </h1>
                 </div>

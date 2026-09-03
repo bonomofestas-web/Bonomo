@@ -3,7 +3,14 @@ import { X, Check, Calendar, MapPin, Copy, Users, XCircle, Heart } from 'lucide-
 import { useAppState } from '../../context/AppStateContext';
 
 export const GuestInviteViewModal: React.FC = () => {
-  const { selectedInviteGuest: guest, setSelectedInviteGuest, debutante, updateGuestStatus, confirmGuestRsvp } = useAppState();
+  const { 
+    selectedInviteGuest: guest, 
+    setSelectedInviteGuest, 
+    debutante, 
+    currentTheme,
+    updateGuestStatus, 
+    confirmGuestRsvp 
+  } = useAppState();
   const [copiedLink, setCopiedLink] = useState(false);
   const [message, setMessage] = useState('');
   const [feedbackState, setFeedbackState] = useState<'confirmed' | 'declined' | null>(null);
@@ -26,7 +33,8 @@ export const GuestInviteViewModal: React.FC = () => {
     setMessage('');
   };
 
-  const inviteUrl = `${window.location.origin}${window.location.pathname}?guestId=${guest.id}`;
+  const debSlug = debutante.slug || encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'));
+  const inviteUrl = `${window.location.origin}/?convite=${debSlug}&guestId=${guest.id}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(inviteUrl);
@@ -222,7 +230,9 @@ export const GuestInviteViewModal: React.FC = () => {
                 <Calendar size={16} color="#D4AF37" />
                 <div>
                   <div style={{ fontSize: '0.64rem', color: '#9E988D', fontWeight: 600, textTransform: 'uppercase' }}>Data</div>
-                  <div style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 700 }}>18/04/2027</div>
+                  <div style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 700 }}>
+                    {debutante.partyDate ? debutante.partyDate.split('-').reverse().join('/') : 'A definir'}
+                  </div>
                 </div>
               </div>
 
@@ -238,7 +248,9 @@ export const GuestInviteViewModal: React.FC = () => {
                 <MapPin size={16} color="#D4AF37" />
                 <div>
                   <div style={{ fontSize: '0.64rem', color: '#9E988D', fontWeight: 600, textTransform: 'uppercase' }}>Local</div>
-                  <div style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 700 }}>Espaço Rio Lounge</div>
+                  <div style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 700 }}>
+                    {currentTheme?.name || 'Casa de Festas'}
+                  </div>
                 </div>
               </div>
             </div>

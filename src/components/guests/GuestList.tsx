@@ -18,7 +18,8 @@ export const GuestList: React.FC = () => {
   const { 
     guests, 
     debutante,
-    addReferral,
+    currentTheme,
+    indicateGuestAsReferral,
     deleteGuest,
   } = useAppState();
 
@@ -58,14 +59,12 @@ export const GuestList: React.FC = () => {
 
   const handleConvertGuestToReferral = (guest: Guest, e: React.MouseEvent) => {
     e.stopPropagation();
-    addReferral({
-      name: guest.name,
-      phone: guest.phone,
-      age: guest.age,
-      group: (guest.group === 'VIPs' ? 'Amigos' : guest.group) as any,
-      notes: `Convidada da festa indicada como amiga debutante`,
-    });
-    setReferralSuccessToast(`✨ ${guest.name} foi adicionada às suas indicações (+1 Ponto)!`);
+    const success = indicateGuestAsReferral(guest.id);
+    if (success) {
+      setReferralSuccessToast(`✨ ${guest.name} foi indicada com sucesso para a Casa de Festas! (+1 Ponto)`);
+    } else {
+      setReferralSuccessToast(`✨ ${guest.name} já constava como indicada.`);
+    }
     setTimeout(() => setReferralSuccessToast(null), 3500);
   };
 
@@ -92,8 +91,10 @@ export const GuestList: React.FC = () => {
 
   const handleSendWhatsAppInvite = (guest: Guest, e: React.MouseEvent) => {
     e.stopPropagation();
-    const inviteUrl = `${window.location.origin}${window.location.pathname}?convite=maria-eduarda&guestId=${guest.id}`;
-    const text = `Olá, ${guest.name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no Espaço Rio Lounge! 👑✨\n\nConfira seu convite e confirme sua presença no link:\n${inviteUrl}`;
+    const debSlug = debutante.slug || encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'));
+    const inviteUrl = `${window.location.origin}/?convite=${debSlug}&guestId=${guest.id}`;
+    const venueName = currentTheme?.name || 'Casa de Festas';
+    const text = `Olá, ${guest.name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no ${venueName}! 👑✨\n\nConfira seu convite e confirme sua presença no link:\n${inviteUrl}`;
     const cleanPhone = guest.phone.replace(/\D/g, '');
     const url = cleanPhone 
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
@@ -245,7 +246,7 @@ export const GuestList: React.FC = () => {
             fontFamily: "'Montserrat', sans-serif",
             marginTop: '2px',
           }}>
-            18 de Abril de 2027 • <strong style={{ color: '#E8C98D' }}>Espaço Rio Lounge</strong>
+            {debutante.partyDate ? debutante.partyDate.split('-').reverse().join('/') : 'Data a definir'} • <strong style={{ color: '#E8C98D' }}>{currentTheme?.name || 'Casa de Festas'}</strong>
           </div>
         </div>
       </div>

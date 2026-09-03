@@ -1,11 +1,11 @@
 import React from 'react';
-import { X, UserPlus, Smartphone, Share2, ArrowRight } from 'lucide-react';
+import { X, UserPlus, Share2, ArrowRight } from 'lucide-react';
 
 interface GuestAddOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectManual: () => void;
-  onSelectContacts: () => void;
+  onSelectContacts?: () => void;
   onSelectShareLink: () => void;
 }
 
@@ -13,7 +13,6 @@ export const GuestAddOptionsModal: React.FC<GuestAddOptionsModalProps> = ({
   isOpen,
   onClose,
   onSelectManual,
-  onSelectContacts,
   onSelectShareLink,
 }) => {
   if (!isOpen) return null;
@@ -150,55 +149,7 @@ export const GuestAddOptionsModal: React.FC<GuestAddOptionsModalProps> = ({
             <ArrowRight size={16} color="#D4AF37" />
           </div>
 
-          {/* Option 2: Extrair da Lista de Contatos */}
-          <div
-            onClick={() => {
-              onClose();
-              onSelectContacts();
-            }}
-            style={{
-              background: 'linear-gradient(135deg, #1A1620 0%, #120E18 100%)',
-              border: '1.5px solid rgba(255, 92, 154, 0.35)',
-              borderRadius: '16px',
-              padding: '16px 18px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-            }}
-            className="add-guest-option-card"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                background: 'rgba(255, 92, 154, 0.15)',
-                border: '1px solid rgba(255, 92, 154, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <Smartphone size={20} color="#FF5C9A" />
-              </div>
-
-              <div>
-                <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#FFF', fontFamily: 'Poppins, sans-serif' }}>
-                  Extrair da Lista de Contatos
-                </div>
-                <div style={{ fontSize: '0.74rem', color: '#B5AFA4', marginTop: '2px', fontFamily: "'Montserrat', sans-serif" }}>
-                  Importe amigos e familiares da agenda do seu celular
-                </div>
-              </div>
-            </div>
-
-            <ArrowRight size={16} color="#FF5C9A" />
-          </div>
-
-          {/* Option 3: Enviar Link Oficial de Convite */}
+          {/* Option 2: Enviar Link Oficial de Convite */}
           <div
             onClick={() => {
               onClose();

@@ -30,12 +30,12 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
 
   // Dynamic Venue Details from active theme/venue
   const venueObj = currentTheme as any;
-  const venueName = venueObj.name || 'Espaço Rio Lounge';
+  const venueName = venueObj.name || 'Casa de Festas';
   const venueLogo = venueObj.logoUrl || '/logo_riio_lounge.png';
-  const venueAddress = venueObj.address || "Av. das Américas, 1500 - Barra da Tijuca, Rio de Janeiro - RJ";
+  const venueAddress = venueObj.address || '';
   const venuePhoto = venueObj.photoUrl || venueObj.venueBallroomUrl || "/venue_ballroom.jpg";
-  const venueTagline = venueObj.tagline || "Mais do que uma casa de festas, uma experiência completa para o seu evento.";
-  const venueDescription = venueObj.description || "Transformamos celebrações em momentos inesquecíveis. Unimos uma estrutura moderna, atendimento personalizado, gastronomia de excelência e uma equipe comprometida para que cada evento aconteça com organização, tranquilidade e cuidado em cada detalhe.";
+  const venueTagline = venueObj.tagline || "Mais do que uma casa de festas, uma experiência inesquecível.";
+  const venueDescription = venueObj.description || "Transformamos celebrações em momentos inesquecíveis, unindo estrutura impecável, atendimento personalizado e alta gastronomia.";
   
   const yearsInBusiness = venueObj.yearsInBusiness || 20;
   const eventsCompleted = venueObj.eventsCompleted || 2200;
@@ -983,8 +983,8 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                 width: '100%',
               }}>
                 <iframe
-                  title="Localização Espaço Rio Lounge"
-                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3672.887854611413!2d-43.365!3d-22.99!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.6!3m3!1m2!1s0x0%3A0x0!2zMjLCsDU5JzI0LjAiUyA0M8KwMjEnNTQuMCJX!5e0!3m2!1spt-BR!2sbr!4v1"
+                  title={`Localização ${venueName}`}
+                  src={venueObj.googleMapsEmbedUrl || `https://maps.google.com/maps?q=${encodeURIComponent(venueAddress || venueName)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
                   width="100%"
                   height="300"
                   style={{

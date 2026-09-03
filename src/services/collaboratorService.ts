@@ -25,6 +25,7 @@ export const collaboratorService = {
         avatarUrl: row.avatar_url,
         phone: row.phone,
         active: row.active ?? true,
+        password: row.password,
         theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
       }));
@@ -48,6 +49,7 @@ export const collaboratorService = {
       if (collab.avatarUrl !== undefined) payload.avatar_url = collab.avatarUrl;
       if (collab.phone !== undefined) payload.phone = collab.phone;
       if (collab.active !== undefined) payload.active = collab.active;
+      if (collab.password !== undefined) payload.password = collab.password;
       if (collab.theme !== undefined) payload.theme = collab.theme;
 
       if (isUuid) {
@@ -105,3 +107,44 @@ export const collaboratorService = {
     }
   },
 };
+
+export const featureFlagService = {
+  async getAll(): Promise<Record<string, string>> {
+    if (!isSupabaseConfigured) return {};
+    try {
+      const { data, error } = await supabase
+        .from('system_feature_flags')
+        .select('feature_id, status');
+
+      if (error) {
+        return {};
+      }
+
+      const flags: Record<string, string> = {};
+      (data || []).forEach(row => {
+        flags[row.feature_id] = row.status;
+      });
+      return flags;
+    } catch {
+      return {};
+    }
+  },
+
+  async update(featureId: string, status: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase
+        .from('system_feature_flags')
+        .upsert({
+          feature_id: featureId,
+          status,
+          updated_at: new Date().toISOString(),
+        });
+
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+};
+

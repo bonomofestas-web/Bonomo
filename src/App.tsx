@@ -218,11 +218,30 @@ export const AppContent: React.FC = () => {
   );
 };
 
-const parseRouteFromLocation = (): { mode: 'debutante' | 'admin' | 'tracking_link' | 'form'; slug?: string } => {
+const parseRouteFromLocation = (): { 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite'; 
+  slug?: string;
+  guestId?: string;
+} => {
   if (typeof window === 'undefined') return { mode: 'admin', slug: 'maria-eduarda-2027' };
 
   const urlParams = new URLSearchParams(window.location.search);
   const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+
+  // 0. Convite Oficial do Convidado (/convite ou ?convite=slug ou ?guestId=id)
+  if (urlParams.has('convite') || urlParams.has('invite') || pathname === 'convite' || pathname.startsWith('convite/')) {
+    const rawConviteSlug = urlParams.get('convite') || urlParams.get('invite') || (pathname.startsWith('convite/') ? pathname.replace(/^convite\//, '') : '');
+    const guestIdParam = urlParams.get('guestId') || undefined;
+    const finalSlug = (rawConviteSlug && rawConviteSlug !== 'true' && rawConviteSlug !== '1') 
+      ? decodeURIComponent(rawConviteSlug).trim() 
+      : (urlParams.get('debutante') || urlParams.get('d') || urlParams.get('slug') || 'maria-eduarda-2027');
+
+    return {
+      mode: 'convite',
+      slug: finalSlug,
+      guestId: guestIdParam,
+    };
+  }
 
   // 1. Link Rastreável (/r/:slug ou ?r=slug)
   if (urlParams.has('r')) {
@@ -315,7 +334,7 @@ const RootAppRouter: React.FC = () => {
 
   // Fetch from Supabase if not in memory (anonymous / incognito access)
   useEffect(() => {
-    if (viewMode !== 'debutante' || !cleanSlug) return;
+    if ((viewMode !== 'debutante' && viewMode !== 'convite') || !cleanSlug) return;
     if (hasFetchedRef.current === cleanSlug) return; // avoid duplicate fetches
     hasFetchedRef.current = cleanSlug;
     setIsLoadingSlug(true);
@@ -452,6 +471,20 @@ const RootAppRouter: React.FC = () => {
 
   if (viewMode === 'form' && currentDebutanteSlug) {
     return <PublicFormLandingView slug={currentDebutanteSlug} />;
+  }
+
+  if (viewMode === 'convite') {
+    return (
+      <AppStateProvider initialAccount={activeDeb} initialVenue={activeVenue} key={activeDeb?.id || 'convite'}>
+        <GuestPublicLandingPage 
+          guestId={routeInfo.guestId} 
+          onClose={() => {
+            window.history.replaceState({}, '', window.location.pathname);
+            window.location.reload();
+          }} 
+        />
+      </AppStateProvider>
+    );
   }
 
   if (viewMode === 'admin') {

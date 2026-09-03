@@ -38,12 +38,19 @@ export const AdminCollaboratorsView: React.FC = () => {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
+      case 'dev':
+        return {
+          label: 'Desenvolvedor (Root)',
+          bg: 'rgba(20, 169, 215, 0.15)',
+          color: '#14A9D7',
+          border: '1px solid rgba(20, 169, 215, 0.4)',
+        };
       case 'master':
         return {
           label: 'Master (Diretoria)',
           bg: 'var(--adm-gold-bg)',
           color: 'var(--adm-gold)',
-          border: '1px solid rgba(212, 175, 55, 0.4)',
+          border: '1px solid rgba(20, 169, 215, 0.4)',
         };
       case 'admin':
         return {
@@ -307,45 +314,61 @@ export const AdminCollaboratorsView: React.FC = () => {
                 borderTop: '1px solid var(--adm-border)',
                 paddingTop: '12px',
               }}>
-                <button
-                  onClick={() => handleOpenEdit(collab)}
-                  style={{
-                    background: 'var(--adm-bg-elevated)',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-title)',
-                    borderRadius: '10px',
-                    padding: '6px 14px',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <Edit3 size={13} color="var(--adm-accent)" />
-                  <span>Editar</span>
-                </button>
+                {collab.role === 'dev' || collab.email === 'bonomofestas@gmail.com' ? (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    color: '#14A9D7',
+                    background: 'rgba(20, 169, 215, 0.12)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                  }}>
+                    🛡️ Conta Dev Protegida
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleOpenEdit(collab)}
+                      style={{
+                        background: 'var(--adm-bg-elevated)',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-title)',
+                        borderRadius: '10px',
+                        padding: '6px 14px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Edit3 size={13} color="var(--adm-accent)" />
+                      <span>Editar</span>
+                    </button>
 
-                {collab.role !== 'master' && (
-                  <button
-                    onClick={() => handleDelete(collab)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-red)',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Trash2 size={13} />
-                    <span>Remover</span>
-                  </button>
+                    {collab.role !== 'master' && (
+                      <button
+                        onClick={() => handleDelete(collab)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--adm-red)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Trash2 size={13} />
+                        <span>Remover</span>
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

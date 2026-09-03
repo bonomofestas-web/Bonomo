@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, User, Phone, Share2, Check } from 'lucide-react';
+import { X, Users, User, Phone, Share2, Check, Smartphone } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import type { Guest, GuestGroup, GuestStatus, GuestGender } from '../../types';
 
@@ -14,7 +14,7 @@ export const GuestFormModal: React.FC<GuestFormModalProps> = ({
   onClose,
   guestToEdit 
 }) => {
-  const { addGuest, updateGuest, debutante } = useAppState();
+  const { addGuest, updateGuest, debutante, currentTheme } = useAppState();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -79,8 +79,9 @@ export const GuestFormModal: React.FC<GuestFormModalProps> = ({
     }
   };
 
+  const debSlug = debutante.slug || encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'));
   const createdInviteUrl = createdGuestId 
-    ? `${window.location.origin}${window.location.pathname}?convite=maria-eduarda&guestId=${createdGuestId}`
+    ? `${window.location.origin}/?convite=${debSlug}&guestId=${createdGuestId}`
     : '';
 
   const handleCopyCreatedLink = () => {
@@ -90,7 +91,8 @@ export const GuestFormModal: React.FC<GuestFormModalProps> = ({
   };
 
   const handleSendWhatsAppCreatedLink = () => {
-    const text = `Olá, ${name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no Espaço Rio Lounge! 👑✨\n\nConfira seu convite e confirme sua presença no link:\n${createdInviteUrl}`;
+    const venueName = currentTheme?.name || 'Casa de Festas';
+    const text = `Olá, ${name}! A ${debutante.name} preparou um convite exclusivo para você para os 15 Anos dela no ${venueName}! 👑✨\n\nConfira seu convite e confirme sua presença no link:\n${createdInviteUrl}`;
     const cleanPhone = phone.replace(/\D/g, '');
     const url = cleanPhone 
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
@@ -274,9 +276,26 @@ export const GuestFormModal: React.FC<GuestFormModalProps> = ({
                 {guestToEdit ? 'Editar Convidado' : 'Adicionar Convidado'}
               </h2>
             </div>
-            <p style={{ fontSize: '0.84rem', color: '#B5AFA4', marginBottom: '20px', fontFamily: "'Montserrat', sans-serif" }}>
+            <p style={{ fontSize: '0.84rem', color: '#B5AFA4', marginBottom: '14px', fontFamily: "'Montserrat', sans-serif" }}>
               Cadastre os dados individuais do convidado
             </p>
+
+            {/* Dica de Preenchimento Rápido / Agenda */}
+            <div style={{
+              background: 'rgba(212, 175, 55, 0.08)',
+              border: '1px solid rgba(212, 175, 55, 0.25)',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+            }}>
+              <Smartphone size={18} color="#D4AF37" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '0.74rem', color: '#D4AF37', lineHeight: 1.4 }}>
+                <strong>Dica para celular (iPhone / Android):</strong> Você pode abrir a agenda do seu aparelho, copiar o número de telefone do seu amigo(a) e colar diretamente abaixo para agilizar o cadastro!
+              </div>
+            </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Nome */}

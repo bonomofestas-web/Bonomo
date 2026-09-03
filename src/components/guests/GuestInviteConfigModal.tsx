@@ -10,6 +10,8 @@ interface GuestInviteConfigModalProps {
 export const GuestInviteConfigModal: React.FC<GuestInviteConfigModalProps> = ({ isOpen, onClose }) => {
   const { debutante, updateInviteSettings } = useAppState();
 
+  const defaultMsg = `É com muita alegria que convidamos você para celebrar esse momento tão especial na vida de ${debutante.name}. Esperamos você para tornar essa noite ainda mais inesquecível!`;
+
   const [useCustomPhoto, setUseCustomPhoto] = useState<boolean>(
     debutante.useCustomInvitePhoto || false
   );
@@ -17,9 +19,23 @@ export const GuestInviteConfigModal: React.FC<GuestInviteConfigModalProps> = ({ 
     debutante.customInvitePhotoUrl || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80'
   );
   const [receptionMessage, setReceptionMessage] = useState<string>(
-    debutante.receptionMessage || 'É com muita alegria que convidamos você para celebrar esse momento tão especial na vida da Maria Eduarda. Esperamos você para tornar essa noite ainda mais inesquecível!'
+    (debutante.receptionMessage && !debutante.receptionMessage.includes('Maria Eduarda')) 
+      ? debutante.receptionMessage 
+      : defaultMsg
   );
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setUseCustomPhoto(debutante.useCustomInvitePhoto || false);
+      setCustomPhotoUrl(debutante.customInvitePhotoUrl || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80');
+      setReceptionMessage(
+        debutante.receptionMessage && !debutante.receptionMessage.includes('Maria Eduarda')
+          ? debutante.receptionMessage
+          : defaultMsg
+      );
+    }
+  }, [isOpen, debutante.id, debutante.name, debutante.receptionMessage, debutante.customInvitePhotoUrl, debutante.useCustomInvitePhoto]);
 
   if (!isOpen) return null;
 

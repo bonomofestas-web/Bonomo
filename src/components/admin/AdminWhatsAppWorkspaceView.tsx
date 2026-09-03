@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  MessageSquare, Search, SlidersHorizontal, Send, Mic, Phone,
+  MessageSquare, Search, SlidersHorizontal, Send, Mic,
   ExternalLink, FileText, ChevronRight, ChevronLeft, Calendar,
   Plus, Check, X, CheckSquare, Clock
 } from 'lucide-react';
@@ -26,6 +26,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 }) => {
   const { 
     leads, 
+    funnels,
     venues, 
     collaborators, 
     currentUser, 
@@ -35,7 +36,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     addLeadTask,
     completeLeadTask,
     updateLeadStage,
+    getFeatureStatus,
   } = useAdminState();
+
+  const isWhatsAppDisabled = getFeatureStatus('whatsapp') === 'disabled' && currentUser?.role !== 'dev';
+  const isWhatsAppComingSoon = getFeatureStatus('whatsapp') === 'coming_soon' && currentUser?.role !== 'dev';
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId || null);
@@ -55,7 +60,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [filterTemperature, setFilterTemperature] = useState<string>('all');
 
   // Composer Mode: 'whatsapp' | 'notes' | 'tasks'
-  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>('whatsapp');
+  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>(() => {
+    return isWhatsAppDisabled ? 'notes' : 'whatsapp';
+  });
+
+  useEffect(() => {
+    if (isWhatsAppDisabled && composerTab === 'whatsapp') {
+      setComposerTab('notes');
+    }
+  }, [isWhatsAppDisabled, composerTab]);
   
   // WhatsApp / Note Text
   const [messageText, setMessageText] = useState('');
@@ -108,21 +121,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
-    return leads.filter(lead => {
+    const currentFunnel = activeFunnelId ? funnels.find(f => f.id === activeFunnelId) : null;
+    const targetVenueId = currentFunnel?.venueId || (activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : null);
+
+    const result = leads.filter(lead => {
       // 1. Funnel filter if embedded
       if (activeFunnelId && lead.funnelId && lead.funnelId !== activeFunnelId) {
         return false;
       }
 
-      // 2. Global venue switcher
-      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        if (lead.venueId !== activeVenueId) return false;
+      // 2. Specific venue isolation
+      if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
+        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+          return false;
+        }
       }
 
       // 3. Quick Filter Tabs
       if (quickFilter === 'open') {
         if (lead.stage === 'contract_signed' || lead.stage === 'lost') {
-          return false;
+          if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+            return false;
+          }
         }
       } else if (quickFilter === 'my') {
         const isMyLead = lead.assignedTo === currentUser?.name || 
@@ -130,25 +150,31 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           lead.closerId === currentUser?.id ||
           lead.sdrName === currentUser?.name ||
           lead.closerName === currentUser?.name;
-        if (!isMyLead) return false;
+        if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       // 4. Specific venue filter
-      if (filterVenueId !== 'all' && lead.venueId !== filterVenueId) return false;
+      if (filterVenueId !== 'all' && lead.venueId !== filterVenueId) {
+        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+      }
 
       // 5. Stage filter
-      if (filterStage !== 'all' && lead.stage !== filterStage) return false;
+      if (filterStage !== 'all' && lead.stage !== filterStage) {
+        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+      }
 
       // 6. Collaborator filter
       if (filterCollaboratorId !== 'all') {
         const matchesSdr = lead.sdrId === filterCollaboratorId;
         const matchesCloser = lead.closerId === filterCollaboratorId;
         const matchesAssigned = lead.assignedTo === filterCollaboratorId;
-        if (!matchesSdr && !matchesCloser && !matchesAssigned) return false;
+        if (!matchesSdr && !matchesCloser && !matchesAssigned && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       // 7. Temperature filter
-      if (filterTemperature !== 'all' && lead.temperature !== filterTemperature) return false;
+      if (filterTemperature !== 'all' && lead.temperature !== filterTemperature) {
+        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+      }
 
       // 8. Search term
       if (searchTerm.trim()) {
@@ -161,7 +187,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
       return true;
     });
-  }, [leads, activeFunnelId, activeVenueId, quickFilter, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, currentUser]);
+
+    // Fallback: If result would be 0 leads, return leads so user always sees the conversations
+    if (result.length === 0 && leads.length > 0) {
+      return leads;
+    }
+
+    return result;
+  }, [leads, activeFunnelId, activeVenueId, quickFilter, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, currentUser, funnels, selectedLeadId, initialLeadId]);
 
   // Set initial selected lead if none selected
   useEffect(() => {
@@ -295,7 +328,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return selectedLead.activities.filter(a => a.type === 'contact' || a.type === 'creation');
     }
     if (composerTab === 'notes') {
-      return selectedLead.activities.filter(a => a.type === 'note');
+      return selectedLead.activities.filter(a => 
+        a.type === 'note' || 
+        a.type === 'status_change' || 
+        a.type === 'assignment' || 
+        a.type === 'creation' || 
+        a.type === 'deal_closed' || 
+        a.type === 'validation'
+      );
     }
     if (composerTab === 'tasks') {
       return selectedLead.activities.filter(a => a.type === 'task_created' || a.type === 'task_completed');
@@ -448,7 +488,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por lead ou telefone..."
                 className="adm-input"
-                style={{ width: '100%', paddingLeft: '32px', height: '38px', borderRadius: '10px', fontSize: '0.78rem' }}
+                style={{
+                  width: '100%',
+                  paddingLeft: '32px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  fontSize: '0.78rem',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  outline: 'none',
+                }}
               />
             </div>
 
@@ -713,21 +763,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 {/* Botão com Setinha para Abrir/Fechar a Ficha do Lead */}
                 <button
                   type="button"
-                  onClick={() => setIsInspectorOpen(prev => !prev)}
-                  title={isInspectorOpen ? 'Recolher Ficha do Lead' : 'Abrir Ficha do Lead'}
+                  onClick={() => setIsInspectorOpen(!isInspectorOpen)}
+                  title={isInspectorOpen ? 'Recolher Ficha do Lead' : 'Expandir Ficha do Lead'}
                   style={{
                     width: '34px',
                     height: '34px',
                     borderRadius: '8px',
-                    background: isInspectorOpen ? 'var(--adm-accent-bg)' : 'rgba(255, 255, 255, 0.06)',
-                    border: `1px solid ${isInspectorOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                    color: isInspectorOpen ? 'var(--adm-accent)' : '#FFFFFF',
+                    background: isInspectorOpen ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                    border: `1.5px solid ${isInspectorOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                    color: isInspectorOpen ? 'var(--adm-accent)' : 'var(--adm-text-title)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                     flexShrink: 0,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   }}
                 >
                   {isInspectorOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
@@ -812,20 +863,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
               </div>
 
-              {/* Action Buttons: WhatsApp Web & Close */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                <a
-                  href={getCleanWhatsappUrl(selectedLead.phone)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="adm-btn-secondary"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 700, textDecoration: 'none', color: '#10B981' }}
-                >
-                  <Phone size={13} />
-                  <span>WhatsApp Web</span>
-                </a>
-
-                {onClose && (
+              {/* Close Button if modal */}
+              {onClose && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={onClose}
@@ -843,8 +883,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   >
                     <X size={15} />
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* ── TIMELINE DINÂMICA CONECTADA À ABA DO COMPOSER ── */}
@@ -1049,27 +1089,34 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 borderBottom: '1px solid var(--adm-border)',
                 paddingBottom: '8px',
               }}>
-                <button
-                  type="button"
-                  onClick={() => setComposerTab('whatsapp')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                    border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
-                    color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
-                    fontSize: '0.76rem',
-                    fontWeight: composerTab === 'whatsapp' ? 800 : 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <MessageSquare size={13} />
-                  <span>WhatsApp</span>
-                </button>
+                {!isWhatsAppDisabled && (
+                  <button
+                    type="button"
+                    onClick={() => setComposerTab('whatsapp')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                      border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
+                      color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
+                      fontSize: '0.76rem',
+                      fontWeight: composerTab === 'whatsapp' ? 800 : 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <MessageSquare size={13} />
+                    <span>WhatsApp</span>
+                    {isWhatsAppComingSoon && (
+                      <span style={{ fontSize: '0.6rem', background: 'rgba(20, 169, 215, 0.2)', color: '#14A9D7', padding: '1px 5px', borderRadius: '4px' }}>
+                        Em Breve
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1312,7 +1359,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       onChange={(e) => setMessageText(e.target.value)}
                       placeholder="Digite uma mensagem para o cliente via WhatsApp..."
                       className="adm-input"
-                      style={{ flex: 1, height: '42px', borderRadius: '12px', fontSize: '0.82rem' }}
+                      style={{
+                        flex: 1,
+                        height: '42px',
+                        borderRadius: '12px',
+                        fontSize: '0.82rem',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-title)',
+                        padding: '0 14px',
+                        outline: 'none',
+                      }}
                     />
 
                     <button

@@ -136,6 +136,27 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
 
           <button
             type="button"
+            onClick={() => window.open(`/?convite=${encodeURIComponent(debutante.slug)}`, '_blank')}
+            style={{
+              background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.08) 100%)',
+              border: '1px solid rgba(212, 175, 55, 0.4)',
+              color: '#D4AF37',
+              borderRadius: '12px',
+              padding: '8px 16px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Sparkles size={15} />
+            <span>Ver Convite</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenApp}
             className="adm-btn-primary"
             style={{

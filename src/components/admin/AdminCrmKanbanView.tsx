@@ -1640,7 +1640,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const totalLeadsSum = funnelsList.reduce((acc, curr) => acc + curr.leadCount, 0);
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', padding: '24px 32px 60px 32px', maxWidth: '1560px', margin: '0 auto', animation: 'fadeIn 0.25s ease-out', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '28px', padding: '24px 32px 60px 32px', width: '100%', boxSizing: 'border-box', animation: 'fadeIn 0.25s ease-out', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         {/* Main Title & Action */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
           <div>
@@ -2253,7 +2253,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         <AdminWhatsAppWorkspaceView 
           initialLeadId={activeLeadIdForWorkspace || undefined}
           activeFunnelId={selectedFunnelId || undefined}
-          searchQuery={search}
           isEmbeddedInFunnel={true}
         />
       ) : (

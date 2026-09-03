@@ -218,6 +218,7 @@ interface AppStateContextType {
   simulateSetCycleRemainingHours: (hours: number) => void;
   simulateAddRenewalReferral: () => void;
   applyScenario: (scenario: ScenarioKey) => void;
+  indicateGuestAsReferral: (guestId: string) => boolean;
   addGuest: (data: Omit<Guest, 'id'>) => string;
   updateGuest: (guestId: string, data: Partial<Guest>) => void;
   deleteGuest: (guestId: string) => void;
@@ -254,7 +255,14 @@ export const AppStateProvider: React.FC<{
         id: initialVenue.id,
         name: initialVenue.name,
         tagline: initialVenue.tagline || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
+        description: initialVenue.description || 'Espaço requintado e sofisticado preparado especialmente para noites inesquecíveis.',
+        address: initialVenue.address || 'Rio de Janeiro - RJ',
         logoUrl: initialVenue.logoUrl || initialVenue.photoUrl || '/logo_riio_lounge.png',
+        photoUrl: initialVenue.ballroomImageUrl || initialVenue.photoUrl || '/venue_ballroom.jpg',
+        venueBallroomUrl: initialVenue.ballroomImageUrl || initialVenue.photoUrl || '/venue_ballroom.jpg',
+        yearsInBusiness: Number(initialVenue.yearsInBusiness) || 15,
+        eventsCompleted: Number(initialVenue.eventsCompleted) || 1200,
+        guestsDelighted: Number(initialVenue.guestsDelighted) || 80000,
         primaryColor: initialVenue.primaryColor || '#D4AF37',
         secondaryColor: initialVenue.secondaryColor || '#AA7C11',
         accentColor: initialVenue.accentColor || '#F3E5AB',
@@ -271,7 +279,14 @@ export const AppStateProvider: React.FC<{
             id: venue.id,
             name: venue.name,
             tagline: venue.tagline || 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
+            description: venue.description || 'Espaço requintado e sofisticado preparado especialmente para noites inesquecíveis.',
+            address: venue.address || 'Rio de Janeiro - RJ',
             logoUrl: venue.logoUrl || venue.photoUrl || '/logo_riio_lounge.png',
+            photoUrl: venue.ballroomImageUrl || venue.photoUrl || '/venue_ballroom.jpg',
+            venueBallroomUrl: venue.ballroomImageUrl || venue.photoUrl || '/venue_ballroom.jpg',
+            yearsInBusiness: Number(venue.yearsInBusiness) || 15,
+            eventsCompleted: Number(venue.eventsCompleted) || 1200,
+            guestsDelighted: Number(venue.guestsDelighted) || 80000,
             primaryColor: venue.primaryColor || '#D4AF37',
             secondaryColor: venue.secondaryColor || '#AA7C11',
             accentColor: venue.accentColor || '#F3E5AB',
@@ -1087,6 +1102,31 @@ export const AppStateProvider: React.FC<{
     setGuests(prev => prev.filter(g => g.id !== guestId && g.parentGuestId !== guestId));
   };
 
+  const indicateGuestAsReferral = (guestId: string): boolean => {
+    const targetGuest = guests.find(g => g.id === guestId);
+    if (!targetGuest) return false;
+
+    if (targetGuest.isReferred) return false;
+
+    const cleanPhone = targetGuest.phone.replace(/\D/g, '');
+    const alreadyReferred = referrals.some(r => r.phone.replace(/\D/g, '') === cleanPhone);
+    if (alreadyReferred) {
+      updateGuest(guestId, { isReferred: true });
+      return false;
+    }
+
+    addReferral({
+      name: targetGuest.name,
+      phone: targetGuest.phone,
+      age: targetGuest.age || 14,
+      group: (targetGuest.group as any) || 'Amigos',
+      notes: `Indicada automaticamente da lista de convidados (${debutante.name})`,
+    });
+
+    updateGuest(guestId, { isReferred: true });
+    return true;
+  };
+
   const confirmGuestByDebutante = (guestId: string) => {
     const today = new Date().toISOString().split('T')[0];
     setGuests(prev => {
@@ -1409,6 +1449,7 @@ export const AppStateProvider: React.FC<{
       simulateSetCycleRemainingHours,
       simulateAddRenewalReferral,
       applyScenario,
+      indicateGuestAsReferral,
       addGuest,
       updateGuest,
       deleteGuest,

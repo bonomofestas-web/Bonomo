@@ -13,13 +13,15 @@ export const GuestInviteLinkShareModal: React.FC<GuestInviteLinkShareModalProps>
   onClose,
   onOpenPublicLandingPage
 }) => {
-  const { debutante } = useAppState();
+  const { debutante, currentTheme } = useAppState();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 
-  const publicLink = `${window.location.origin}${window.location.pathname}?convite=${encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'))}`;
-  const whatsappMessage = `Olá! Você é nosso(a) convidado(a) especial para a celebração de 15 Anos da ${debutante.name} no Espaço Rio Lounge! 👑✨\n\nPor gentileza, confirme sua presença e deixe sua mensagem de carinho no link:\n${publicLink}`;
+  const debutanteSlug = debutante.slug || encodeURIComponent(debutante.name.toLowerCase().replace(/\s+/g, '-'));
+  const publicLink = `${window.location.origin}/?convite=${debutanteSlug}`;
+  const venueName = currentTheme?.name || 'Casa de Festas';
+  const whatsappMessage = `Olá! Você é nosso(a) convidado(a) especial para a celebração de 15 Anos da ${debutante.name} no ${venueName}! 👑✨\n\nPor gentileza, confirme sua presença e deixe sua mensagem de carinho no link:\n${publicLink}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(publicLink);
@@ -97,7 +99,7 @@ export const GuestInviteLinkShareModal: React.FC<GuestInviteLinkShareModalProps>
               textTransform: 'uppercase',
               letterSpacing: '2px',
             }}>
-              Link de Convite Oficial • Espaço Rio Lounge
+              Link de Convite Oficial • {venueName}
             </span>
           </div>
 
