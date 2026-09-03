@@ -18,6 +18,20 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
 
   const featureDefinitions: FeatureFlagConfig[] = [
     {
+      id: 'home',
+      name: 'Página Inicial (Início / Meu Dia)',
+      description: 'Visão inicial com tarefas pendentes, lembretes, atalhos rápidos e agenda do dia.',
+      category: 'Comercial & CRM',
+      status: featureFlags.home || 'active',
+    },
+    {
+      id: 'dashboard',
+      name: 'Dashboard Geral & Indicadores',
+      description: 'Painel visual de métricas, taxa de conversão, gráficos de desempenho e volume de vendas.',
+      category: 'Inteligência',
+      status: featureFlags.dashboard || 'active',
+    },
+    {
       id: 'whatsapp',
       name: 'WhatsApp & Atendimento',
       description: 'Caixa de entrada integrada, disparos de mensagens, histórico e botões de WhatsApp em todo o CRM.',

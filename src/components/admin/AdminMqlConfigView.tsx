@@ -172,17 +172,41 @@ export const AdminMqlConfigView: React.FC = () => {
           </div>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '16px',
-          marginTop: '10px',
-        }}>
-          {venues.map(v => {
-            const count = mqlQuestions.filter(q => q.venueId === v.id).length;
+        {venues.length === 0 ? (
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px dashed var(--adm-border)',
+            borderRadius: '16px',
+            padding: '48px 24px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '14px',
+            marginTop: '10px',
+          }}>
+            <Building2 size={32} color="var(--adm-accent)" />
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 6px 0' }}>
+                Nenhuma Casa de Festa Cadastrada
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '420px', lineHeight: 1.5 }}>
+                Cadastre sua primeira unidade para poder criar as perguntas de qualificação ICP.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '16px',
+            marginTop: '10px',
+          }}>
+            {venues.map(v => {
+              const count = mqlQuestions.filter(q => q.venueId === v.id).length;
 
-            return (
-              <div
+              return (
+                <div
                 key={v.id}
                 onClick={() => setActiveVenueId(v.id)}
                 style={{
@@ -245,7 +269,8 @@ export const AdminMqlConfigView: React.FC = () => {
               </div>
             );
           })}
-        </div>
+          </div>
+        )}
       </div>
     );
   }

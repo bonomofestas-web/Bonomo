@@ -11,6 +11,8 @@ import type {
 export type AdminRole = 'dev' | 'master' | 'admin' | 'crm' | 'sdr' | 'closer';
 
 export type FeatureFlagId = 
+  | 'home'
+  | 'dashboard'
   | 'whatsapp'
   | 'icp'
   | 'sources'

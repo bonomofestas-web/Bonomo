@@ -1314,13 +1314,65 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         )}
       </div>
 
-      {/* Grid of Venues (Clean & Minimalist: Photo, Name, Slogan & Address only) */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-        gap: '20px',
-      }}>
-        {venues.map(venue => {
+      {/* Grid of Venues or Empty State */}
+      {venues.length === 0 ? (
+        <div style={{
+          background: 'var(--adm-bg-card)',
+          border: '1px dashed var(--adm-border)',
+          borderRadius: '16px',
+          padding: '56px 24px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '16px',
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '18px',
+            background: 'var(--adm-accent-bg)',
+            color: 'var(--adm-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Building2 size={32} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 8px 0' }}>
+              Registre sua Primeira Casa de Festas
+            </h3>
+            <p style={{ fontSize: '0.86rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '460px', lineHeight: 1.5 }}>
+              Para começar a utilizar o CRM, distribuir leads e gerenciar sua equipe, adicione o seu primeiro salão ou espaço de eventos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="adm-btn-primary"
+            style={{
+              padding: '12px 24px',
+              borderRadius: '12px',
+              fontWeight: 800,
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 16px rgba(20, 169, 215, 0.35)',
+            }}
+          >
+            <Plus size={18} />
+            <span>Registrar Minha Primeira Casa de Festas</span>
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+          gap: '20px',
+        }}>
+          {venues.map(venue => {
           return (
             <div
               key={venue.id}
@@ -1444,7 +1496,8 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       <AdminConfirmModal
         isOpen={!!venueToDelete}

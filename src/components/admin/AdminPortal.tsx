@@ -54,7 +54,7 @@ import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenDebutanteApp,
 }) => {
-  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, funnels, getFeatureStatus } = useAdminState();
+  const { currentUser, switchUserRoleDemo, switchCollaborator, theme, leads, tasks, venues, debutantes, collaborators, allCollaborators, funnels, getFeatureStatus } = useAdminState();
   
   // Track active focus time for collaborators
   useActiveTimeTracker(currentUser);
@@ -133,6 +133,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     // Feature Flag Check for non-dev users
     const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
+      home: 'home',
+      dashboard: 'dashboard',
       whatsapp: 'whatsapp',
       crm: 'funnels',
       debutantes: 'debutantes',
@@ -143,6 +145,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       collaborators: 'collaborators',
       venues: 'venues',
     };
+
+    // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade
+    if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
+      return (
+        <AdminVenuesView
+          onNavigateToFunnel={(funnelId: string) => {
+            setActiveFunnelId(funnelId);
+            setActiveTab('crm');
+          }}
+        />
+      );
+    }
 
     const flagId = TAB_FEATURE_FLAG[activeTab];
     if (flagId && currentUser?.role !== 'dev') {
@@ -283,15 +297,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         background: 'var(--adm-bg-app)',
         boxSizing: 'border-box',
       }}>
-        {/* Top Header Bar (Sticky & Seamless - Always Dark #0B090E) */}
+        {/* Top Header Bar (Sticky & Seamless - Adapts to Theme with High Contrast) */}
         <header className="admin-portal-header" style={{
           position: 'sticky',
           top: 0,
           width: '100%',
           height: '64px',
           flexShrink: 0,
-          background: '#0B090E',
-          borderBottom: '1px solid rgba(212, 175, 55, 0.15)',
+          background: 'var(--adm-bg-header)',
+          borderBottom: '1px solid var(--adm-border)',
           padding: '0 24px',
           display: 'flex',
           alignItems: 'center',
@@ -326,11 +340,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               const activeFunnel = funnels.find(f => f.id === activeFunnelId);
               let category = 'Central';
               let title = 'Meu Dia • Início';
-              if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
+
+              if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
+                category = 'Inicialização';
+                title = 'Registrar Primeira Casa de Festas';
+              } else if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
               else if (activeTab === 'whatsapp') { category = 'Comunicação'; title = 'WhatsApp Workspace'; }
               else if (activeTab === 'sources') { category = 'Gestão da Casa'; title = 'Origens & Rastreamento'; }
-              else if (activeTab === 'mql') { category = 'Gestão da Casa'; title = 'MQL • Qualificação de Leads'; }
+              else if (activeTab === 'mql') { category = 'Inteligência'; title = 'ICP'; }
               else if (activeTab === 'venue-goals') { category = 'Gestão da Casa'; title = 'Metas Comerciais da Casa'; }
               else if (activeTab === 'venues') { category = 'Unidades'; title = 'Casas de Festa & Espaços'; }
               else if (activeTab === 'debutantes') { category = 'Debutantes'; title = 'Central de Aniversariantes • 15 Anos'; }
@@ -347,8 +365,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent, #14A9D7)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     {category}
                   </span>
-                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.8rem' }}>/</span>
-                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title, #FFFFFF)', margin: 0, letterSpacing: '-0.2px' }}>
+                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.8rem' }}>/</span>
+                  <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.2px' }}>
                     {title}
                   </h1>
                 </div>
@@ -364,8 +382,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: isSearchFocused || globalSearch ? '#141118' : 'transparent',
-                border: `1px solid ${isSearchFocused || globalSearch ? 'rgba(212, 175, 55, 0.4)' : 'transparent'}`,
+                background: 'var(--adm-bg-input)',
+                border: `1px solid ${isSearchFocused || globalSearch ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                 borderRadius: '50px',
                 padding: isSearchFocused || globalSearch ? '5px 12px' : '6px',
                 width: isSearchFocused || globalSearch ? '280px' : '36px',
@@ -376,7 +394,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               }}
               onClick={() => setIsSearchFocused(true)}
               >
-                <span style={{ color: isSearchFocused || globalSearch ? '#D4AF37' : '#9E988D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: isSearchFocused || globalSearch ? 'var(--adm-accent)' : 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -395,7 +413,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       background: 'transparent',
                       border: 'none',
                       outline: 'none',
-                      color: '#FFF',
+                      color: 'var(--adm-text-title)',
                       fontSize: '0.8rem',
                       width: '100%',
                       fontFamily: 'inherit',
@@ -825,41 +843,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     Alternar Visão de Usuário
                   </div>
 
-                  {/* Role presets */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                    {(['master', 'admin', 'sdr', 'closer'] as const).map((role) => (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => {
-                          switchUserRoleDemo(role);
-                          setIsProfileMenuOpen(false);
-                        }}
-                        style={{
-                          background: userRole === role ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                          border: userRole === role ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                          color: userRole === role ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                          borderRadius: '8px',
-                          padding: '6px 8px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {ROLE_LABELS[role]}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Se estiver simulando visão de outro colaborador, botão direto para retornar */}
+                  {(currentUser.role !== 'master' && currentUser.role !== 'dev') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const masterCollab = allCollaborators.find(c => c.id === currentUser.masterId || c.role === 'master');
+                        if (masterCollab) switchCollaborator(masterCollab);
+                        else switchUserRoleDemo('master');
+                        setIsProfileMenuOpen(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(212, 175, 55, 0.15)',
+                        border: '1px solid #D4AF37',
+                        color: '#D4AF37',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      <span>↩️ Voltar para Minha Conta (Master)</span>
+                    </button>
+                  )}
 
-                  {/* Collaborators Quick List if available */}
-                  {collaborators.length > 0 && (
-                    <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '160px', overflowY: 'auto' }}>
-                      <div style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', paddingLeft: '4px' }}>
-                        Colaboradores Cadastrados
-                      </div>
-                      {collaborators.map(c => (
+                  {/* Lista de Colaboradores Reais Cadastrados */}
+                  {collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').length === 0 ? (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '12px 6px' }}>
+                      Nenhum colaborador cadastrado na equipe.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '220px', overflowY: 'auto' }}>
+                      {collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').map(c => (
                         <div
                           key={c.id}
                           onClick={() => {
@@ -867,28 +889,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             setIsProfileMenuOpen(false);
                           }}
                           style={{
-                            padding: '5px 8px',
+                            padding: '6px 10px',
                             borderRadius: '8px',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            background: currentUser?.id === c.id ? 'var(--adm-accent-bg)' : 'transparent',
+                            background: 'transparent',
+                            transition: 'all 0.15s ease',
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = currentUser?.id === c.id ? 'var(--adm-accent-bg)' : 'transparent'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           {c.avatarUrl ? (
-                            <img src={c.avatarUrl} alt={c.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                            <img src={c.avatarUrl} alt={c.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />
                           ) : (
-                            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.62rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.64rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {c.name.charAt(0)}
                             </div>
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{c.name}</div>
-                            <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>{c.role.toUpperCase()}</div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{c.name}</div>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--adm-accent)', fontWeight: 600 }}>{ROLE_LABELS[c.role] || c.role.toUpperCase()}</div>
                           </div>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', padding: '2px 6px', borderRadius: '4px' }}>
+                            Ver como
+                          </span>
                         </div>
                       ))}
                     </div>

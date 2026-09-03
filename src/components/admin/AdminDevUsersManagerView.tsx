@@ -97,7 +97,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
   return (
     <div style={{
       padding: '24px 32px',
-      color: '#FFFFFF',
+      color: 'var(--adm-text-title)',
       maxWidth: '1300px',
       margin: '0 auto',
       boxSizing: 'border-box',
@@ -135,12 +135,12 @@ export const AdminDevUsersManagerView: React.FC = () => {
             fontSize: '1.75rem',
             fontWeight: 800,
             margin: '0 0 6px 0',
-            color: '#FFFFFF',
+            color: 'var(--adm-text-title)',
             letterSpacing: '-0.3px',
           }}>
             Gestão de Masters & Usuários
           </h1>
-          <p style={{ fontSize: '0.84rem', color: '#8096A8', margin: 0 }}>
+          <p style={{ fontSize: '0.84rem', color: 'var(--adm-text-muted)', margin: 0 }}>
             Visão consolidada de todos os clientes Master, métricas globais e árvore de colaboradores conectados.
           </p>
         </div>
@@ -182,8 +182,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
       }}>
         {/* Card 1: Masters */}
         <div style={{
-          background: '#0F1724',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--adm-bg-card)',
+          border: '1px solid var(--adm-border)',
           borderRadius: '16px',
           padding: '20px',
           display: 'flex',
@@ -204,10 +204,10 @@ export const AdminDevUsersManagerView: React.FC = () => {
             <Crown size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.74rem', color: '#8096A8', fontWeight: 600, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
               Contas Master
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#FFFFFF' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
               {totalMastersCount}
             </div>
             <div style={{ fontSize: '0.72rem', color: '#10B981', marginTop: '2px' }}>
@@ -218,8 +218,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
         {/* Card 2: Colaboradores no Ecossistema */}
         <div style={{
-          background: '#0F1724',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--adm-bg-card)',
+          border: '1px solid var(--adm-border)',
           borderRadius: '16px',
           padding: '20px',
           display: 'flex',
@@ -240,13 +240,13 @@ export const AdminDevUsersManagerView: React.FC = () => {
             <Users size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.74rem', color: '#8096A8', fontWeight: 600, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
               Total Colaboradores
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#FFFFFF' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
               {totalCollabsCount}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#8096A8', marginTop: '2px' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
               Equipes vinculadas aos Masters
             </div>
           </div>
@@ -254,8 +254,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
         {/* Card 3: Casas de Festas Conectadas */}
         <div style={{
-          background: '#0F1724',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: 'var(--adm-bg-card)',
+          border: '1px solid var(--adm-border)',
           borderRadius: '16px',
           padding: '20px',
           display: 'flex',
@@ -276,13 +276,13 @@ export const AdminDevUsersManagerView: React.FC = () => {
             <Building2 size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.74rem', color: '#8096A8', fontWeight: 600, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
               Casas de Festa
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#FFFFFF' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
               {totalVenuesCount}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#8096A8', marginTop: '2px' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
               Unidades operando no app
             </div>
           </div>
@@ -291,8 +291,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
       {/* ── SEARCH & LIST OF MASTERS ─────────────────────────────────────────── */}
       <div style={{
-        background: '#0B111A',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
+        background: 'var(--adm-bg-card)',
+        border: '1px solid var(--adm-border)',
         borderRadius: '20px',
         padding: '24px',
       }}>
@@ -310,7 +310,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
             maxWidth: '380px',
             width: '100%',
           }}>
-            <Search size={16} color="#8096A8" style={{ position: 'absolute', left: '14px', top: '12px' }} />
+            <Search size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
             <input
               type="text"
               placeholder="Buscar Master por nome ou e-mail..."
@@ -318,11 +318,11 @@ export const AdminDevUsersManagerView: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
                 width: '100%',
-                background: '#0F1724',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
                 borderRadius: '10px',
                 padding: '10px 14px 10px 40px',
-                color: '#FFFFFF',
+                color: 'var(--adm-text-title)',
                 fontSize: '0.84rem',
                 outline: 'none',
                 boxSizing: 'border-box',
@@ -330,7 +330,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
             />
           </div>
 
-          <div style={{ fontSize: '0.76rem', color: '#8096A8' }}>
+          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
             Exibindo <strong>{filteredMasters.length}</strong> de {allMasters.length} contas Master
           </div>
         </div>
@@ -338,7 +338,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
         {/* Master Accounts List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {filteredMasters.length === 0 ? (
-            <div style={{ padding: '36px', textAlign: 'center', color: '#8096A8', fontSize: '0.84rem' }}>
+            <div style={{ padding: '36px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.84rem' }}>
               Nenhuma conta Master encontrada com o filtro informado.
             </div>
           ) : (
@@ -357,8 +357,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
                 <div
                   key={master.id}
                   style={{
-                    background: '#0F1724',
-                    border: `1px solid ${master.active ? 'rgba(255, 255, 255, 0.08)' : 'rgba(239, 68, 68, 0.3)'}`,
+                    background: 'var(--adm-bg-card)',
+                    border: `1px solid ${master.active ? 'var(--adm-border)' : 'rgba(239, 68, 68, 0.4)'}`,
                     borderRadius: '16px',
                     overflow: 'hidden',
                     transition: 'border-color 0.2s ease',
@@ -372,7 +372,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                     justifyContent: 'space-between',
                     flexWrap: 'wrap',
                     gap: '14px',
-                    borderBottom: isExpanded ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
+                    borderBottom: isExpanded ? '1px solid var(--adm-border)' : 'none',
                   }}>
                     {/* Master Profile Info */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px' }}>
@@ -397,7 +397,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '0.94rem', fontWeight: 800, color: '#FFFFFF' }}>
+                          <span style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                             {master.name}
                           </span>
                           <span style={{
@@ -413,7 +413,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                           </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.74rem', color: '#8096A8', marginTop: '3px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Mail size={12} />
                             <span>{master.email}</span>
@@ -434,14 +434,16 @@ export const AdminDevUsersManagerView: React.FC = () => {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        background: 'rgba(255, 255, 255, 0.04)',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
                         padding: '6px 12px',
                         borderRadius: '10px',
                         fontSize: '0.76rem',
+                        color: 'var(--adm-text-body)',
                       }}>
                         <Building2 size={14} color="#14A9D7" />
                         <span><strong>{masterVenues.length}</strong> Casas</span>
-                        <span style={{ color: '#4E5B6E' }}>|</span>
+                        <span style={{ color: 'var(--adm-border)' }}>|</span>
                         <Users size={14} color="#D4AF37" />
                         <span><strong>{subordinatedCollabs.length}</strong> Colaboradores</span>
                       </div>
@@ -484,8 +486,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
                         onClick={() => toggleExpand(master.id)}
                         style={{
                           background: 'transparent',
-                          border: '1px solid rgba(255, 255, 255, 0.12)',
-                          color: '#8096A8',
+                          border: '1px solid var(--adm-border)',
+                          color: 'var(--adm-text-muted)',
                           borderRadius: '10px',
                           padding: '7px 12px',
                           fontSize: '0.76rem',
@@ -503,12 +505,12 @@ export const AdminDevUsersManagerView: React.FC = () => {
 
                   {/* Collapsible Subordinated Collaborators List */}
                   {isExpanded && (
-                    <div style={{ padding: '16px 20px', background: 'rgba(0, 0, 0, 0.2)' }}>
+                    <div style={{ padding: '16px 20px', background: 'var(--adm-bg-input)' }}>
                       <div style={{
                         fontSize: '0.7rem',
                         fontWeight: 700,
                         textTransform: 'uppercase',
-                        color: '#8096A8',
+                        color: 'var(--adm-text-muted)',
                         letterSpacing: '0.6px',
                         marginBottom: '10px',
                       }}>
@@ -516,7 +518,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                       </div>
 
                       {subordinatedCollabs.length === 0 ? (
-                        <div style={{ fontSize: '0.78rem', color: '#647E8C', fontStyle: 'italic', padding: '8px 0' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
                           Nenhum colaborador adicional cadastrado por esta conta Master.
                         </div>
                       ) : (
@@ -529,8 +531,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
                             <div
                               key={collab.id}
                               style={{
-                                background: '#0B111A',
-                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                background: 'var(--adm-bg-card)',
+                                border: '1px solid var(--adm-border)',
                                 borderRadius: '12px',
                                 padding: '10px 14px',
                                 display: 'flex',
@@ -561,10 +563,10 @@ export const AdminDevUsersManagerView: React.FC = () => {
                               </div>
 
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {collab.name}
                                 </div>
-                                <div style={{ fontSize: '0.7rem', color: '#8096A8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {collab.email}
                                 </div>
                               </div>
@@ -585,7 +587,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                         </div>
                       )}
 
-                      <div style={{ fontSize: '0.68rem', color: '#647E8C', marginTop: '12px' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '12px' }}>
                         ℹ️ Por conformidade e LGPD, a gestão individual de colaboradores e acessos pertence exclusivamente à conta Master proprietária.
                       </div>
                     </div>
@@ -611,13 +613,13 @@ export const AdminDevUsersManagerView: React.FC = () => {
           zIndex: 99999,
         }}>
           <div style={{
-            background: '#0B111A',
-            border: '1px solid rgba(20, 169, 215, 0.4)',
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
             borderRadius: '20px',
             maxWidth: '440px',
             width: '100%',
             padding: '28px',
-            color: '#FFFFFF',
+            color: 'var(--adm-text-title)',
             position: 'relative',
           }}>
             <button
@@ -692,11 +694,11 @@ export const AdminDevUsersManagerView: React.FC = () => {
                   onChange={(e) => setNewMasterName(e.target.value)}
                   style={{
                     width: '100%',
-                    background: '#0F1724',
-                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
                     borderRadius: '10px',
                     padding: '12px 14px',
-                    color: '#FFFFFF',
+                    color: 'var(--adm-text-title)',
                     fontSize: '0.86rem',
                     outline: 'none',
                     boxSizing: 'border-box',
@@ -716,11 +718,11 @@ export const AdminDevUsersManagerView: React.FC = () => {
                   onChange={(e) => setNewMasterEmail(e.target.value)}
                   style={{
                     width: '100%',
-                    background: '#0F1724',
-                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
                     borderRadius: '10px',
                     padding: '12px 14px',
-                    color: '#FFFFFF',
+                    color: 'var(--adm-text-title)',
                     fontSize: '0.86rem',
                     outline: 'none',
                     boxSizing: 'border-box',
@@ -781,13 +783,13 @@ export const AdminDevUsersManagerView: React.FC = () => {
           zIndex: 99999,
         }}>
           <div style={{
-            background: '#0B111A',
+            background: 'var(--adm-bg-card)',
             border: `1px solid ${deactivatingMaster.active ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
             borderRadius: '20px',
             maxWidth: '460px',
             width: '100%',
             padding: '28px',
-            color: '#FFFFFF',
+            color: 'var(--adm-text-title)',
             textAlign: 'center',
           }}>
             <div style={{
@@ -805,11 +807,11 @@ export const AdminDevUsersManagerView: React.FC = () => {
               {deactivatingMaster.active ? <ShieldAlert size={26} /> : <ShieldCheck size={26} />}
             </div>
 
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 8px 0' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 8px 0', color: 'var(--adm-text-title)' }}>
               {deactivatingMaster.active ? 'Suspender Conta Master?' : 'Reativar Conta Master?'}
             </h3>
 
-            <p style={{ fontSize: '0.84rem', color: '#D3E0EA', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+            <p style={{ fontSize: '0.84rem', color: 'var(--adm-text-body)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
               {deactivatingMaster.active ? (
                 <>
                   Você está prestes a desativar a conta de <strong>{deactivatingMaster.name}</strong> ({deactivatingMaster.email}).
@@ -831,9 +833,9 @@ export const AdminDevUsersManagerView: React.FC = () => {
                 onClick={() => setDeactivatingMaster(null)}
                 style={{
                   flex: 1,
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: 'none',
-                  color: '#FFFFFF',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
                   borderRadius: '10px',
                   padding: '12px',
                   fontSize: '0.84rem',

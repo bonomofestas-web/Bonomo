@@ -92,6 +92,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Map each tab to its controlling feature flag (if applicable)
   const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
+    home: 'home',
+    dashboard: 'dashboard',
     whatsapp: 'whatsapp',
     crm: 'funnels',
     debutantes: 'debutantes',
@@ -712,8 +714,56 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         </div>
       )}
 
-      {/* Navigation Sections (Hidden during First Access Onboarding) */}
-      {currentUser?.isFirstAccess ? (
+      {/* Se não há casas de festa registradas para esta conta, foca exclusivamente no registro da 1ª casa */}
+      {venues.length === 0 ? (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}>
+          <div style={{
+            background: 'rgba(212, 175, 55, 0.12)',
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            borderRadius: '12px',
+            padding: isCollapsed ? '8px 4px' : '12px',
+            textAlign: 'center',
+          }}>
+            <Building2 size={22} color="#D4AF37" style={{ margin: '0 auto 4px auto' }} />
+            {!isCollapsed && (
+              <>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
+                  1ª Casa de Festas
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#D3E0EA', lineHeight: 1.35 }}>
+                  Cadastre sua primeira unidade para liberar o CRM e a equipe.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {renderNavButton({
+              id: 'venues',
+              label: 'Cadastrar Unidade',
+              icon: <Building2 size={17} />,
+            })}
+          </div>
+
+          {userRole === 'dev' && (
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '10px', marginTop: '6px' }}>
+              {!isCollapsed && (
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#14A9D7', padding: '0 8px 6px 8px' }}>
+                  Desenvolvedor
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {devItems.map(item => renderNavButton(item))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : currentUser?.isFirstAccess ? (
         <div style={{
           flex: 1,
           display: 'flex',

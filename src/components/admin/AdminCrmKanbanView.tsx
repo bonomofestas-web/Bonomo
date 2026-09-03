@@ -83,6 +83,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     deleteFunnel,
     updateLeadStage,
     closeLeadSaleWithValue,
+    getFeatureStatus,
   } = useAdminState();
 
   const renderLeadOriginBadge = (lead: Lead) => {
@@ -2082,11 +2083,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       gap: '12px',
-      padding: viewMode === 'workspace' ? '12px 18px' : '16px 24px 60px 24px',
+      padding: '16px 24px 60px 24px',
       width: '100%',
-      height: viewMode === 'workspace' ? 'calc(100vh - 64px)' : 'auto',
+      minHeight: 'calc(100vh - 64px)',
       boxSizing: 'border-box',
-      overflow: viewMode === 'workspace' ? 'hidden' : 'visible',
+      overflow: 'visible',
       animation: 'fadeIn 0.2s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif"
     }}>
@@ -2125,32 +2126,86 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           />
         </div>
 
-        {/* 2. Filtros Expansíveis + Seletor de Modo Minimalista (Apenas Ícones) */}
+        {/* 2. Filtros Expansíveis + Seletor de Modo Minimalista */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Botão de Filtros Expansível */}
-          <button
-            type="button"
-            onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
-            title="Filtros avançados"
-            style={{
-              background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-              border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-              color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-              borderRadius: '8px',
-              padding: '6px 12px',
-              fontSize: '0.76rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Settings size={14} />
-            <span>Filtros</span>
-            <ChevronDown size={12} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-          </button>
+          {/* Botão de Filtros com Painel Expansível para a Esquerda */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
+              title="Filtros avançados"
+              style={{
+                background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Settings size={14} />
+              <span>Filtros</span>
+              <ChevronDown size={12} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {/* Popover de Filtros Deslizando para a Esquerda sem empurrar o funil */}
+            {isFilterBarExpanded && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                width: 'min(90vw, 640px)',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '16px',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+                padding: '16px',
+                zIndex: 9999,
+                animation: 'fadeIn 0.15s ease-out',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--adm-border)' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Settings size={14} color="var(--adm-accent)" />
+                    <span>Filtros do Funil</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterBarExpanded(false)}
+                    style={{
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--adm-text-muted)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+                <AdminFilterBar
+                  filters={filterState}
+                  onChange={setFilterState}
+                  showDebutanteFilter={true}
+                  showSortFilter={true}
+                  sortOptions={sortOptions}
+                  resultCount={filteredLeads.length}
+                  totalCount={leads.length}
+                  labelUnit="leads"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Seletor de Modo Minimalista (Apenas Ícones com Tooltips) */}
           <div style={{
@@ -2226,28 +2281,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Painel Expansível de Filtros */}
-      {isFilterBarExpanded && (
-        <div style={{
-          background: 'var(--adm-bg-card)',
-          border: '1px solid var(--adm-border)',
-          borderRadius: '12px',
-          padding: '14px',
-          animation: 'fadeIn 0.15s ease-out',
-        }}>
-          <AdminFilterBar
-            filters={filterState}
-            onChange={setFilterState}
-            showDebutanteFilter={true}
-            showSortFilter={true}
-            sortOptions={sortOptions}
-            resultCount={filteredLeads.length}
-            totalCount={leads.length}
-            labelUnit="leads"
-          />
-        </div>
-      )}
 
       {viewMode === 'workspace' ? (
         <AdminWhatsAppWorkspaceView 
@@ -2494,6 +2527,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                               {/* ICP Progress Bar in Kanban Card Bottom */}
                               {(() => {
+                                if (getFeatureStatus('icp') === 'disabled') return null;
                                 const score = lead.mqlScore ?? 0;
                                 const isTop = score >= 80 || lead.mqlLevel === 'top';
                                 const isQualified = (score >= 50 && score < 80) || lead.mqlLevel === 'qualified';

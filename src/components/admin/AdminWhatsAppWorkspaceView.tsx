@@ -344,7 +344,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [selectedLead?.activities, composerTab]);
 
   const icpRating = useMemo(() => {
-    if (!selectedLead) return null;
+    if (!selectedLead || getFeatureStatus('icp') === 'disabled') return null;
     const score = selectedLead.mqlScore ?? 0;
     const isTop = score >= 80 || selectedLead.mqlLevel === 'top';
     const isQualified = (score >= 50 && score < 80) || selectedLead.mqlLevel === 'qualified';
@@ -702,7 +702,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           WhatsApp
                         </span>
                       )}
-                      {lead.mqlScore !== undefined && (
+                      {lead.mqlScore !== undefined && getFeatureStatus('icp') !== 'disabled' && (
                         <span style={{
                           fontSize: '0.62rem',
                           fontWeight: 800,

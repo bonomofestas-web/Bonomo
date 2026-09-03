@@ -136,6 +136,8 @@ export const generateUuid = (): string => {
 const DEFAULT_COLLABORATORS: Collaborator[] = [];
 
 const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
+  home: 'active',
+  dashboard: 'active',
   whatsapp: 'active',
   icp: 'active',
   sources: 'active',
@@ -339,6 +341,9 @@ export interface AdminContextType {
   // Multi-Tenant & Developer Management
   allCollaborators: Collaborator[];
   allVenues: Venue[];
+  allDebutantes: DebutanteAccount[];
+  allSources: Source[];
+  allMqlQuestions: MqlQuestion[];
   addMasterAccount: (name: string, email: string) => string;
   toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
 }
@@ -1087,10 +1092,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Casas de Festa do Tenant Ativo
   const scopedVenues = useMemo(() => {
     if (!currentUser) return venues;
-    return venues.filter(v => 
-      v.masterId === scopedMasterId || 
-      (!v.masterId && (currentUser.role === 'master' || currentUser.role === 'dev'))
-    );
+    // O dev só vê as casas que ele mesmo cadastrou para testes (v.masterId === currentUser.id)
+    if (currentUser.role === 'dev') {
+      return venues.filter(v => v.masterId === currentUser.id);
+    }
+    // O master vê as casas pertencentes ao seu tenant
+    if (currentUser.role === 'master') {
+      return venues.filter(v => v.masterId === currentUser.id || (!v.masterId && !v.id.includes('dev')));
+    }
+    // Colaborador subordinado vê as casas do seu master atribuídas a ele
+    const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
+    if (!currentUser.venueIds || currentUser.venueIds.length === 0) return masterVenues;
+    return masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
   }, [venues, scopedMasterId, currentUser]);
 
   // Colaboradores da Equipe do Tenant Ativo
@@ -1109,8 +1122,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return leads.filter(l => 
       l.masterId === scopedMasterId || 
-      (l.venueId && masterVenueIds.has(l.venueId)) ||
-      (!l.masterId && !l.venueId && (currentUser.role === 'master' || currentUser.role === 'dev'))
+      (l.venueId && masterVenueIds.has(l.venueId))
     );
   }, [leads, scopedMasterId, scopedVenues, currentUser]);
 
@@ -1120,6 +1132,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return funnels.filter(f => f.venueId === 'all' || masterVenueIds.has(f.venueId));
   }, [funnels, scopedVenues, currentUser]);
+
+  // Debutantes do Tenant Ativo (pertencem estritamente às casas do tenant)
+  const scopedDebutantes = useMemo(() => {
+    if (!currentUser) return debutantes;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return debutantes.filter(d => masterVenueIds.has(d.venueId));
+  }, [debutantes, scopedVenues, currentUser]);
+
+  // Origens do Tenant Ativo (pertencem estritamente às casas do tenant)
+  const scopedSources = useMemo(() => {
+    if (!currentUser) return sources;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return sources.filter(s => masterVenueIds.has(s.venueId));
+  }, [sources, scopedVenues, currentUser]);
+
+  // Perguntas ICP do Tenant Ativo
+  const scopedMqlQuestions = useMemo(() => {
+    if (!currentUser) return mqlQuestions;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return mqlQuestions.filter(q => masterVenueIds.has(q.venueId));
+  }, [mqlQuestions, scopedVenues, currentUser]);
 
   // ── Developer Exclusive Methods ─────────────────────────────────────────────
   const addMasterAccount = (name: string, email: string): string => {
@@ -3250,7 +3283,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       allCollaborators: collaborators,
       venues: scopedVenues,
       allVenues: venues,
-      debutantes,
+      debutantes: scopedDebutantes,
+      allDebutantes: debutantes,
       leads: scopedLeads,
       templates,
       benefitsCatalog,
@@ -3288,7 +3322,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addFunnel,
       updateFunnel,
       deleteFunnel,
-      sources,
+      sources: scopedSources,
+      allSources: sources,
       addSource,
       updateSource,
       deleteSource,
@@ -3342,7 +3377,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       getDebutanteBySlug,
       getVenueById,
       getCollaboratorById,
-      mqlQuestions,
+      mqlQuestions: scopedMqlQuestions,
+      allMqlQuestions: mqlQuestions,
       addMqlQuestion,
       updateMqlQuestion,
       deleteMqlQuestion,

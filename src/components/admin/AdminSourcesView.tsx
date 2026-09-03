@@ -288,6 +288,31 @@ export const AdminSourcesView: React.FC = () => {
             <div style={{ fontSize: '0.78rem', marginTop: '4px', maxWidth: '380px', margin: '4px auto 0 auto' }}>
               Conecte números de WhatsApp com sub-origens inteligentes, crie formulários públicos ou utilize as indicações nativas das debutantes.
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSourceToEdit(null);
+                setIsModalOpen(true);
+              }}
+              style={{
+                marginTop: '16px',
+                background: 'var(--adm-accent)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '10px 20px',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(20, 169, 215, 0.3)',
+              }}
+            >
+              <Plus size={16} />
+              <span>Cadastrar Primeira Origem</span>
+            </button>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>

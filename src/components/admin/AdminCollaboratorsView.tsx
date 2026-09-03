@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Building2, 
   Mail, Phone, Edit3, Trash2, 
-  UserPlus, Shield 
+  UserPlus, Shield, ShieldCheck, Plus 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminCollaboratorModal } from './AdminCollaboratorModal';
@@ -214,12 +214,67 @@ export const AdminCollaboratorsView: React.FC = () => {
       </div>
 
       {/* Collaborators List */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '18px',
-      }}>
-        {collaborators.map(collab => {
+      {collaborators.length === 0 ? (
+        <div style={{
+          background: 'var(--adm-bg-card)',
+          border: '1px dashed var(--adm-border)',
+          borderRadius: '16px',
+          padding: '48px 24px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '14px',
+        }}>
+          <div style={{
+            width: '54px',
+            height: '54px',
+            borderRadius: '16px',
+            background: 'var(--adm-accent-bg)',
+            color: 'var(--adm-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <ShieldCheck size={28} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 6px 0' }}>
+              Nenhum Colaborador Cadastrado
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '420px', lineHeight: 1.5 }}>
+              Cadastre membros da sua equipe comercial (SDR, Closer, Gerente) para atender leads e distribuir atendimentos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            style={{
+              background: 'var(--adm-accent)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '10px 20px',
+              fontSize: '0.84rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 14px rgba(20, 169, 215, 0.3)',
+            }}
+          >
+            <Plus size={16} />
+            <span>Cadastrar Primeiro Colaborador</span>
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: '18px',
+        }}>
+          {collaborators.map(collab => {
           const badge = getRoleBadge(collab.role);
           const venue = venues.find(v => v.id === collab.venueId);
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
@@ -314,7 +369,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                 borderTop: '1px solid var(--adm-border)',
                 paddingTop: '12px',
               }}>
-                {collab.role === 'dev' || collab.email === 'bonomofestas@gmail.com' ? (
+                {collab.role === 'dev' ? (
                   <span style={{
                     fontSize: '0.72rem',
                     fontWeight: 800,
@@ -324,7 +379,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     borderRadius: '8px',
                     border: '1px solid rgba(20, 169, 215, 0.3)',
                   }}>
-                    🛡️ Conta Dev Protegida
+                    🛡️ Conta Desenvolvedor
                   </span>
                 ) : (
                   <>
@@ -374,7 +429,8 @@ export const AdminCollaboratorsView: React.FC = () => {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
       <AdminCollaboratorModal
         isOpen={isModalOpen}
