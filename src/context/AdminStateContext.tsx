@@ -215,7 +215,7 @@ export interface AdminContextType {
   unconfiguredSourcesCount: number;
 
   // Auth & Roles
-  login: (email: string, pass: string, optUser?: Partial<AdminUser>) => boolean;
+  login: (email: string, pass: string, optUser?: Partial<AdminUser>) => Promise<boolean> | boolean;
   logout: () => void;
   switchUserRoleDemo: (role: AdminRole) => void;
   switchCollaborator: (collab: Collaborator) => void;
@@ -843,7 +843,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── Auth Methods (Strict Password Validation) ──────────────────────────────
 
-  const login = (email: string, pass: string, optUser?: Partial<AdminUser>): boolean => {
+  const login = async (email: string, pass: string, optUser?: Partial<AdminUser>): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = pass.trim();
 
@@ -888,8 +888,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // 3. Registered Collaborators in system
     const foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
     if (foundCollab) {
-      const expectedPass = foundCollab.password || 'Bonomo#2026';
-      if (cleanPass !== expectedPass) {
+      const storedPass = foundCollab.password || 'Bonomo#2026';
+      const isBcrypt = storedPass.startsWith('$2a$') || storedPass.startsWith('$2b$') || storedPass.startsWith('$2y$');
+
+      let isPasswordValid = false;
+
+      if (isBcrypt && isSupabaseConfigured) {
+        try {
+          const { data: isMatch } = await supabase.rpc('verify_collaborator_password', {
+            email_input: cleanEmail,
+            password_input: cleanPass,
+          });
+          isPasswordValid = Boolean(isMatch);
+        } catch (rpcErr) {
+          console.warn('Fallback na validação de hash:', rpcErr);
+          isPasswordValid = (cleanPass === storedPass);
+        }
+      } else {
+        isPasswordValid = (cleanPass === storedPass);
+      }
+
+      if (!isPasswordValid) {
         return false;
       }
 
