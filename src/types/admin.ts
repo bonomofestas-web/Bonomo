@@ -45,6 +45,7 @@ export interface AdminUser {
   phone?: string;
   theme?: ThemeMode;
   isFirstAccess?: boolean;
+  masterId?: string; // ID da conta Master proprietária (caso subordinado)
 }
 
 export interface Collaborator {
@@ -60,11 +61,13 @@ export interface Collaborator {
   isFirstAccess?: boolean;
   password?: string;
   theme?: ThemeMode;
+  masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;
 }
 
 export interface Venue {
   id: string;
+  masterId?: string; // ID do Master proprietário desta unidade
   name: string;
   tagline: string;
   logoUrl?: string;
@@ -275,6 +278,7 @@ export interface MqlQuestion {
 
 export interface Lead {
   id: string;
+  masterId?: string;     // ID da conta Master proprietária deste lead
   code?: string;         // Código Único do Lead no formato LEAD-XXXXXX
   debutanteId: string;
   debutanteName: string;
@@ -353,6 +357,7 @@ export interface Lead {
 
 export interface CommercialFunnel {
   id: string;
+  masterId?: string; // ID do Master proprietário deste funil
   name: string;
   category: string;
   description?: string;

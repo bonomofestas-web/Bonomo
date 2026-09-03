@@ -26,6 +26,7 @@ export const collaboratorService = {
         phone: row.phone,
         active: row.active ?? true,
         password: row.password,
+        masterId: row.master_id || undefined,
         theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
       }));
@@ -51,6 +52,7 @@ export const collaboratorService = {
       if (collab.active !== undefined) payload.active = collab.active;
       if (collab.password !== undefined) payload.password = collab.password;
       if (collab.theme !== undefined) payload.theme = collab.theme;
+      if (collab.masterId !== undefined) payload.master_id = collab.masterId;
 
       if (isUuid) {
         // Try update first so only specified columns are modified

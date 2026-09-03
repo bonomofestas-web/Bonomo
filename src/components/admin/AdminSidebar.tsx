@@ -29,7 +29,8 @@ export type AdminTabType =
   | 'templates' 
   | 'appointments'
   | 'settings'
-  | 'dev-features';
+  | 'dev-features'
+  | 'dev-users';
 
 interface AdminSidebarProps {
   activeTab: AdminTabType;
@@ -104,6 +105,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const devItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'dev-features', label: 'Feature Flags (Dev)', icon: <Sliders size={17} />, roles: ['dev'] },
+    { id: 'dev-users', label: 'Gestão de Usuários (Dev)', icon: <Users size={17} />, roles: ['dev'] },
   ];
 
   // Grouped Navigation Items with updated concise labels
@@ -552,7 +554,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       </div>
 
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
-      {(userRole === 'master' || allowedVenues.length > 1) && (
+      {!currentUser?.isFirstAccess && (userRole === 'master' || allowedVenues.length > 1) && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '14px' }}>
           {isCollapsed && !isMobileOverlay ? (
             <button
@@ -710,15 +712,47 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         </div>
       )}
 
-      {/* Navigation Sections */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: isCollapsed ? '10px' : '14px',
-        flex: 1,
-      }}>
-        {/* 1. Global Group: Início, Dashboard, Funil */}
-        <div>
+      {/* Navigation Sections (Hidden during First Access Onboarding) */}
+      {currentUser?.isFirstAccess ? (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px 16px',
+          textAlign: 'center',
+          gap: '12px',
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '14px',
+            background: 'rgba(20, 169, 215, 0.12)',
+            border: '1px solid rgba(20, 169, 215, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#14A9D7',
+          }}>
+            <Sparkles size={22} />
+          </div>
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#FFFFFF' }}>
+            Primeiro Acesso
+          </div>
+          <div style={{ fontSize: '0.7rem', color: '#8096A8', lineHeight: 1.45 }}>
+            O menu será liberado assim que você concluir o cadastro do seu perfil.
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isCollapsed ? '10px' : '14px',
+          flex: 1,
+        }}>
+          {/* 1. Global Group: Início, Dashboard, Funil */}
+          <div>
           {!isCollapsed && (
             <div style={{
               fontSize: '0.62rem',
@@ -839,7 +873,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Bottom Actions: User Info Card */}
       <div style={{

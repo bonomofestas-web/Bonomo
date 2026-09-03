@@ -17,6 +17,7 @@ export const venueService = {
 
       return (data || []).map(row => ({
         id: row.id,
+        masterId: row.master_id || undefined,
         name: row.name,
         tagline: row.tagline || '',
         logoUrl: row.logo_url || undefined,
@@ -62,6 +63,7 @@ export const venueService = {
 
       return {
         id: data.id,
+        masterId: data.master_id || undefined,
         name: data.name,
         tagline: data.tagline || '',
         logoUrl: data.logo_url || undefined,
@@ -124,6 +126,7 @@ export const venueService = {
       if (venue.leadDistributionMode !== undefined) payload.lead_distribution_mode = venue.leadDistributionMode;
       if (venue.leadDistributionSdrIds !== undefined) payload.lead_distribution_sdr_ids = venue.leadDistributionSdrIds;
       if (venue.roundRobinNextIndex !== undefined) payload.round_robin_next_index = venue.roundRobinNextIndex;
+      if (venue.masterId !== undefined) payload.master_id = venue.masterId;
 
       if (isUuid) {
         // Try update first so only specified fields change

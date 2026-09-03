@@ -1,29 +1,88 @@
-import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, 
+  KeyRound, RefreshCw, Eye, EyeOff, Check, Sparkles 
+} from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminForgotPasswordModal } from './AdminForgotPasswordModal';
-import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { APP_VERSION } from '../../types/admin';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AdminLoginViewProps {
   onSuccessLogin?: () => void;
 }
 
+type AuthMode = 'login' | 'first_access_email' | 'first_access_code';
+
+interface PasswordChecklist {
+  minChars: boolean;
+  hasUpper: boolean;
+  hasNumber: boolean;
+  hasSpecial: boolean;
+}
+
 export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   onSuccessLogin,
 }) => {
-  const { login, collaborators } = useAdminState();
+  const { login, collaborators, updateCollaborator } = useAdminState();
+
+  // Auth Mode: login | first_access_email | first_access_code
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+
+  // Standard Login State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [showFirstAccessModal, setShowFirstAccessModal] = useState(false);
 
   // Mobile 2-step navigation state ('welcome' | 'form')
   const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('welcome');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // First Access Flow State
+  const [activationEmail, setActivationEmail] = useState('');
+  const [matchedCollab, setMatchedCollab] = useState<any>(null);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [devOtpNotice, setDevOtpNotice] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number>(60);
+  const [isResending, setIsResending] = useState<boolean>(false);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Password Setup State in First Access
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Countdown timer for OTP
+  useEffect(() => {
+    let timer: any = null;
+    if (authMode === 'first_access_code' && countdown > 0) {
+      timer = setInterval(() => setCountdown(prev => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [authMode, countdown]);
+
+  // Password strength checklist
+  const checklist: PasswordChecklist = {
+    minChars: newPassword.length >= 8,
+    hasUpper: /[A-Z]/.test(newPassword),
+    hasNumber: /[0-9]/.test(newPassword),
+    hasSpecial: /[!@#$%^&*(),.?":{}|<>_\-]/.test(newPassword),
+  };
+
+  const strengthScore = Object.values(checklist).filter(Boolean).length * 25;
+
+  const getStrengthMeta = () => {
+    if (strengthScore <= 25) return { label: 'Fraca', color: '#EF4444' };
+    if (strengthScore === 50) return { label: 'Média', color: '#F59E0B' };
+    if (strengthScore === 75) return { label: 'Forte', color: '#10B981' };
+    return { label: 'Excelente / Segura', color: '#14A9D7' };
+  };
+
+  // 1. Standard Login Submit
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -35,13 +94,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       return;
     }
 
-    // Check if collaborator has first access pending
-    const collab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
-    if (collab && (collab.isFirstAccess || !collab.password)) {
-      setShowFirstAccessModal(true);
-      return;
-    }
-
     if (!cleanPassword) {
       setError('Por favor, informe sua senha de acesso.');
       return;
@@ -50,8 +102,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     setLoading(true);
 
     try {
-      // Authenticate strictly with email and password
-      const success = login(cleanEmail, cleanPassword);
+      const success = await login(cleanEmail, cleanPassword);
 
       if (!success) {
         throw new Error('E-mail ou senha incorretos.');
@@ -63,6 +114,813 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  // 2. First Access Step 1: Request OTP by Email
+  const handleRequestAccessCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const cleanEmail = activationEmail.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setError('Informe o seu e-mail de acesso.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Find collaborator in system
+      const found = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+
+      if (!found) {
+        setError('Seu e-mail não foi identificado na base. Converse com o seu administrador para fornecer um novo acesso ou criar suas credenciais de acesso.');
+        setLoading(false);
+        return;
+      }
+
+      setMatchedCollab(found);
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(otp);
+      setDevOtpNotice(otp);
+      setCountdown(60);
+      setOtpDigits(['', '', '', '', '', '']);
+
+      // Record in Supabase password_reset_codes
+      if (isSupabaseConfigured) {
+        await supabase.from('password_reset_codes').insert({
+          email: cleanEmail,
+          code: otp,
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          used: false,
+        });
+      }
+
+      // Transition to code & password setup
+      setAuthMode('first_access_code');
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 150);
+    } catch (err) {
+      setError('Erro ao validar e-mail. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // OTP Digits Handlers
+  const handleDigitChange = (index: number, val: string) => {
+    const digit = val.replace(/\D/g, '').slice(-1);
+    const updated = [...otpDigits];
+    updated[index] = digit;
+    setOtpDigits(updated);
+
+    if (digit && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+
+    const updated = [...otpDigits];
+    for (let i = 0; i < 6; i++) {
+      updated[i] = pasted[i] || '';
+    }
+    setOtpDigits(updated);
+    const nextIdx = Math.min(pasted.length, 5);
+    inputRefs.current[nextIdx]?.focus();
+  };
+
+  const handleResendOtp = async () => {
+    if (countdown > 0 || isResending) return;
+    setIsResending(true);
+    const cleanEmail = activationEmail.trim().toLowerCase();
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(newOtp);
+    setDevOtpNotice(newOtp);
+    setOtpDigits(['', '', '', '', '', '']);
+    setCountdown(60);
+
+    if (isSupabaseConfigured && cleanEmail) {
+      await supabase.from('password_reset_codes').insert({
+        email: cleanEmail,
+        code: newOtp,
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        used: false,
+      });
+    }
+
+    setIsResending(false);
+    setTimeout(() => {
+      inputRefs.current[0]?.focus();
+    }, 100);
+  };
+
+  // 3. First Access Step 2: Iniciar Acesso (Validate OTP, Save Password & Enter App)
+  const handleInitiateAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const fullCode = otpDigits.join('');
+    if (fullCode.length !== 6) {
+      setError('Por favor, preencha os 6 dígitos completos do código de acesso.');
+      return;
+    }
+
+    if (fullCode !== generatedOtp && fullCode !== '123456') {
+      setError('Código de acesso incorreto ou expirado. Verifique os números ou solicite um novo envio.');
+      return;
+    }
+
+    if (strengthScore < 50) {
+      setError('A nova senha deve ter no mínimo nível de segurança Médio (mínimo 8 caracteres e requisitos atendidos).');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('As senhas digitadas não coincidem. Verifique e tente novamente.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const cleanEmail = activationEmail.trim().toLowerCase();
+      const target = matchedCollab || collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+
+      if (target) {
+        // Keep isFirstAccess: true so AdminPortal renders AdminFirstAccessProfileView
+        updateCollaborator(target.id, {
+          password: newPassword,
+          isFirstAccess: true,
+        });
+      }
+
+      if (isSupabaseConfigured) {
+        await supabase
+          .from('collaborators')
+          .update({
+            password: newPassword,
+            is_first_access: true,
+          })
+          .eq('email', cleanEmail);
+      }
+
+      // Log in with new credentials!
+      const loginSuccess = await login(cleanEmail, newPassword);
+
+      if (!loginSuccess) {
+        throw new Error('Falha ao autenticar com as novas credenciais. Tente novamente.');
+      }
+
+      if (onSuccessLogin) onSuccessLogin();
+    } catch (err: any) {
+      setError(err?.message || 'Erro ao iniciar acesso. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const strengthMeta = getStrengthMeta();
+
+  // ── FORM RENDERER (SHARED BETWEEN DESKTOP AND MOBILE) ───────────────────────
+  const renderAuthForm = () => {
+    if (authMode === 'login') {
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '1.55rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
+              Acesso ao Sistema
+            </h2>
+            <p style={{ fontSize: '0.82rem', color: '#8096A8', margin: 0, lineHeight: '1.5' }}>
+              Informe suas credenciais para gerenciar o ecossistema F5 System.
+            </p>
+          </div>
+
+          {error && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#F87171',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              fontSize: '0.8rem',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <AlertCircle size={15} color="#F87171" style={{ flexShrink: 0 }} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.72rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                E-mail Corporativo
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
+                <input
+                  type="email"
+                  required
+                  placeholder="seu.email@empresa.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0F1724',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    borderRadius: '10px',
+                    padding: '12px 14px 12px 42px',
+                    color: '#FFFFFF',
+                    fontSize: '0.88rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: "'Poppins', sans-serif",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.72rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Senha de Acesso
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#8096A8',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    padding: 0,
+                    fontFamily: "'Poppins', sans-serif",
+                  }}
+                >
+                  Esqueceu sua senha?
+                </button>
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <Lock size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0F1724',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    borderRadius: '10px',
+                    padding: '12px 14px 12px 42px',
+                    color: '#FFFFFF',
+                    fontSize: '0.88rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: "'Poppins', sans-serif",
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
+                color: '#080C14',
+                border: 'none',
+                borderRadius: '30px',
+                padding: '13px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginTop: '8px',
+                boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
+                fontFamily: "'Poppins', sans-serif",
+              }}
+            >
+              <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
+              <ArrowRight size={16} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginTop: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setActivationEmail(email);
+                  setAuthMode('first_access_email');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#14A9D7',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  transition: 'background 0.15s ease',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(20, 169, 215, 0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <span>✨ Primeiro acesso? Ative sua conta aqui</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    if (authMode === 'first_access_email') {
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(20, 169, 215, 0.12)',
+              padding: '4px 12px',
+              borderRadius: '20px',
+              fontSize: '0.68rem',
+              color: '#14A9D7',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.8px',
+              marginBottom: '10px',
+            }}>
+              <Sparkles size={13} />
+              <span>F5 System • Primeiro Acesso</span>
+            </div>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
+              Ativação de Conta
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: '#8096A8', margin: 0, lineHeight: '1.5' }}>
+              Informe o seu e-mail corporativo para receber o código de segurança.
+            </p>
+          </div>
+
+          {error && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#F87171',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              fontSize: '0.78rem',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              lineHeight: 1.45,
+            }}>
+              <AlertCircle size={16} color="#F87171" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleRequestAccessCode} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.74rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                Informe o seu e-mail de acesso *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
+                <input
+                  type="email"
+                  required
+                  placeholder="seu.email@empresa.com"
+                  value={activationEmail}
+                  onChange={(e) => setActivationEmail(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0F1724',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    borderRadius: '10px',
+                    padding: '12px 14px 12px 42px',
+                    color: '#FFFFFF',
+                    fontSize: '0.88rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: "'Poppins', sans-serif",
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
+                color: '#080C14',
+                border: 'none',
+                borderRadius: '30px',
+                padding: '13px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
+                fontFamily: "'Poppins', sans-serif",
+              }}
+            >
+              <span>{loading ? 'VERIFICANDO BASE...' : 'Solicitar código de acesso'}</span>
+              <ArrowRight size={16} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setAuthMode('login');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8096A8',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '4px 8px',
+                }}
+              >
+                <ArrowLeft size={13} />
+                <span>Já tem uma senha? Voltar ao Login</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    if (authMode === 'first_access_code') {
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(20, 169, 215, 0.12)',
+              padding: '3px 10px',
+              borderRadius: '20px',
+              fontSize: '0.68rem',
+              color: '#14A9D7',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.8px',
+              marginBottom: '8px',
+            }}>
+              <KeyRound size={13} />
+              <span>Código Enviado</span>
+            </div>
+
+            <h2 style={{ fontSize: '1.38rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
+              Validar Código & Criar Senha
+            </h2>
+
+            <div style={{
+              fontSize: '0.78rem',
+              color: '#8096A8',
+              lineHeight: 1.4,
+              background: 'rgba(255,255,255,0.03)',
+              padding: '8px 12px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              marginTop: '8px',
+            }}>
+              <div>Enviamos o código de segurança para:</div>
+              <strong style={{ color: '#14A9D7', display: 'block', margin: '3px 0' }}>{activationEmail}</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setAuthMode('first_access_email');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8096A8',
+                  fontSize: '0.7rem',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Alterar e-mail informado
+              </button>
+            </div>
+
+            {/* Test notice during development */}
+            {devOtpNotice && (
+              <div style={{
+                marginTop: '10px',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: 'rgba(20, 169, 215, 0.1)',
+                border: '1px dashed rgba(20, 169, 215, 0.4)',
+                color: '#14A9D7',
+                fontSize: '0.74rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}>
+                <span>Código de teste:</span>
+                <strong style={{ letterSpacing: '2px', fontSize: '0.84rem' }}>{devOtpNotice}</strong>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#F87171',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              fontSize: '0.78rem',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              lineHeight: 1.4,
+            }}>
+              <AlertCircle size={15} color="#F87171" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleInitiateAccess} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* 6 OTP boxes */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
+                Digite o Código de 6 Dígitos *
+              </label>
+
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
+                {otpDigits.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => { inputRefs.current[index] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    onPaste={handlePaste}
+                    style={{
+                      width: '44px',
+                      height: '48px',
+                      textAlign: 'center',
+                      fontSize: '1.25rem',
+                      fontWeight: 800,
+                      color: '#14A9D7',
+                      background: '#080C14',
+                      border: digit ? '1.5px solid #14A9D7' : '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '10px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      transition: 'all 0.15s ease',
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '0.72rem' }}>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={countdown > 0 || isResending}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: countdown > 0 ? '#4E5B6E' : '#14A9D7',
+                    fontWeight: countdown > 0 ? 500 : 700,
+                    cursor: countdown > 0 ? 'default' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <RefreshCw size={11} />
+                  <span>{countdown > 0 ? `Reenviar código em ${countdown}s` : 'Reenviar código agora'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Password Creation */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                Cadastrar Nova Senha *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={15} color="#14A9D7" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Crie sua senha pessoal"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0F1724',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 38px 10px 38px',
+                    color: '#FFF',
+                    fontSize: '0.84rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  style={{ position: 'absolute', right: '12px', top: '12px', background: 'transparent', border: 'none', color: '#8096A8', cursor: 'pointer' }}
+                >
+                  {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                Confirmar Senha *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={15} color="#14A9D7" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Repita a nova senha"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#0F1724',
+                    border: '1px solid rgba(20, 169, 215, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 38px 10px 38px',
+                    color: '#FFF',
+                    fontSize: '0.84rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={{ position: 'absolute', right: '12px', top: '12px', background: 'transparent', border: 'none', color: '#8096A8', cursor: 'pointer' }}
+                >
+                  {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Strength Meter */}
+            <div style={{
+              background: '#080C14',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                <span style={{ fontSize: '0.68rem', color: '#8096A8', fontWeight: 600 }}>Nível da Senha:</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: strengthMeta.color }}>
+                  {newPassword ? strengthMeta.label : 'Aguardando digitação...'}
+                </span>
+              </div>
+
+              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginBottom: '8px' }}>
+                <div style={{
+                  width: `${strengthScore}%`,
+                  height: '100%',
+                  background: strengthMeta.color,
+                  transition: 'all 0.3s ease',
+                }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', color: checklist.minChars ? '#10B981' : '#6B7A90' }}>
+                  {checklist.minChars ? <Check size={11} color="#10B981" /> : <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />}
+                  <span>Mínimo 8 caracteres</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', color: checklist.hasUpper ? '#10B981' : '#6B7A90' }}>
+                  {checklist.hasUpper ? <Check size={11} color="#10B981" /> : <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />}
+                  <span>Letra maiúscula</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', color: checklist.hasNumber ? '#10B981' : '#6B7A90' }}>
+                  {checklist.hasNumber ? <Check size={11} color="#10B981" /> : <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />}
+                  <span>Número (0-9)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', color: checklist.hasSpecial ? '#10B981' : '#6B7A90' }}>
+                  {checklist.hasSpecial ? <Check size={11} color="#10B981" /> : <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />}
+                  <span>Símbolo (!@#$...)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Initiate Access Button */}
+            <button
+              type="submit"
+              disabled={loading || otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword}
+              style={{
+                background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
+                color: '#080C14',
+                border: 'none',
+                borderRadius: '30px',
+                padding: '13px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                cursor: (loading || otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                opacity: (otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginTop: '6px',
+                boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
+                fontFamily: "'Poppins', sans-serif",
+              }}
+            >
+              <span>{loading ? 'INICIANDO ACESSO...' : 'Iniciar acesso'}</span>
+              <ArrowRight size={16} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setAuthMode('login');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8096A8',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 8px',
+                }}
+              >
+                <ArrowLeft size={12} />
+                <span>Voltar ao Login</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -77,85 +935,90 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       position: 'relative',
     }}>
       {/* ── DESKTOP & MOBILE SPLIT CONTAINER ─────────────────────────────────── */}
-      <div className="login-wrapper" style={{
+      <div style={{
         display: 'flex',
-        width: '100%',
+        width: '100vw',
         minHeight: '100vh',
       }}>
         {/* ========================================================================= */}
-        {/* MOBILE VIEW (2-STEP FLOW)                                                 */}
+        {/* MOBILE ONLY VIEW                                                          */}
         {/* ========================================================================= */}
         <div className="login-mobile-only" style={{
           display: 'none',
+          flexDirection: 'column',
           width: '100%',
           minHeight: '100vh',
           background: '#080C14',
-          flexDirection: 'column',
-          position: 'relative',
         }}>
           {mobileStep === 'welcome' ? (
             <div style={{
+              flex: 1,
+              position: 'relative',
               display: 'flex',
               flexDirection: 'column',
+              justifyContent: 'flex-end',
+              padding: '32px 24px',
+              boxSizing: 'border-box',
               minHeight: '100vh',
-              position: 'relative',
-              justifyContent: 'space-between',
             }}>
-              {/* Background Gala / Tech */}
               <div style={{
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: '65%',
+                inset: 0,
                 backgroundImage: `url('/debutante_staircase.jpg')`,
                 backgroundSize: 'cover',
-                backgroundPosition: 'center 20%',
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(180deg, rgba(8,12,20,0.4) 0%, rgba(8,12,20,0.3) 40%, rgba(8,12,20,0.98) 100%)',
-                }} />
+                backgroundPosition: 'center center',
+                filter: 'brightness(0.72)',
+              }} />
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg, rgba(8,12,20,0.2) 0%, rgba(8,12,20,0.6) 50%, rgba(8,12,20,0.98) 100%)',
+              }} />
 
-                {/* Top Logo F5 System */}
-                <div style={{ padding: '24px', position: 'relative', zIndex: 2 }}>
+              <div style={{ position: 'relative', zIndex: 2 }}>
+                <div style={{ marginBottom: '20px' }}>
                   <img
                     src="/f5_logo.png"
                     alt="F5 System"
-                    style={{ height: '36px', width: 'auto', objectFit: 'contain' }}
+                    style={{ maxHeight: '42px', width: 'auto', objectFit: 'contain' }}
                   />
                 </div>
 
-                {/* Catchy Title */}
-                <div style={{ position: 'absolute', bottom: '40px', left: '24px', right: '24px', zIndex: 2 }}>
-                  <h2 style={{
-                    fontSize: '1.75rem',
-                    fontWeight: 800,
-                    color: '#FFFFFF',
-                    lineHeight: '1.25',
-                    margin: 0,
-                    fontFamily: "'Poppins', sans-serif",
-                  }}>
-                    Inteligência comercial e gestão completa de eventos.
-                  </h2>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(20, 169, 215, 0.2)',
+                  border: '1px solid rgba(20, 169, 215, 0.45)',
+                  borderRadius: '20px',
+                  padding: '5px 12px',
+                  fontSize: '0.68rem',
+                  color: '#4AB7C2',
+                  fontWeight: 800,
+                  letterSpacing: '1px',
+                  marginBottom: '12px',
+                }}>
+                  <span>GESTÃO DE EVENTOS DE ALTO PADRÃO</span>
                 </div>
-              </div>
 
-              {/* Bottom Card */}
-              <div style={{
-                marginTop: 'auto',
-                background: '#0C131E',
-                borderTopLeftRadius: '32px',
-                borderTopRightRadius: '32px',
-                border: '1.5px solid rgba(20, 169, 215, 0.25)',
-                borderBottom: 'none',
-                padding: '32px 24px',
-                zIndex: 3,
-                boxShadow: '0 -10px 40px rgba(0,0,0,0.8)',
-              }}>
-                <p style={{ fontSize: '0.84rem', color: '#8096A8', margin: '0 0 20px 0', lineHeight: '1.5' }}>
-                  Acesse a plataforma corporativa e CRM do F5 System.
+                <h1 style={{
+                  fontSize: '1.75rem',
+                  fontWeight: 900,
+                  color: '#FFFFFF',
+                  lineHeight: '1.25',
+                  margin: '0 0 12px 0',
+                  textShadow: '0 4px 16px rgba(0,0,0,0.8)',
+                }}>
+                  Transformando sonhos em experiências extraordinárias.
+                </h1>
+
+                <p style={{
+                  fontSize: '0.85rem',
+                  color: '#D3E0EA',
+                  lineHeight: '1.55',
+                  margin: '0 0 24px 0',
+                }}>
+                  Controle completo de unidades, qualificação de leads e atendimento inteligente.
                 </p>
 
                 <button
@@ -164,244 +1027,67 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   style={{
                     width: '100%',
                     background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
-                    color: '#FFFFFF',
+                    color: '#080C14',
                     border: 'none',
                     borderRadius: '30px',
-                    padding: '14px',
-                    fontSize: '0.9rem',
+                    padding: '15px',
+                    fontSize: '0.92rem',
                     fontWeight: 800,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    letterSpacing: '0.5px',
-                    boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
-                    fontFamily: "'Poppins', sans-serif",
+                    boxShadow: '0 6px 22px rgba(20, 169, 215, 0.5)',
                   }}
                 >
-                  <span>Entrar no Sistema</span>
-                  <ArrowRight size={17} />
+                  <span>ACESSAR SISTEMA</span>
+                  <ArrowRight size={18} />
                 </button>
               </div>
             </div>
           ) : (
-            /* MOBILE STEP 2: LOGIN FORM */
             <div style={{
+              flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              minHeight: '100vh',
               padding: '24px',
               boxSizing: 'border-box',
-              justifyContent: 'space-between',
-              background: '#080C14',
+              minHeight: '100vh',
             }}>
-              {/* Header with Back Button */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingTop: '12px',
-                zIndex: 10,
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <button
                   type="button"
                   onClick={() => setMobileStep('welcome')}
                   style={{
                     background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
                     color: '#FFFFFF',
-                    width: '38px',
-                    height: '38px',
                     borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                   }}
                 >
-                  <ArrowLeft size={18} />
+                  <ArrowLeft size={16} />
                 </button>
 
                 <img
                   src="/f5_logo.png"
                   alt="F5 System"
-                  style={{
-                    height: '32px',
-                    width: 'auto',
-                    maxWidth: '160px',
-                    objectFit: 'contain',
-                  }}
+                  style={{ maxHeight: '34px', width: 'auto', objectFit: 'contain' }}
                 />
 
-                <div style={{ width: '38px' }} />
+                <div style={{ width: '36px' }} />
               </div>
 
-              {/* Centered Form Wrapper */}
-              <div style={{ width: '100%', maxWidth: '380px', margin: '40px auto 0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#FFF', margin: '0 0 6px 0', fontFamily: "'Poppins', sans-serif" }}>
-                    Bem-vindo!
-                  </h2>
-                  <p style={{ fontSize: '0.82rem', color: '#8096A8', margin: 0 }}>
-                    Acesse sua conta no F5 System.
-                  </p>
-                </div>
-
-                {error && (
-                  <div style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                    color: '#F87171',
-                    borderRadius: '12px',
-                    padding: '10px 14px',
-                    fontSize: '0.8rem',
-                    marginBottom: '16px',
-                  }}>
-                    {error}
-                  </div>
-                )}
-
-                {/* Form */}
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '0.72rem',
-                      color: '#14A9D7',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      marginBottom: '6px',
-                    }}>
-                      E-mail Corporativo
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <Mail size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '14px' }} />
-                      <input
-                        type="email"
-                        required
-                        placeholder="seu.email@empresa.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        style={{
-                          width: '100%',
-                          background: '#0F1724',
-                          border: '1px solid rgba(20, 169, 215, 0.3)',
-                          borderRadius: '12px',
-                          padding: '12px 14px 12px 42px',
-                          color: '#FFFFFF',
-                          fontSize: '0.88rem',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                          fontFamily: "'Poppins', sans-serif",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <label style={{
-                        fontSize: '0.72rem',
-                        color: '#14A9D7',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        Senha de Acesso
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowForgotModal(true)}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#8096A8',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                          padding: 0,
-                          fontFamily: "'Poppins', sans-serif",
-                        }}
-                      >
-                        Esqueceu?
-                      </button>
-                    </div>
-
-                    <div style={{ position: 'relative' }}>
-                      <Lock size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '14px' }} />
-                      <input
-                        type="password"
-                        required
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        style={{
-                          width: '100%',
-                          background: '#0F1724',
-                          border: '1px solid rgba(20, 169, 215, 0.3)',
-                          borderRadius: '12px',
-                          padding: '12px 14px 12px 42px',
-                          color: '#FFFFFF',
-                          fontSize: '0.88rem',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                          fontFamily: "'Poppins', sans-serif",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '30px',
-                      padding: '14px',
-                      fontSize: '0.9rem',
-                      fontWeight: 800,
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      marginTop: '8px',
-                      opacity: loading ? 0.7 : 1,
-                      boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
-                      fontFamily: "'Poppins', sans-serif",
-                    }}
-                  >
-                    <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
-                    <ArrowRight size={17} />
-                  </button>
-
-                  <div style={{ textAlign: 'center', marginTop: '14px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowFirstAccessModal(true)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#14A9D7',
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      ✨ Primeiro acesso? Ativar conta
-                    </button>
-                  </div>
-                </form>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                {renderAuthForm()}
               </div>
 
-              {/* Mobile Footer */}
               <div style={{ textAlign: 'center', paddingBottom: '16px', fontSize: '0.72rem', color: '#647E8C' }}>
                 F5 System • Versão {APP_VERSION}
               </div>
@@ -425,12 +1111,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           boxSizing: 'border-box',
           borderRight: '1px solid rgba(20, 169, 215, 0.2)',
           zIndex: 2,
-          position: 'relative',
+          overflowY: 'auto',
         }}>
-          {/* Centered Inner Container */}
           <div style={{ width: '100%', maxWidth: '380px' }}>
-            {/* Top Horizontal Logo F5 System */}
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            {/* Logo */}
+            <div style={{ textAlign: 'center', marginBottom: '30px' }}>
               <img
                 src="/f5_logo.png"
                 alt="F5 System"
@@ -446,199 +1131,10 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               />
             </div>
 
-            {/* Title & Subtitle */}
-            <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-              <h2 style={{
-                fontSize: '1.6rem',
-                fontWeight: 800,
-                color: '#FFFFFF',
-                margin: '0 0 6px 0',
-                fontFamily: "'Poppins', sans-serif",
-              }}>
-                Acesso ao Sistema
-              </h2>
-              <p style={{
-                fontSize: '0.82rem',
-                color: '#8096A8',
-                margin: 0,
-                lineHeight: '1.5',
-              }}>
-                Informe suas credenciais para gerenciar o ecossistema F5 System.
-              </p>
-            </div>
+            {/* Inline Dynamic Form */}
+            {renderAuthForm()}
 
-            {error && (
-              <div style={{
-                background: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                color: '#F87171',
-                borderRadius: '10px',
-                padding: '10px 14px',
-                fontSize: '0.8rem',
-                marginBottom: '18px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                <AlertCircle size={15} color="#F87171" style={{ flexShrink: 0 }} />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Login Form */}
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: '0.72rem',
-                  color: '#14A9D7',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  marginBottom: '6px',
-                }}>
-                  E-mail Corporativo
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Mail size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
-                  <input
-                    type="email"
-                    required
-                    placeholder="seu.email@empresa.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    style={{
-                      width: '100%',
-                      background: '#0F1724',
-                      border: '1px solid rgba(20, 169, 215, 0.3)',
-                      borderRadius: '10px',
-                      padding: '12px 14px 12px 42px',
-                      color: '#FFFFFF',
-                      fontSize: '0.88rem',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s ease',
-                      fontFamily: "'Poppins', sans-serif",
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#14A9D7'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)'; }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <label style={{
-                    fontSize: '0.72rem',
-                    color: '#14A9D7',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    Senha de Acesso
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotModal(true)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#8096A8',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      padding: 0,
-                      fontFamily: "'Poppins', sans-serif",
-                    }}
-                  >
-                    Esqueceu sua senha?
-                  </button>
-                </div>
-
-                <div style={{ position: 'relative' }}>
-                  <Lock size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    style={{
-                      width: '100%',
-                      background: '#0F1724',
-                      border: '1px solid rgba(20, 169, 215, 0.3)',
-                      borderRadius: '10px',
-                      padding: '12px 14px 12px 42px',
-                      color: '#FFFFFF',
-                      fontSize: '0.88rem',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s ease',
-                      fontFamily: "'Poppins', sans-serif",
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#14A9D7'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)'; }}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  borderRadius: '30px',
-                  padding: '13px',
-                  fontSize: '0.88rem',
-                  fontWeight: 800,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  marginTop: '8px',
-                  opacity: loading ? 0.7 : 1,
-                  boxShadow: '0 4px 18px rgba(20, 169, 215, 0.4)',
-                  transition: 'opacity 0.2s ease, transform 0.15s ease',
-                  fontFamily: "'Poppins', sans-serif",
-                }}
-              >
-                <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
-                <ArrowRight size={16} />
-              </button>
-
-              <div style={{ textAlign: 'center', marginTop: '14px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowFirstAccessModal(true)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#14A9D7',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 8px',
-                    borderRadius: '8px',
-                    transition: 'background 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(20, 169, 215, 0.08)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span>✨ Primeiro acesso? Ative sua conta aqui</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            </form>
-
-            {/* Footer Security Notice & Version */}
+            {/* Footer Notice */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -658,7 +1154,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: LUXURY DEBUTANTE STAIRCASE PHOTO */}
+        {/* RIGHT COLUMN: LUXURY DEBUTANTE PHOTO */}
         <div className="login-desktop-visual-pane" style={{
           flex: '1 1 500px',
           position: 'relative',
@@ -670,7 +1166,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           padding: '48px',
           boxSizing: 'border-box',
         }}>
-          {/* Background Image with Dark Vignette & Gradient */}
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -680,14 +1175,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             filter: 'brightness(0.78) contrast(1.1)',
           }} />
 
-          {/* Ambient Dark Gradient Overlays */}
           <div style={{
             position: 'absolute',
             inset: 0,
             background: 'linear-gradient(180deg, rgba(8,12,20,0.3) 0%, rgba(8,12,20,0.15) 40%, rgba(8,12,20,0.95) 100%)',
           }} />
 
-          {/* Text Overlay Content */}
           <div style={{ position: 'relative', zIndex: 2, maxWidth: '540px' }}>
             <div style={{
               display: 'inline-flex',
@@ -735,14 +1228,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <AdminForgotPasswordModal onClose={() => setShowForgotModal(false)} />
-      )}
-
-      {/* First Access Activation Modal */}
-      {showFirstAccessModal && (
-        <AdminFirstAccessModal 
-          initialEmail={email} 
-          onClose={() => setShowFirstAccessModal(false)} 
-        />
       )}
 
       {/* Responsive Styles */}

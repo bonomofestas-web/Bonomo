@@ -19,9 +19,10 @@ import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
-import { AdminFirstAccessModal } from './AdminFirstAccessModal';
+import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
+import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { Menu, X, Building2 } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
@@ -125,6 +126,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const renderContent = () => {
+    // If collaborator has first access pending, render the profile completion onboarding workspace
+    if (currentUser?.isFirstAccess) {
+      return <AdminFirstAccessProfileView />;
+    }
+
     // Feature Flag Check for non-dev users
     const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
       whatsapp: 'whatsapp',
@@ -208,6 +214,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminUserSettingsView onBack={() => handleSelectTab('home')} />;
       case 'dev-features':
         return <AdminDevFeatureFlagsView />;
+      case 'dev-users':
+        return <AdminDevUsersManagerView />;
       default:
         return (
           <AdminHomeView
@@ -921,10 +929,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
       />
-
-      {currentUser?.isFirstAccess && (
-        <AdminFirstAccessModal onComplete={() => {}} />
-      )}
 
       <style>{`
         @media (max-width: 900px) {

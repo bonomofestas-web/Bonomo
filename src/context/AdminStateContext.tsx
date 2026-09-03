@@ -132,32 +132,8 @@ export const generateUuid = (): string => {
 
 // ── Default Seed Data ─────────────────────────────────────────────────────────
 
-const DEFAULT_COLLABORATORS: Collaborator[] = [
-  {
-    id: 'd0000000-0000-0000-0000-000000000001',
-    name: 'F5 Developer',
-    email: 'bonomofestas@gmail.com',
-    role: 'dev',
-    venueId: 'all',
-    avatarUrl: '/f5_mark.png',
-    phone: '(21) 99999-9999',
-    password: 'Bonomo#2026',
-    active: true,
-    createdAt: '2026-01-01',
-  },
-  {
-    id: 'a0000000-0000-0000-0000-000000000001',
-    name: 'F5 Master',
-    email: 'dev@bonomoapp.com',
-    role: 'master',
-    venueId: 'all',
-    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-    phone: '(21) 99999-9999',
-    password: 'Bonomo#2026',
-    active: true,
-    createdAt: '2026-01-01',
-  }
-];
+// 100% clean — Zero mock collaborators. Collaborators are fetched directly from Supabase.
+const DEFAULT_COLLABORATORS: Collaborator[] = [];
 
 const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   whatsapp: 'active',
@@ -359,6 +335,12 @@ export interface AdminContextType {
   featureFlags: Record<FeatureFlagId, FeatureFlagStatus>;
   updateFeatureFlag: (featureId: FeatureFlagId, status: FeatureFlagStatus) => void;
   getFeatureStatus: (featureId: FeatureFlagId) => FeatureFlagStatus;
+
+  // Multi-Tenant & Developer Management
+  allCollaborators: Collaborator[];
+  allVenues: Venue[];
+  addMasterAccount: (name: string, email: string) => string;
+  toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
 }
 
 const AdminStateContext = createContext<AdminContextType | undefined>(undefined);
@@ -485,6 +467,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
     featureFlagService.update(featureId, status);
+
+    if (isSupabaseConfigured) {
+      Promise.resolve(
+        supabase.from('system_feature_flags').upsert({
+          feature_id: featureId,
+          status,
+          updated_at: new Date().toISOString(),
+        })
+      ).catch((err: any) => console.warn('Erro ao salvar feature flag no Supabase:', err));
+    }
   };
 
   const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
@@ -645,11 +637,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (dbTasks.length > 0) setTasks(dbTasks);
           if (dbCollabs.length > 0) {
             setCollaborators(dbCollabs);
-            const activeEmail = currentUser?.email || 'dev@bonomoapp.com';
-            const matched = dbCollabs.find(c => c.email.toLowerCase() === activeEmail.toLowerCase());
-            if (matched && matched.theme) {
-              setThemeState(matched.theme as ThemeMode);
-              safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
+            const activeEmail = currentUser?.email;
+            if (activeEmail) {
+              const matched = dbCollabs.find(c => c.email.toLowerCase() === activeEmail.toLowerCase());
+              if (matched && matched.theme) {
+                setThemeState(matched.theme as ThemeMode);
+                safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
+              }
             }
           }
           if (dbBenefits.length > 0) setBenefitsCatalog(dbBenefits);
@@ -659,6 +653,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           } else {
             // Seed Supabase with local templates if empty
             templates.forEach(t => journeyTemplateService.upsert(t));
+          }
+
+          // Realtime sync of system feature flags from Supabase
+          const { data: dbFlags } = await supabase.from('system_feature_flags').select('*');
+          if (dbFlags && dbFlags.length > 0) {
+            const mappedFlags: Record<string, FeatureFlagStatus> = {};
+            dbFlags.forEach((row: any) => {
+              mappedFlags[row.feature_id] = row.status;
+            });
+            setFeatureFlags(prev => ({ ...prev, ...mappedFlags }));
           }
         }
       } catch (err) {
@@ -849,102 +853,93 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (!cleanPass) return false;
 
-    // 1. Dedicated Dev Super-Role Account (bonomofestas@gmail.com)
-    if (cleanEmail === 'bonomofestas@gmail.com') {
-      if (cleanPass !== 'Bonomo#2026') {
-        return false;
-      }
-      const devUser: AdminUser = {
-        id: 'd0000000-0000-0000-0000-000000000001',
-        name: 'F5 Developer',
-        email: 'bonomofestas@gmail.com',
-        role: 'dev',
-        avatarUrl: '/f5_mark.png',
-        venueIds: [],
-      };
-      setCurrentUser(devUser);
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(devUser));
-      return true;
-    }
+    // 1. Localiza o colaborador no estado carregado ou diretamente no Supabase
+    let foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
 
-    // 2. Dedicated Master Account (dev@bonomoapp.com or master@bonomofestas.com)
-    if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'master@bonomofestas.com' || cleanEmail === 'master@f5system.com') {
-      if (cleanPass !== 'Bonomo#2026') {
-        return false;
-      }
-      const masterUser: AdminUser = {
-        id: 'a0000000-0000-0000-0000-000000000001',
-        name: 'F5 Master',
-        email: cleanEmail,
-        role: 'master',
-        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-        venueIds: [],
-      };
-      setCurrentUser(masterUser);
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(masterUser));
-      return true;
-    }
+    if (!foundCollab && isSupabaseConfigured) {
+      try {
+        const { data: dbRow } = await supabase
+          .from('collaborators')
+          .select('*')
+          .eq('email', cleanEmail)
+          .maybeSingle();
 
-    // 3. Registered Collaborators in system
-    const foundCollab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
-    if (foundCollab) {
-      const storedPass = foundCollab.password || 'Bonomo#2026';
-      const isBcrypt = storedPass.startsWith('$2a$') || storedPass.startsWith('$2b$') || storedPass.startsWith('$2y$');
-
-      let isPasswordValid = false;
-
-      if (isBcrypt && isSupabaseConfigured) {
-        try {
-          const { data: isMatch } = await supabase.rpc('verify_collaborator_password', {
-            email_input: cleanEmail,
-            password_input: cleanPass,
-          });
-          isPasswordValid = Boolean(isMatch);
-        } catch (rpcErr) {
-          console.warn('Fallback na validação de hash:', rpcErr);
-          isPasswordValid = (cleanPass === storedPass);
+        if (dbRow) {
+          foundCollab = {
+            id: dbRow.id,
+            name: dbRow.name,
+            email: dbRow.email,
+            role: dbRow.role || 'sdr',
+            venueId: dbRow.venue_id || 'all',
+            venueIds: dbRow.venue_ids || [],
+            avatarUrl: dbRow.avatar_url,
+            phone: dbRow.phone,
+            active: dbRow.active ?? true,
+            password: dbRow.password,
+            masterId: dbRow.master_id || undefined,
+            theme: dbRow.theme || 'light',
+            createdAt: dbRow.created_at || new Date().toISOString(),
+          };
+          setCollaborators(prev => [foundCollab!, ...prev.filter(c => c.id !== foundCollab!.id)]);
         }
-      } else {
+      } catch (err) {
+        console.warn('Erro ao consultar colaborador no Supabase:', err);
+      }
+    }
+
+    if (!foundCollab) {
+      return false;
+    }
+
+    // 2. Verificação estrita de suspensão/desativação da conta
+    if (!foundCollab.active) {
+      throw new Error('Acesso desativado. Entre em contato com o administrador da sua conta.');
+    }
+
+    // 3. Validação de senha via hash pgcrypto RPC
+    const storedPass = foundCollab.password || 'Bonomo#2026';
+    const isBcrypt = storedPass.startsWith('$2a$') || storedPass.startsWith('$2b$') || storedPass.startsWith('$2y$');
+
+    let isPasswordValid = false;
+
+    if (isBcrypt && isSupabaseConfigured) {
+      try {
+        const { data: isMatch } = await supabase.rpc('verify_collaborator_password', {
+          email_input: cleanEmail,
+          password_input: cleanPass,
+        });
+        isPasswordValid = Boolean(isMatch);
+      } catch (rpcErr) {
+        console.warn('Fallback na validação de hash:', rpcErr);
         isPasswordValid = (cleanPass === storedPass);
       }
-
-      if (!isPasswordValid) {
-        return false;
-      }
-
-      const user: AdminUser = {
-        id: optUser?.id || foundCollab.id,
-        name: optUser?.name || foundCollab.name,
-        email: foundCollab.email,
-        role: (optUser?.role || foundCollab.role) as any,
-        avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
-        venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
-      };
-      setCurrentUser(user);
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
-      if (foundCollab.venueId !== 'all') {
-        setActiveVenueId(foundCollab.venueId);
-      }
-      return true;
+    } else {
+      isPasswordValid = (cleanPass === storedPass);
     }
 
-    // 4. OptUser fallback if password is correct
-    if (optUser && optUser.id) {
-      if (cleanPass !== 'Bonomo#2026') return false;
-      const user: AdminUser = {
-        id: optUser.id,
-        name: optUser.name || 'F5 Master',
-        email: cleanEmail,
-        role: optUser.role || 'master',
-        avatarUrl: optUser.avatarUrl,
-        venueIds: optUser.venueIds || [],
-      };
-      setCurrentUser(user);
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
-      return true;
+    if (!isPasswordValid) {
+      return false;
     }
 
-    return false;
+    // 4. Criação do AdminUser estritamente com o role cadastrado no banco
+    const user: AdminUser = {
+      id: optUser?.id || foundCollab.id,
+      name: optUser?.name || foundCollab.name,
+      email: foundCollab.email,
+      role: (optUser?.role || foundCollab.role) as any,
+      avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
+      phone: foundCollab.phone,
+      venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
+      isFirstAccess: foundCollab.isFirstAccess,
+      masterId: foundCollab.masterId,
+    };
+
+    setCurrentUser(user);
+    safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
+    if (foundCollab.venueId && foundCollab.venueId !== 'all') {
+      setActiveVenueId(foundCollab.venueId);
+    }
+    return true;
   };
 
   const logout = () => {
@@ -1077,6 +1072,97 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  // ── Scoped Tenant Master ID & Isolation ─────────────────────────────────────
+  // O Desenvolvedor usa seu próprio tenant isolado (currentUser.id) para testes.
+  // O Master usa seu próprio tenant (currentUser.id).
+  // Colaboradores subordinados usam o tenant do seu master (currentUser.masterId).
+  const scopedMasterId = useMemo(() => {
+    if (!currentUser) return null;
+    if (currentUser.role === 'dev' || currentUser.role === 'master') {
+      return currentUser.id;
+    }
+    return currentUser.masterId || currentUser.id;
+  }, [currentUser]);
+
+  // Casas de Festa do Tenant Ativo
+  const scopedVenues = useMemo(() => {
+    if (!currentUser) return venues;
+    return venues.filter(v => 
+      v.masterId === scopedMasterId || 
+      (!v.masterId && (currentUser.role === 'master' || currentUser.role === 'dev'))
+    );
+  }, [venues, scopedMasterId, currentUser]);
+
+  // Colaboradores da Equipe do Tenant Ativo
+  const scopedCollaborators = useMemo(() => {
+    if (!currentUser) return collaborators;
+    return collaborators.filter(c => 
+      c.id === currentUser.id ||
+      c.masterId === scopedMasterId ||
+      (!c.masterId && c.role !== 'dev' && c.role !== 'master' && currentUser.role === 'master')
+    );
+  }, [collaborators, scopedMasterId, currentUser]);
+
+  // Leads do Tenant Ativo
+  const scopedLeads = useMemo(() => {
+    if (!currentUser) return leads;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return leads.filter(l => 
+      l.masterId === scopedMasterId || 
+      (l.venueId && masterVenueIds.has(l.venueId)) ||
+      (!l.masterId && !l.venueId && (currentUser.role === 'master' || currentUser.role === 'dev'))
+    );
+  }, [leads, scopedMasterId, scopedVenues, currentUser]);
+
+  // Funis do Tenant Ativo
+  const scopedFunnels = useMemo(() => {
+    if (!currentUser) return funnels;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return funnels.filter(f => f.venueId === 'all' || masterVenueIds.has(f.venueId));
+  }, [funnels, scopedVenues, currentUser]);
+
+  // ── Developer Exclusive Methods ─────────────────────────────────────────────
+  const addMasterAccount = (name: string, email: string): string => {
+    const id = generateUuid();
+    const cleanEmail = email.trim().toLowerCase();
+    const newMaster: Collaborator = {
+      id,
+      name,
+      email: cleanEmail,
+      role: 'master',
+      venueId: 'all',
+      venueIds: [],
+      active: true,
+      isFirstAccess: true,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
+    setCollaborators(prev => [newMaster, ...prev]);
+    collaboratorService.upsert(newMaster);
+    return id;
+  };
+
+  const toggleMasterAccountStatus = (masterId: string, active: boolean) => {
+    // 1. Atualiza no estado local o Master e aplica desativação/ativação em cascata para seus colaboradores
+    setCollaborators(prev => prev.map(c => {
+      if (c.id === masterId) {
+        return { ...c, active };
+      }
+      if (c.masterId === masterId) {
+        return { ...c, active };
+      }
+      return c;
+    }));
+
+    // 2. Persiste no Supabase (o trigger PostgreSQL trg_cascade_master_deactivation também reforça no banco)
+    if (isSupabaseConfigured) {
+      Promise.resolve(supabase.from('collaborators').update({ active }).eq('id', masterId))
+        .catch((err: any) => console.warn('Erro ao atualizar status do master:', err));
+      Promise.resolve(supabase.from('collaborators').update({ active }).eq('master_id', masterId))
+        .catch((err: any) => console.warn('Erro ao atualizar status dos subordinados:', err));
+    }
+  };
+
   // ── Collaborators CRUD ──────────────────────────────────────────────────────
 
   const addCollaborator = (data: Omit<Collaborator, 'id' | 'createdAt'>): string => {
@@ -1084,6 +1170,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const newCollab: Collaborator = {
       ...data,
       id,
+      masterId: data.masterId || scopedMasterId || currentUser?.id,
       createdAt: new Date().toISOString().split('T')[0],
     };
     setCollaborators(prev => {
@@ -1129,6 +1216,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ...venueData,
       ballroomImageUrl: venueData.ballroomImageUrl || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&auto=format&fit=crop&q=80',
       id,
+      masterId: venueData.masterId || scopedMasterId || currentUser?.id,
       leadDistributionMode: 'queue',
       leadDistributionSdrIds: [],
       roundRobinNextIndex: 0,
@@ -1465,6 +1553,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const newFunnel: CommercialFunnel = {
       ...data,
       id,
+      masterId: data.masterId || scopedMasterId || currentUser?.id,
       createdAt: new Date().toISOString().split('T')[0],
     };
     setFunnels(prev => {
@@ -1957,6 +2046,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const newLead: Lead = {
       id: newLeadId,
+      masterId: scopedMasterId || currentUser?.id,
       code: leadCode,
       debutanteId: data.debutanteId,
       debutanteName: data.debutanteName,
@@ -2021,6 +2111,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const newLead: Lead = {
       id: newLeadId,
+      masterId: scopedMasterId || currentUser?.id,
       code: leadCode,
       debutanteId: '',
       debutanteName: 'WhatsApp Direto',
@@ -3155,14 +3246,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <AdminStateContext.Provider value={{
       currentUser,
-      collaborators,
-      venues,
+      collaborators: scopedCollaborators,
+      allCollaborators: collaborators,
+      venues: scopedVenues,
+      allVenues: venues,
       debutantes,
-      leads,
+      leads: scopedLeads,
       templates,
       benefitsCatalog,
       vipCatalog,
-      funnels,
+      funnels: scopedFunnels,
       tasks,
       activeVenueId,
       activeDebutanteId,
@@ -3259,6 +3352,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       featureFlags,
       updateFeatureFlag,
       getFeatureStatus,
+      addMasterAccount,
+      toggleMasterAccountStatus,
     }}>
       {children}
     </AdminStateContext.Provider>

@@ -49,6 +49,7 @@ export const leadService = {
 
         return {
           id: row.id,
+          masterId: row.master_id || undefined,
           code: row.code,
           funnelId: row.funnel_id,
           venueId: row.venue_id,
@@ -150,6 +151,7 @@ export const leadService = {
       if (lead.debutanteId !== undefined) payload.debutante_id = isUuid(lead.debutanteId) ? lead.debutanteId : null;
       if (lead.debutanteName !== undefined) payload.debutante_name = lead.debutanteName;
       if (lead.debutanteSlug !== undefined) payload.debutante_slug = lead.debutanteSlug;
+      if (lead.masterId !== undefined) payload.master_id = isUuid(lead.masterId) ? lead.masterId : null;
 
       if (lead.email !== undefined) payload.email = lead.email;
       if (lead.neighborhood !== undefined) payload.neighborhood = lead.neighborhood;
