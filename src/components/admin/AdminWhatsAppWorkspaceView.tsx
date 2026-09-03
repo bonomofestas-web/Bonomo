@@ -685,6 +685,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {lead.code && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', background: 'rgba(20, 169, 215, 0.12)', color: '#14A9D7', border: '1px solid rgba(20, 169, 215, 0.3)', fontFamily: "'Poppins', monospace" }}>
+                          {lead.code}
+                        </span>
+                      )}
                       <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '6px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
                         {venue?.name || 'Unidade'}
                       </span>
@@ -806,6 +811,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <h3 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
                       {selectedLead.name}
                     </h3>
+                    {selectedLead.code && (
+                      <span style={{
+                        fontSize: '0.66rem',
+                        fontWeight: 900,
+                        padding: '1px 6px',
+                        borderRadius: '6px',
+                        background: 'rgba(20, 169, 215, 0.15)',
+                        color: '#14A9D7',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        letterSpacing: '0.5px',
+                        fontFamily: "'Poppins', monospace",
+                      }}>
+                        {selectedLead.code}
+                      </span>
+                    )}
                     {selectedLead.subSource ? (
                       <span style={{
                         fontSize: '0.66rem',

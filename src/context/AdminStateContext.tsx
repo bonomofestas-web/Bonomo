@@ -44,6 +44,7 @@ import { collaboratorService, featureFlagService } from '../services/collaborato
 import { journeyTemplateService } from '../services/journeyTemplateService';
 import { mqlService } from '../services/mqlService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
+import { generateLeadCode } from '../utils/leadUtils';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -385,7 +386,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
-    return saved ? JSON.parse(saved) : DEFAULT_LEADS;
+    const parsed: Lead[] = saved ? JSON.parse(saved) : DEFAULT_LEADS;
+    return parsed.map(lead => {
+      const code = lead.code || generateLeadCode();
+      const name = (!lead.name || lead.name.trim() === '' || lead.name === 'Sem nome' || lead.name === 'Lead Sem Nome')
+        ? code
+        : lead.name;
+      return { ...lead, code, name };
+    });
   });
 
   const [mqlQuestions, setMqlQuestions] = useState<MqlQuestion[]>(() => {
@@ -561,6 +569,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(funnels));
   }, [funnels]);
 
+  useEffect(() => {
+    if (currentUser) {
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem(STORAGE_KEY_USER);
+    }
+  }, [currentUser]);
+
   // ── Supabase Initial Fetch & Realtime Synchronizer ──────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -586,7 +602,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (isMounted) {
           if (dbVenues.length > 0) setVenues(dbVenues);
           if (dbFunnels.length > 0) setFunnels(dbFunnels);
-          if (dbLeads.length > 0) setLeads(dbLeads);
+          if (dbLeads.length > 0) {
+            const enrichedLeads = dbLeads.map(l => {
+              const code = l.code || generateLeadCode();
+              const name = (!l.name || l.name.trim() === '' || l.name === 'Sem nome' || l.name === 'Lead Sem Nome')
+                ? code
+                : l.name;
+              return { ...l, code, name };
+            });
+            setLeads(enrichedLeads);
+          }
           if (dbSources.length > 0) setSources(dbSources);
           if (dbMql.length > 0) {
             setMqlQuestions(dbMql);
@@ -905,6 +930,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const logout = () => {
     setCurrentUser(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem('bonomo_admin_user_v7');
+      localStorage.removeItem('bonomo_admin_user_v6');
+      localStorage.removeItem('bonomo_admin_user_v5');
+      localStorage.removeItem('f5_system_user');
+      sessionStorage.clear();
+      if (isSupabaseConfigured) {
+        supabase.auth.signOut().catch(() => {});
+      }
+    } catch {}
   };
 
   const switchUserRoleDemo = (role: AdminRole) => {
@@ -1897,8 +1933,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const venueReferralSource = sources.find(s => s.venueId === data.venueId && s.type === 'referral' && s.status === 'active');
     const destinationFunnelId = venueReferralSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'indicacao';
 
+    const leadCode = generateLeadCode();
+    const cleanLeadName = (data.name && data.name.trim() !== '') ? data.name.trim() : leadCode;
+
     const newLead: Lead = {
       id: newLeadId,
+      code: leadCode,
       debutanteId: data.debutanteId,
       debutanteName: data.debutanteName,
       debutanteSlug: data.debutanteSlug,
@@ -1906,7 +1946,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       funnelId: destinationFunnelId,
       sourceId: venueReferralSource?.id,
       source: 'indicacao',
-      name: data.name,
+      name: cleanLeadName,
       phone: data.phone,
       age: data.age,
       group: data.group,
@@ -1957,10 +1997,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       targetFunnelId = match.funnelId || targetFunnelId;
     }
 
-    const cleanName = data.name?.trim() || `Lead WhatsApp (${data.phone.slice(-4)})`;
+    const leadCode = generateLeadCode();
+    const cleanName = (data.name && data.name.trim() !== '') ? data.name.trim() : leadCode;
 
     const newLead: Lead = {
       id: newLeadId,
+      code: leadCode,
       debutanteId: '',
       debutanteName: 'WhatsApp Direto',
       debutanteSlug: '',

@@ -2387,9 +2387,16 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             >
                               {/* Header: Name & Origin Badge on Top-Right */}
                               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', flex: 1, wordBreak: 'break-word' }}>
-                                  {lead.name}
-                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                                  <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', wordBreak: 'break-word' }}>
+                                    {lead.name}
+                                  </span>
+                                  {lead.code && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--adm-accent, #14A9D7)', letterSpacing: '0.5px', fontFamily: "'Poppins', monospace" }}>
+                                      {lead.code}
+                                    </span>
+                                  )}
+                                </div>
                                 {renderLeadOriginBadge(lead)}
                               </div>
                               {/* Casa de Festa Badge */}

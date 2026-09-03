@@ -6,12 +6,10 @@ import { APP_VERSION } from '../../types/admin';
 
 interface AdminLoginViewProps {
   onSuccessLogin?: () => void;
-  onBackToApp?: () => void;
 }
 
 export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   onSuccessLogin,
-  onBackToApp,
 }) => {
   const { login } = useAdminState();
   const [email, setEmail] = useState('');
@@ -176,29 +174,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   <span>Entrar no Sistema</span>
                   <ArrowRight size={17} />
                 </button>
-
-                {onBackToApp && (
-                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                    <button
-                      type="button"
-                      onClick={onBackToApp}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#8096A8',
-                        fontSize: '0.78rem',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontFamily: "'Poppins', sans-serif",
-                      }}
-                    >
-                      <ArrowLeft size={13} />
-                      <span>Voltar para o App da Debutante</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           ) : (
@@ -609,29 +584,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 <ArrowRight size={16} />
               </button>
             </form>
-
-            {onBackToApp && (
-              <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                <button
-                  type="button"
-                  onClick={onBackToApp}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#8096A8',
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    fontFamily: "'Poppins', sans-serif",
-                  }}
-                >
-                  <ArrowLeft size={12} />
-                  <span>Voltar para a Visão da Debutante</span>
-                </button>
-              </div>
-            )}
 
             {/* Footer Security Notice & Version */}
             <div style={{

@@ -275,6 +275,7 @@ export interface MqlQuestion {
 
 export interface Lead {
   id: string;
+  code?: string;         // Código Único do Lead no formato LEAD-XXXXXX
   debutanteId: string;
   debutanteName: string;
   debutanteSlug: string;

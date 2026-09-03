@@ -98,7 +98,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // If not authenticated, show login view
   if (!currentUser) {
-    return <AdminLoginView onBackToApp={() => onOpenDebutanteApp()} />;
+    return <AdminLoginView />;
   }
 
   const userRole = currentUser.role;

@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
   CheckCircle2, Clock, X, MessageCircle, Sparkles,
-  Globe, ExternalLink, Award, FileText
+  Globe, ExternalLink, Award, FileText, Copy, Tag
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -85,6 +85,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const isSourcesComingSoon = getFeatureStatus('sources') === 'coming_soon' && currentUser?.role !== 'dev';
 
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql'>('principal');
+  const [copiedCode, setCopiedCode] = useState(false);
 
   // Fallback if current tab gets disabled
   React.useEffect(() => {
@@ -319,16 +320,16 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       overflow: 'hidden',
     }}>
       
-      {/* ── 1. CABEÇALHO DARK & DOURADO LUXO ──────────────────────────────────── */}
+      {/* ── 1. CABEÇALHO DARK & F5 SYSTEM CIANO ──────────────────────────────────── */}
       <div style={{
         padding: '16px 18px 12px',
-        borderBottom: '1px solid rgba(212, 175, 55, 0.25)',
-        background: 'linear-gradient(180deg, #0B090E 0%, #131018 100%)',
+        borderBottom: '1px solid rgba(20, 169, 215, 0.25)',
+        background: 'linear-gradient(180deg, #0B111A 0%, #0F1724 100%)',
         color: '#FFFFFF',
         flexShrink: 0,
       }}>
         {/* Title row + Collapse Button (< / >) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <input
               type="text"
@@ -341,9 +342,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 padding: '2px 4px',
                 color: '#FFFFFF',
               }}
-              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.borderColor = 'rgba(212,175,55,0.5)'; }}
+              onFocus={(e) => { e.target.style.background = 'rgba(255,255,255,0.08)'; e.target.style.borderColor = 'rgba(20, 169, 215, 0.5)'; }}
               onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
-              title="Clique para editar o nome"
+              title="Clique para editar o nome do lead"
             />
           </div>
 
@@ -355,8 +356,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 title={isCollapsed ? "Expandir ficha do lead" : "Recolher ficha do lead"}
                 style={{
                   background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(212, 175, 55, 0.3)',
-                  color: '#D4AF37',
+                  border: '1px solid rgba(20, 169, 215, 0.3)',
+                  color: '#14A9D7',
                   borderRadius: '8px',
                   padding: '6px 8px',
                   cursor: 'pointer',
@@ -370,6 +371,53 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Tag Oficial de Código Único do Lead (LEAD-XXXXXX) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(20, 169, 215, 0.12)',
+            border: '1px solid rgba(20, 169, 215, 0.35)',
+            borderRadius: '6px',
+            padding: '3px 8px',
+          }}>
+            <Tag size={12} color="#14A9D7" />
+            <span style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase' }}>CÓDIGO:</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#14A9D7', letterSpacing: '0.8px', fontFamily: "'Poppins', monospace" }}>
+              {lead.code || 'LEAD-NOVO'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (lead.code) {
+                  navigator.clipboard.writeText(lead.code);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }
+              }}
+              title="Copiar código do lead"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: copiedCode ? '#10B981' : '#14A9D7',
+                cursor: 'pointer',
+                padding: '1px 2px',
+                display: 'flex',
+                alignItems: 'center',
+                marginLeft: '2px',
+              }}
+            >
+              {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </div>
+          {copiedCode && (
+            <span style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
+              Copiado!
+            </span>
+          )}
         </div>
 
         {/* Venue & Debutante info + Origin Badge */}

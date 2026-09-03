@@ -49,6 +49,7 @@ export const leadService = {
 
         return {
           id: row.id,
+          code: row.code,
           funnelId: row.funnel_id,
           venueId: row.venue_id,
           sourceId: row.source_id,
@@ -111,6 +112,7 @@ export const leadService = {
     if (!isSupabaseConfigured) return false;
     try {
       const payload: any = {};
+      if (lead.code !== undefined) payload.code = lead.code;
       if (lead.name !== undefined) payload.name = lead.name;
       if (lead.phone !== undefined) payload.phone = lead.phone;
       if (lead.age !== undefined) payload.age = lead.age;
