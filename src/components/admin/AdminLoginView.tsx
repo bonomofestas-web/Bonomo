@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminForgotPasswordModal } from './AdminForgotPasswordModal';
+import { AdminFirstAccessModal } from './AdminFirstAccessModal';
 import { APP_VERSION } from '../../types/admin';
 
 interface AdminLoginViewProps {
@@ -11,12 +12,13 @@ interface AdminLoginViewProps {
 export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   onSuccessLogin,
 }) => {
-  const { login } = useAdminState();
+  const { login, collaborators } = useAdminState();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [showFirstAccessModal, setShowFirstAccessModal] = useState(false);
 
   // Mobile 2-step navigation state ('welcome' | 'form')
   const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('welcome');
@@ -30,6 +32,13 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
     if (!cleanEmail) {
       setError('Por favor, informe seu e-mail corporativo.');
+      return;
+    }
+
+    // Check if collaborator has first access pending
+    const collab = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+    if (collab && (collab.isFirstAccess || !collab.password)) {
+      setShowFirstAccessModal(true);
       return;
     }
 
@@ -371,6 +380,24 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
                     <ArrowRight size={17} />
                   </button>
+
+                  <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowFirstAccessModal(true)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#14A9D7',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      ✨ Primeiro acesso? Ativar conta
+                    </button>
+                  </div>
                 </form>
               </div>
 
@@ -583,6 +610,32 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 <span>{loading ? 'AUTENTICANDO...' : 'ENTRAR NO PAINEL'}</span>
                 <ArrowRight size={16} />
               </button>
+
+              <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowFirstAccessModal(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#14A9D7',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(20, 169, 215, 0.08)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>✨ Primeiro acesso? Ative sua conta aqui</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
             </form>
 
             {/* Footer Security Notice & Version */}
@@ -682,6 +735,14 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <AdminForgotPasswordModal onClose={() => setShowForgotModal(false)} />
+      )}
+
+      {/* First Access Activation Modal */}
+      {showFirstAccessModal && (
+        <AdminFirstAccessModal 
+          initialEmail={email} 
+          onClose={() => setShowFirstAccessModal(false)} 
+        />
       )}
 
       {/* Responsive Styles */}

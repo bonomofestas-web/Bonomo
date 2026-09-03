@@ -80,7 +80,6 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         avatarUrl: avatarUrl.trim() || undefined,
         active,
         isFirstAccess: true,
-        password: password || '123456',
       });
     }
 
@@ -252,25 +251,37 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
             </div>
           </div>
 
-          {/* Senha Temporária Inicial */}
-          <div>
-            <label style={labelStyle}>
-              Senha Temporária Inicial * (Será alterada no 1º acesso)
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                required
-                placeholder="Ex: 123456"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={inputStyle}
-              />
+          {/* Informação de Primeiro Acesso por E-mail */}
+          {!collaboratorToEdit ? (
+            <div style={{
+              background: 'rgba(20, 169, 215, 0.08)',
+              border: '1px solid rgba(20, 169, 215, 0.3)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', lineHeight: 1.45 }}>
+                <strong style={{ color: 'var(--adm-accent, #14A9D7)' }}>Ativação por Código de E-mail:</strong> O colaborador receberá um código de segurança de 6 dígitos no seu primeiro acesso para definir sua própria senha pessoal e foto de perfil.
+              </div>
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
-              Ao realizar o primeiro login, o colaborador será obrigado a cadastrar sua senha pessoal definitiva.
+          ) : (
+            <div>
+              <label style={labelStyle}>
+                Alterar Senha do Colaborador (Opcional)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Deixe em branco para manter a atual"
+                  value={password === '••••••••' ? '' : password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Cargo / Nível de Acesso */}
           <div>
