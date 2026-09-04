@@ -84,20 +84,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         });
 
-        if (!signUpError && signUpData?.user) {
+        const isNewUser = !signUpError && 
+          signUpData?.user && 
+          Array.isArray(signUpData.user.identities) && 
+          signUpData.user.identities.length > 0;
+
+        if (isNewUser) {
           inviteSuccess = true;
-          details = 'Usuário registrado no Auth e e-mail de ativação disparado com sucesso via signUp';
+          details = 'Novo usuário registrado no Auth e e-mail de ativação disparado com sucesso via signUp';
         } else {
-          // Se o usuário já existia no Auth ou se signUp falhou, dispara resetPasswordForEmail
+          // Se o usuário já existia no Auth (identities vazio no signUp) ou se signUp falhou, dispara resetPasswordForEmail
           const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
             redirectTo: finalRedirectTo,
           });
 
           if (!resetError) {
             inviteSuccess = true;
-            details = 'E-mail de primeiro acesso/recuperação enviado com sucesso via resetPasswordForEmail';
+            details = 'Usuário já existente no Auth: e-mail de acesso enviado com sucesso via resetPasswordForEmail';
           } else {
-            details += ` | signUp: ${signUpError?.message} | reset: ${resetError?.message}`;
+            details += ` | signUp: ${signUpError?.message || 'identities vazias'} | reset: ${resetError?.message}`;
           }
         }
       } catch (clientErr: any) {

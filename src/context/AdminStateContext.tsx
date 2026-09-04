@@ -1656,31 +1656,59 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     name?: string,
     role?: string
   ): Promise<{ success: boolean; message: string }> => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const cleanEmail = email.trim().toLowerCase();
+    const finalRedirectTo = `${origin}/?admin=true&type=recovery`;
+
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const response = await fetch('/api/invite-collaborator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: cleanEmail,
           name,
           role,
           invitedByName: currentUser?.name || 'Administração F5 System',
-          redirectTo: `${origin}/?admin=true&type=recovery`,
+          redirectTo: finalRedirectTo,
         }),
       });
-      const data = await response.json();
-      return {
-        success: data?.success ?? true,
-        message: data?.message || 'Convite enviado com sucesso!',
-      };
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.success) {
+          return {
+            success: true,
+            message: data?.message || 'Convite enviado com sucesso!',
+          };
+        }
+      }
     } catch (err: any) {
-      console.warn('[Auth] Erro ao disparar convite:', err);
-      return {
-        success: false,
-        message: err?.message || 'Erro ao enviar convite.',
-      };
+      console.warn('[Auth] /api/invite-collaborator indisponível ou com erro, acionando fallback direto do Supabase Auth:', err);
     }
+
+    // Fallback Client-side direto caso a API /api/invite-collaborator não responda (ex: dev local) ou retorne falha
+    try {
+      if (isSupabaseConfigured) {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: finalRedirectTo,
+        });
+        if (!resetErr) {
+          return {
+            success: true,
+            message: 'E-mail de primeiro acesso e ativação enviado com sucesso!',
+          };
+        } else {
+          console.warn('[Auth] Erro no fallback resetPasswordForEmail:', resetErr.message);
+        }
+      }
+    } catch (clientErr: any) {
+      console.warn('[Auth] Falha no fallback client-side:', clientErr);
+    }
+
+    return {
+      success: false,
+      message: 'Não foi possível enviar o e-mail automaticamente. Verifique as configurações de SMTP.',
+    };
   };
 
   const addCollaborator = (data: Omit<Collaborator, 'id' | 'createdAt'>): string => {

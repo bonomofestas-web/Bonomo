@@ -82,7 +82,110 @@ function r2DevUploadPlugin() {
   };
 }
 
+function inviteDevPlugin() {
+  return {
+    name: 'invite-dev-middleware',
+    configureServer(server: any) {
+      server.middlewares.use('/api/invite-collaborator', async (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        const env = loadEnv('development', process.cwd(), '');
+        const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+        const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { email, name, role, invitedByName, redirectTo } = JSON.parse(body || '{}');
+            if (!email) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'E-mail obrigatório' }));
+              return;
+            }
+
+            if (!supabaseUrl || !supabaseKey) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Supabase credentials not found in environment' }));
+              return;
+            }
+
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(supabaseUrl, supabaseKey, {
+              auth: { autoRefreshToken: false, persistSession: false }
+            });
+
+            const cleanEmail = email.trim().toLowerCase();
+            const finalRedirectTo = redirectTo || 'http://localhost:5173/?admin=true&type=recovery';
+
+            // Tenta signUp
+            const tempPassword = 'Bonomo_' + Math.random().toString(36).slice(-8) + '!';
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: cleanEmail,
+              password: tempPassword,
+              options: {
+                data: { name, invited_by: invitedByName, role: role || 'sdr' },
+                emailRedirectTo: finalRedirectTo,
+              }
+            });
+
+            const isNewUser = !signUpError && 
+              signUpData?.user && 
+              Array.isArray(signUpData.user.identities) && 
+              signUpData.user.identities.length > 0;
+
+            if (isNewUser) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: true,
+                email: cleanEmail,
+                message: 'E-mail de ativação disparado com sucesso via signUp!',
+              }));
+              return;
+            }
+
+            // Fallback para usuário já existente no Auth
+            const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+              redirectTo: finalRedirectTo,
+            });
+
+            if (!resetError) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: true,
+                email: cleanEmail,
+                message: 'Usuário já existente: e-mail de acesso enviado via resetPasswordForEmail!',
+              }));
+            } else {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: false,
+                email: cleanEmail,
+                message: resetError.message,
+              }));
+            }
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: err.message || 'Erro interno' }));
+          }
+        });
+      });
+    }
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), r2DevUploadPlugin()],
+  plugins: [react(), r2DevUploadPlugin(), inviteDevPlugin()],
 });
