@@ -42,7 +42,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   // First Access Flow State
   const [activationEmail, setActivationEmail] = useState('');
   const [matchedCollab, setMatchedCollab] = useState<any>(null);
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '', '', '']);
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
@@ -280,7 +280,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     updated[index] = digit;
     setOtpDigits(updated);
 
-    if (digit && index < 5) {
+    if (digit && index < otpDigits.length - 1) {
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -293,15 +293,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8);
     if (!pasted) return;
 
-    const updated = [...otpDigits];
-    for (let i = 0; i < 6; i++) {
+    const updated = Array(8).fill('');
+    for (let i = 0; i < Math.min(pasted.length, 8); i++) {
       updated[i] = pasted[i] || '';
     }
     setOtpDigits(updated);
-    const nextIdx = Math.min(pasted.length, 5);
+    const nextIdx = Math.min(pasted.length, 7);
     inputRefs.current[nextIdx]?.focus();
   };
 
@@ -344,8 +344,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
     if (!isLinkVerified) {
       const fullCode = otpDigits.join('');
-      if (fullCode.length !== 6) {
-        setError('Por favor, preencha os 6 dígitos completos do código de acesso.');
+      if (fullCode.length !== 6 && fullCode.length !== 8) {
+        setError('Por favor, preencha o código completo de verificação recebido no seu e-mail (6 ou 8 dígitos).');
         return;
       }
 
@@ -864,14 +864,14 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           )}
 
           <form onSubmit={handleInitiateAccess} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* 6 OTP boxes (apenas exibidas se não veio pré-validado por link) */}
+            {/* OTP boxes (6 ou 8 dígitos, apenas se não veio pré-validado por link) */}
             {!isDirectRecoverySession && !isTokenFromUrl && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
-                  Digite o Código de 6 Dígitos *
+                  Digite o Código de Verificação (6 ou 8 Dígitos) *
                 </label>
 
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
                   {otpDigits.map((digit, index) => (
                     <input
                       key={index}
@@ -884,15 +884,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                       onKeyDown={(e) => handleKeyDown(index, e)}
                       onPaste={handlePaste}
                       style={{
-                        width: '44px',
-                        height: '48px',
+                        width: '36px',
+                        height: '44px',
                         textAlign: 'center',
-                        fontSize: '1.25rem',
+                        fontSize: '1.2rem',
                         fontWeight: 800,
                         color: '#14A9D7',
                         background: '#080C14',
                         border: digit ? '1.5px solid #14A9D7' : '1px solid rgba(255, 255, 255, 0.15)',
-                        borderRadius: '10px',
+                        borderRadius: '8px',
                         outline: 'none',
                         boxSizing: 'border-box',
                         transition: 'all 0.15s ease',
@@ -1039,7 +1039,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             {/* Initiate Access Button */}
             <button
               type="submit"
-              disabled={loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword}
+              disabled={loading || (!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword}
               style={{
                 background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
                 color: '#080C14',
@@ -1048,8 +1048,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 padding: '13px',
                 fontSize: '0.88rem',
                 fontWeight: 800,
-                cursor: (loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
-                opacity: ((!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
+                cursor: (loading || (!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                opacity: ((!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

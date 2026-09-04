@@ -30,9 +30,9 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
   const [email, setEmail] = useState('');
   const [targetUser, setTargetUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
   
-  // 6-digit OTP code state
+  // OTP code state (suporta 6 e 8 dígitos)
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '', '', '']);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
@@ -181,14 +181,14 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
     }
   };
 
-  // ── STEP 2: HANDLE 6-DIGIT OTP INPUT ───────────────────────────────────────
+  // ── STEP 2: HANDLE OTP INPUT (6 ou 8 DÍGITOS) ─────────────────────────────
   const handleDigitChange = (index: number, val: string) => {
     const digit = val.replace(/\D/g, '').slice(-1);
     const updated = [...otpDigits];
     updated[index] = digit;
     setOtpDigits(updated);
 
-    if (digit && index < 5) {
+    if (digit && index < otpDigits.length - 1) {
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -201,15 +201,15 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8);
     if (!pasted) return;
 
-    const updated = [...otpDigits];
-    for (let i = 0; i < 6; i++) {
+    const updated = Array(8).fill('');
+    for (let i = 0; i < Math.min(pasted.length, 8); i++) {
       updated[i] = pasted[i] || '';
     }
     setOtpDigits(updated);
-    const nextIdx = Math.min(pasted.length, 5);
+    const nextIdx = Math.min(pasted.length, 7);
     inputRefs.current[nextIdx]?.focus();
   };
 
@@ -218,8 +218,8 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
     setErrorMessage('');
     const fullCode = otpDigits.join('');
 
-    if (fullCode.length !== 6) {
-      setErrorMessage('Digite os 6 dígitos completos do código enviado.');
+    if (fullCode.length !== 6 && fullCode.length !== 8) {
+      setErrorMessage('Digite o código completo de verificação recebido por e-mail (6 ou 8 dígitos).');
       return;
     }
 
@@ -557,13 +557,14 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
         {/* ── STEP 2: 6-DIGIT OTP INPUT ───────────────────────────────────── */}
         {step === 'code' && (
           <form onSubmit={handleValidateCode} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* 6 Digit Input Boxes */}
+            {/* Digit Input Boxes (6 ou 8 dígitos) */}
             <div>
               <div style={{
                 display: 'flex',
-                justifyContent: 'space-between',
-                gap: '8px',
+                justifyContent: 'center',
+                gap: '6px',
                 marginBottom: '14px',
+                flexWrap: 'wrap',
               }}>
                 {otpDigits.map((digit, index) => (
                   <input
@@ -577,15 +578,15 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     style={{
-                      width: '50px',
-                      height: '56px',
+                      width: '40px',
+                      height: '48px',
                       textAlign: 'center',
-                      fontSize: '1.4rem',
+                      fontSize: '1.25rem',
                       fontWeight: 800,
                       color: '#14A9D7',
                       background: '#080C14',
                       border: digit ? '1.5px solid #14A9D7' : '1px solid rgba(255, 255, 255, 0.15)',
-                      borderRadius: '12px',
+                      borderRadius: '10px',
                       outline: 'none',
                       boxSizing: 'border-box',
                       transition: 'all 0.15s ease',
