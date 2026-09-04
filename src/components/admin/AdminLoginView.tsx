@@ -108,7 +108,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         throw new Error('E-mail ou senha incorretos.');
       }
 
-      if (onSuccessLogin) onSuccessLogin();
+      if (onSuccessLogin) {
+        onSuccessLogin();
+      } else {
+        window.location.href = window.location.origin + '/?admin=true';
+      }
     } catch (err: any) {
       setError(err?.message || 'Credenciais inválidas. Verifique seu e-mail e senha.');
     } finally {
@@ -285,7 +289,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         throw new Error('Falha ao autenticar com as novas credenciais. Tente novamente.');
       }
 
-      if (onSuccessLogin) onSuccessLogin();
+      if (onSuccessLogin) {
+        onSuccessLogin();
+      } else {
+        window.location.href = window.location.origin + '/?admin=true';
+      }
     } catch (err: any) {
       setError(err?.message || 'Erro ao iniciar acesso. Tente novamente.');
     } finally {

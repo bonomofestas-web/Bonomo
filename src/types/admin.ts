@@ -536,6 +536,7 @@ export interface SupportTicket {
   module: SupportTicketModule;
   description: string;
   imageUrl?: string;
+  screenshotUrl?: string;
   videoUrl?: string;
   status: SupportTicketStatus;
   createdAt: string;

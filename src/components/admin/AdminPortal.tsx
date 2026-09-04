@@ -28,7 +28,7 @@ import { AdminDevSupportView } from './AdminDevSupportView';
 import { AdminAnnouncementModal } from './AdminAnnouncementModal';
 import { AdminSupportModal } from './AdminSupportModal';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
-import { Menu, X, Building2, Headphones } from 'lucide-react';
+import { Menu, X, Building2, Headset } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
 
 interface AdminPortalProps {
@@ -44,14 +44,6 @@ const ROLE_LABELS: Record<string, string> = {
   closer: 'Closer',
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  dev: '#14A9D7',
-  master: '#14A9D7',
-  admin: '#3B82F6',
-  crm: '#10B981',
-  sdr: '#8B5CF6',
-  closer: '#F97316',
-};
 
 import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 
@@ -131,8 +123,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return <AdminLoginView />;
   }
 
-  const userRole = currentUser.role;
-  const roleColor = ROLE_COLORS[userRole] || '#D4AF37';
+
 
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
@@ -200,6 +191,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       venues: 'venues',
     };
 
+    // Dynamic First Available Tab calculation (Audio 1)
+    const getFirstAvailableTab = (): AdminTabType => {
+      if (currentUser?.role === 'dev') return 'home';
+
+      const menuTabsInOrder: AdminTabType[] = [
+        'home',
+        'dashboard',
+        'crm',
+        'whatsapp',
+        'debutantes',
+        'venue-goals',
+        'sources',
+        'mql',
+        'master-dashboard',
+        'collaborators',
+        'venues',
+      ];
+
+      for (const tab of menuTabsInOrder) {
+        if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues') {
+          if (currentUser?.role !== 'master') continue;
+        }
+        if (tab === 'debutantes' || tab === 'venue-goals' || tab === 'sources' || tab === 'mql') {
+          if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') continue;
+        }
+
+        const flag = TAB_FEATURE_FLAG[tab];
+        if (flag) {
+          const st = getFeatureStatus(flag);
+          if (st === 'active') return tab;
+        } else {
+          return tab;
+        }
+      }
+      return 'crm';
+    };
+
     // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade (exceto Dev ou Configurações)
     const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');
     if (venues.length === 0 && !isDevSession && activeTab !== 'settings') {
@@ -238,20 +266,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (flagId && currentUser?.role !== 'dev') {
       const status = getFeatureStatus(flagId);
       if (status === 'coming_soon') {
+        const fallback = getFirstAvailableTab();
         return (
           <ComingSoonOverlay 
             featureTitle={activeTab.toUpperCase()} 
             description={featureDescriptions[flagId]}
-            onBack={() => setActiveTab('home')} 
+            onBack={() => {
+              setActiveTab(fallback);
+              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+            }} 
           />
         );
       }
       if (status === 'disabled') {
-        if (activeTab !== 'home') {
-          setActiveTab('home');
-          try { localStorage.setItem('bonomo_admin_active_tab', 'home'); } catch {}
+        const fallback = getFirstAvailableTab();
+        if (activeTab !== fallback) {
+          setTimeout(() => {
+            setActiveTab(fallback);
+            try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+          }, 0);
         }
-        return <AdminHomeView onOpenLead={handleOpenLeadFromTask} onNavigateTab={(tab) => handleSelectTab(tab)} />;
+        return null;
       }
     }
 
@@ -830,7 +865,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 }
               }}
             >
-              <Headphones size={16} />
+              <Headset size={17} />
             </button>
 
             {/* 1. Notification Bell & Dropdown */}
@@ -999,61 +1034,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 2. User Profile Pill (Clicks to open settings) */}
-            <div
-              onClick={() => setActiveTab('settings')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '4px 12px 4px 4px',
-                borderRadius: '24px',
-                cursor: 'pointer',
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                transition: 'all 0.15s ease',
-              }}
-              title="Acessar Configurações e Perfil"
-            >
-              {currentUser?.avatarUrl ? (
-                <img
-                  src={currentUser.avatarUrl}
-                  alt={currentUser.name}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'var(--adm-accent-bg)',
-                    color: 'var(--adm-accent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                  }}
-                >
-                  {currentUser?.name?.charAt(0) || 'U'}
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', lineHeight: 1.1 }}>
-                  {currentUser?.name || 'Gestor'}
-                </span>
-                <span style={{ fontSize: '0.66rem', color: roleColor, fontWeight: 700, textTransform: 'uppercase' }}>
-                  {ROLE_LABELS[userRole]}
-                </span>
-              </div>
             </div>
           </div>
         </header>

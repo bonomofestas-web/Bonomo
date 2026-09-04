@@ -1263,6 +1263,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         supabase.auth.signOut().catch(() => {});
       }
     } catch {}
+    window.location.href = window.location.origin + '/?admin=true';
   };
 
   const switchUserRoleDemo = (role: AdminRole) => {

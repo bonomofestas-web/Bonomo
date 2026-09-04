@@ -6,7 +6,8 @@ import {
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
-  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders, Headphones
+  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders, Headset,
+  Eye, RotateCcw
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -73,6 +74,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     hasUnconfiguredSources,
     unconfiguredSourcesCount,
     getFeatureStatus,
+    collaborators,
+    impersonatingMaster,
+    startImpersonation,
+    stopImpersonation,
   } = useAdminState();
 
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
@@ -111,7 +116,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={17} />, roles: ['dev'] },
     { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={17} />, roles: ['dev'] },
     { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={17} />, roles: ['dev'] },
-    { id: 'dev-support', label: 'Suporte', icon: <Headphones size={17} />, roles: ['dev'] },
+    { id: 'dev-support', label: 'Suporte', icon: <Headset size={17} />, roles: ['dev'] },
   ];
 
   // Grouped Navigation Items with updated concise labels
@@ -140,6 +145,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     if (!currentUser?.venueIds || currentUser.venueIds.length === 0) return venues;
     return venues.filter(v => currentUser.venueIds?.includes(v.id));
   }, [venues, currentUser, userRole]);
+
+  // Colaboradores subordinados disponíveis para o Master ou Dev impersonar
+  const impersonatableCollaborators = useMemo(() => {
+    return (collaborators || []).filter(c => {
+      if (c.id === currentUser?.id) return false;
+      if (c.role === 'master' || c.role === 'dev') return false;
+      return true;
+    });
+  }, [collaborators, currentUser]);
 
   const visibleFunnels = useMemo(() => {
     return funnels.filter(funnel => {
@@ -579,6 +593,58 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         )}
       </div>
 
+      {/* Impersonation Alert Banner */}
+      {impersonatingMaster && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(245, 158, 11, 0.08) 100%)',
+          border: '1px solid #F59E0B',
+          borderRadius: '12px',
+          padding: isCollapsed ? '8px 4px' : '10px 12px',
+          marginBottom: '12px',
+          display: 'flex',
+          flexDirection: isCollapsed ? 'column' : 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          boxShadow: '0 0 16px rgba(245, 158, 11, 0.2)',
+        }}>
+          {!isCollapsed && (
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Eye size={12} />
+                <span>Modo de Visualização</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {currentUser?.name} ({ROLE_LABELS[userRole] || userRole})
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={stopImpersonation}
+            title="Sair do Modo de Visualização e voltar ao Master"
+            style={{
+              background: '#F59E0B',
+              color: '#000000',
+              border: 'none',
+              borderRadius: '8px',
+              padding: isCollapsed ? '6px' : '6px 10px',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              flexShrink: 0,
+            }}
+          >
+            <RotateCcw size={12} />
+            {!isCollapsed && <span>Sair</span>}
+          </button>
+        </div>
+      )}
+
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
       {!currentUser?.isFirstAccess && (userRole === 'master' || allowedVenues.length > 1) && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '14px' }}>
@@ -930,6 +996,66 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {masterItems.map(item => renderNavButton(item))}
+
+              {/* Modo de Visualização do Colaborador (visível apenas se houver colaboradores cadastrados) */}
+              {!isCollapsed && impersonatableCollaborators.length > 0 && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '8px 10px',
+                  background: 'rgba(20, 169, 215, 0.08)',
+                  border: '1px solid rgba(20, 169, 215, 0.25)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    color: '#14A9D7',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                  }}>
+                    <Eye size={12} />
+                    <span>Modo de Visualização</span>
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      if (!selectedId) return;
+                      const targetCollab = collaborators.find(c => c.id === selectedId);
+                      if (targetCollab) {
+                        startImpersonation(targetCollab);
+                      }
+                    }}
+                    style={{
+                      background: '#0D1522',
+                      border: '1px solid rgba(20, 169, 215, 0.35)',
+                      borderRadius: '8px',
+                      padding: '6px 8px',
+                      color: '#FFFFFF',
+                      fontSize: '0.72rem',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      width: '100%',
+                    }}
+                  >
+                    <option value="" disabled style={{ background: '#0D1522' }}>
+                      Visualizar como colaborador...
+                    </option>
+                    {impersonatableCollaborators.map(c => (
+                      <option key={c.id} value={c.id} style={{ background: '#0D1522' }}>
+                        {c.name} ({ROLE_LABELS[c.role] || c.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
         )}
