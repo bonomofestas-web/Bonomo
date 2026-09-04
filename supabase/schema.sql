@@ -389,10 +389,11 @@ BEGIN
         now(),
         now()
     )
-    ON CONFLICT (id) DO UPDATE SET
-        email = EXCLUDED.email,
-        name = COALESCE(EXCLUDED.name, public.collaborators.name),
+    ON CONFLICT (email) DO UPDATE SET
+        name = COALESCE(public.collaborators.name, EXCLUDED.name),
         updated_at = now();
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

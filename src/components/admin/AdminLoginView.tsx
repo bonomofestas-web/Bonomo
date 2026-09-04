@@ -237,15 +237,24 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
         // Dispara envio de e-mail pelo Supabase Auth
         try {
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          fetch('/api/invite-collaborator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: cleanEmail,
+              name: found.name,
+              role: found.role,
+              invitedByName: 'Administração Bonomo Festas',
+              redirectTo: `${origin}/?admin=true&type=recovery`,
+            })
+          }).catch(err => console.warn('Erro ao chamar /api/invite-collaborator:', err));
+
           const { error: mailErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
             redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
           });
           if (mailErr) {
             console.warn('[Supabase Auth resetPasswordForEmail]', mailErr.message);
-            await supabase.auth.signInWithOtp({
-              email: cleanEmail,
-              options: { shouldCreateUser: false }
-            }).catch(() => {});
           }
         } catch (supabaseMailErr) {
           console.warn('[Supabase Auth] resetPasswordForEmail erro ou limite de quota:', supabaseMailErr);

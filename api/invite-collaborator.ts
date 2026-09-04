@@ -70,9 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Se admin.inviteUserByEmail falhou (ex: sem service role key), tenta signUp ou resetPasswordForEmail
     if (!inviteSuccess) {
       try {
-        // Tenta registrar o usuário com senha temporária
-        const tempPassword = `F5#${Math.random().toString(36).slice(-8)}A1!`;
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: cleanEmail,
           password: tempPassword,
           options: {
@@ -85,16 +83,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         });
 
-        // Dispara o e-mail de redefinição/primeiro acesso oficial
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-          redirectTo: finalRedirectTo,
-        });
-
-        if (!resetError) {
+        if (!signUpError && signUpData?.user) {
           inviteSuccess = true;
-          details = 'Usuário registrado no Auth e link de primeiro acesso enviado via resetPasswordForEmail';
+          details = 'Usuário registrado no Auth e e-mail de ativação disparado com sucesso via signUp';
         } else {
-          details += ` | resetPasswordForEmail: ${resetError.message}`;
+          // Se o usuário já existia no Auth ou se signUp falhou, dispara resetPasswordForEmail
+          const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+            redirectTo: finalRedirectTo,
+          });
+
+          if (!resetError) {
+            inviteSuccess = true;
+            details = 'E-mail de primeiro acesso/recuperação enviado com sucesso via resetPasswordForEmail';
+          } else {
+            details += ` | signUp: ${signUpError?.message} | reset: ${resetError?.message}`;
+          }
         }
       } catch (clientErr: any) {
         details += ` | Falha fallback: ${clientErr?.message || clientErr}`;

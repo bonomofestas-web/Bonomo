@@ -144,16 +144,25 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
           });
 
           // Dispara o e-mail real do Supabase
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          fetch('/api/invite-collaborator', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: cleanEmail,
+              name: matchedUser.name,
+              role: matchedUser.role,
+              invitedByName: 'Administração Bonomo Festas',
+              redirectTo: `${origin}/?admin=true&type=recovery`,
+            })
+          }).catch(err => console.warn('Erro ao chamar /api/invite-collaborator:', err));
+
           const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
+            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}&mode=reset`
           });
 
           if (resetErr) {
             console.warn('[Supabase Auth resetPasswordForEmail]', resetErr.message);
-            await supabase.auth.signInWithOtp({
-              email: cleanEmail,
-              options: { shouldCreateUser: false }
-            }).catch(() => {});
           }
         } catch (supabaseErr) {
           console.warn('Registro de OTP no Supabase:', supabaseErr);
