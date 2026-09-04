@@ -1188,36 +1188,38 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
     window.addEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
 
-    // Heartbeat Polling inteligente a cada 4 segundos para multi-dispositivos e suporte em tempo real
-    const adminPollingInterval = setInterval(async () => {
+    // Sincronização sob demanda ao retornar à aba (o Realtime WebSocket cuida das alterações em tempo real)
+    const handleWindowFocus = () => {
       if (document.visibilityState === 'visible' && isMounted) {
-        const [updatedLeads, updatedDebs, updatedTickets] = await Promise.all([
+        Promise.all([
           leadService.getAll(),
           debutanteService.getAll(),
           supportService.getAll(),
-        ]);
-        if (isMounted) {
-          if (updatedLeads.length > 0) setLeads(updatedLeads);
-          if (updatedDebs.length > 0) setDebutantes(updatedDebs);
-          if (updatedTickets && updatedTickets.length > 0) {
-            setSupportTickets(prev => {
-              const prevStr = JSON.stringify(prev.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
-              const nextStr = JSON.stringify(updatedTickets.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
-              if (prevStr !== nextStr) {
-                safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updatedTickets));
-                return updatedTickets;
-              }
-              return prev;
-            });
+        ]).then(([updatedLeads, updatedDebs, updatedTickets]) => {
+          if (isMounted) {
+            if (updatedLeads.length > 0) setLeads(updatedLeads);
+            if (updatedDebs.length > 0) setDebutantes(updatedDebs);
+            if (updatedTickets && updatedTickets.length > 0) {
+              setSupportTickets(prev => {
+                const prevStr = JSON.stringify(prev.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
+                const nextStr = JSON.stringify(updatedTickets.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
+                if (prevStr !== nextStr) {
+                  safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updatedTickets));
+                  return updatedTickets;
+                }
+                return prev;
+              });
+            }
           }
-        }
+        }).catch(() => {});
       }
-    }, 4000);
+    };
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       isMounted = false;
       clearTimeout(debounceTimer);
-      clearInterval(adminPollingInterval);
+      window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
       supabase.removeChannel(realtimeChannel);
       authListener?.subscription?.unsubscribe();

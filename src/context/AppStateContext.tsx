@@ -489,17 +489,18 @@ export const AppStateProvider: React.FC<{
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, refreshActiveDeb)
       .subscribe();
 
-    // Polling inteligente em background a cada 6 segundos para garantir 100% de sincronia
-    const pollingInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+    // Sincronização inteligente ao focar na aba (o Realtime WebSocket já cuida das mudanças em tempo real)
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
         refreshActiveDeb();
       }
-    }, 6000);
+    };
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       isMounted = false;
       clearTimeout(debounceTimer);
-      clearInterval(pollingInterval);
+      window.removeEventListener('focus', handleFocus);
       supabase.removeChannel(debChannel);
     };
   }, [debutante.id, debutante.slug]);
