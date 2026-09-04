@@ -1663,7 +1663,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           email,
           name,
           role,
-          invitedByName: currentUser?.name || 'Administração Bonomo Festas',
+          invitedByName: currentUser?.name || 'Administração F5 System',
           redirectTo: `${origin}/?admin=true&type=recovery`,
         }),
       });

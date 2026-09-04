@@ -286,7 +286,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               email: cleanEmail,
               name: found.name,
               role: found.role,
-              invitedByName: 'Administração Bonomo Festas',
+              invitedByName: 'Administração F5 System',
               redirectTo: `${origin}/?admin=true&type=recovery`,
             })
           }).catch(err => console.warn('Erro ao chamar /api/invite-collaborator:', err));

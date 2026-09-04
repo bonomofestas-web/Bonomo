@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = (name && typeof name === 'string') ? name.trim() : cleanEmail.split('@')[0];
-    const inviter = (invitedByName && typeof invitedByName === 'string') ? invitedByName.trim() : 'Diretoria / Master';
+    const inviter = (invitedByName && typeof invitedByName === 'string') ? invitedByName.trim() : 'Administração F5 System';
 
     // Determina URL de redirecionamento para o nosso app
     const origin = req.headers.origin || req.headers.referer || 'https://bonomo-festas.vercel.app';
