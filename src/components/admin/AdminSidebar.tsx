@@ -815,8 +815,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         </div>
       )}
 
-      {/* Se não há casas de festa registradas para esta conta, foca exclusivamente no registro da 1ª casa */}
-      {venues.length === 0 ? (
+      {/* Se não há casas de festa registradas para esta conta Master/Dev, foca exclusivamente no registro da 1ª casa */}
+      {(venues.length === 0 && (userRole === 'master' || userRole === 'dev')) ? (
         <div style={{
           flex: 1,
           display: 'flex',

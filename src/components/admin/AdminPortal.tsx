@@ -281,11 +281,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return <AdminLoginView />;
   }
 
+  // Se o colaborador tem primeiro acesso pendente, exibe a tela de onboarding de perfil em tela cheia obrigatória
+  if (currentUser?.isFirstAccess) {
+    return <AdminFirstAccessProfileView />;
+  }
+
   const renderContent = () => {
-    // If collaborator has first access pending, render the profile completion onboarding workspace
-    if (currentUser?.isFirstAccess) {
-      return <AdminFirstAccessProfileView />;
-    }
 
     // Se não há casas de festa cadastradas, a tela mandatória para Master é registrar a 1ª unidade (exceto Dev ou Configurações)
     const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');

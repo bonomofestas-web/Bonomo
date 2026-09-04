@@ -462,11 +462,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         }
       }
 
-      // 2. Atualiza colaborador no banco de dados e localmente: conta ATIVADA e primeiro acesso finalizado
+      // 2. Atualiza colaborador no banco de dados e localmente:
+      // Se for primeiro acesso (!isResetMode ou isFirstAccess true), MANTÉM isFirstAccess: true
+      // para que a tela obrigatória de onboarding de perfil (foto e whatsapp) seja exibida após o login!
+      const shouldKeepFirstAccess = !isResetMode && (target ? (target.isFirstAccess ?? true) : true);
+
       if (target) {
         updateCollaborator(target.id, {
           password: newPassword,
-          isFirstAccess: false,
+          isFirstAccess: shouldKeepFirstAccess,
           lastLoginAt: nowIso,
           activatedAt: nowIso,
         });
@@ -477,7 +481,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           .from('collaborators')
           .update({
             password: newPassword,
-            is_first_access: false,
+            is_first_access: shouldKeepFirstAccess,
             last_login_at: nowIso,
             activated_at: nowIso,
           })
@@ -489,8 +493,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         window.history.replaceState(null, '', window.location.pathname + '?admin=true');
       } catch {}
 
-      // 3. Log in with new credentials!
-      const loginSuccess = await login(cleanEmail, newPassword);
+      // 3. Log in with new credentials preservando isFirstAccess!
+      const loginSuccess = await login(cleanEmail, newPassword, { isFirstAccess: shouldKeepFirstAccess });
 
       if (!loginSuccess) {
         throw new Error('Falha ao autenticar com as novas credenciais. Tente novamente.');

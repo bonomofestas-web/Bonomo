@@ -1284,6 +1284,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             avatarUrl: dbRow.avatar_url,
             phone: dbRow.phone,
             active: dbRow.active ?? true,
+            isFirstAccess: dbRow.is_first_access ?? false,
             password: dbRow.password,
             masterId: dbRow.master_id || undefined,
             theme: dbRow.theme || 'light',
@@ -1332,6 +1333,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // 4. Criação do AdminUser estritamente com o role cadastrado no banco
     const nowIso = new Date().toISOString();
+    const isFirst = optUser?.isFirstAccess !== undefined 
+      ? Boolean(optUser.isFirstAccess) 
+      : Boolean(foundCollab.isFirstAccess);
+
     const user: AdminUser = {
       id: optUser?.id || foundCollab.id,
       name: optUser?.name || foundCollab.name,
@@ -1340,19 +1345,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
       phone: foundCollab.phone,
       venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
-      isFirstAccess: false,
+      isFirstAccess: isFirst,
       lastLoginAt: nowIso,
       masterId: foundCollab.masterId,
     };
 
     // Atualiza estado local de colaboradores para refletir imediatamente o último acesso
-    setCollaborators(prev => prev.map(c => c.id === foundCollab!.id ? { ...c, lastLoginAt: nowIso, isFirstAccess: false } : c));
+    setCollaborators(prev => prev.map(c => c.id === foundCollab!.id ? { ...c, lastLoginAt: nowIso, isFirstAccess: isFirst } : c));
 
     // Persiste no banco Supabase
     if (isSupabaseConfigured) {
       void supabase.from('collaborators').update({
         last_login_at: nowIso,
-        is_first_access: false,
+        is_first_access: isFirst,
       }).eq('id', foundCollab.id);
     }
 
@@ -1554,9 +1559,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return venues.filter(v => v.masterId === currentUser.id || (!v.masterId && !v.id.includes('dev')));
     }
     // Colaborador subordinado vê as casas do seu master atribuídas a ele
-    const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
+    const masterVenues = venues.filter(v => 
+      (scopedMasterId && v.masterId === scopedMasterId) || 
+      (!v.masterId && !v.id.includes('dev'))
+    );
     if (!currentUser.venueIds || currentUser.venueIds.length === 0) return masterVenues;
-    return masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
+    const assigned = masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
+    return assigned.length > 0 ? assigned : masterVenues;
   }, [venues, scopedMasterId, currentUser]);
 
   // Colaboradores da Equipe do Tenant Ativo
