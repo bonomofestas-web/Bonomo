@@ -237,7 +237,7 @@ export interface AdminContextType {
     journeyTemplateId?: string;
   }) => DebutanteAccount;
   updateDebutanteAccount: (id: string, data: Partial<DebutanteAccount>) => void;
-  deleteDebutanteAccount: (id: string) => void;
+  deleteDebutanteAccount: (id: string) => Promise<void> | void;
   setDebutanteStatus: (id: string, status: 'active' | 'inactive') => void;
   toggleDebutanteStatus: (id: string) => void;
   updateDebutanteModuleToggle: (id: string, hasJourneyEnabled: boolean) => void;
@@ -273,6 +273,31 @@ export interface AdminContextType {
     name?: string;
     firstMessage?: string;
     sourceId?: string;
+  }) => Promise<string>;
+  createLead: (data: {
+    name: string;
+    phone: string;
+    email?: string;
+    venueId: string;
+    funnelId: string;
+    stage?: CrmStage;
+    source?: import('../types/admin').LeadSource;
+    sourceId?: string;
+    sourceName?: string;
+    subSource?: string;
+    eventType?: import('../types/admin').LeadEventType;
+    eventDate?: string;
+    estimatedGuests?: number;
+    estimatedBudget?: number;
+    temperature?: import('../types/admin').LeadTemperature;
+    sdrId?: string;
+    sdrName?: string;
+    closerId?: string;
+    closerName?: string;
+    notes?: string;
+    debutanteBirthDate?: string;
+    customFieldValues?: Record<string, any>;
+    tags?: string[];
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
@@ -835,27 +860,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           // Ensure each venue has a default referral source
           sourceService.ensureDefaultReferralSources(dbVenues, dbFunnels);
 
-          // Merge local debutantes with remote database to prevent any data loss
-          const localDebsRaw = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
-          const localDebs: DebutanteAccount[] = localDebsRaw ? JSON.parse(localDebsRaw) : [];
-          
-          for (const lDeb of localDebs) {
-            if (!dbDebutantes.some(d => d.id === lDeb.id || d.slug === lDeb.slug)) {
-              debutanteService.upsert(lDeb);
-            }
+          // Database is Single Source of Truth — do NOT resurrect deleted records
+          if (dbDebutantes.length >= 0) {
+            setDebutantes(dbDebutantes);
+            safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(dbDebutantes));
           }
 
-          const combinedDebs = [...dbDebutantes];
-          for (const lDeb of localDebs) {
-            if (!combinedDebs.some(d => d.id === lDeb.id || d.slug === lDeb.slug)) {
-              combinedDebs.push(lDeb);
-            }
+          if (Array.isArray(dbTasks)) {
+            setTasks(dbTasks);
+            safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(dbTasks));
           }
-          if (combinedDebs.length > 0) setDebutantes(combinedDebs);
-
-          if (dbTasks.length > 0) setTasks(dbTasks);
-          if (dbCollabs.length > 0) {
+          if (Array.isArray(dbCollabs)) {
             setCollaborators(dbCollabs);
+            safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(dbCollabs));
             const activeEmail = currentUser?.email;
             if (activeEmail) {
               const matched = dbCollabs.find(c => c.email.toLowerCase() === activeEmail.toLowerCase());
@@ -2166,7 +2183,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     await updateSource(id, { status: active ? 'active' : 'inactive' });
   };
 
-  const deleteDebutanteAccount = (idOrSlug: string) => {
+  const deleteDebutanteAccount = async (idOrSlug: string): Promise<void> => {
     // Somente gerentes da casa (admin), diretoria master e desenvolvedor têm permissão para excluir aniversariantes
     const canDelete = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
     if (!canDelete) {
@@ -2199,7 +2216,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    debutanteService.delete(idOrSlug);
+    await debutanteService.delete(idOrSlug);
   };
 
   const setDebutanteStatus = (idOrSlug: string, status: 'active' | 'inactive') => {
@@ -2698,6 +2715,122 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return newLeadId;
   };
 
+  const createLead = async (data: {
+    name: string;
+    phone: string;
+    email?: string;
+    venueId: string;
+    funnelId: string;
+    stage?: CrmStage;
+    source?: import('../types/admin').LeadSource;
+    sourceId?: string;
+    sourceName?: string;
+    subSource?: string;
+    eventType?: import('../types/admin').LeadEventType;
+    eventDate?: string;
+    estimatedGuests?: number;
+    estimatedBudget?: number;
+    temperature?: import('../types/admin').LeadTemperature;
+    sdrId?: string;
+    sdrName?: string;
+    closerId?: string;
+    closerName?: string;
+    notes?: string;
+    debutanteBirthDate?: string;
+    customFieldValues?: Record<string, any>;
+    tags?: string[];
+  }): Promise<string> => {
+    const newLeadId = generateUuid();
+    const leadCode = generateLeadCode();
+    const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
+
+    let sdrName = data.sdrName;
+    if (data.sdrId && !sdrName) {
+      const found = collaborators.find(c => c.id === data.sdrId);
+      if (found) sdrName = found.name;
+    }
+
+    let closerName = data.closerName;
+    if (data.closerId && !closerName) {
+      const found = collaborators.find(c => c.id === data.closerId);
+      if (found) closerName = found.name;
+    }
+
+    const initialActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId: newLeadId,
+      timestamp: new Date().toISOString(),
+      type: 'creation',
+      title: 'Lead cadastrado manualmente',
+      text: data.notes ? `Observações: "${data.notes}"` : `Lead cadastrado via Funil CRM por ${currentUser?.name || 'Administrador'}.`,
+      authorName: currentUser?.name || 'Administrador',
+      authorId: currentUser?.id,
+    };
+
+    const newLead: Lead = {
+      id: newLeadId,
+      masterId: scopedMasterId || currentUser?.id,
+      code: leadCode,
+      debutanteId: '',
+      debutanteName: '',
+      debutanteSlug: '',
+      venueId: data.venueId,
+      funnelId: data.funnelId,
+      sourceId: data.sourceId,
+      source: data.source || 'outro',
+      sourceName: data.sourceName || (data.source ? String(data.source) : 'Cadastro Manual'),
+      subSource: data.subSource,
+      name: cleanName,
+      phone: data.phone.trim(),
+      email: data.email?.trim() || undefined,
+      eventType: data.eventType || '15 Anos',
+      eventDate: data.eventDate,
+      estimatedGuests: data.estimatedGuests ? Number(data.estimatedGuests) : undefined,
+      estimatedBudget: data.estimatedBudget ? Number(data.estimatedBudget) : undefined,
+      temperature: data.temperature || 'warm',
+      sdrId: data.sdrId,
+      sdrName,
+      closerId: data.closerId,
+      closerName,
+      assignedTo: sdrName || closerName || currentUser?.name,
+      notes: data.notes?.trim() || undefined,
+      debutanteBirthDate: data.debutanteBirthDate,
+      stage: data.stage || 'new_lead',
+      isValidated: false,
+      pointsGranted: 0,
+      participants: [],
+      tasks: [],
+      activities: [initialActivity],
+      customFieldValues: data.customFieldValues || {},
+      tags: data.tags || [],
+      age: 15,
+      group: 'Geral',
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+
+    setLeads(prev => {
+      const next = [newLead, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    if (isSupabaseConfigured) {
+      await leadService.upsert(newLead);
+      await leadService.addActivity(newLeadId, initialActivity);
+      if (data.sourceId) {
+        sourceService.recordEvent(data.sourceId, data.venueId, 'lead_created', newLeadId, {
+          sourceName: data.sourceName,
+          subSource: data.subSource,
+          funnelId: data.funnelId,
+          phone: data.phone,
+        }).catch(err => console.warn('Erro ao registrar evento de fonte:', err));
+      }
+    }
+
+    return newLeadId;
+  };
+
   const shareJourneyTemplateToVenue = (templateId: string, targetVenueId: string) => {
     const found = templates.find(t => t.id === templateId);
     if (!found) return;
@@ -2792,8 +2925,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteLead = (leadId: string) => {
-    setLeads(prev => prev.filter(l => l.id !== leadId));
-    setTasks(prev => prev.filter(t => t.leadId !== leadId));
+    setLeads(prev => {
+      const updated = prev.filter(l => l.id !== leadId);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+    setTasks(prev => {
+      const updated = prev.filter(t => t.leadId !== leadId);
+      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      return updated;
+    });
 
     if (isSupabaseConfigured) {
       leadService.delete(leadId).catch(err => console.error('❌ Erro ao deletar lead no Supabase:', err));
@@ -3837,6 +3978,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       invalidateLead,
       createLeadFromReferral,
       createLeadFromWhatsApp,
+      createLead,
       rejectLead,
       deleteLead,
       closeLeadSale,

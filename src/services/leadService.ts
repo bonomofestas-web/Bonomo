@@ -265,9 +265,14 @@ export const leadService = {
   async delete(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      // 1. Limpar tarefas e compromissos vinculados a este lead preventivamente
+      await supabase.from('admin_tasks').delete().eq('lead_id', id);
+      await supabase.from('appointments').delete().eq('lead_id', id);
+
+      // 2. Deletar o lead
       const { error } = await supabase.from('leads').delete().eq('id', id);
       if (error) {
-        console.error('❌ Erro ao deletar lead:', error);
+        console.error('❌ Erro ao deletar lead no Supabase:', error);
         return false;
       }
       return true;

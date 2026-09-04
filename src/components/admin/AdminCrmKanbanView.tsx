@@ -8,8 +8,10 @@ import {
   Settings, Shield, Lock, Trash2, Pin,
   Flame, Zap, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
-  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera
+  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera,
+  UserPlus
 } from 'lucide-react';
+import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
@@ -320,6 +322,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Close Deal modal state
   const [dealModalLead, setDealModalLead] = useState<Lead | null>(null);
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
+
+  // New Lead modal state
+  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
 
   // Check if current user is manager (Master or Admin)
   const canConfigureFunnels = currentUser?.role === 'master' || currentUser?.role === 'admin';
@@ -2332,6 +2337,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             )}
           </div>
 
+          {/* Botão + Adicionar Lead */}
+          <button
+            type="button"
+            onClick={() => setIsNewLeadModalOpen(true)}
+            style={{
+              background: 'linear-gradient(135deg, var(--adm-accent, #6366f1), #4f46e5)',
+              color: '#fff',
+              borderRadius: '8px',
+              border: 'none',
+              padding: '6px 13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.35)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <UserPlus size={14} />
+            <span>Adicionar Lead</span>
+          </button>
+
           {/* Seletor de Modo Minimalista (Apenas Ícones com Tooltips) */}
           <div style={{
             background: 'var(--adm-bg-input)',
@@ -2816,6 +2845,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         onClose={() => setIsCloseDealModalOpen(false)}
         lead={dealModalLead}
         onConfirmSale={handleConfirmSale}
+      />
+
+      {/* New Lead Modal */}
+      <AdminNewLeadModal
+        isOpen={isNewLeadModalOpen}
+        onClose={() => setIsNewLeadModalOpen(false)}
+        defaultFunnelId={selectedFunnelId}
+        defaultVenueId={activeVenueId}
+        onLeadCreated={(newLeadId) => {
+          setActiveLeadIdForWorkspace(newLeadId);
+        }}
       />
 
       {/* Funnel Configuration Modal */}
