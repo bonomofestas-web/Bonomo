@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { 
   ArrowLeft, Crown, Gift, Users, Sparkles, CheckCircle2, 
   ExternalLink, Building2, Check,
-  Share2, Award, Clock, Edit3
+  Share2, Award, Clock, Edit3, Phone
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { DebutanteAccount, Venue } from '../../types/admin';
 
 interface AdminDebutanteDetailViewProps {
@@ -177,14 +178,14 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
 
       {/* Main Profile Header Card */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(212,175,55,0.14) 0%, rgba(20,17,27,0.95) 100%)',
-        border: '1.5px solid var(--adm-border)',
-        borderRadius: '24px',
-        padding: '28px',
+        background: 'var(--adm-bg-card)',
+        border: '1px solid var(--adm-border)',
+        borderRadius: '20px',
+        padding: '24px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '20px',
-        boxShadow: '0 12px 36px rgba(0,0,0,0.4)',
+        gap: '18px',
+        boxShadow: 'var(--adm-shadow)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <img
@@ -693,7 +694,10 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
                             )}
                           </div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '10px', marginTop: '3px' }}>
-                            <span>📱 {ref.phone}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Phone size={12} color="var(--adm-accent)" />
+                              <span>{formatPhone(ref.phone)}</span>
+                            </span>
                             {ref.createdAt && <span>• Enviado em {ref.createdAt.split('T')[0].split('-').reverse().join('/')}</span>}
                           </div>
                         </div>

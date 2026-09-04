@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Phone, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
 import type { Collaborator, AdminRole } from '../../types/admin';
 
@@ -30,7 +31,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
     if (collaboratorToEdit) {
       setName(collaboratorToEdit.name);
       setEmail(collaboratorToEdit.email);
-      setPhone(collaboratorToEdit.phone || '');
+      setPhone(collaboratorToEdit.phone ? formatPhone(collaboratorToEdit.phone) : '');
       setPassword(collaboratorToEdit.password || '••••••••');
       setRole(collaboratorToEdit.role);
       const vIds = collaboratorToEdit.venueIds || (collaboratorToEdit.venueId && collaboratorToEdit.venueId !== 'all' ? [collaboratorToEdit.venueId] : venues.map(v => v.id));
@@ -241,7 +242,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                   type="tel"
                   placeholder="(21) 99999-9999"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(maskPhoneInput(e.target.value))}
                   style={{
                     ...inputStyle,
                     paddingLeft: '38px',

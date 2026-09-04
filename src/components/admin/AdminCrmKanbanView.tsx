@@ -16,6 +16,7 @@ import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { ImageUploadField } from './ImageUploadField';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, FunnelCustomField, FunnelFieldType } from '../../types/admin';
 
 interface AdminCrmKanbanViewProps {
@@ -2576,7 +2577,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                               {/* Phone & Age */}
                               <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                                {lead.phone} • {lead.age} anos
+                                {formatPhone(lead.phone)} • {lead.age} anos
                               </div>
 
                               {/* Referred By */}
@@ -2750,7 +2751,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <td style={{ padding: '12px 18px', fontWeight: 800, color: 'var(--adm-text-title)' }}>{lead.name}</td>
-                        <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)' }}>{lead.phone}</td>
+                        <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)' }}>{formatPhone(lead.phone)}</td>
                         <td style={{ padding: '12px 18px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                             <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.74rem' }}>{lead.age} anos ({lead.group})</span>

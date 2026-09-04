@@ -373,6 +373,8 @@ export interface AdminContextType {
   allMqlQuestions: MqlQuestion[];
   addMasterAccount: (name: string, email: string) => string;
   toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
+  isInitialSyncComplete: boolean;
+  forceLogout: (reason?: string) => void;
 }
 
 const AdminStateContext = createContext<AdminContextType | undefined>(undefined);
@@ -500,9 +502,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return {} as Record<FeatureFlagId, string>;
   });
 
-  const [isFlagsLoaded, setIsFlagsLoaded] = useState<boolean>(() => {
-    return !!localStorage.getItem(STORAGE_KEY_FEATURE_FLAGS);
-  });
+  const [isFlagsLoaded, setIsFlagsLoaded] = useState<boolean>(false);
+  const [isInitialSyncComplete, setIsInitialSyncComplete] = useState<boolean>(false);
 
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SUPPORT_TICKETS);
@@ -896,6 +897,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             });
           }
           setIsFlagsLoaded(true);
+          setIsInitialSyncComplete(true);
 
           // Load support tickets
           const dbTickets = await supportService.getAll();
@@ -906,6 +908,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       } catch (err) {
         console.warn('Falha na sincronização inicial do Supabase:', err);
+      } finally {
+        if (isMounted) {
+          setIsFlagsLoaded(true);
+          setIsInitialSyncComplete(true);
+        }
       }
     };
 
@@ -1013,7 +1020,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
-        if (isMounted && updated.length > 0) setCollaborators(updated);
+        if (isMounted && updated.length > 0) {
+          setCollaborators(updated);
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            const me = updated.find(c => c.id === prev.id || c.email.toLowerCase() === prev.email.toLowerCase());
+            if (me) {
+              if (me.active === false) {
+                setTimeout(() => {
+                  logout();
+                  alert('Sua conta de acesso foi suspensa ou desativada pelo administrador.');
+                }, 50);
+                return null;
+              }
+              safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(me));
+              return me;
+            }
+            return prev;
+          });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_catalog_items' }, async () => {
         const updated = await catalogService.getAllBenefits();
@@ -1098,19 +1123,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
     window.addEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
 
-    // Heartbeat Polling inteligente a cada 6 segundos para multi-dispositivos
+    // Heartbeat Polling inteligente a cada 4 segundos para multi-dispositivos e suporte em tempo real
     const adminPollingInterval = setInterval(async () => {
       if (document.visibilityState === 'visible' && isMounted) {
-        const [updatedLeads, updatedDebs] = await Promise.all([
+        const [updatedLeads, updatedDebs, updatedTickets] = await Promise.all([
           leadService.getAll(),
           debutanteService.getAll(),
+          supportService.getAll(),
         ]);
         if (isMounted) {
           if (updatedLeads.length > 0) setLeads(updatedLeads);
           if (updatedDebs.length > 0) setDebutantes(updatedDebs);
+          if (updatedTickets && updatedTickets.length > 0) {
+            setSupportTickets(prev => {
+              const prevStr = JSON.stringify(prev.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
+              const nextStr = JSON.stringify(updatedTickets.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
+              if (prevStr !== nextStr) {
+                safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updatedTickets));
+                return updatedTickets;
+              }
+              return prev;
+            });
+          }
         }
       }
-    }, 6000);
+    }, 4000);
 
     return () => {
       isMounted = false;
@@ -3869,6 +3906,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       allTasks: tasks,
       addMasterAccount,
       toggleMasterAccountStatus,
+      isInitialSyncComplete,
+      forceLogout: (reason?: string) => {
+        logout();
+        if (reason) alert(reason);
+      },
     }}>
       {children}
     </AdminStateContext.Provider>

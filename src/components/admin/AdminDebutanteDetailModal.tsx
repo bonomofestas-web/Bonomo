@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { 
   X, Crown, Gift, Users, Sparkles, CheckCircle2, 
   ExternalLink, Building2, Check,
-  Share2, Award, Clock, Edit3
+  Share2, Award, Clock, Edit3, Calendar, Phone, Mail
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { DebutanteAccount, Venue } from '../../types/admin';
 
 interface AdminDebutanteDetailModalProps {
@@ -181,9 +182,20 @@ export const AdminDebutanteDetailModal: React.FC<AdminDebutanteDetailModalProps>
               </div>
 
               <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                <span>📅 Festa: <strong>{debutante.partyDate.split('-').reverse().join('/')}</strong> ({debutante.partyDaysLeft} dias restantes)</span>
-                <span>📱 {debutante.phone}</span>
-                {debutante.email && <span>✉️ {debutante.email}</span>}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <Calendar size={13} color="var(--adm-accent)" />
+                  <span>Festa: <strong>{debutante.partyDate.split('-').reverse().join('/')}</strong> ({debutante.partyDaysLeft} dias restantes)</span>
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <Phone size={13} color="var(--adm-accent)" />
+                  <span>{formatPhone(debutante.phone)}</span>
+                </span>
+                {debutante.email && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <Mail size={13} color="var(--adm-accent)" />
+                    <span>{debutante.email}</span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -548,7 +560,10 @@ export const AdminDebutanteDetailModal: React.FC<AdminDebutanteDetailModalProps>
                               {ref.name}
                             </div>
                             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span>📱 {ref.phone}</span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Phone size={12} color="var(--adm-accent)" />
+                                <span>{formatPhone(ref.phone)}</span>
+                              </span>
                               {ref.createdAt && <span>• Enviado em {ref.createdAt.split('T')[0].split('-').reverse().join('/')}</span>}
                             </div>
                           </div>

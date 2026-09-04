@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
+import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import type { 
@@ -957,7 +958,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <input
                   type="text"
                   value={lead.phone}
-                  onChange={(e) => handleUpdate({ phone: e.target.value })}
+                  onChange={(e) => handleUpdate({ phone: maskPhoneInput(e.target.value) })}
                   style={{ ...inlineInputStyle, fontWeight: 700 }}
                   onFocus={(e) => { e.target.style.background = 'var(--adm-bg-input)'; e.target.style.borderColor = 'var(--adm-accent)'; }}
                   onBlur={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = 'transparent'; }}
@@ -1249,7 +1250,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       </span>
                     )}
                   </div>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{contact.phone}</span>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{formatPhone(contact.phone)}</span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1330,7 +1331,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     required
                     placeholder="WhatsApp / Telefone..."
                     value={newContactPhone}
-                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    onChange={(e) => setNewContactPhone(maskPhoneInput(e.target.value))}
                     style={{ ...inlineInputStyle, background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}
                   />
                 </div>

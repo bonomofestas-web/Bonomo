@@ -3,9 +3,10 @@ import {
   Users, Plus, Share2, Send, 
   Gift, Edit3, Trash2, Check, 
   ExternalLink, Building2, Search, LayoutGrid, List,
-  Calendar, Target, Power, Sparkles
+  Calendar, Target, Power, Sparkles, Phone
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { formatPhone } from '../../utils/phoneFormatter';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminDebutanteDetailView } from './AdminDebutanteDetailView';
@@ -163,7 +164,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       width: '100%',
       boxSizing: 'border-box',
       animation: 'fadeIn 0.25s ease-out',
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontFamily: "'Poppins', sans-serif",
     }}>
       {/* ── UNIFIED SUB-NAVIGATION HEADER ── */}
       <div style={{
@@ -542,10 +543,11 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       padding: '6px 10px',
                       fontSize: '0.72rem',
                     }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>
-                        📅 Festa: <strong style={{ color: 'var(--adm-text-title)' }}>{deb.partyDate.split('-').reverse().join('/')}</strong>
+                      <span style={{ color: 'var(--adm-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={12} color="var(--adm-accent)" />
+                        <span>Festa: <strong style={{ color: 'var(--adm-text-title)' }}>{deb.partyDate.split('-').reverse().join('/')}</strong></span>
                       </span>
-                      <span style={{ color: 'var(--adm-accent)', fontWeight: 800 }}>
+                      <span style={{ color: 'var(--adm-accent)', fontWeight: 650 }}>
                         Faltam {deb.partyDaysLeft} dias
                       </span>
                     </div>
@@ -806,10 +808,19 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '2px' }}>
-                          <span>🏛️ {venue?.name || 'Sem casa'}</span>
-                          <span>📅 {deb.partyDate.split('-').reverse().join('/')} ({deb.partyDaysLeft}d)</span>
-                          <span>📱 {deb.phone}</span>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '2px', flexWrap: 'wrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Building2 size={11} color="var(--adm-accent)" />
+                            <span>{venue?.name || 'Sem casa'}</span>
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar size={11} color="var(--adm-accent)" />
+                            <span>{deb.partyDate.split('-').reverse().join('/')} ({deb.partyDaysLeft}d)</span>
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Phone size={11} color="var(--adm-accent)" />
+                            <span>{formatPhone(deb.phone)}</span>
+                          </span>
                         </div>
                       </div>
                     </div>

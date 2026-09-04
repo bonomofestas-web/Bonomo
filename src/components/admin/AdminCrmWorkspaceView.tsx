@@ -9,6 +9,7 @@ import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskModal } from './AdminTaskModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { Lead, CrmStage } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
@@ -477,7 +478,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               </div>
 
               <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                {currentLead.phone}
+                {formatPhone(currentLead.phone)}
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
@@ -44,6 +44,20 @@ const ROLE_LABELS: Record<string, string> = {
   closer: 'Closer',
 };
 
+const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
+  home: 'home',
+  dashboard: 'dashboard',
+  whatsapp: 'whatsapp',
+  crm: 'funnels',
+  debutantes: 'debutantes',
+  'venue-goals': 'venue_goals',
+  sources: 'sources',
+  mql: 'icp',
+  'master-dashboard': 'master_dashboard',
+  collaborators: 'collaborators',
+  venues: 'venues',
+};
+
 
 import { useActiveTimeTracker } from '../../hooks/useActiveTimeTracker';
 
@@ -67,6 +81,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     announcements,
     markAnnouncementAsRead,
     supportTickets,
+    isInitialSyncComplete,
   } = useAdminState();
   
   // Track active focus time for collaborators
@@ -161,12 +176,130 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
+  // Dynamic First Available Tab calculation (Audio 1 & 2)
+  const getFirstAvailableTab = useCallback((): AdminTabType => {
+    if (currentUser?.role === 'dev') return 'home';
+
+    const menuTabsInOrder: AdminTabType[] = [
+      'home',
+      'dashboard',
+      'crm',
+      'whatsapp',
+      'debutantes',
+      'venue-goals',
+      'sources',
+      'mql',
+      'master-dashboard',
+      'collaborators',
+      'venues',
+    ];
+
+    for (const tab of menuTabsInOrder) {
+      if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues') {
+        if (currentUser?.role !== 'master') continue;
+      }
+      if (tab === 'debutantes' || tab === 'venue-goals' || tab === 'sources' || tab === 'mql') {
+        if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') continue;
+      }
+
+      const flag = TAB_FEATURE_FLAG[tab];
+      if (flag) {
+        const st = getFeatureStatus(flag);
+        if (st === 'active') return tab;
+      } else {
+        return tab;
+      }
+    }
+    return 'crm';
+  }, [currentUser?.role, getFeatureStatus]);
+
+  // Audio 2: Redirecionamento automático se a aba ativa estiver desativada por feature flag
+  useEffect(() => {
+    if (!isInitialSyncComplete || currentUser?.role === 'dev') return;
+    const flag = TAB_FEATURE_FLAG[activeTab];
+    if (flag) {
+      const status = getFeatureStatus(flag);
+      if (status === 'disabled') {
+        const fallback = getFirstAvailableTab();
+        if (fallback !== activeTab) {
+          setActiveTab(fallback);
+          try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+        }
+      }
+    }
+  }, [isInitialSyncComplete, activeTab, currentUser?.role, getFeatureStatus, getFirstAvailableTab]);
+
   // If not authenticated, show login view
   if (!currentUser) {
     return <AdminLoginView />;
   }
 
-
+  // Audio 2: Sincronização inicial pré-portal para evitar qualquer vazamento ou flicker de menus desativados por feature flag
+  if (!isInitialSyncComplete && currentUser.role !== 'dev') {
+    return (
+      <div style={{
+        display: 'flex',
+        height: '100vh',
+        width: '100vw',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0B090E',
+        fontFamily: "'Poppins', sans-serif",
+        color: '#FFFFFF',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '20px',
+          padding: '40px',
+          borderRadius: '16px',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+          maxWidth: '380px',
+          textAlign: 'center',
+        }}>
+          <div style={{ position: 'relative', width: '56px', height: '56px' }}>
+            <img 
+              src="/f5_mark.png" 
+              alt="F5 System" 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'contain',
+              }} 
+            />
+          </div>
+          <div>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 600, color: '#F1F5F9' }}>
+              F5 System
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.4 }}>
+              Sincronizando módulos e permissões em tempo real...
+            </p>
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '0.74rem',
+            color: '#64748B',
+          }}>
+            <div style={{
+              width: '14px',
+              height: '14px',
+              border: '2px solid rgba(255,255,255,0.15)',
+              borderTopColor: '#3B82F6',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            <span>Validando configurações de banco</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
@@ -218,58 +351,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (currentUser?.isFirstAccess) {
       return <AdminFirstAccessProfileView />;
     }
-
-    // Feature Flag Check for non-dev users
-    const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
-      home: 'home',
-      dashboard: 'dashboard',
-      whatsapp: 'whatsapp',
-      crm: 'funnels',
-      debutantes: 'debutantes',
-      'venue-goals': 'venue_goals',
-      sources: 'sources',
-      mql: 'icp',
-      'master-dashboard': 'master_dashboard',
-      collaborators: 'collaborators',
-      venues: 'venues',
-    };
-
-    // Dynamic First Available Tab calculation (Audio 1)
-    const getFirstAvailableTab = (): AdminTabType => {
-      if (currentUser?.role === 'dev') return 'home';
-
-      const menuTabsInOrder: AdminTabType[] = [
-        'home',
-        'dashboard',
-        'crm',
-        'whatsapp',
-        'debutantes',
-        'venue-goals',
-        'sources',
-        'mql',
-        'master-dashboard',
-        'collaborators',
-        'venues',
-      ];
-
-      for (const tab of menuTabsInOrder) {
-        if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues') {
-          if (currentUser?.role !== 'master') continue;
-        }
-        if (tab === 'debutantes' || tab === 'venue-goals' || tab === 'sources' || tab === 'mql') {
-          if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') continue;
-        }
-
-        const flag = TAB_FEATURE_FLAG[tab];
-        if (flag) {
-          const st = getFeatureStatus(flag);
-          if (st === 'active') return tab;
-        } else {
-          return tab;
-        }
-      }
-      return 'crm';
-    };
 
     // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade (exceto Dev ou Configurações)
     const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');

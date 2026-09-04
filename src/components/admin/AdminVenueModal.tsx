@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Building2, MapPin, AlignLeft, Phone, MessageCircle, Mail } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
 import { VideoUploadField } from './VideoUploadField';
 import type { Venue } from '../../types/admin';
@@ -40,8 +41,8 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
       setTagline(venueToEdit.tagline);
       setDescription(venueToEdit.description || '');
       setAddress(venueToEdit.address);
-      setPhone(venueToEdit.phone || '');
-      setWhatsappNumber(venueToEdit.whatsappNumber || '');
+      setPhone(venueToEdit.phone ? formatPhone(venueToEdit.phone) : '');
+      setWhatsappNumber(venueToEdit.whatsappNumber ? formatPhone(venueToEdit.whatsappNumber) : '');
       setEmail(venueToEdit.email || '');
       setYearsInBusiness(venueToEdit.yearsInBusiness || 10);
       setEventsCompleted(venueToEdit.eventsCompleted || 500);
@@ -326,7 +327,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
                     type="text"
                     placeholder="(21) 99999-9999"
                     value={whatsappNumber}
-                    onChange={(e) => setWhatsappNumber(e.target.value)}
+                    onChange={(e) => setWhatsappNumber(maskPhoneInput(e.target.value))}
                     style={{ ...inputStyle, paddingLeft: '36px', background: 'var(--adm-bg-card)' }}
                   />
                 </div>
@@ -343,7 +344,7 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
                     type="text"
                     placeholder="(21) 3456-7890"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(maskPhoneInput(e.target.value))}
                     style={{ ...inputStyle, paddingLeft: '36px', background: 'var(--adm-bg-card)' }}
                   />
                 </div>

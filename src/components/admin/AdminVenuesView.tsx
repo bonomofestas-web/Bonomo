@@ -10,6 +10,7 @@ import { VideoUploadField } from './VideoUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminVenueGoalsModal } from './AdminVenueGoalsModal';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { Venue } from '../../types/admin';
 
 const StoriesVenueVideoModal: React.FC<{
@@ -936,7 +937,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
                         </span>
                         {collab.phone && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <Phone size={11} /> {collab.phone}
+                            <Phone size={11} /> {formatPhone(collab.phone)}
                           </span>
                         )}
                       </div>

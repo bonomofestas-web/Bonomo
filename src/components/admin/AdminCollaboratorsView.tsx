@@ -9,6 +9,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminCollaboratorModal } from './AdminCollaboratorModal';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { Collaborator } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
@@ -512,7 +513,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                 {collab.phone && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Phone size={13} color="var(--adm-accent)" />
-                    <span>{collab.phone}</span>
+                    <span>{formatPhone(collab.phone)}</span>
                   </div>
                 )}
 

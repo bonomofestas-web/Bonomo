@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Calendar, Phone, Mail, Sparkles, Building2, Users, Trash2, Loader2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import type { DebutanteAccount } from '../../types/admin';
@@ -38,7 +39,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
       setVenueId(debutanteToEdit.venueId);
       setName(debutanteToEdit.name);
       setPartyDate(debutanteToEdit.partyDate);
-      setPhone(debutanteToEdit.phone);
+      setPhone(formatPhone(debutanteToEdit.phone));
       setEmail(debutanteToEdit.email || '');
       setAvatarUrl(debutanteToEdit.avatarUrl);
       setBaseGuestLimit(debutanteToEdit.baseGuestLimit);
@@ -322,7 +323,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
                     required
                     placeholder="(21) 99999-9999"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(maskPhoneInput(e.target.value))}
                     style={{
                       ...inputStyle,
                       paddingLeft: '38px',

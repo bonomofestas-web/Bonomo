@@ -5,6 +5,7 @@ import {
   Crown, Building2, Users, Settings, Paperclip, RefreshCw
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { supabase } from '../../lib/supabase';
 import { ImageUploadField } from './ImageUploadField';
 import type { SupportTicketModule, SupportTicketStatus } from '../../types/admin';
 
@@ -70,12 +71,75 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
     return supportTickets.find(t => t.id === selectedTicketId) || null;
   }, [supportTickets, selectedTicketId]);
 
+  // Typing indicator broadcast state (Audio 1: suporte digitando em tempo real)
+  const [otherUserTyping, setOtherUserTyping] = useState<string | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || viewMode !== 'detail' || !activeTicket?.id) {
+      setOtherUserTyping(null);
+      return;
+    }
+
+    const channelName = `support_ticket_${activeTicket.id}`;
+    const channel = supabase.channel(channelName);
+
+    channel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.userId && payload.userId !== currentUser?.id) {
+          if (payload.isTyping) {
+            setOtherUserTyping(payload.userName || 'Suporte Técnico');
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              setOtherUserTyping(null);
+            }, 3500);
+          } else {
+            setOtherUserTyping(null);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [isOpen, viewMode, activeTicket?.id, currentUser?.id]);
+
+  const notifyTyping = (isTyping: boolean) => {
+    if (!activeTicket?.id) return;
+    const channel = supabase.channel(`support_ticket_${activeTicket.id}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        userId: currentUser?.id,
+        userName: currentUser?.name || 'Colaborador',
+        isTyping,
+      },
+    });
+  };
+
+  const handleMessageInputChange = (val: string) => {
+    setMessageDraft(val);
+    if (!val.trim()) {
+      notifyTyping(false);
+      return;
+    }
+    notifyTyping(true);
+    if (sendTypingTimeoutRef.current) clearTimeout(sendTypingTimeoutRef.current);
+    sendTypingTimeoutRef.current = setTimeout(() => {
+      notifyTyping(false);
+    }, 2500);
+  };
+
   // Rola para a última mensagem ao abrir o chat ou enviar
   useEffect(() => {
     if (viewMode === 'detail') {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [viewMode, activeTicket?.messages]);
+  }, [viewMode, activeTicket?.messages, otherUserTyping]);
 
   // Ao abrir o widget, marca lido se a callback existir
   useEffect(() => {
@@ -132,6 +196,7 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
     if (!messageDraft.trim() || !selectedTicketId || isSendingMessage) return;
 
     setIsSendingMessage(true);
+    notifyTyping(false);
     const content = messageDraft.trim();
     setMessageDraft('');
 
@@ -788,6 +853,29 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
                 );
               })}
 
+              {otherUserTyping && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 12px',
+                  fontSize: '0.72rem',
+                  color: '#93C5FD',
+                  fontStyle: 'italic',
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  borderRadius: '10px',
+                  width: 'fit-content',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                }}>
+                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                    <span style={{ width: '4px', height: '4px', background: '#60A5FA', borderRadius: '50%' }} />
+                    <span style={{ width: '4px', height: '4px', background: '#60A5FA', borderRadius: '50%' }} />
+                    <span style={{ width: '4px', height: '4px', background: '#60A5FA', borderRadius: '50%' }} />
+                  </div>
+                  <span>{otherUserTyping} está digitando...</span>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
 
@@ -809,7 +897,8 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
                   type="text"
                   placeholder="Digite uma mensagem..."
                   value={messageDraft}
-                  onChange={(e) => setMessageDraft(e.target.value)}
+                  onChange={(e) => handleMessageInputChange(e.target.value)}
+                  onBlur={() => notifyTyping(false)}
                   style={{
                     flex: 1,
                     background: 'rgba(255, 255, 255, 0.06)',
@@ -822,7 +911,6 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
                     fontFamily: "'Poppins', sans-serif",
                   }}
                   onFocus={(e) => e.target.style.borderColor = '#0A58CA'}
-                  onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)'}
                 />
                 <button
                   type="submit"

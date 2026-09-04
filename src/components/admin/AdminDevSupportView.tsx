@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Headset, Search, Send, Image as ImageIcon, Video, 
   X, MessageSquare, LayoutGrid, List, CheckCircle2,
@@ -6,6 +6,7 @@ import {
   Users, Settings, User
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { supabase } from '../../lib/supabase';
 import type { SupportTicket, SupportTicketStatus } from '../../types/admin';
 
 const MODULE_MAP: Record<string, { label: string; icon: React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }> }> = {
@@ -20,6 +21,7 @@ const MODULE_MAP: Record<string, { label: string; icon: React.ComponentType<{ si
 
 export const AdminDevSupportView: React.FC = () => {
   const { 
+    currentUser,
     supportTickets, 
     updateSupportTicketStatus, 
     sendSupportMessage,
@@ -95,11 +97,75 @@ export const AdminDevSupportView: React.FC = () => {
     return supportTickets.find(t => t.id === selectedTicketId) || null;
   }, [supportTickets, selectedTicketId]);
 
+  // Realtime Typing Indicator (Audio 1)
+  const [collaboratorTyping, setCollaboratorTyping] = useState<string | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!activeTicket?.id) {
+      setCollaboratorTyping(null);
+      return;
+    }
+
+    const channelName = `support_ticket_${activeTicket.id}`;
+    const channel = supabase.channel(channelName);
+
+    channel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.userId && payload.userId !== currentUser?.id) {
+          if (payload.isTyping) {
+            setCollaboratorTyping(payload.userName || 'Colaborador');
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+              setCollaboratorTyping(null);
+            }, 3500);
+          } else {
+            setCollaboratorTyping(null);
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [activeTicket?.id, currentUser?.id]);
+
+  const notifyTyping = (isTyping: boolean) => {
+    if (!activeTicket?.id) return;
+    const channel = supabase.channel(`support_ticket_${activeTicket.id}`);
+    channel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        userId: currentUser?.id || 'dev-user',
+        userName: currentUser?.name || 'Suporte Técnico',
+        isTyping,
+      },
+    });
+  };
+
+  const handleMessageInputChange = (val: string) => {
+    setMessageDraft(val);
+    if (!val.trim()) {
+      notifyTyping(false);
+      return;
+    }
+    notifyTyping(true);
+    if (sendTypingTimeoutRef.current) clearTimeout(sendTypingTimeoutRef.current);
+    sendTypingTimeoutRef.current = setTimeout(() => {
+      notifyTyping(false);
+    }, 2500);
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTicket || !messageDraft.trim() || isSendingMessage) return;
 
     setIsSendingMessage(true);
+    notifyTyping(false);
     try {
       await sendSupportMessage(activeTicket.id, messageDraft.trim());
       setMessageDraft('');
@@ -1141,6 +1207,30 @@ export const AdminDevSupportView: React.FC = () => {
                     );
                   })
                 )}
+
+                {collaboratorTyping && (
+                  <div style={{
+                    alignSelf: 'flex-start',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    fontSize: '0.72rem',
+                    color: '#38BDF8',
+                    fontStyle: 'italic',
+                    background: 'rgba(56, 189, 248, 0.1)',
+                    borderRadius: '10px',
+                    width: 'fit-content',
+                    border: '1px solid rgba(56, 189, 248, 0.2)',
+                  }}>
+                    <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                      <span style={{ width: '4px', height: '4px', background: '#38BDF8', borderRadius: '50%' }} />
+                      <span style={{ width: '4px', height: '4px', background: '#38BDF8', borderRadius: '50%' }} />
+                      <span style={{ width: '4px', height: '4px', background: '#38BDF8', borderRadius: '50%' }} />
+                    </div>
+                    <span>{collaboratorTyping} está digitando...</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1160,7 +1250,8 @@ export const AdminDevSupportView: React.FC = () => {
                 type="text"
                 placeholder="Responder ao colaborador..."
                 value={messageDraft}
-                onChange={(e) => setMessageDraft(e.target.value)}
+                onChange={(e) => handleMessageInputChange(e.target.value)}
+                onBlur={() => notifyTyping(false)}
                 style={{
                   flex: 1,
                   background: colors.inputBg,
