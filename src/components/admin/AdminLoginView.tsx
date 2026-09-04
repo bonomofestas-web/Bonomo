@@ -119,12 +119,14 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         setIsResetMode(mode === 'reset');
 
         if (token && token.trim().length >= 6) {
-          const cleanToken = token.trim().slice(0, 6);
-          setOtpDigits(cleanToken.split(''));
+          const cleanToken = token.trim().slice(0, 8);
+          const digits = Array(8).fill('');
+          cleanToken.split('').forEach((d, idx) => { if (idx < 8) digits[idx] = d; });
+          setOtpDigits(digits);
           setGeneratedOtp(cleanToken);
           setIsTokenFromUrl(true);
         } else {
-          setOtpDigits(['', '', '', '', '', '']);
+          setOtpDigits(['', '', '', '', '', '', '', '']);
           setIsTokenFromUrl(false);
         }
 
@@ -220,11 +222,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
       setMatchedCollab(found);
 
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Generate OTP
+      const otp = Math.floor(10000000 + Math.random() * 90000000).toString();
       setGeneratedOtp(otp);
       setCountdown(60);
-      setOtpDigits(['', '', '', '', '', '']);
+      setOtpDigits(['', '', '', '', '', '', '', '']);
 
       // Record in Supabase password_reset_codes
       if (isSupabaseConfigured) {
@@ -309,9 +311,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     if (countdown > 0 || isResending) return;
     setIsResending(true);
     const cleanEmail = activationEmail.trim().toLowerCase();
-    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const newOtp = Math.floor(10000000 + Math.random() * 90000000).toString();
     setGeneratedOtp(newOtp);
-    setOtpDigits(['', '', '', '', '', '']);
+    setOtpDigits(['', '', '', '', '', '', '', '']);
     setCountdown(60);
 
     if (isSupabaseConfigured && cleanEmail) {

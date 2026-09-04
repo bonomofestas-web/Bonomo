@@ -73,9 +73,9 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
     return { label: 'Excelente / Altamente Segura', color: '#14A9D7', bg: 'rgba(20, 169, 215, 0.15)' };
   };
 
-  // Helper to generate 6-digit numeric OTP
+  // Helper to generate 8-digit numeric OTP
   const generateNumericOtp = (): string => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return Math.floor(10000000 + Math.random() * 90000000).toString();
   };
 
   // ── STEP 1: REQUEST CODE BY EMAIL ──────────────────────────────────────────
@@ -273,7 +273,7 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
     const cleanEmail = email.trim().toLowerCase();
     const newOtp = generateNumericOtp();
     setGeneratedOtp(newOtp);
-    setOtpDigits(['', '', '', '', '', '']);
+    setOtpDigits(['', '', '', '', '', '', '', '']);
     setCountdown(60);
 
     if (isSupabaseConfigured && cleanEmail) {
