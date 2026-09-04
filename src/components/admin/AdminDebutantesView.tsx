@@ -31,7 +31,10 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
     activeVenueId, 
     deleteDebutanteAccount,
     toggleDebutanteStatus,
+    currentUser,
   } = useAdminState();
+
+  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
 
   // Sub-tabs: 'debutantes' | 'benefits' | 'templates' | 'appointments'
   const [activeSubTab, setActiveSubTab] = useState<'debutantes' | 'benefits' | 'templates' | 'appointments'>(initialSubTab);
@@ -176,10 +179,12 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {[
             { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={16} />, count: debutantes.length },
-            { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={16} /> },
-            { id: 'templates', label: 'Jornadas & Metas', icon: <Target size={16} /> },
+            { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={16} />, roles: ['dev', 'master', 'admin'] },
+            { id: 'templates', label: 'Jornadas & Metas', icon: <Target size={16} />, roles: ['dev', 'master', 'admin'] },
             { id: 'appointments', label: 'Compromissos & Degustações', icon: <Calendar size={16} /> },
-          ].map(tab => {
+          ]
+          .filter(tab => !tab.roles || tab.roles.includes(currentUser?.role || 'admin'))
+          .map(tab => {
             const isActive = activeSubTab === tab.id;
             return (
               <button
@@ -711,29 +716,31 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           <Edit3 size={13} />
                         </button>
 
-                        {/* Delete */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDebutanteToDelete({ id: deb.id, name: deb.name });
-                          }}
-                          title="Excluir aniversariante"
-                          style={{
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: '1px solid rgba(239, 68, 68, 0.25)',
-                            color: 'var(--adm-red)',
-                            borderRadius: '8px',
-                            width: '30px',
-                            height: '30px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        {/* Delete - apenas para Gerentes, Master e Dev */}
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDebutanteToDelete({ id: deb.id, name: deb.name });
+                            }}
+                            title="Excluir aniversariante"
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid rgba(239, 68, 68, 0.25)',
+                              color: 'var(--adm-red)',
+                              borderRadius: '8px',
+                              width: '30px',
+                              height: '30px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -952,7 +959,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
           isOpen={Boolean(debutanteToDelete)}
           onClose={() => setDebutanteToDelete(null)}
           title="Excluir Aniversariante"
-          message={`Tem certeza que deseja excluir "${debutanteToDelete.name}"? Todos os convidados, indicações e progresso da jornada serão removidos.`}
+          message={`Tem certeza que deseja excluir "${debutanteToDelete.name}"? A jornada e a lista de convidados serão removidas. As indicações e leads gerados no CRM continuarão preservados com o histórico de indicação intacto.`}
           confirmText="Sim, Excluir Aniversariante"
           danger={true}
           onConfirm={() => {

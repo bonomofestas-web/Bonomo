@@ -63,6 +63,7 @@ const FUNNEL_CATEGORIES = [
   { id: 'Eventos Presenciais', label: 'Eventos & Degustações', icon: Sparkles, color: '#F59E0B', badgeBg: 'rgba(245,158,11,0.15)' },
   { id: 'Prospecção Ativa', label: 'Prospecção Ativa / Outbound', icon: PhoneCall, color: '#8B5CF6', badgeBg: 'rgba(139,92,246,0.15)' },
   { id: 'Indicações do App', label: 'Indicações do App', icon: Crown, color: '#D4AF37', badgeBg: 'rgba(212,175,55,0.15)' },
+  { id: 'Pós-Venda', label: 'Pós-Venda & Onboarding', icon: ShieldCheck, color: '#06B6D4', badgeBg: 'rgba(6,182,212,0.15)' },
 ];
 
 export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
@@ -291,6 +292,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [formAllowedCollaboratorIds, setFormAllowedCollaboratorIds] = useState<string[]>([]);
   const [formStages, setFormStages] = useState<FunnelStageConfig[]>(DEFAULT_FORM_STAGES);
   const [formCustomFields, setFormCustomFields] = useState<FunnelCustomField[]>([]);
+  const [formIsPostSale, setFormIsPostSale] = useState(false);
 
   // View mode inside funnel
   const [viewMode, setViewMode] = useState<'workspace' | 'kanban' | 'list'>(initialLeadId ? 'workspace' : 'kanban');
@@ -363,6 +365,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setFormAllowedCollaboratorIds([]);
     setFormStages(DEFAULT_FORM_STAGES);
     setFormCustomFields([]);
+    setFormIsPostSale(false);
     setFunnelToConfigure(null);
     setIsCreateFunnelModalOpen(true);
   };
@@ -383,6 +386,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setFormAllowedCollaboratorIds(funnel.allowedCollaboratorIds || []);
     setFormStages(funnel.stages && funnel.stages.length > 0 ? funnel.stages : DEFAULT_FORM_STAGES);
     setFormCustomFields(funnel.customFields || []);
+    setFormIsPostSale(funnel.isPostSale === true || funnel.category === 'Pós-Venda');
     setIsCreateFunnelModalOpen(true);
   };
 
@@ -443,6 +447,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
     const allowedIds = formAccessMode === 'custom' ? formAllowedCollaboratorIds : [];
     const finalCustomImage = iconMode === 'image' && formCustomImageUrl.trim() ? formCustomImageUrl.trim() : undefined;
+    const finalIsPostSale = formIsPostSale || formFunnelCategory === 'Pós-Venda';
 
     if (funnelToConfigure) {
       updateFunnel(funnelToConfigure.id, {
@@ -455,6 +460,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         allowedCollaboratorIds: allowedIds,
         stages: formStages,
         customFields: formCustomFields,
+        isPostSale: finalIsPostSale,
+        allowedRoles: finalIsPostSale ? ['pos_venda'] : undefined,
       });
     } else {
       addFunnel({
@@ -464,7 +471,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         venueId: targetVenueId,
         allowedCollaboratorIds: allowedIds,
         badge: formFunnelCategory,
-        badgeColor: '#3B82F6',
+        badgeColor: finalIsPostSale ? '#06B6D4' : '#3B82F6',
         icon: formFunnelIcon,
         customImageUrl: finalCustomImage,
         isPinned: false,
@@ -473,6 +480,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         customFields: formCustomFields,
         isPrimary: false,
         isDemo: false,
+        isPostSale: finalIsPostSale,
+        allowedRoles: finalIsPostSale ? ['pos_venda'] : undefined,
       });
     }
 
@@ -600,6 +609,20 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return funnelsList.find(f => f.id === selectedFunnelId) || funnelsList[0];
   }, [funnelsList, selectedFunnelId]);
 
+  const isPostSaleFunnel = useMemo(() => {
+    if (!currentFunnel) return false;
+    return (
+      currentFunnel.isPostSale === true ||
+      currentFunnel.allowedRoles?.includes('pos_venda') ||
+      currentFunnel.category === 'Pós-Venda' ||
+      currentFunnel.name?.toLowerCase().includes('pós-venda') ||
+      currentFunnel.name?.toLowerCase().includes('pos-venda') ||
+      currentFunnel.name?.toLowerCase().includes('pós venda')
+    );
+  }, [currentFunnel]);
+
+  const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
+
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
@@ -685,6 +708,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // Drag and Drop Handlers
   const handleDragStart = (e: React.DragEvent, leadId: string) => {
+    if (isReadOnlyForPosVenda) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', leadId);
     setDraggedLeadId(leadId);
   };
@@ -695,6 +722,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetStage: CrmStage) => {
     e.preventDefault();
+    if (isReadOnlyForPosVenda) {
+      alert('A equipe de Pós-Venda opera em modo de visualização neste funil comercial. Para gerenciar etapas e interagir, selecione um Funil de Pós-Venda.');
+      return;
+    }
+
     const leadId = e.dataTransfer.getData('text/plain') || draggedLeadId;
     if (!leadId) return;
 
@@ -728,6 +760,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleWhatsApp = (lead: Lead, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnlyForPosVenda) {
+      alert('A equipe de Pós-Venda opera em modo de visualização neste funil comercial. O contato comercial direto é reservado aos SDRs e Closers.');
+      return;
+    }
     const cleanPhone = lead.phone.replace(/\D/g, '');
     const text = `Olá, ${lead.name}! Tudo bem?\nRecebemos sua indicação através da debutante ${lead.debutanteName} para conhecer os pacotes de 15 Anos da Bonomo Festas!\nPodemos agendar uma visita/degustação?`;
     const url = cleanPhone
@@ -984,7 +1020,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       return (
                         <div
                           key={cat.id}
-                          onClick={() => setFormFunnelCategory(cat.id)}
+                          onClick={() => {
+                            setFormFunnelCategory(cat.id);
+                            if (cat.id === 'Pós-Venda') setFormIsPostSale(true);
+                          }}
                           style={{
                             background: isSelected ? cat.badgeBg : 'var(--adm-bg-input)',
                             border: `1.5px solid ${isSelected ? cat.color : 'var(--adm-border)'}`,
@@ -1005,6 +1044,54 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Finalidade do Funil: Pós-Venda */}
+                <div
+                  onClick={() => setFormIsPostSale(!formIsPostSale)}
+                  style={{
+                    background: formIsPostSale ? 'rgba(6, 182, 212, 0.1)' : 'var(--adm-bg-input)',
+                    border: `1.5px solid ${formIsPostSale ? '#06B6D4' : 'var(--adm-border)'}`,
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      background: formIsPostSale ? '#06B6D4' : 'var(--adm-bg-card)',
+                      border: `1px solid ${formIsPostSale ? '#06B6D4' : 'var(--adm-border)'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: formIsPostSale ? '#FFFFFF' : 'var(--adm-text-muted)',
+                      flexShrink: 0,
+                    }}>
+                      <ShieldCheck size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: formIsPostSale ? '#06B6D4' : 'var(--adm-text-title)' }}>
+                        Funil Destinado a Pós-Venda & Onboarding
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
+                        Permite que a equipe de Pós-Venda interaja com leads, crie anotações, tarefas e mova etapas livremente neste funil.
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formIsPostSale}
+                    onChange={(e) => setFormIsPostSale(e.target.checked)}
+                    style={{ accentColor: '#06B6D4', width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }}
+                  />
                 </div>
 
                 {/* Descrição */}
@@ -1866,6 +1953,25 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               <Building2 size={10} />
                               <span>{funnel.venueName}</span>
                             </span>
+
+                            {/* Post-Sale Badge */}
+                            {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (
+                              <span style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                padding: '2px 7px',
+                                borderRadius: '8px',
+                                background: 'rgba(6, 182, 212, 0.15)',
+                                color: '#06B6D4',
+                                border: '1px solid rgba(6, 182, 212, 0.35)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}>
+                                <ShieldCheck size={10} />
+                                <span>Pós-Venda</span>
+                              </span>
+                            )}
                           </div>
 
                           {/* Top Right: Pin Button + Settings + Visual */}
@@ -2087,10 +2193,28 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       width: '100%',
       minHeight: 'calc(100vh - 64px)',
       boxSizing: 'border-box',
-      overflow: 'visible',
-      animation: 'fadeIn 0.2s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif"
     }}>
+      {/* Banner de Modo Observador Comercial para equipe de Pós-Venda */}
+      {isReadOnlyForPosVenda && (
+        <div style={{
+          background: 'rgba(6, 182, 212, 0.1)',
+          border: '1px solid rgba(6, 182, 212, 0.35)',
+          borderRadius: '12px',
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          color: '#06B6D4',
+          boxShadow: '0 4px 16px rgba(6, 182, 212, 0.08)',
+        }}>
+          <ShieldCheck size={20} style={{ flexShrink: 0 }} />
+          <div style={{ fontSize: '0.78rem', lineHeight: 1.45 }}>
+            <strong style={{ color: '#22D3EE' }}>Modo Observador Comercial (Pós-Venda):</strong> Você tem acesso completo para visualizar informações, histórico e conversas deste funil comercial. Alterações de etapas e contato comercial direto são exclusivos do time de SDRs e Closers. Para atuar operacionalmente, utilize um <strong>Funil de Pós-Venda</strong>.
+          </div>
+        </div>
+      )}
+
       {/* ── BARRA DE FERRAMENTAS SUPERIOR UNIFICADA (KANBAN / ENTRADA / TABELA) ── */}
       <div style={{
         display: 'flex',

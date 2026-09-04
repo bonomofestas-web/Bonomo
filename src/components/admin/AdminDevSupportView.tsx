@@ -21,8 +21,34 @@ export const AdminDevSupportView: React.FC = () => {
   const { 
     supportTickets, 
     updateSupportTicketStatus, 
-    sendSupportMessage 
+    sendSupportMessage,
+    theme 
   } = useAdminState();
+
+  const isDark = theme === 'dark';
+
+  // Cores dinâmicas de acordo com o tema
+  const colors = {
+    bg: isDark ? 'radial-gradient(circle at 10% 10%, #0F1722 0%, #080D15 100%)' : '#F8FAFC',
+    textTitle: isDark ? '#FFFFFF' : '#0F172A',
+    textSubtitle: isDark ? '#94A3B8' : '#64748B',
+    textBody: isDark ? '#E2E8F0' : '#334155',
+    toolbarBg: isDark ? '#0D1522' : '#FFFFFF',
+    toolbarBorder: isDark ? 'rgba(20, 169, 215, 0.25)' : 'rgba(20, 169, 215, 0.3)',
+    inputBg: isDark ? '#161F2E' : '#F1F5F9',
+    inputBorder: isDark ? 'rgba(20, 169, 215, 0.35)' : 'rgba(20, 169, 215, 0.35)',
+    inputText: isDark ? '#FFFFFF' : '#0F172A',
+    cardBg: isDark ? '#0D1522' : '#FFFFFF',
+    cardBorder: isDark ? 'rgba(20, 169, 215, 0.25)' : 'rgba(0, 0, 0, 0.08)',
+    kanbanColBg: isDark ? '#0D1522' : '#F1F5F9',
+    tableThBg: isDark ? '#161F2E' : '#F1F5F9',
+    tableThText: isDark ? '#94A3B8' : '#475569',
+    tableTrBorder: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.06)',
+    tableHoverBg: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F8FAFC',
+    selectedBg: isDark ? 'rgba(20, 169, 215, 0.16)' : 'rgba(20, 169, 215, 0.12)',
+    drawerHeaderBg: isDark ? '#161F2E' : '#F1F5F9',
+    drawerSubBoxBg: isDark ? '#161F2E' : '#F8FAFC',
+  };
 
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,8 +180,8 @@ export const AdminDevSupportView: React.FC = () => {
         key={ticket.id}
         onClick={() => setSelectedTicketId(ticket.id)}
         style={{
-          background: isSelected ? 'rgba(20, 169, 215, 0.16)' : '#121A26',
-          border: `1px solid ${isSelected ? '#14A9D7' : 'rgba(255, 255, 255, 0.1)'}`,
+          background: isSelected ? colors.selectedBg : colors.cardBg,
+          border: `1px solid ${isSelected ? '#14A9D7' : colors.cardBorder}`,
           borderRadius: '14px',
           padding: '14px',
           cursor: 'pointer',
@@ -163,17 +189,19 @@ export const AdminDevSupportView: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
           gap: '10px',
-          boxShadow: isSelected ? '0 0 18px rgba(20, 169, 215, 0.3)' : '0 2px 8px rgba(0,0,0,0.25)',
+          boxShadow: isSelected 
+            ? '0 0 16px rgba(20, 169, 215, 0.3)' 
+            : isDark ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 8px rgba(0,0,0,0.05)',
         }}
         onMouseEnter={(e) => {
           if (!isSelected) {
-            e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.4)';
+            e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.5)';
             e.currentTarget.style.transform = 'translateY(-1px)';
           }
         }}
         onMouseLeave={(e) => {
           if (!isSelected) {
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            e.currentTarget.style.borderColor = colors.cardBorder;
             e.currentTarget.style.transform = 'translateY(0)';
           }
         }}
@@ -204,7 +232,7 @@ export const AdminDevSupportView: React.FC = () => {
             </span>
           </div>
 
-          <span style={{ fontSize: '0.68rem', color: '#8096A8' }}>
+          <span style={{ fontSize: '0.68rem', color: colors.textSubtitle }}>
             {new Date(ticket.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
           </span>
         </div>
@@ -212,7 +240,7 @@ export const AdminDevSupportView: React.FC = () => {
         {/* Descrição do problema */}
         <p style={{
           fontSize: '0.78rem',
-          color: '#E1E7EC',
+          color: colors.textBody,
           lineHeight: 1.45,
           margin: 0,
           display: '-webkit-box',
@@ -230,11 +258,11 @@ export const AdminDevSupportView: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           fontSize: '0.7rem',
-          color: '#8096A8',
+          color: colors.textSubtitle,
           paddingTop: '6px',
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+          borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)'}`,
         }}>
-          <span style={{ fontWeight: 600, color: '#CBD5E1' }}>
+          <span style={{ fontWeight: 600, color: colors.textTitle }}>
             👤 {ticket.userName}
           </span>
 
@@ -270,8 +298,9 @@ export const AdminDevSupportView: React.FC = () => {
       boxSizing: 'border-box',
       overflow: 'hidden',
       fontFamily: "'Poppins', sans-serif",
-      color: '#FFFFFF',
-      background: 'radial-gradient(circle at 10% 10%, #0F1722 0%, #080D15 100%)',
+      color: colors.textTitle,
+      background: colors.bg,
+      transition: 'background 0.2s ease, color 0.2s ease',
     }}>
       {/* Top Banner / Metrics & Actions */}
       <div style={{
@@ -300,7 +329,7 @@ export const AdminDevSupportView: React.FC = () => {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.3px' }}>
+              <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: colors.textTitle, margin: 0, letterSpacing: '-0.3px' }}>
                 Painel de Suporte & Central de Bugs
               </h1>
               <span style={{
@@ -316,7 +345,7 @@ export const AdminDevSupportView: React.FC = () => {
                 DEV SUPPORT
               </span>
             </div>
-            <p style={{ fontSize: '0.78rem', color: '#94A3B8', margin: '3px 0 0 0' }}>
+            <p style={{ fontSize: '0.78rem', color: colors.textSubtitle, margin: '3px 0 0 0' }}>
               Atenda chamados com chat direto com a equipe, visualize prints/vídeos e alterne entre Kanban e Lista
             </p>
           </div>
@@ -326,11 +355,12 @@ export const AdminDevSupportView: React.FC = () => {
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          background: '#0D1522',
-          border: '1px solid rgba(20, 169, 215, 0.35)',
+          background: colors.toolbarBg,
+          border: `1px solid ${colors.toolbarBorder}`,
           borderRadius: '12px',
           padding: '3px',
           gap: '4px',
+          boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.05)',
         }}>
           <button
             type="button"
@@ -342,15 +372,15 @@ export const AdminDevSupportView: React.FC = () => {
               padding: '7px 14px',
               borderRadius: '9px',
               border: viewMode === 'kanban' ? '1px solid #14A9D7' : '1px solid transparent',
-              background: viewMode === 'kanban' ? 'rgba(20, 169, 215, 0.22)' : 'transparent',
-              color: viewMode === 'kanban' ? '#FFFFFF' : '#8096A8',
+              background: viewMode === 'kanban' ? 'rgba(20, 169, 215, 0.18)' : 'transparent',
+              color: viewMode === 'kanban' ? (isDark ? '#FFFFFF' : '#0F172A') : colors.textSubtitle,
               fontSize: '0.76rem',
               fontWeight: viewMode === 'kanban' ? 800 : 500,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
           >
-            <LayoutGrid size={15} color={viewMode === 'kanban' ? '#14A9D7' : '#8096A8'} />
+            <LayoutGrid size={15} color={viewMode === 'kanban' ? '#14A9D7' : colors.textSubtitle} />
             <span>Kanban</span>
           </button>
 
@@ -364,15 +394,15 @@ export const AdminDevSupportView: React.FC = () => {
               padding: '7px 14px',
               borderRadius: '9px',
               border: viewMode === 'list' ? '1px solid #14A9D7' : '1px solid transparent',
-              background: viewMode === 'list' ? 'rgba(20, 169, 215, 0.22)' : 'transparent',
-              color: viewMode === 'list' ? '#FFFFFF' : '#8096A8',
+              background: viewMode === 'list' ? 'rgba(20, 169, 215, 0.18)' : 'transparent',
+              color: viewMode === 'list' ? (isDark ? '#FFFFFF' : '#0F172A') : colors.textSubtitle,
               fontSize: '0.76rem',
               fontWeight: viewMode === 'list' ? 800 : 500,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
           >
-            <List size={15} color={viewMode === 'list' ? '#14A9D7' : '#8096A8'} />
+            <List size={15} color={viewMode === 'list' ? '#14A9D7' : colors.textSubtitle} />
             <span>Lista</span>
           </button>
         </div>
@@ -380,8 +410,8 @@ export const AdminDevSupportView: React.FC = () => {
 
       {/* Modern Filter Toolbar */}
       <div style={{
-        background: '#0D1522',
-        border: '1px solid rgba(20, 169, 215, 0.25)',
+        background: colors.toolbarBg,
+        border: `1px solid ${colors.toolbarBorder}`,
         borderRadius: '14px',
         padding: '12px 16px',
         marginBottom: '18px',
@@ -390,32 +420,31 @@ export const AdminDevSupportView: React.FC = () => {
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '12px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
       }}>
         {/* Left: Search Bar */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          background: '#161F2E',
-          border: '1px solid rgba(20, 169, 215, 0.35)',
+          background: colors.inputBg,
+          border: `1px solid ${colors.inputBorder}`,
           borderRadius: '10px',
           padding: '8px 14px',
           width: '320px',
           maxWidth: '100%',
-          transition: 'border-color 0.2s',
         }}>
           <Search size={16} color="#14A9D7" />
           <input
             type="text"
-            placeholder="Buscar por código (#TKT), colaborador ou texto..."
+            placeholder="Buscar por código (#TKT), colaborador..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              color: '#FFFFFF',
+              color: colors.inputText,
               fontSize: '0.78rem',
               width: '100%',
               fontFamily: 'inherit',
@@ -425,7 +454,7 @@ export const AdminDevSupportView: React.FC = () => {
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: colors.textSubtitle, cursor: 'pointer', padding: 0 }}
             >
               ✕
             </button>
@@ -436,56 +465,56 @@ export const AdminDevSupportView: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Seletor de Setor Moderno */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>Setor:</span>
+            <span style={{ fontSize: '0.74rem', color: colors.textSubtitle, fontWeight: 600 }}>Setor:</span>
             <select
               value={moduleFilter}
               onChange={(e) => setModuleFilter(e.target.value)}
               style={{
-                background: '#161F2E',
-                border: '1px solid rgba(20, 169, 215, 0.35)',
+                background: colors.inputBg,
+                border: `1px solid ${colors.inputBorder}`,
                 borderRadius: '10px',
                 padding: '8px 12px',
-                color: '#FFFFFF',
+                color: colors.inputText,
                 fontSize: '0.78rem',
                 outline: 'none',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
               }}
             >
-              <option value="all" style={{ background: '#0D1522' }}>Todos os Setores</option>
-              <option value="home" style={{ background: '#0D1522' }}>🏠 Início</option>
-              <option value="crm" style={{ background: '#0D1522' }}>🎯 Funil / CRM</option>
-              <option value="debutantes" style={{ background: '#0D1522' }}>👑 Debutantes</option>
-              <option value="venues" style={{ background: '#0D1522' }}>🏢 Casas de Festa</option>
-              <option value="collaborators" style={{ background: '#0D1522' }}>🛡️ Colaboradores</option>
-              <option value="whatsapp" style={{ background: '#0D1522' }}>💬 WhatsApp</option>
-              <option value="other" style={{ background: '#0D1522' }}>⚙️ Outros</option>
+              <option value="all" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Todos os Setores</option>
+              <option value="home" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🏠 Início</option>
+              <option value="crm" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🎯 Funil / CRM</option>
+              <option value="debutantes" style={{ background: colors.toolbarBg, color: colors.textTitle }}>👑 Debutantes</option>
+              <option value="venues" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🏢 Casas de Festa</option>
+              <option value="collaborators" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🛡️ Colaboradores</option>
+              <option value="whatsapp" style={{ background: colors.toolbarBg, color: colors.textTitle }}>💬 WhatsApp</option>
+              <option value="other" style={{ background: colors.toolbarBg, color: colors.textTitle }}>⚙️ Outros</option>
             </select>
           </div>
 
-          {/* Seletor de Status (visível no modo Lista ou para filtro refinado) */}
+          {/* Seletor de Status (visível no modo Lista) */}
           {viewMode === 'list' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>Status:</span>
+              <span style={{ fontSize: '0.74rem', color: colors.textSubtitle, fontWeight: 600 }}>Status:</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 style={{
-                  background: '#161F2E',
-                  border: '1px solid rgba(20, 169, 215, 0.35)',
+                  background: colors.inputBg,
+                  border: `1px solid ${colors.inputBorder}`,
                   borderRadius: '10px',
                   padding: '8px 12px',
-                  color: '#FFFFFF',
+                  color: colors.inputText,
                   fontSize: '0.78rem',
                   outline: 'none',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
               >
-                <option value="all" style={{ background: '#0D1522' }}>Todos os Status</option>
-                <option value="new" style={{ background: '#0D1522' }}>🚨 Novos</option>
-                <option value="in_progress" style={{ background: '#0D1522' }}>⏳ Em Andamento</option>
-                <option value="resolved" style={{ background: '#0D1522' }}>✅ Resolvidos</option>
+                <option value="all" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Todos os Status</option>
+                <option value="new" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🚨 Novos</option>
+                <option value="in_progress" style={{ background: colors.toolbarBg, color: colors.textTitle }}>⏳ Em Andamento</option>
+                <option value="resolved" style={{ background: colors.toolbarBg, color: colors.textTitle }}>✅ Resolvidos</option>
               </select>
             </div>
           )}
@@ -505,7 +534,7 @@ export const AdminDevSupportView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Workspace Area (Kanban OU Lista + Drawer Lateral se selecionado) */}
+      {/* Main Workspace Area */}
       <div style={{
         flex: 1,
         display: 'grid',
@@ -525,7 +554,7 @@ export const AdminDevSupportView: React.FC = () => {
           }}>
             {/* COLUNA 1: NOVAS SOLICITAÇÕES */}
             <div style={{
-              background: '#0D1522',
+              background: colors.kanbanColBg,
               border: '1px solid rgba(20, 169, 215, 0.25)',
               borderRadius: '16px',
               display: 'flex',
@@ -534,7 +563,7 @@ export const AdminDevSupportView: React.FC = () => {
             }}>
               <div style={{
                 padding: '14px 18px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                borderBottom: `1px solid ${colors.tableTrBorder}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -542,7 +571,7 @@ export const AdminDevSupportView: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#14A9D7', boxShadow: '0 0 8px #14A9D7' }} />
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#FFFFFF' }}>Novas Solicitações</span>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: colors.textTitle }}>Novas Solicitações</span>
                 </div>
                 <span style={{
                   background: 'rgba(20, 169, 215, 0.2)',
@@ -559,7 +588,7 @@ export const AdminDevSupportView: React.FC = () => {
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {newTickets.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '36px 12px', color: '#64748B', fontSize: '0.78rem' }}>
+                  <div style={{ textAlign: 'center', padding: '36px 12px', color: colors.textSubtitle, fontSize: '0.78rem' }}>
                     Nenhuma nova solicitação pendente
                   </div>
                 ) : (
@@ -570,7 +599,7 @@ export const AdminDevSupportView: React.FC = () => {
 
             {/* COLUNA 2: EM ANDAMENTO */}
             <div style={{
-              background: '#0D1522',
+              background: colors.kanbanColBg,
               border: '1px solid rgba(245, 158, 11, 0.25)',
               borderRadius: '16px',
               display: 'flex',
@@ -579,7 +608,7 @@ export const AdminDevSupportView: React.FC = () => {
             }}>
               <div style={{
                 padding: '14px 18px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                borderBottom: `1px solid ${colors.tableTrBorder}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -587,7 +616,7 @@ export const AdminDevSupportView: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F59E0B', boxShadow: '0 0 8px #F59E0B' }} />
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#FFFFFF' }}>Em Andamento</span>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: colors.textTitle }}>Em Andamento</span>
                 </div>
                 <span style={{
                   background: 'rgba(245, 158, 11, 0.2)',
@@ -604,7 +633,7 @@ export const AdminDevSupportView: React.FC = () => {
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {inProgressTickets.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '36px 12px', color: '#64748B', fontSize: '0.78rem' }}>
+                  <div style={{ textAlign: 'center', padding: '36px 12px', color: colors.textSubtitle, fontSize: '0.78rem' }}>
                     Nenhum chamado em andamento
                   </div>
                 ) : (
@@ -615,7 +644,7 @@ export const AdminDevSupportView: React.FC = () => {
 
             {/* COLUNA 3: RESOLVIDOS */}
             <div style={{
-              background: '#0D1522',
+              background: colors.kanbanColBg,
               border: '1px solid rgba(16, 185, 129, 0.25)',
               borderRadius: '16px',
               display: 'flex',
@@ -624,7 +653,7 @@ export const AdminDevSupportView: React.FC = () => {
             }}>
               <div style={{
                 padding: '14px 18px',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                borderBottom: `1px solid ${colors.tableTrBorder}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -632,7 +661,7 @@ export const AdminDevSupportView: React.FC = () => {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981' }} />
-                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#FFFFFF' }}>Resolvidos</span>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: colors.textTitle }}>Resolvidos</span>
                 </div>
                 <span style={{
                   background: 'rgba(16, 185, 129, 0.2)',
@@ -649,7 +678,7 @@ export const AdminDevSupportView: React.FC = () => {
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {resolvedTickets.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '36px 12px', color: '#64748B', fontSize: '0.78rem' }}>
+                  <div style={{ textAlign: 'center', padding: '36px 12px', color: colors.textSubtitle, fontSize: '0.78rem' }}>
                     Nenhum chamado resolvido
                   </div>
                 ) : (
@@ -661,12 +690,13 @@ export const AdminDevSupportView: React.FC = () => {
         ) : (
           /* MODO LISTA: Tabela Rica e Estruturada */
           <div style={{
-            background: '#0D1522',
-            border: '1px solid rgba(20, 169, 215, 0.25)',
+            background: colors.cardBg,
+            border: `1px solid ${colors.cardBorder}`,
             borderRadius: '16px',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
+            boxShadow: isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.04)',
           }}>
             <div style={{
               overflowX: 'auto',
@@ -680,9 +710,9 @@ export const AdminDevSupportView: React.FC = () => {
               }}>
                 <thead>
                   <tr style={{
-                    background: '#161F2E',
-                    borderBottom: '1px solid rgba(20, 169, 215, 0.2)',
-                    color: '#94A3B8',
+                    background: colors.tableThBg,
+                    borderBottom: `1px solid ${colors.tableTrBorder}`,
+                    color: colors.tableThText,
                     textTransform: 'uppercase',
                     fontSize: '0.68rem',
                     letterSpacing: '0.5px',
@@ -700,7 +730,7 @@ export const AdminDevSupportView: React.FC = () => {
                 <tbody>
                   {filteredTickets.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: colors.textSubtitle }}>
                         Nenhum chamado encontrado para os filtros selecionados.
                       </td>
                     </tr>
@@ -715,13 +745,13 @@ export const AdminDevSupportView: React.FC = () => {
                           key={ticket.id}
                           onClick={() => setSelectedTicketId(ticket.id)}
                           style={{
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                            background: isSelected ? 'rgba(20, 169, 215, 0.14)' : 'transparent',
+                            borderBottom: `1px solid ${colors.tableTrBorder}`,
+                            background: isSelected ? colors.selectedBg : 'transparent',
                             cursor: 'pointer',
                             transition: 'background 0.15s ease',
                           }}
                           onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                            if (!isSelected) e.currentTarget.style.background = colors.tableHoverBg;
                           }}
                           onMouseLeave={(e) => {
                             if (!isSelected) e.currentTarget.style.background = 'transparent';
@@ -742,7 +772,7 @@ export const AdminDevSupportView: React.FC = () => {
                           </td>
 
                           {/* Data */}
-                          <td style={{ padding: '12px 16px', color: '#94A3B8', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '12px 16px', color: colors.textSubtitle, whiteSpace: 'nowrap' }}>
                             {new Date(ticket.createdAt).toLocaleDateString('pt-BR', { 
                               day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
                             })}
@@ -750,9 +780,9 @@ export const AdminDevSupportView: React.FC = () => {
 
                           {/* Solicitante */}
                           <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 700, color: '#FFFFFF' }}>{ticket.userName}</div>
+                            <div style={{ fontWeight: 700, color: colors.textTitle }}>{ticket.userName}</div>
                             {ticket.userEmail && (
-                              <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{ticket.userEmail}</div>
+                              <div style={{ fontSize: '0.68rem', color: colors.textSubtitle }}>{ticket.userEmail}</div>
                             )}
                           </td>
 
@@ -778,7 +808,7 @@ export const AdminDevSupportView: React.FC = () => {
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
-                              color: '#CBD5E1',
+                              color: colors.textBody,
                             }}>
                               {ticket.description}
                             </div>
@@ -798,7 +828,7 @@ export const AdminDevSupportView: React.FC = () => {
                                 </span>
                               )}
                               {!mediaUrl && !ticket.videoUrl && (
-                                <span style={{ color: '#475569' }}>-</span>
+                                <span style={{ color: colors.textSubtitle }}>-</span>
                               )}
                             </div>
                           </td>
@@ -817,9 +847,9 @@ export const AdminDevSupportView: React.FC = () => {
                                 setSelectedTicketId(ticket.id);
                               }}
                               style={{
-                                background: isSelected ? '#14A9D7' : 'rgba(20, 169, 215, 0.15)',
-                                color: isSelected ? '#000000' : '#14A9D7',
-                                border: '1px solid rgba(20, 169, 215, 0.4)',
+                                background: isSelected ? '#14A9D7' : 'rgba(20, 169, 215, 0.12)',
+                                color: isSelected ? '#FFFFFF' : '#14A9D7',
+                                border: '1px solid rgba(20, 169, 215, 0.35)',
                                 borderRadius: '8px',
                                 padding: '6px 12px',
                                 fontSize: '0.72rem',
@@ -848,19 +878,19 @@ export const AdminDevSupportView: React.FC = () => {
         {/* Right Side: Interactive Ticket Chat & Media Drawer */}
         {activeTicket && (
           <div style={{
-            background: '#0D1522',
-            border: '1px solid rgba(20, 169, 215, 0.35)',
+            background: colors.cardBg,
+            border: `1px solid ${colors.toolbarBorder}`,
             borderRadius: '16px',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.5)' : '0 4px 20px rgba(0,0,0,0.1)',
           }}>
             {/* Drawer Header */}
             <div style={{
               padding: '16px 20px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              background: '#161F2E',
+              borderBottom: `1px solid ${colors.tableTrBorder}`,
+              background: colors.drawerHeaderBg,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -879,11 +909,11 @@ export const AdminDevSupportView: React.FC = () => {
                   }}>
                     {activeTicket.ticketCode}
                   </span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#FFFFFF' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: colors.textTitle }}>
                     {activeTicket.userName}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#94A3B8', marginTop: '3px' }}>
+                <div style={{ fontSize: '0.7rem', color: colors.textSubtitle, marginTop: '3px' }}>
                   {activeTicket.userEmail || 'Usuário do Sistema'} • {new Date(activeTicket.createdAt).toLocaleString('pt-BR')}
                 </div>
               </div>
@@ -892,10 +922,10 @@ export const AdminDevSupportView: React.FC = () => {
                 type="button"
                 onClick={() => setSelectedTicketId(null)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                  border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
                   borderRadius: '8px',
-                  color: '#94A3B8',
+                  color: colors.textSubtitle,
                   padding: '6px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -911,13 +941,13 @@ export const AdminDevSupportView: React.FC = () => {
             <div style={{
               padding: '10px 18px',
               background: 'rgba(20, 169, 215, 0.05)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              borderBottom: `1px solid ${colors.tableTrBorder}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '8px',
             }}>
-              <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.72rem', color: colors.textSubtitle, fontWeight: 600 }}>
                 Status do Chamado:
               </span>
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -926,7 +956,7 @@ export const AdminDevSupportView: React.FC = () => {
                   onClick={() => handleChangeStatus('new')}
                   style={{
                     background: activeTicket.status === 'new' ? '#14A9D7' : 'rgba(20, 169, 215, 0.12)',
-                    color: activeTicket.status === 'new' ? '#000000' : '#14A9D7',
+                    color: activeTicket.status === 'new' ? '#FFFFFF' : '#14A9D7',
                     border: '1px solid rgba(20, 169, 215, 0.35)',
                     borderRadius: '6px',
                     padding: '4px 8px',
@@ -942,7 +972,7 @@ export const AdminDevSupportView: React.FC = () => {
                   onClick={() => handleChangeStatus('in_progress')}
                   style={{
                     background: activeTicket.status === 'in_progress' ? '#F59E0B' : 'rgba(245, 158, 11, 0.12)',
-                    color: activeTicket.status === 'in_progress' ? '#000000' : '#F59E0B',
+                    color: activeTicket.status === 'in_progress' ? '#FFFFFF' : '#F59E0B',
                     border: '1px solid rgba(245, 158, 11, 0.35)',
                     borderRadius: '6px',
                     padding: '4px 8px',
@@ -958,7 +988,7 @@ export const AdminDevSupportView: React.FC = () => {
                   onClick={() => handleChangeStatus('resolved')}
                   style={{
                     background: activeTicket.status === 'resolved' ? '#10B981' : 'rgba(16, 185, 129, 0.12)',
-                    color: activeTicket.status === 'resolved' ? '#000000' : '#10B981',
+                    color: activeTicket.status === 'resolved' ? '#FFFFFF' : '#10B981',
                     border: '1px solid rgba(16, 185, 129, 0.35)',
                     borderRadius: '6px',
                     padding: '4px 8px',
@@ -983,15 +1013,15 @@ export const AdminDevSupportView: React.FC = () => {
             }}>
               {/* Box da Mensagem Original do Usuário */}
               <div style={{
-                background: '#161F2E',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
+                background: colors.drawerSubBoxBg,
+                border: `1px solid ${colors.cardBorder}`,
                 borderRadius: '12px',
                 padding: '12px 14px',
               }}>
                 <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#14A9D7', marginBottom: '6px' }}>
                   Descrição Inicial do Erro
                 </div>
-                <p style={{ fontSize: '0.78rem', color: '#E2E8F0', lineHeight: 1.5, margin: 0 }}>
+                <p style={{ fontSize: '0.78rem', color: colors.textBody, lineHeight: 1.5, margin: 0 }}>
                   {activeTicket.description}
                 </p>
               </div>
@@ -999,8 +1029,8 @@ export const AdminDevSupportView: React.FC = () => {
               {/* Anexos de Mídia (Screenshot & Vídeo) */}
               {(activeTicket.imageUrl || activeTicket.screenshotUrl || activeTicket.videoUrl) && (
                 <div style={{
-                  background: '#161F2E',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  background: colors.drawerSubBoxBg,
+                  border: `1px solid ${colors.cardBorder}`,
                   borderRadius: '12px',
                   padding: '12px 14px',
                   display: 'flex',
@@ -1013,7 +1043,7 @@ export const AdminDevSupportView: React.FC = () => {
 
                   {(activeTicket.imageUrl || activeTicket.screenshotUrl) && (
                     <div>
-                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ fontSize: '0.7rem', color: colors.textSubtitle, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <ImageIcon size={12} color="#14A9D7" />
                         <span>Captura de Tela:</span>
                       </div>
@@ -1035,7 +1065,7 @@ export const AdminDevSupportView: React.FC = () => {
 
                   {activeTicket.videoUrl && (
                     <div>
-                      <div style={{ fontSize: '0.7rem', color: '#94A3B8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ fontSize: '0.7rem', color: colors.textSubtitle, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Video size={12} color="#A855F7" />
                         <span>Gravação da Tela:</span>
                       </div>
@@ -1056,12 +1086,12 @@ export const AdminDevSupportView: React.FC = () => {
 
               {/* Histórico do Chat */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#94A3B8' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: colors.textSubtitle }}>
                   Histórico de Atendimento
                 </div>
 
                 {(!activeTicket.messages || activeTicket.messages.length === 0) ? (
-                  <div style={{ textAlign: 'center', padding: '16px', color: '#64748B', fontSize: '0.74rem' }}>
+                  <div style={{ textAlign: 'center', padding: '16px', color: colors.textSubtitle, fontSize: '0.74rem' }}>
                     Nenhuma resposta enviada ainda. Digite abaixo para orientar o colaborador.
                   </div>
                 ) : (
@@ -1073,11 +1103,13 @@ export const AdminDevSupportView: React.FC = () => {
                         style={{
                           alignSelf: isDev ? 'flex-end' : 'flex-start',
                           maxWidth: '85%',
-                          background: isDev ? 'linear-gradient(135deg, rgba(20, 169, 215, 0.25) 0%, rgba(20, 169, 215, 0.1) 100%)' : '#1E293B',
-                          border: `1px solid ${isDev ? 'rgba(20, 169, 215, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                          background: isDev 
+                            ? 'linear-gradient(135deg, rgba(20, 169, 215, 0.2) 0%, rgba(20, 169, 215, 0.08) 100%)' 
+                            : (isDark ? '#1E293B' : '#F1F5F9'),
+                          border: `1px solid ${isDev ? 'rgba(20, 169, 215, 0.4)' : (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)')}`,
                           borderRadius: '12px',
                           padding: '10px 12px',
-                          color: '#FFFFFF',
+                          color: colors.textTitle,
                           fontSize: '0.76rem',
                           lineHeight: 1.4,
                         }}
@@ -1089,7 +1121,7 @@ export const AdminDevSupportView: React.FC = () => {
                           gap: '8px',
                           marginBottom: '4px',
                           fontSize: '0.65rem',
-                          color: isDev ? '#14A9D7' : '#94A3B8',
+                          color: isDev ? '#14A9D7' : colors.textSubtitle,
                           fontWeight: 700,
                         }}>
                           <span>{msg.senderName} ({isDev ? 'Dev / Suporte' : 'Usuário'})</span>
@@ -1108,8 +1140,8 @@ export const AdminDevSupportView: React.FC = () => {
               onSubmit={handleSendMessage}
               style={{
                 padding: '12px 16px',
-                background: '#161F2E',
-                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                background: colors.drawerHeaderBg,
+                borderTop: `1px solid ${colors.tableTrBorder}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -1122,11 +1154,11 @@ export const AdminDevSupportView: React.FC = () => {
                 onChange={(e) => setMessageDraft(e.target.value)}
                 style={{
                   flex: 1,
-                  background: '#0D1522',
-                  border: '1px solid rgba(20, 169, 215, 0.35)',
+                  background: colors.inputBg,
+                  border: `1px solid ${colors.inputBorder}`,
                   borderRadius: '10px',
                   padding: '9px 12px',
-                  color: '#FFFFFF',
+                  color: colors.inputText,
                   fontSize: '0.78rem',
                   outline: 'none',
                   fontFamily: 'inherit',
@@ -1139,7 +1171,7 @@ export const AdminDevSupportView: React.FC = () => {
                   background: '#14A9D7',
                   border: 'none',
                   borderRadius: '10px',
-                  color: '#000000',
+                  color: '#FFFFFF',
                   padding: '9px 14px',
                   fontSize: '0.78rem',
                   fontWeight: 800,
@@ -1187,7 +1219,7 @@ export const AdminDevSupportView: React.FC = () => {
                 right: '-12px',
                 background: '#14A9D7',
                 border: 'none',
-                color: '#000000',
+                color: '#FFFFFF',
                 width: '32px',
                 height: '32px',
                 borderRadius: '50%',

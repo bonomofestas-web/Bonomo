@@ -6,6 +6,7 @@ import {
   Clock, Sparkles, Target, CheckSquare
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import type { Collaborator } from '../../types/admin';
 
 export const AdminDevUsersManagerView: React.FC = () => {
@@ -405,10 +406,19 @@ export const AdminDevUsersManagerView: React.FC = () => {
                         overflow: 'hidden',
                         flexShrink: 0,
                       }}>
-                        {master.avatarUrl ? (
-                          <img src={master.avatarUrl} alt={master.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        {(master.avatarUrl && !master.avatarUrl.includes('unsplash.com')) ? (
+                          <img 
+                            src={master.avatarUrl} 
+                            alt={master.name} 
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = createMonogramAvatar(master.name); }}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
                         ) : (
-                          <Crown size={22} color="#D4AF37" />
+                          <img 
+                            src={createMonogramAvatar(master.name)} 
+                            alt={master.name} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
                         )}
                       </div>
 
@@ -656,8 +666,13 @@ export const AdminDevUsersManagerView: React.FC = () => {
                                 fontWeight: 800,
                                 color: '#14A9D7',
                               }}>
-                                {collab.avatarUrl ? (
-                                  <img src={collab.avatarUrl} alt={collab.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? (
+                                  <img 
+                                    src={collab.avatarUrl} 
+                                    alt={collab.name} 
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = createMonogramAvatar(collab.name); }}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                  />
                                 ) : (
                                   collab.name.charAt(0).toUpperCase()
                                 )}

@@ -26,16 +26,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'ID ou Slug da debutante é obrigatório.' });
       }
 
-      // 1. Resolve exact UUID if a slug or partial ID was passed
-      let targetId = String(id).trim();
+      let rawId = String(id).trim();
+      let targetId = rawId;
       let debutanteName = '';
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
       
-      const { data: found } = await supabase
-        .from('debutantes')
-        .select('id, name')
-        .or(`slug.eq.${targetId},id.eq.${targetId}`)
-        .maybeSingle();
+      const query = supabase.from('debutantes').select('id, name');
+      const { data: found } = isUuid
+        ? await query.or(`id.eq.${rawId},slug.eq.${rawId}`).maybeSingle()
+        : await query.eq('slug', rawId).maybeSingle();
 
       if (found?.id) {
         targetId = found.id;
@@ -46,53 +45,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // 2. PRESERVAÇÃO COMERCIAL:
       // - LEADS e INDICAÇÕES NUNCA são deletados.
-      // - Garantimos que os leads e indicações tenham o nome de quem indicou salvo como histórico
+      // - Garantimos que os leads e indicações tenham o nome de quem indicou gravado
       if (debutanteName) {
-        await supabase
-          .from('leads')
-          .update({ debutante_name: debutanteName })
-          .eq('debutante_id', targetId);
+        try {
+          await supabase
+            .from('leads')
+            .update({ debutante_name: debutanteName })
+            .eq('debutante_id', targetId);
+        } catch {}
 
-        await supabase
-          .from('referrals')
-          .update({ debutante_name: debutanteName })
-          .eq('debutante_id', targetId);
+        try {
+          await supabase
+            .from('referrals')
+            .update({ debutante_name: debutanteName })
+            .eq('debutante_id', targetId);
+        } catch {}
       }
 
-      // Desvincula foreign key se necessário para permitir exclusão da debutante sem cascatear os leads
-      await supabase
-        .from('referrals')
-        .update({ debutante_id: null })
-        .eq('debutante_id', targetId);
+      // Desvincula foreign key para permitir exclusão da debutante mantendo leads no CRM
+      try {
+        await supabase
+          .from('leads')
+          .update({ debutante_id: null })
+          .eq('debutante_id', targetId);
+      } catch {}
 
-      await supabase
-        .from('leads')
-        .update({ debutante_id: null })
-        .eq('debutante_id', targetId);
+      try {
+        await supabase
+          .from('referrals')
+          .update({ debutante_id: null })
+          .eq('debutante_id', targetId);
+      } catch {}
 
       // 3. Remove apenas a lista de convidados (estritamente da festa dela)
-      await supabase.from('guests').delete().eq('debutante_id', targetId);
+      try {
+        await supabase.from('guests').delete().eq('debutante_id', targetId);
+      } catch {}
 
-      // 4. Remove apenas compromissos FUTUROS / PENDENTES (compromissos passados/realizados permanecem no histórico)
-      await supabase
-        .from('appointments')
-        .delete()
-        .eq('debutante_id', targetId)
-        .gte('date', todayStr)
-        .in('status', ['scheduled', 'pending']);
+      // 4. Remove apenas compromissos FUTUROS / PENDENTES
+      try {
+        await supabase
+          .from('appointments')
+          .delete()
+          .eq('debutante_id', targetId)
+          .gte('date', todayStr)
+          .in('status', ['scheduled', 'pending']);
+      } catch {}
 
-      // 5. Remove apenas tarefas FUTURAS / PENDENTES (tarefas concluídas/histórico permanecem)
-      await supabase
-        .from('admin_tasks')
-        .delete()
-        .eq('debutante_id', targetId)
-        .in('status', ['todo', 'in_progress']);
+      // 5. Remove apenas tarefas FUTURAS / PENDENTES vinculadas à debutante
+      try {
+        await supabase
+          .from('admin_tasks')
+          .delete()
+          .eq('debutante_id', targetId)
+          .in('status', ['todo', 'in_progress']);
+      } catch {}
 
       // 6. Delete debutante record
-      const { error: debErr } = await supabase
-        .from('debutantes')
-        .delete()
-        .or(`id.eq.${targetId},slug.eq.${id}`);
+      const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      const deleteQuery = isTargetUuid
+        ? supabase.from('debutantes').delete().eq('id', targetId)
+        : supabase.from('debutantes').delete().eq('slug', rawId);
+
+      const { error: debErr } = await deleteQuery;
 
       if (debErr) {
         console.error('[API Save Debutante] Erro ao deletar debutante:', debErr);

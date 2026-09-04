@@ -42,6 +42,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const isWhatsAppDisabled = getFeatureStatus('whatsapp') === 'disabled' && currentUser?.role !== 'dev';
   const isWhatsAppComingSoon = getFeatureStatus('whatsapp') === 'coming_soon' && currentUser?.role !== 'dev';
 
+  const activeFunnel = funnels.find(f => f.id === activeFunnelId);
+  const isPostSaleFunnel = Boolean(
+    activeFunnel?.isPostSale ||
+    activeFunnel?.allowedRoles?.includes('pos_venda') ||
+    activeFunnel?.name?.toLowerCase().includes('pós-venda') ||
+    activeFunnel?.name?.toLowerCase().includes('pos venda') ||
+    activeFunnel?.category === 'Pós-Venda' ||
+    activeFunnel?.category === 'pos_venda'
+  );
+  const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
+
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId || null);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -740,6 +751,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             lead={selectedLead}
             onStageChange={(newStage: CrmStage) => updateLeadStage(selectedLead.id, newStage)}
             onToggleCollapse={() => setIsInspectorOpen(false)}
+            readOnly={isReadOnlyForPosVenda}
           />
         </div>
       )}
@@ -1093,8 +1105,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             </div>
 
             {/* ── MULTI-TAB COMPOSER: WHATSAPP | ANOTAÇÕES | TAREFAS ── */}
+            {isReadOnlyForPosVenda ? (
+              <div style={{
+                padding: '16px 20px',
+                background: 'rgba(6, 182, 212, 0.08)',
+                borderTop: '1px solid rgba(6, 182, 212, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}>
+                <span style={{ fontSize: '1.25rem' }}>👁️</span>
+                <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)', lineHeight: 1.45 }}>
+                  <strong style={{ color: '#06B6D4' }}>Modo Observador Comercial (Pós-Venda):</strong> Você pode acompanhar o histórico de conversas e notas deste lead. O envio de mensagens e interação direta neste funil são exclusivos do time comercial (habilitados em funis de Pós-Venda).
+                </div>
+              </div>
+            ) : (
             <div style={{
-              padding: '14px 20px',
+              padding: '12px 20px 16px 20px',
               borderTop: '1px solid var(--adm-border)',
               background: 'var(--adm-bg-input)',
               display: 'flex',
@@ -1433,6 +1460,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 )
               )}
             </div>
+            )}
           </>
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-text-muted)', gap: '12px' }}>

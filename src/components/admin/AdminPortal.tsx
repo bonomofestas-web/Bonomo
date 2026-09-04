@@ -332,6 +332,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'debutantes':
+        if (currentUser?.role === 'sdr' || currentUser?.role === 'closer' || currentUser?.role === 'crm') {
+          return (
+            <AdminCrmKanbanView
+              initialLeadId={crmOpenLeadId}
+              activeFunnelId={activeFunnelId}
+              onSelectFunnel={(id) => setActiveFunnelId(id)}
+              onLeadOpened={() => setCrmOpenLeadId(undefined)}
+            />
+          );
+        }
         return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
       case 'venue-goals':
         return <AdminVenueGoalsView />;

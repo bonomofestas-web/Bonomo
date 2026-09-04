@@ -8,6 +8,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminVenueGoalsModal } from './AdminVenueGoalsModal';
 import { getCollaboratorTimeLogs } from '../../hooks/useActiveTimeTracker';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import type { AdminTabType } from './AdminSidebar';
 import type { Venue, VenueGoals } from '../../types/admin';
 
@@ -862,7 +863,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ position: 'relative' }}>
                     <img
-                      src={collab.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop&q=80'}
+                      src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
                       alt={collab.name}
                       style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
                     />
@@ -956,7 +957,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={sdrPodium.second.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(sdrPodium.second.avatarUrl && !sdrPodium.second.avatarUrl.includes('unsplash.com')) ? sdrPodium.second.avatarUrl : createMonogramAvatar(sdrPodium.second.name)}
                       alt={sdrPodium.second.name}
                       style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #94A3B8' }}
                     />
@@ -981,7 +982,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={sdrPodium.first.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(sdrPodium.first.avatarUrl && !sdrPodium.first.avatarUrl.includes('unsplash.com')) ? sdrPodium.first.avatarUrl : createMonogramAvatar(sdrPodium.first.name)}
                       alt={sdrPodium.first.name}
                       style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #D4AF37' }}
                     />
@@ -1006,7 +1007,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={sdrPodium.third.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(sdrPodium.third.avatarUrl && !sdrPodium.third.avatarUrl.includes('unsplash.com')) ? sdrPodium.third.avatarUrl : createMonogramAvatar(sdrPodium.third.name)}
                       alt={sdrPodium.third.name}
                       style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #CD7F32' }}
                     />
@@ -1074,7 +1075,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={closerPodium.second.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(closerPodium.second.avatarUrl && !closerPodium.second.avatarUrl.includes('unsplash.com')) ? closerPodium.second.avatarUrl : createMonogramAvatar(closerPodium.second.name)}
                       alt={closerPodium.second.name}
                       style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #94A3B8' }}
                     />
@@ -1099,7 +1100,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={closerPodium.first.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(closerPodium.first.avatarUrl && !closerPodium.first.avatarUrl.includes('unsplash.com')) ? closerPodium.first.avatarUrl : createMonogramAvatar(closerPodium.first.name)}
                       alt={closerPodium.first.name}
                       style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #D4AF37' }}
                     />
@@ -1124,7 +1125,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <>
                   <div style={{ position: 'relative', marginBottom: '6px' }}>
                     <img
-                      src={closerPodium.third.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
+                      src={(closerPodium.third.avatarUrl && !closerPodium.third.avatarUrl.includes('unsplash.com')) ? closerPodium.third.avatarUrl : createMonogramAvatar(closerPodium.third.name)}
                       alt={closerPodium.third.name}
                       style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #CD7F32' }}
                     />

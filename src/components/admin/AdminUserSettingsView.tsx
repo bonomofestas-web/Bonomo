@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { APP_VERSION } from '../../types/admin';
 
 interface AdminUserSettingsViewProps {
@@ -146,7 +147,11 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
         {/* Avatar with Edit Badge */}
         <div style={{ position: 'relative', width: '92px', height: '92px', margin: '0 auto 14px auto' }}>
           <img
-            src={currentUser?.avatarUrl || avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80'}
+            src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) 
+              ? currentUser.avatarUrl 
+              : (avatarUrl && !avatarUrl.includes('unsplash.com')) 
+                ? avatarUrl 
+                : createMonogramAvatar(currentUser?.name || name || 'Administrador')}
             alt={currentUser?.name || 'Avatar'}
             style={{
               width: '100%',

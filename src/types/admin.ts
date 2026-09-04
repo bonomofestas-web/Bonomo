@@ -8,7 +8,7 @@ import type {
 } from './index';
 
 // All roles in the system (dev is the exclusive root developer super-role)
-export type AdminRole = 'dev' | 'master' | 'admin' | 'crm' | 'sdr' | 'closer';
+export type AdminRole = 'dev' | 'master' | 'admin' | 'crm' | 'sdr' | 'closer' | 'pos_venda';
 
 export type FeatureFlagId = 
   | 'home'
@@ -70,6 +70,8 @@ export interface AdminUser {
   phone?: string;
   theme?: ThemeMode;
   isFirstAccess?: boolean;
+  activatedAt?: string;
+  lastLoginAt?: string;
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
 }
 
@@ -84,6 +86,8 @@ export interface Collaborator {
   phone?: string;
   active: boolean;
   isFirstAccess?: boolean;
+  activatedAt?: string;
+  lastLoginAt?: string;
   password?: string;
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
@@ -388,6 +392,8 @@ export interface CommercialFunnel {
   description?: string;
   venueId: string; // ID específico da casa
   allowedCollaboratorIds?: string[]; // IDs dos colaboradores permitidos (vazio = todos)
+  allowedRoles?: AdminRole[]; // Cargos que podem interagir neste funil
+  isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda
   badge?: string;
   badgeColor?: string;
   icon?: string;

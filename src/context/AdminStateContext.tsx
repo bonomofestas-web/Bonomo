@@ -213,7 +213,7 @@ export interface AdminContextType {
   // Collaborators
   addCollaborator: (data: Omit<Collaborator, 'id' | 'createdAt'>) => string;
   updateCollaborator: (id: string, data: Partial<Collaborator>) => void;
-  deleteCollaborator: (id: string) => void;
+  deleteCollaborator: (id: string, reassignToId?: string | null) => void;
 
   // Venue Management
   setActiveVenueId: (id: string | null) => void;
@@ -1335,13 +1335,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateCurrentUserProfile = (data: Partial<AdminUser>) => {
-    let activeId = currentUser?.id || 'collab_master_1';
-    let updatedUser: AdminUser | null = null;
+    const activeId = currentUser?.id || 'collab_master_1';
+    const effectiveName = data.name !== undefined ? data.name : (currentUser?.name || 'Administrador');
+    const effectiveEmail = (data.email !== undefined ? data.email : (currentUser?.email || '')).toLowerCase().trim();
+    const effectivePhone = data.phone !== undefined ? data.phone : (currentUser?.phone || '');
+    const effectiveAvatarUrl = data.avatarUrl !== undefined ? data.avatarUrl : (currentUser?.avatarUrl || '');
 
     setCurrentUser(prev => {
       if (!prev) return null;
-      activeId = prev.id;
-      updatedUser = {
+      const updated: AdminUser = {
         ...prev,
         name: data.name !== undefined ? data.name : prev.name,
         email: data.email !== undefined ? data.email : prev.email,
@@ -1349,23 +1351,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : prev.avatarUrl,
         theme: data.theme !== undefined ? data.theme : prev.theme,
       };
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(updatedUser));
-      return updatedUser;
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(updated));
+      return updated;
     });
 
-    // Also sync to collaborators list so the staff member entry reflects the new name/avatar/phone
+    const userEmail = effectiveEmail;
+
+    // Sincroniza na lista de colaboradores para que reflita imediatamente em todas as telas
     setCollaborators(prev => {
-      const exists = prev.some(c => c.id === activeId || (currentUser?.role === 'master' && c.role === 'master'));
+      const exists = prev.some(c => c.id === activeId || (userEmail && c.email.toLowerCase().trim() === userEmail) || (currentUser?.role === 'master' && c.role === 'master'));
       let updated: Collaborator[];
       if (exists) {
         updated = prev.map(c => {
-          if (c.id === activeId || (currentUser?.role === 'master' && c.role === 'master')) {
+          const matches = c.id === activeId || (userEmail && c.email.toLowerCase().trim() === userEmail) || (currentUser?.role === 'master' && c.role === 'master');
+          if (matches) {
             return {
               ...c,
-              name: data.name !== undefined ? data.name : c.name,
-              email: data.email !== undefined ? data.email : c.email,
-              avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : c.avatarUrl,
-              phone: data.phone !== undefined ? data.phone : c.phone,
+              name: effectiveName,
+              email: effectiveEmail,
+              avatarUrl: effectiveAvatarUrl,
+              phone: effectivePhone,
             };
           }
           return c;
@@ -1373,11 +1378,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else {
         const newCollab: Collaborator = {
           id: activeId,
-          name: data.name || currentUser?.name || 'Carlos Bonomo',
-          email: data.email || currentUser?.email || 'diretoria@bonomofestas.com.br',
+          name: effectiveName,
+          email: userEmail || 'diretoria@bonomofestas.com.br',
           role: currentUser?.role || 'master',
-          avatarUrl: data.avatarUrl || currentUser?.avatarUrl,
-          phone: data.phone || '(21) 99999-8888',
+          avatarUrl: effectiveAvatarUrl,
+          phone: effectivePhone || '(21) 99999-8888',
           venueId: 'all',
           active: true,
           createdAt: new Date().toISOString().split('T')[0],
@@ -1388,25 +1393,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    // Sincronizar em tempo real com o Supabase
-    if (activeId && updatedUser) {
-      collaboratorService.upsert({
-        id: activeId,
-        name: (updatedUser as AdminUser).name,
-        email: (updatedUser as AdminUser).email,
-        avatarUrl: (updatedUser as AdminUser).avatarUrl,
-        phone: (updatedUser as AdminUser).phone,
-      });
+    // Sincroniza em tempo real com a tabela public.collaborators no Supabase por ID e EMAIL
+    collaboratorService.upsert({
+      id: activeId,
+      name: effectiveName,
+      email: effectiveEmail || 'diretoria@bonomofestas.com.br',
+      avatarUrl: effectiveAvatarUrl,
+      phone: effectivePhone,
+    });
 
-      if (isSupabaseConfigured) {
-        supabase.auth.updateUser({
-          data: {
-            name: (updatedUser as AdminUser).name,
-            avatar_url: (updatedUser as AdminUser).avatarUrl,
-            phone: (updatedUser as AdminUser).phone,
-          }
-        }).catch(err => console.warn('Falha ao atualizar metadata no Supabase Auth:', err));
-      }
+    if (isSupabaseConfigured) {
+      supabase.auth.updateUser({
+        data: {
+          name: effectiveName,
+          avatar_url: effectiveAvatarUrl,
+          phone: effectivePhone,
+        }
+      }).catch(err => console.warn('Falha ao atualizar metadata no Supabase Auth:', err));
     }
   };
 
@@ -1565,12 +1568,114 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const deleteCollaborator = (id: string) => {
+  const deleteCollaborator = (id: string, reassignToId?: string | null) => {
+    const targetCollab = collaborators.find(c => c.id === id);
+    const targetName = targetCollab?.name;
+    const targetCleanEmail = targetCollab?.email?.toLowerCase().trim();
+    const newCollab = reassignToId ? collaborators.find(c => c.id === reassignToId) : null;
+
+    // 1. PRESERVAÇÃO COMERCIAL: Reatribui ou desvincula LEADS
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        let changed = false;
+        let sdrId = lead.sdrId;
+        let sdrName = lead.sdrName;
+        let closerId = lead.closerId;
+        let closerName = lead.closerName;
+        let assignedTo = lead.assignedTo;
+
+        const matchesTarget = (val?: string) => Boolean(val && (val === id || (targetName && val.toLowerCase() === targetName.toLowerCase())));
+
+        if (matchesTarget(lead.sdrId) || matchesTarget(lead.sdrName)) {
+          changed = true;
+          if (newCollab) {
+            sdrId = newCollab.id;
+            sdrName = newCollab.name;
+          } else {
+            sdrId = undefined;
+            sdrName = undefined;
+          }
+        }
+
+        if (matchesTarget(lead.closerId) || matchesTarget(lead.closerName)) {
+          changed = true;
+          if (newCollab) {
+            closerId = newCollab.id;
+            closerName = newCollab.name;
+          } else {
+            closerId = undefined;
+            closerName = undefined;
+          }
+        }
+
+        if (matchesTarget(lead.assignedTo)) {
+          changed = true;
+          assignedTo = newCollab ? newCollab.name : 'Sem responsável';
+        }
+
+        if (changed) {
+          const updatedLead = {
+            ...lead,
+            sdrId,
+            sdrName,
+            closerId,
+            closerName,
+            assignedTo,
+          };
+          leadService.upsert(updatedLead).catch((e: any) => console.warn('Falha ao persistir lead reatribuído no Supabase:', e));
+          return updatedLead;
+        }
+
+        return lead;
+      });
+
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. TAREFAS:
+    // - Remove apenas tarefas particulares sem lead nem debutante associados criadas exclusivamente pelo colaborador
+    // - Tarefas vinculadas a leads ou compartilhadas são transferidas para o novo colaborador ou desvinculadas
+    setTasks(prev => {
+      const remaining: AdminTask[] = [];
+
+      for (const task of prev) {
+        const isParticularTask = (task.createdById === id || (targetName && task.createdByName === targetName))
+          && !task.leadId 
+          && !task.debutanteId 
+          && (!task.assignedToIds || task.assignedToIds.length <= 1);
+
+        if (isParticularTask) {
+          taskService.delete(task.id).catch((e: any) => console.warn('Erro ao deletar tarefa particular:', e));
+          continue;
+        }
+
+        let assignedToIds = task.assignedToIds || [];
+        if (assignedToIds.includes(id)) {
+          if (newCollab) {
+            assignedToIds = assignedToIds.map(aId => (aId === id ? newCollab.id : aId));
+          } else {
+            assignedToIds = assignedToIds.filter(aId => aId !== id);
+          }
+          const updatedTask = { ...task, assignedToIds };
+          taskService.upsert(updatedTask).catch((e: any) => console.warn('Erro ao atualizar tarefa transferida:', e));
+          remaining.push(updatedTask);
+        } else {
+          remaining.push(task);
+        }
+      }
+
+      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(remaining));
+      return remaining;
+    });
+
+    // 3. Remove colaborador da lista e do banco de dados
     setCollaborators(prev => {
-      const updated = prev.filter(c => c.id !== id);
+      const updated = prev.filter(c => c.id !== id && (targetCleanEmail ? c.email.toLowerCase().trim() !== targetCleanEmail : true));
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
+
     collaboratorService.delete(id);
   };
 
@@ -2025,6 +2130,32 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteDebutanteAccount = (idOrSlug: string) => {
+    // Somente gerentes da casa (admin), diretoria master e desenvolvedor têm permissão para excluir aniversariantes
+    const canDelete = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
+    if (!canDelete) {
+      alert('Apenas gerentes e diretoria master possuem permissão para excluir aniversariantes.');
+      return;
+    }
+
+    const targetDeb = debutantes.find(d => d.id === idOrSlug || d.slug === idOrSlug);
+    const targetName = targetDeb?.name;
+
+    // PRESERVAÇÃO COMERCIAL: Mantém os leads e indicações no CRM com o nome da debutante indicadora preservado
+    setLeads(prev => {
+      const updated = prev.map(l => {
+        if (l.debutanteId === idOrSlug || (targetDeb && l.debutanteId === targetDeb.id) || l.debutanteSlug === idOrSlug) {
+          return {
+            ...l,
+            debutanteId: '',
+            debutanteName: l.debutanteName || targetName || 'Aniversariante',
+          };
+        }
+        return l;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
     setDebutantes(prev => {
       const updated = prev.filter(d => d.id !== idOrSlug && d.slug !== idOrSlug);
       safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));

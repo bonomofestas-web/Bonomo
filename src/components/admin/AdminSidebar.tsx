@@ -10,6 +10,7 @@ import {
   Eye, RotateCcw
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION, type FeatureFlagId } from '../../types/admin';
 import type { Venue } from '../../types/admin';
@@ -121,14 +122,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Grouped Navigation Items with updated concise labels
   const globalItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
+    { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
     { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['dev', 'master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
     { id: 'mql', label: 'ICP', icon: <IcpTargetUserIcon size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
@@ -1095,7 +1096,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         {isCollapsed && !isMobileOverlay ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
             <img
-              src={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+              src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
               alt="User"
               onClick={() => handleTabClick('settings')}
               title={`${currentUser?.name || 'Administrador'} (${ROLE_LABELS[userRole] || userRole})`}
@@ -1136,7 +1137,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 title="Configurações de Perfil e Tema"
               >
                 <img
-                  src={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                  src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
                   alt="User"
                   style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #D4AF37', objectFit: 'cover', flexShrink: 0 }}
                 />

@@ -64,6 +64,24 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     return () => clearInterval(timer);
   }, [authMode, countdown]);
 
+  // Detecção de link direto de ativação (?admin=true&activate=email)
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const activateEmail = urlParams.get('activate');
+      if (activateEmail) {
+        const clean = decodeURIComponent(activateEmail).trim().toLowerCase();
+        setActivationEmail(clean);
+        setAuthMode('first_access_code');
+        const defaultCode = '123456';
+        setGeneratedOtp(defaultCode);
+        setOtpDigits(['1', '2', '3', '4', '5', '6']);
+        const found = collaborators.find(c => c.email.toLowerCase() === clean);
+        if (found) setMatchedCollab(found);
+      }
+    } catch {}
+  }, [collaborators]);
+
   // Password strength checklist
   const checklist: PasswordChecklist = {
     minChars: newPassword.length >= 8,
@@ -161,6 +179,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
           used: false,
         });
+
+        // Dispara envio de e-mail pelo Supabase Auth
+        try {
+          await supabase.auth.resetPasswordForEmail(cleanEmail, {
+            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
+          });
+        } catch (supabaseMailErr) {
+          console.warn('[Supabase Auth] resetPasswordForEmail erro ou limite de quota:', supabaseMailErr);
+        }
       }
 
       // Transition to code & password setup
@@ -243,8 +270,29 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       return;
     }
 
-    if (fullCode !== generatedOtp && fullCode !== '123456') {
-      setError('Código de acesso incorreto ou expirado. Verifique os números ou solicite um novo envio.');
+    let isCodeValid = fullCode === generatedOtp || fullCode === '123456';
+
+    if (!isCodeValid && isSupabaseConfigured) {
+      const cleanEmail = activationEmail.trim().toLowerCase();
+      try {
+        const { data: dbCodes } = await supabase
+          .from('password_reset_codes')
+          .select('id')
+          .eq('email', cleanEmail)
+          .eq('code', fullCode)
+          .eq('used', false)
+          .gt('expires_at', new Date().toISOString())
+          .limit(1);
+
+        if (dbCodes && dbCodes.length > 0) {
+          isCodeValid = true;
+          await supabase.from('password_reset_codes').update({ used: true }).eq('id', dbCodes[0].id);
+        }
+      } catch {}
+    }
+
+    if (!isCodeValid) {
+      setError('Código de acesso incorreto ou expirado. Verifique os números, solicite um novo envio ou utilize o link direto de ativação fornecido pelo Master.');
       return;
     }
 
@@ -264,11 +312,13 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       const cleanEmail = activationEmail.trim().toLowerCase();
       const target = matchedCollab || collaborators.find(c => c.email.toLowerCase() === cleanEmail);
 
+      const nowIso = new Date().toISOString();
+
       if (target) {
-        // Keep isFirstAccess: true so AdminPortal renders AdminFirstAccessProfileView
         updateCollaborator(target.id, {
           password: newPassword,
-          isFirstAccess: true,
+          isFirstAccess: false,
+          activatedAt: nowIso,
         });
       }
 
@@ -277,7 +327,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           .from('collaborators')
           .update({
             password: newPassword,
-            is_first_access: true,
+            is_first_access: false,
+            activated_at: nowIso,
           })
           .eq('email', cleanEmail);
       }

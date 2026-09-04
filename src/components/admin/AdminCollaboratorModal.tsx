@@ -292,6 +292,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
               {[
                 { id: 'master', label: 'Master', desc: 'Acesso total à rede' },
                 { id: 'admin', label: 'Gerente', desc: 'Gestão da casa' },
+                { id: 'pos_venda', label: 'Pós-Venda', desc: 'Anfitriãs & Funil Pós-Venda' },
                 { id: 'sdr', label: 'SDR', desc: 'Pré-venda & Qualificação' },
                 { id: 'closer', label: 'Closer', desc: 'Vendas & Fechamento' },
                 { id: 'crm', label: 'CRM Geral', desc: 'Operação de Leads' },

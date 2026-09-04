@@ -25,6 +25,9 @@ export const collaboratorService = {
         avatarUrl: row.avatar_url,
         phone: row.phone,
         active: row.active ?? true,
+        isFirstAccess: row.is_first_access ?? false,
+        activatedAt: row.activated_at || undefined,
+        lastLoginAt: row.last_login_at || undefined,
         password: row.password,
         masterId: row.master_id || undefined,
         theme: row.theme || 'light',
@@ -41,9 +44,9 @@ export const collaboratorService = {
     try {
       const isUuid = !!collab.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collab.id);
       
-      const payload: any = {};
+      const payload: any = { updated_at: new Date().toISOString() };
       if (collab.name !== undefined) payload.name = collab.name;
-      if (collab.email !== undefined) payload.email = collab.email;
+      if (collab.email !== undefined) payload.email = collab.email.trim().toLowerCase();
       if (collab.role !== undefined) payload.role = collab.role;
       if (collab.venueId !== undefined) payload.venue_id = collab.venueId === 'all' ? null : collab.venueId;
       if (collab.venueIds !== undefined) payload.venue_ids = collab.venueIds;
@@ -53,9 +56,12 @@ export const collaboratorService = {
       if (collab.password !== undefined) payload.password = collab.password;
       if (collab.theme !== undefined) payload.theme = collab.theme;
       if (collab.masterId !== undefined) payload.master_id = collab.masterId;
+      if (collab.isFirstAccess !== undefined) payload.is_first_access = collab.isFirstAccess;
+      if (collab.activatedAt !== undefined) payload.activated_at = collab.activatedAt;
+      if (collab.lastLoginAt !== undefined) payload.last_login_at = collab.lastLoginAt;
 
-      if (isUuid) {
-        // Try update first so only specified columns are modified
+      // 1. Tenta atualizar por ID caso seja UUID
+      if (isUuid && collab.id) {
         const { data: updated, error: updateErr } = await supabase
           .from('collaborators')
           .update(payload)
@@ -65,25 +71,32 @@ export const collaboratorService = {
         if (!updateErr && updated && updated.length > 0) {
           return true;
         }
-
-        // If not found, insert
-        payload.id = collab.id;
-        const { error: insertErr } = await supabase.from('collaborators').insert(payload);
-        if (insertErr) {
-          console.error('Erro ao inserir colaborador:', insertErr);
-          return false;
-        }
-        return true;
-      } else if (collab.email) {
-        const { data: existing } = await supabase.from('collaborators').select('id').eq('email', collab.email).maybeSingle();
-        if (existing?.id) {
-          await supabase.from('collaborators').update(payload).eq('id', existing.id);
-        } else {
-          await supabase.from('collaborators').insert(payload);
-        }
-        return true;
       }
-      return false;
+
+      // 2. Se não encontrou por ID, mas tem e-mail, busca e atualiza pelo e-mail
+      if (collab.email) {
+        const cleanEmail = collab.email.trim().toLowerCase();
+        const { data: updatedByEmail, error: emailErr } = await supabase
+          .from('collaborators')
+          .update(payload)
+          .eq('email', cleanEmail)
+          .select('id');
+
+        if (!emailErr && updatedByEmail && updatedByEmail.length > 0) {
+          return true;
+        }
+      }
+
+      // 3. Se realmente não existe nem por ID nem por e-mail, insere novo
+      if (isUuid && collab.id) {
+        payload.id = collab.id;
+      }
+      const { error: insertErr } = await supabase.from('collaborators').insert(payload);
+      if (insertErr) {
+        console.error('Erro ao inserir colaborador:', insertErr);
+        return false;
+      }
+      return true;
     } catch (err) {
       console.error('Falha em collaboratorService.upsert:', err);
       return false;

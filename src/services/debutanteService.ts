@@ -521,14 +521,15 @@ export const debutanteService = {
     // 2. Direct Supabase Client fallback
     if (!isSupabaseConfigured) return false;
     try {
-      let targetId = idOrSlug.trim();
+      const rawId = idOrSlug.trim();
+      let targetId = rawId;
       let debutanteName = '';
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
 
-      const { data: found } = await supabase
-        .from('debutantes')
-        .select('id, name')
-        .or(`slug.eq.${targetId},id.eq.${targetId}`)
-        .maybeSingle();
+      const query = supabase.from('debutantes').select('id, name');
+      const { data: found } = isUuid
+        ? await query.or(`id.eq.${rawId},slug.eq.${rawId}`).maybeSingle()
+        : await query.eq('slug', rawId).maybeSingle();
 
       if (found?.id) {
         targetId = found.id;
@@ -539,39 +540,51 @@ export const debutanteService = {
 
       // PRESERVAÇÃO COMERCIAL: LEADS e INDICAÇÕES NUNCA são deletados
       if (debutanteName) {
-        await Promise.all([
-          supabase.from('leads').update({ debutante_name: debutanteName }).eq('debutante_id', targetId),
-          supabase.from('referrals').update({ debutante_name: debutanteName }).eq('debutante_id', targetId),
-        ]);
+        try {
+          await supabase.from('leads').update({ debutante_name: debutanteName }).eq('debutante_id', targetId);
+        } catch {}
+        try {
+          await supabase.from('referrals').update({ debutante_name: debutanteName }).eq('debutante_id', targetId);
+        } catch {}
       }
 
-      await Promise.all([
-        supabase.from('referrals').update({ debutante_id: null }).eq('debutante_id', targetId),
-        supabase.from('leads').update({ debutante_id: null }).eq('debutante_id', targetId),
-      ]);
+      try {
+        await supabase.from('leads').update({ debutante_id: null }).eq('debutante_id', targetId);
+      } catch {}
+      try {
+        await supabase.from('referrals').update({ debutante_id: null }).eq('debutante_id', targetId);
+      } catch {}
 
       // Remove apenas convidados (estritamente da festa dela)
-      await supabase.from('guests').delete().eq('debutante_id', targetId);
+      try {
+        await supabase.from('guests').delete().eq('debutante_id', targetId);
+      } catch {}
 
       // Remove apenas compromissos FUTUROS / PENDENTES
-      await supabase
-        .from('appointments')
-        .delete()
-        .eq('debutante_id', targetId)
-        .gte('date', todayStr)
-        .in('status', ['scheduled', 'pending']);
+      try {
+        await supabase
+          .from('appointments')
+          .delete()
+          .eq('debutante_id', targetId)
+          .gte('date', todayStr)
+          .in('status', ['scheduled', 'pending']);
+      } catch {}
 
       // Remove apenas tarefas FUTURAS / PENDENTES
-      await supabase
-        .from('admin_tasks')
-        .delete()
-        .eq('debutante_id', targetId)
-        .in('status', ['todo', 'in_progress']);
+      try {
+        await supabase
+          .from('admin_tasks')
+          .delete()
+          .eq('debutante_id', targetId)
+          .in('status', ['todo', 'in_progress']);
+      } catch {}
 
-      const { error } = await supabase
-        .from('debutantes')
-        .delete()
-        .or(`id.eq.${targetId},slug.eq.${idOrSlug}`);
+      const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+      const deleteQuery = isTargetUuid
+        ? supabase.from('debutantes').delete().eq('id', targetId)
+        : supabase.from('debutantes').delete().eq('slug', rawId);
+
+      const { error } = await deleteQuery;
 
       if (error) {
         console.error('Erro ao deletar debutante:', error);

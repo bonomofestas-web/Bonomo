@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
   Mail, Phone, Edit3, Trash2, 
-  UserPlus, Shield, ShieldCheck, Plus 
+  UserPlus, Shield, ShieldCheck, Plus,
+  CheckCircle2, Clock, Copy, Check,
+  UserX, AlertTriangle, CheckSquare, Target, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminCollaboratorModal } from './AdminCollaboratorModal';
-import { AdminConfirmModal } from './AdminConfirmModal';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import type { Collaborator } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
@@ -14,13 +16,56 @@ export const AdminCollaboratorsView: React.FC = () => {
     collaborators, 
     venues, 
     deleteCollaborator, 
+    updateCollaborator,
     switchUserRoleDemo,
-    currentUser 
+    currentUser,
+    leads,
+    tasks,
   } = useAdminState();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
   const [collabToDelete, setCollabToDelete] = useState<Collaborator | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+
+  // Estados do Modal de Revinculação / Transferência
+  const [reassignMode, setReassignMode] = useState<'transfer' | 'open'>('transfer');
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
+
+  // Colaboradores elegíveis para receber os leads (exclui quem está sendo deletado e root dev)
+  const availableAssignees = useMemo(() => {
+    if (!collabToDelete) return [];
+    return collaborators.filter(c => c.id !== collabToDelete.id && c.active && c.role !== 'dev');
+  }, [collaborators, collabToDelete]);
+
+  // Leads atualmente atribuídos a este colaborador
+  const affectedLeads = useMemo(() => {
+    if (!collabToDelete) return [];
+    return leads.filter(l => 
+      l.sdrId === collabToDelete.id || 
+      l.closerId === collabToDelete.id || 
+      (collabToDelete.name && l.sdrName === collabToDelete.name) ||
+      (collabToDelete.name && l.closerName === collabToDelete.name) ||
+      l.assignedTo === collabToDelete.name ||
+      l.assignedTo === collabToDelete.id
+    );
+  }, [leads, collabToDelete]);
+
+  // Tarefas com lead ou compartilhadas que envolvem este colaborador
+  const affectedTasks = useMemo(() => {
+    if (!collabToDelete) return [];
+    return tasks.filter(t => 
+      (t.assignedToIds && t.assignedToIds.includes(collabToDelete.id)) ||
+      (t.createdById === collabToDelete.id && (t.leadId || t.debutanteId))
+    );
+  }, [tasks, collabToDelete]);
+
+  const handleCopyActivationLink = (email: string) => {
+    const activationUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}`;
+    navigator.clipboard.writeText(activationUrl);
+    setCopiedEmail(email);
+    setTimeout(() => setCopiedEmail(null), 2500);
+  };
 
   const handleOpenCreate = () => {
     setCollaboratorToEdit(null);
@@ -32,8 +77,11 @@ export const AdminCollaboratorsView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (collab: Collaborator) => {
+  const handleOpenDelete = (collab: Collaborator) => {
     setCollabToDelete(collab);
+    setReassignMode('transfer');
+    const firstOther = collaborators.find(c => c.id !== collab.id && c.active && c.role !== 'dev');
+    setSelectedAssigneeId(firstOther?.id || '');
   };
 
   const getRoleBadge = (role: string) => {
@@ -73,6 +121,13 @@ export const AdminCollaboratorsView: React.FC = () => {
           bg: 'rgba(249, 115, 22, 0.15)',
           color: '#FB923C',
           border: '1px solid rgba(249, 115, 22, 0.35)',
+        };
+      case 'pos_venda':
+        return {
+          label: 'Pós-Venda',
+          bg: 'rgba(6, 182, 212, 0.15)',
+          color: '#06B6D4',
+          border: '1px solid rgba(6, 182, 212, 0.35)',
         };
       default:
         return {
@@ -210,6 +265,22 @@ export const AdminCollaboratorsView: React.FC = () => {
           >
             Closer (Vendas)
           </button>
+
+          <button
+            onClick={() => switchUserRoleDemo('pos_venda')}
+            style={{
+              background: currentUser?.role === 'pos_venda' ? '#06B6D4' : 'var(--adm-bg-input)',
+              color: currentUser?.role === 'pos_venda' ? '#FFF' : 'var(--adm-text-muted)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '20px',
+              padding: '4px 14px',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Pós-Venda
+          </button>
         </div>
       </div>
 
@@ -293,7 +364,7 @@ export const AdminCollaboratorsView: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <img
-                    src={collab.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                    src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
                     alt={collab.name}
                     style={{
                       width: '46px',
@@ -323,13 +394,103 @@ export const AdminCollaboratorsView: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: collab.active ? '#10B981' : '#6B7280',
-                  boxShadow: collab.active ? '0 0 8px #10B981' : 'none',
-                }} title={collab.active ? 'Conta Ativa' : 'Conta Inativa'} />
+                {/* Modern Toggle Switch On/Off */}
+                <button
+                  type="button"
+                  onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
+                  title={collab.active ? 'Conta Ativa • Clique para suspender o acesso deste colaborador' : 'Conta Desligada • Clique para habilitar o acesso'}
+                  style={{
+                    width: '44px',
+                    height: '24px',
+                    borderRadius: '14px',
+                    background: collab.active ? '#10B981' : 'rgba(100, 116, 139, 0.4)',
+                    border: `1px solid ${collab.active ? '#059669' : 'rgba(255, 255, 255, 0.15)'}`,
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: collab.active ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none',
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    background: '#FFFFFF',
+                    transform: collab.active ? 'translateX(20px)' : 'translateX(1px)',
+                    transition: 'transform 0.2s ease',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }} />
+                </button>
+              </div>
+
+              {/* Status de Ativação / Primeiro Acesso */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: !collab.active 
+                  ? 'rgba(239, 68, 68, 0.08)'
+                  : (collab.isFirstAccess || !collab.activatedAt)
+                    ? 'rgba(245, 158, 11, 0.1)'
+                    : 'rgba(16, 185, 129, 0.08)',
+                border: `1px solid ${
+                  !collab.active 
+                    ? 'rgba(239, 68, 68, 0.25)' 
+                    : (collab.isFirstAccess || !collab.activatedAt) 
+                      ? 'rgba(245, 158, 11, 0.35)' 
+                      : 'rgba(16, 185, 129, 0.25)'
+                }`,
+                fontSize: '0.72rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {!collab.active ? (
+                    <>
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444' }} />
+                      <span style={{ color: '#EF4444', fontWeight: 700 }}>Acesso Desativado</span>
+                    </>
+                  ) : (collab.isFirstAccess || !collab.activatedAt) ? (
+                    <>
+                      <Clock size={13} color="#F59E0B" />
+                      <span style={{ color: '#F59E0B', fontWeight: 700 }}>Aguardando 1º Acesso</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={13} color="#10B981" />
+                      <span style={{ color: '#10B981', fontWeight: 700 }}>
+                        {collab.activatedAt ? `Ativado em ${new Date(collab.activatedAt).toLocaleDateString('pt-BR')}` : 'Conta Ativa & Operante'}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {collab.active && (collab.isFirstAccess || !collab.activatedAt) && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyActivationLink(collab.email)}
+                    title="Copiar Link de 1º Acesso para enviar ao colaborador"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      color: '#F59E0B',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedEmail === collab.email ? 'Copiado!' : 'Copiar Link'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Details */}
@@ -406,7 +567,7 @@ export const AdminCollaboratorsView: React.FC = () => {
 
                     {collab.role !== 'master' && (
                       <button
-                        onClick={() => handleDelete(collab)}
+                        onClick={() => handleOpenDelete(collab)}
                         style={{
                           background: 'transparent',
                           border: 'none',
@@ -438,19 +599,336 @@ export const AdminCollaboratorsView: React.FC = () => {
         collaboratorToEdit={collaboratorToEdit}
       />
 
-      <AdminConfirmModal
-        isOpen={!!collabToDelete}
-        onClose={() => setCollabToDelete(null)}
-        onConfirm={() => {
-          if (collabToDelete) {
-            deleteCollaborator(collabToDelete.id);
-            setCollabToDelete(null);
-          }
-        }}
-        title="Remover Colaborador"
-        itemName={collabToDelete?.name}
-        message={collabToDelete ? `Tem certeza que deseja remover o colaborador "${collabToDelete.name}" da equipe?` : undefined}
-      />
+      {/* ── MODAL DE REVINCULAÇÃO & EXCLUSÃO DE COLABORADOR ───────────────────── */}
+      {collabToDelete && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '520px',
+            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.4)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px 16px 24px',
+              borderBottom: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#EF4444',
+                }}>
+                  <UserX size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Excluir Colaborador
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--adm-text-muted)' }}>
+                    Transferência de responsabilidades e segurança comercial
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCollabToDelete(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Card Colaborador */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 14px',
+                background: 'var(--adm-bg-input)',
+                borderRadius: '12px',
+                border: '1px solid var(--adm-border)',
+              }}>
+                <img
+                  src={(collabToDelete.avatarUrl && !collabToDelete.avatarUrl.includes('unsplash.com')) ? collabToDelete.avatarUrl : createMonogramAvatar(collabToDelete.name)}
+                  alt={collabToDelete.name}
+                  style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--adm-border)' }}
+                />
+                <div>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    {collabToDelete.name}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                    {collabToDelete.email} • <span style={{ textTransform: 'capitalize' }}>{collabToDelete.role}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Impact Metrics */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(20, 169, 215, 0.08)',
+                  border: '1px solid rgba(20, 169, 215, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700 }}>
+                    <Target size={14} />
+                    <span>Leads Vinculados</span>
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    {affectedLeads.length}
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(139, 92, 246, 0.08)',
+                  border: '1px solid rgba(139, 92, 246, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#A78BFA', fontWeight: 700 }}>
+                    <CheckSquare size={14} />
+                    <span>Tarefas Vinculadas</span>
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    {affectedTasks.length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reatribuição Options */}
+              {affectedLeads.length > 0 || affectedTasks.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    O que fazer com os leads e tarefas em andamento?
+                  </label>
+
+                  {/* Opção A: Reatribuir */}
+                  <div 
+                    onClick={() => setReassignMode('transfer')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: `1.5px solid ${reassignMode === 'transfer' ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                      background: reassignMode === 'transfer' ? 'rgba(20, 169, 215, 0.08)' : 'var(--adm-bg-input)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input 
+                        type="radio" 
+                        name="reassignMode" 
+                        checked={reassignMode === 'transfer'} 
+                        onChange={() => setReassignMode('transfer')}
+                        style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                        Reatribuir para outro colaborador (Recomendado)
+                      </span>
+                    </div>
+
+                    {reassignMode === 'transfer' && (
+                      <div style={{ paddingLeft: '22px' }}>
+                        {availableAssignees.length > 0 ? (
+                          <select
+                            value={selectedAssigneeId}
+                            onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              borderRadius: '8px',
+                              border: '1px solid var(--adm-border)',
+                              background: 'var(--adm-bg-card)',
+                              color: 'var(--adm-text-title)',
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {availableAssignees.map(collab => (
+                              <option key={collab.id} value={collab.id}>
+                                {collab.name} ({collab.role.toUpperCase()})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                            Nenhum outro colaborador ativo disponível para transferência.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Opção B: Deixar em aberto */}
+                  <div 
+                    onClick={() => setReassignMode('open')}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: `1.5px solid ${reassignMode === 'open' ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                      background: reassignMode === 'open' ? 'rgba(20, 169, 215, 0.08)' : 'var(--adm-bg-input)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input 
+                        type="radio" 
+                        name="reassignMode" 
+                        checked={reassignMode === 'open'} 
+                        onChange={() => setReassignMode('open')}
+                        style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                        Deixar em aberto no CRM (Sem responsável)
+                      </span>
+                    </div>
+                    <div style={{ paddingLeft: '22px', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                      Os leads aparecerão na fila geral do funil para qualquer SDR ou Closer assumir livremente.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '10px',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  fontSize: '0.76rem',
+                  color: '#10B981',
+                }}>
+                  ✓ Este colaborador não possui leads nem tarefas pendentes no CRM.
+                </div>
+              )}
+
+              {/* Security Alert */}
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: '10px',
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                fontSize: '0.72rem',
+                color: '#D97706',
+              }}>
+                <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  <strong>Nota de segurança:</strong> Apenas tarefas particulares que o colaborador criou para si mesmo serão excluídas. Histórico comercial e dados de clientes são 100% preservados.
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              background: 'var(--adm-bg-input)',
+            }}>
+              <button
+                type="button"
+                onClick={() => setCollabToDelete(null)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--adm-border)',
+                  background: 'transparent',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (collabToDelete) {
+                    const targetReassignId = reassignMode === 'transfer' && selectedAssigneeId ? selectedAssigneeId : null;
+                    deleteCollaborator(collabToDelete.id, targetReassignId);
+                    setCollabToDelete(null);
+                  }
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#EF4444',
+                  color: '#FFFFFF',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

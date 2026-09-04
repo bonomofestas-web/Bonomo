@@ -18,7 +18,8 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
   onClose,
   debutanteToEdit,
 }) => {
-  const { venues, templates, addDebutanteAccount, updateDebutanteAccount, deleteDebutanteAccount } = useAdminState();
+  const { venues, templates, addDebutanteAccount, updateDebutanteAccount, deleteDebutanteAccount, currentUser } = useAdminState();
+  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
 
   const [venueId, setVenueId] = useState(venues[0]?.id || 'rio_lounge');
   const [name, setName] = useState('');
@@ -507,7 +508,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
 
             {/* Botões de Ação */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: '10px' }}>
-              {debutanteToEdit && (
+              {debutanteToEdit && canManage && (
                 <button
                   type="button"
                   onClick={() => setIsConfirmDeleteOpen(true)}
@@ -587,7 +588,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
           }}
           title="Excluir Conta da Debutante"
           itemName={debutanteToEdit.name}
-          message={`Tem certeza que deseja excluir "${debutanteToEdit.name}"? Os leads gerados por ela continuarão preservados no CRM.`}
+          message={`Tem certeza que deseja excluir "${debutanteToEdit.name}"? A jornada e a lista de convidados serão removidas. As indicações e leads gerados no CRM continuarão preservados com o histórico de indicação intacto.`}
         />
       )}
     </div>

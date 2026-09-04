@@ -5,6 +5,7 @@ import {
   Activity, MessageSquare, Compass
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { getCollaboratorTimeLogs } from '../../hooks/useActiveTimeTracker';
 
@@ -526,8 +527,9 @@ export const AdminMasterDashboardView: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ position: 'relative' }}>
                     <img
-                      src={collab.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&auto=format&fit=crop&q=80'}
+                      src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
                       alt={collab.name}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = createMonogramAvatar(collab.name); }}
                       style={{ width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--adm-border)' }}
                     />
                     <span style={{

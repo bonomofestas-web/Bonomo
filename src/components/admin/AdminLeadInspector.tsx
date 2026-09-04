@@ -26,6 +26,7 @@ interface AdminLeadInspectorProps {
   onStageChange: (stage: CrmStage) => void;
   onToggleCollapse?: () => void;
   isCollapsed?: boolean;
+  readOnly?: boolean;
 }
 
 const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string; border: string }> = {
@@ -60,6 +61,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   onStageChange,
   onToggleCollapse,
   isCollapsed,
+  readOnly = false,
 }) => {
   const { 
     currentUser, 
@@ -170,6 +172,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   };
 
   const handleUpdate = (updates: Partial<Lead>) => {
+    if (readOnly) return;
     updateLeadData(lead.id, updates);
   };
 
@@ -464,10 +467,31 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           )}
         </div>
 
+        {/* Banner de Modo Somente Leitura para Pós-Venda em Funis Comerciais */}
+        {readOnly && (
+          <div style={{
+            background: 'rgba(6, 182, 212, 0.12)',
+            border: '1px solid rgba(6, 182, 212, 0.35)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '0.74rem',
+            color: 'var(--adm-text-title)',
+          }}>
+            <span style={{ fontSize: '1.1rem' }}>👁️</span>
+            <div>
+              <strong style={{ color: '#06B6D4' }}>Modo Somente Leitura (Pós-Venda):</strong> Visualização do lead e histórico comercial permitida. Ações comerciais diretas são restritas aos vendedores.
+            </div>
+          </div>
+        )}
+
         {/* Pipeline Stage Dropdown with Colored Indicator */}
         <div style={{ position: 'relative', marginBottom: '8px' }}>
           <div
-            onClick={() => setIsStageDropdownOpen(!isStageDropdownOpen)}
+            onClick={() => !readOnly && setIsStageDropdownOpen(!isStageDropdownOpen)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -476,14 +500,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               background: currentStageConfig.bg,
               border: `1px solid ${currentStageConfig.border}`,
               borderRadius: '8px',
-              cursor: 'pointer',
+              cursor: readOnly ? 'default' : 'pointer',
               fontSize: '0.78rem',
               fontWeight: 800,
               color: currentStageConfig.color,
             }}
           >
             <span>Funil: {currentStageConfig.label}</span>
-            <ChevronDown size={14} />
+            {!readOnly && <ChevronDown size={14} />}
           </div>
 
           {/* Multi-Stage Color Progress Bar */}
@@ -494,14 +518,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               return (
                 <div
                   key={stg}
-                  onClick={() => onStageChange(stg)}
+                  onClick={() => { if (!readOnly) onStageChange(stg); }}
                   title={cfg.label}
                   style={{
                     flex: 1,
                     height: '4px',
                     borderRadius: '2px',
                     background: lead.stage === 'lost' && stg === 'lost' ? '#EF4444' : isFilled ? cfg.color : 'rgba(255,255,255,0.15)',
-                    cursor: 'pointer',
+                    cursor: readOnly ? 'default' : 'pointer',
                     transition: 'all 0.2s ease',
                   }}
                 />
@@ -841,7 +865,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             <div style={rowStyle}>
               <span style={rowLabelStyle}>SDR</span>
               <div style={rowValueStyle}>
-                {isManagerOrMaster || !lead.sdrId ? (
+                {(!readOnly && (isManagerOrMaster || !lead.sdrId)) ? (
                   <select
                     value={lead.sdrId || ''}
                     onChange={(e) => {
