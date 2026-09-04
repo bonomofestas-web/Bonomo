@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Users, UserPlus, CheckCircle2, Clock, Search, 
-  Heart, Calendar, MessageSquareHeart, Sparkles
+  Heart, Calendar, MessageSquareHeart, Sparkles,
+  UserX, RotateCcw
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { GuestFormModal } from './GuestFormModal';
@@ -20,10 +21,11 @@ export const GuestList: React.FC = () => {
     debutante,
     currentTheme,
     indicateGuestAsReferral,
-    deleteGuest,
+    removeGuest,
+    restoreGuest,
   } = useAppState();
 
-  const [guestSubTab, setGuestSubTab] = useState<'guests' | 'messages'>('guests');
+  const [guestSubTab, setGuestSubTab] = useState<'guests' | 'messages' | 'removed'>('guests');
   const [likedMessages, setLikedMessages] = useState<Record<string, boolean>>({
     'g2': true, // Demo initial like for Sofia
   });
@@ -41,12 +43,16 @@ export const GuestList: React.FC = () => {
   const [filterView, setFilterView] = useState<'all' | 'pending' | 'confirmed'>('all');
   const [referralSuccessToast, setReferralSuccessToast] = useState<string | null>(null);
 
-  const totalHeadcount = guests.length;
-  const confirmedCount = guests.filter(g => g.status === 'confirmed').length;
-  const pendingCount = guests.filter(g => g.status === 'pending').length;
-  const declinedCount = guests.filter(g => g.status === 'declined').length;
-  const guestsWithMessages = guests.filter(g => Boolean(g.sweetMessage));
+  const activeGuests = guests.filter(g => !g.isRemoved);
+  const removedGuests = guests.filter(g => Boolean(g.isRemoved));
+
+  const totalHeadcount = activeGuests.length;
+  const confirmedCount = activeGuests.filter(g => g.status === 'confirmed').length;
+  const pendingCount = activeGuests.filter(g => g.status === 'pending').length;
+  const declinedCount = activeGuests.filter(g => g.status === 'declined').length;
+  const guestsWithMessages = activeGuests.filter(g => Boolean(g.sweetMessage));
   const sweetMessagesCount = guestsWithMessages.length;
+  const removedCount = removedGuests.length;
   const guestLimit = debutante.currentGuestLimit || 250;
 
   const toggleMessageLike = (guestId: string, e: React.MouseEvent) => {
@@ -68,14 +74,21 @@ export const GuestList: React.FC = () => {
     setTimeout(() => setReferralSuccessToast(null), 3500);
   };
 
-  const handleDeleteGuest = (guestId: string) => {
+  const handleRemoveGuest = (guestId: string) => {
     const guestName = guests.find(g => g.id === guestId)?.name || 'Convidado';
-    deleteGuest(guestId);
-    setReferralSuccessToast(`🗑️ ${guestName} foi removido(a) da lista de convidados.`);
+    removeGuest(guestId);
+    setReferralSuccessToast(`🗑️ ${guestName} foi movido(a) para a aba Removidos.`);
     setTimeout(() => setReferralSuccessToast(null), 3500);
   };
 
-  const filteredGuests = guests.filter(g => {
+  const handleRestoreGuest = (guestId: string) => {
+    const guestName = guests.find(g => g.id === guestId)?.name || 'Convidado';
+    restoreGuest(guestId);
+    setReferralSuccessToast(`✨ ${guestName} voltou para a lista de convidados!`);
+    setTimeout(() => setReferralSuccessToast(null), 3500);
+  };
+
+  const filteredGuests = activeGuests.filter(g => {
     const matchesSearch = 
       g.name.toLowerCase().includes(search.toLowerCase()) || 
       (g.phone && g.phone.includes(search));
@@ -251,10 +264,10 @@ export const GuestList: React.FC = () => {
         </div>
       </div>
 
-      {/* ── 3. Sub-Tab View Selector: [ Lista de Convidados ]  [ Mensagens de Carinho ] ── */}
+      {/* ── 3. Sub-Tab View Selector: [ Lista de Convidados ]  [ Mensagens de Carinho ]  [ Removidos ] ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: 'repeat(3, 1fr)',
         background: '#100E14',
         padding: '5px',
         borderRadius: '16px',
@@ -265,7 +278,7 @@ export const GuestList: React.FC = () => {
         <button
           onClick={() => setGuestSubTab('guests')}
           style={{
-            padding: '10px 14px',
+            padding: '10px 8px',
             borderRadius: '12px',
             border: 'none',
             background: guestSubTab === 'guests'
@@ -273,26 +286,28 @@ export const GuestList: React.FC = () => {
               : 'transparent',
             color: guestSubTab === 'guests' ? '#000000' : '#E0DACD',
             fontWeight: 800,
-            fontSize: '0.84rem',
+            fontSize: '0.80rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
+            gap: '6px',
             fontFamily: "'Cinzel', serif",
-            letterSpacing: '0.5px',
+            letterSpacing: '0.3px',
             boxShadow: guestSubTab === 'guests' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
             transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
           }}
+          title="Lista Oficial de Convidados Ativos"
         >
-          <Users size={16} color={guestSubTab === 'guests' ? '#000' : '#D4AF37'} />
-          <span>Lista de Convidados ({totalHeadcount})</span>
+          <Users size={15} color={guestSubTab === 'guests' ? '#000' : '#D4AF37'} />
+          <span>Convidados ({totalHeadcount})</span>
         </button>
 
         <button
           onClick={() => setGuestSubTab('messages')}
           style={{
-            padding: '10px 14px',
+            padding: '10px 8px',
             borderRadius: '12px',
             border: 'none',
             background: guestSubTab === 'messages'
@@ -300,20 +315,51 @@ export const GuestList: React.FC = () => {
               : 'transparent',
             color: guestSubTab === 'messages' ? '#000000' : '#E0DACD',
             fontWeight: 800,
-            fontSize: '0.84rem',
+            fontSize: '0.80rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
+            gap: '6px',
             fontFamily: "'Cinzel', serif",
-            letterSpacing: '0.5px',
+            letterSpacing: '0.3px',
             boxShadow: guestSubTab === 'messages' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
             transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
           }}
+          title="Mural de Recados dos Convidados"
         >
-          <MessageSquareHeart size={16} color={guestSubTab === 'messages' ? '#000' : '#D4AF37'} />
-          <span>Mensagens de Carinho ({sweetMessagesCount})</span>
+          <MessageSquareHeart size={15} color={guestSubTab === 'messages' ? '#000' : '#D4AF37'} />
+          <span>Recados ({sweetMessagesCount})</span>
+        </button>
+
+        <button
+          onClick={() => setGuestSubTab('removed')}
+          style={{
+            padding: '10px 8px',
+            borderRadius: '12px',
+            border: 'none',
+            background: guestSubTab === 'removed'
+              ? 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)'
+              : 'transparent',
+            color: guestSubTab === 'removed' ? '#000000' : '#E0DACD',
+            fontWeight: 800,
+            fontSize: '0.80rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            fontFamily: "'Cinzel', serif",
+            letterSpacing: '0.3px',
+            boxShadow: guestSubTab === 'removed' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
+          }}
+          title="Convidados Removidos da Lista (Podem ser restaurados)"
+        >
+          <UserX size={15} color={guestSubTab === 'removed' ? '#000' : '#EF4444'} />
+          <span>Removidos ({removedCount})</span>
         </button>
       </div>
 
@@ -532,7 +578,7 @@ export const GuestList: React.FC = () => {
                   key={g.id}
                   guest={g}
                   onClick={() => setSelectedDetailGuest(g)}
-                  onDelete={handleDeleteGuest}
+                  onDelete={handleRemoveGuest}
                   onSendWhatsApp={handleSendWhatsAppInvite}
                   onReferral={handleConvertGuestToReferral}
                 />
@@ -667,6 +713,165 @@ export const GuestList: React.FC = () => {
                 </div>
               );
             })
+          )}
+        </div>
+      )}
+
+      {/* ── SUB-TAB 3: CONVIDADOS REMOVIDOS (Dedicated Soft-Delete Vault) ── */}
+      {guestSubTab === 'removed' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', animation: 'fadeIn 0.2s ease-out' }}>
+          {/* Informative Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(20, 14, 28, 0.95) 100%)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: '16px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}>
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <UserX size={18} color="#EF4444" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#FFFFFF', fontFamily: "'Cinzel', serif" }}>
+                Convidados Removidos da Lista ({removedCount})
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#B5AFA4', fontFamily: "'Montserrat', sans-serif", marginTop: '2px' }}>
+                Estes convidados não aparecem na sua lista oficial e não consomem seu limite. Você pode restaurá-los a qualquer momento.
+              </div>
+            </div>
+          </div>
+
+          {removedGuests.length === 0 ? (
+            <div style={{
+              background: '#121212',
+              borderRadius: '24px',
+              padding: '48px 24px',
+              textAlign: 'center',
+              border: '1.5px dashed rgba(212, 175, 55, 0.25)',
+            }}>
+              <Users size={40} color="#D4AF37" style={{ margin: '0 auto 12px auto', opacity: 0.8 }} />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#FFF', fontFamily: "'Playfair Display', Georgia, serif", margin: '0 0 6px 0' }}>
+                Nenhum convidado removido
+              </h3>
+              <p style={{ fontSize: '0.84rem', color: '#B5AFA4', maxWidth: '420px', margin: '0 auto', lineHeight: 1.5 }}>
+                Todos os seus convidados estão ativos na lista oficial. Se remover alguém por engano ou para liberar espaço, o registro ficará guardado com segurança aqui.
+              </p>
+            </div>
+          ) : (
+            removedGuests.map(g => (
+              <div
+                key={`removed-${g.id}`}
+                style={{
+                  background: 'linear-gradient(135deg, #151318 0%, #0D0B10 100%)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: '18px',
+                  padding: '16px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '14px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                }}
+              >
+                <div style={{ minWidth: '200px', flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.98rem', fontWeight: 800, color: '#FFFFFF', fontFamily: "'Montserrat', sans-serif" }}>
+                      {g.name}
+                    </span>
+                    <span style={{
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: 'rgba(212, 175, 55, 0.15)',
+                      border: '1px solid rgba(212, 175, 55, 0.35)',
+                      color: '#E8C98D',
+                    }}>
+                      {g.group}
+                    </span>
+                    {g.isSelfRegistered && (
+                      <span style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        color: '#60A5FA',
+                      }}>
+                        Link Público
+                      </span>
+                    )}
+                    {g.isCompanion && (
+                      <span style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        background: 'rgba(168, 85, 247, 0.15)',
+                        border: '1px solid rgba(168, 85, 247, 0.35)',
+                        color: '#C084FC',
+                      }}>
+                        Acompanhante de {g.parentGuestName || 'Convidado'}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.76rem', color: '#8E887F', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {g.phone && <span>📱 {g.phone}</span>}
+                    {g.age ? <span>• {g.age} anos</span> : null}
+                    {g.plusOnes && g.plusOnes > 0 ? <span>• +{g.plusOnes} acompanhante(s)</span> : null}
+                  </div>
+                </div>
+
+                {/* Restore Button */}
+                <button
+                  onClick={() => handleRestoreGuest(g.id)}
+                  style={{
+                    background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
+                    color: '#000000',
+                    border: 'none',
+                    borderRadius: '14px',
+                    padding: '10px 18px',
+                    fontSize: '0.80rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontFamily: "'Cinzel', serif",
+                    letterSpacing: '0.5px',
+                    boxShadow: '0 4px 14px rgba(212, 175, 55, 0.35)',
+                    transition: 'all 0.2s ease',
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(212, 175, 55, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(212, 175, 55, 0.35)';
+                  }}
+                >
+                  <RotateCcw size={15} color="#000" />
+                  <span>Restaurar Convidado</span>
+                </button>
+              </div>
+            ))
           )}
         </div>
       )}

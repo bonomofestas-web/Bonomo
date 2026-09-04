@@ -399,7 +399,7 @@ export const GuestDetailModal: React.FC<GuestDetailModalProps> = ({
 
             {showConfirmDelete ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.74rem', color: '#EF4444' }}>Excluir?</span>
+                <span style={{ fontSize: '0.74rem', color: '#EF4444' }}>Remover?</span>
                 <button
                   onClick={handleDelete}
                   style={{

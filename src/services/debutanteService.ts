@@ -211,6 +211,7 @@ export const debutanteService = {
       isCompanion: g.is_companion || false,
       parentGuestId: g.parent_guest_id,
       confirmedAt: g.confirmed_at,
+      isRemoved: g.is_removed || false,
     }));
 
     const debReferrals: Referral[] = (referralsData || []).map(r => ({

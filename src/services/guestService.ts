@@ -81,5 +81,24 @@ export const guestService = {
       console.error('Falha em guestService.updateRsvp:', err);
       return false;
     }
-  }
+  },
+
+  async setRemovedStatus(guestId: string, isRemoved: boolean): Promise<boolean> {
+    if (!isSupabaseConfigured || !guestId) return true;
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .update({ is_removed: isRemoved })
+        .eq('id', guestId);
+
+      if (error) {
+        console.error('Erro ao atualizar status is_removed do convidado:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha em guestService.setRemovedStatus:', err);
+      return false;
+    }
+  },
 };

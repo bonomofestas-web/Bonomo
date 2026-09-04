@@ -21,7 +21,10 @@ import type {
   LeadMqlLevel,
   FeatureFlagId,
   FeatureFlagStatus,
-  SystemAnnouncement
+  SystemAnnouncement,
+  AnnouncementReadReceipt,
+  SupportTicket,
+  SupportTicketStatus
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -44,6 +47,7 @@ import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
 import { mqlService } from '../services/mqlService';
+import { supportService } from '../services/supportService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode } from '../utils/leadUtils';
 
@@ -65,6 +69,7 @@ const STORAGE_KEY_FEATURE_FLAGS = 'bonomo_system_feature_flags';
 const STORAGE_KEY_FEATURE_DESCRIPTIONS = 'bonomo_system_feature_descriptions';
 const STORAGE_KEY_ANNOUNCEMENTS = 'bonomo_system_announcements';
 const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
+const STORAGE_KEY_SUPPORT_TICKETS = 'bonomo_support_tickets_v1';
 
 export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
   {
@@ -200,6 +205,9 @@ export interface AdminContextType {
   logout: () => void;
   switchUserRoleDemo: (role: AdminRole) => void;
   switchCollaborator: (collab: Collaborator) => void;
+  impersonatingMaster: AdminUser | null;
+  startImpersonation: (collab: Collaborator) => void;
+  stopImpersonation: () => void;
   updateCurrentUserProfile: (data: Partial<AdminUser>) => void;
 
   // Collaborators
@@ -342,6 +350,13 @@ export interface AdminContextType {
   getFeatureStatus: (featureId: FeatureFlagId) => FeatureFlagStatus;
   featureDescriptions: Record<FeatureFlagId, string>;
   updateFeatureComingSoonMessage: (flagId: FeatureFlagId, message: string) => void;
+  isFlagsLoaded: boolean;
+
+  // Support Tickets & Bug Reports (Audio 3)
+  supportTickets: SupportTicket[];
+  createSupportTicket: (ticket: Omit<SupportTicket, 'id' | 'ticketCode' | 'createdAt' | 'updatedAt' | 'messages'>) => Promise<SupportTicket | null>;
+  updateSupportTicketStatus: (ticketId: string, status: SupportTicketStatus) => Promise<boolean>;
+  sendSupportMessage: (ticketId: string, message: string) => Promise<boolean>;
 
   // System Announcements (Developer Broadcast & Read Receipts)
   announcements: SystemAnnouncement[];
@@ -485,8 +500,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return {} as Record<FeatureFlagId, string>;
   });
 
-  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS);
+  const [isFlagsLoaded, setIsFlagsLoaded] = useState<boolean>(() => {
+    return !!localStorage.getItem(STORAGE_KEY_FEATURE_FLAGS);
+  });
+
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_SUPPORT_TICKETS);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -499,7 +518,79 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_FEATURE_DESCRIPTIONS, JSON.stringify(updated));
       return updated;
     });
+
+    try {
+      window.dispatchEvent(new CustomEvent('bonomo_feature_flag_changed', {
+        detail: { featureId: flagId, status: featureFlags[flagId] || 'coming_soon', comingSoonMessage: message }
+      }));
+    } catch {}
+
+    featureFlagService.update(flagId, featureFlags[flagId] || 'coming_soon', message);
   };
+
+  const createSupportTicket = async (ticketData: Omit<SupportTicket, 'id' | 'ticketCode' | 'createdAt' | 'updatedAt' | 'messages'>): Promise<SupportTicket | null> => {
+    const randomCode = Math.floor(10000 + Math.random() * 90000);
+    const ticketCode = `#TKT-${randomCode}`;
+    const newTicket = await supportService.createTicket({
+      ...ticketData,
+      ticketCode,
+    });
+    if (newTicket) {
+      setSupportTickets(prev => {
+        const updated = [newTicket, ...prev.filter(t => t.id !== newTicket.id)];
+        safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updated));
+        return updated;
+      });
+      return newTicket;
+    }
+    return null;
+  };
+
+  const updateSupportTicketStatus = async (ticketId: string, status: SupportTicketStatus): Promise<boolean> => {
+    setSupportTickets(prev => {
+      const updated = prev.map(t => t.id === ticketId ? { ...t, status, updatedAt: new Date().toISOString() } : t);
+      safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updated));
+      return updated;
+    });
+    return await supportService.updateStatus(ticketId, status);
+  };
+
+  const sendSupportMessage = async (ticketId: string, message: string): Promise<boolean> => {
+    if (!currentUser || !message.trim()) return false;
+    const msg = await supportService.addMessage({
+      ticketId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: currentUser.role,
+      message: message.trim(),
+    });
+    if (msg) {
+      setSupportTickets(prev => {
+        const updated = prev.map(t => {
+          if (t.id === ticketId) {
+            return {
+              ...t,
+              updatedAt: new Date().toISOString(),
+              messages: [...(t.messages || []), msg],
+            };
+          }
+          return t;
+        });
+        safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updated));
+        return updated;
+      });
+      return true;
+    }
+    return false;
+  };
+
+  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
 
   const createAnnouncement = async (data: Omit<SystemAnnouncement, 'id' | 'createdAt' | 'readReceipts' | 'authorId'>): Promise<string> => {
     const id = generateUuid();
@@ -515,6 +606,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(updated));
       return updated;
     });
+
+    if (isSupabaseConfigured) {
+      Promise.resolve(
+        supabase.from('system_broadcast_announcements').insert({
+          id,
+          title: newAnn.title,
+          content: newAnn.content,
+          type: newAnn.type,
+          media_type: newAnn.mediaType,
+          media_url: newAnn.mediaUrl,
+          target_roles: newAnn.targetRoles,
+          author_id: newAnn.authorId,
+          read_receipts: [],
+        })
+      ).catch(err => console.warn('Falha ao salvar broadcast no Supabase:', err));
+    }
+
     return id;
   };
 
@@ -542,6 +650,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(updated));
       return updated;
     });
+
+    if (isSupabaseConfigured) {
+      supabase.from('system_broadcast_announcements')
+        .select('read_receipts')
+        .eq('id', announcementId)
+        .single()
+        .then(({ data }) => {
+          const receipts = (data?.read_receipts || []) as AnnouncementReadReceipt[];
+          if (!receipts.some(r => r.userId === currentUser.id)) {
+            const newReceipt = {
+              userId: currentUser.id,
+              userName: currentUser.name || 'Usuário',
+              userEmail: currentUser.email || '',
+              userRole: currentUser.role || 'master',
+              readAt: new Date().toISOString(),
+            };
+            supabase.from('system_broadcast_announcements')
+              .update({ read_receipts: [...receipts, newReceipt] })
+              .eq('id', announcementId)
+              .then(() => {}, (err: any) => console.warn('Falha ao atualizar recibo de leitura:', err));
+          }
+        }, () => {});
+    }
   };
 
   const updateFeatureFlag = (featureId: FeatureFlagId, status: FeatureFlagStatus, comingSoonMessage?: string) => {
@@ -562,17 +693,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }));
     } catch {}
 
-    featureFlagService.update(featureId, status);
-
-    if (isSupabaseConfigured) {
-      Promise.resolve(
-        supabase.from('system_feature_flags').upsert({
-          feature_id: featureId,
-          status,
-          updated_at: new Date().toISOString(),
-        })
-      ).catch((err: any) => console.warn('Erro ao salvar feature flag no Supabase:', err));
-    }
+    const msg = comingSoonMessage !== undefined ? comingSoonMessage : featureDescriptions[featureId];
+    featureFlagService.update(featureId, status, msg);
   };
 
   const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
@@ -755,10 +877,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const { data: dbFlags } = await supabase.from('system_feature_flags').select('*');
           if (dbFlags && dbFlags.length > 0) {
             const mappedFlags: Record<string, FeatureFlagStatus> = {};
+            const mappedDescriptions: Record<string, string> = {};
             dbFlags.forEach((row: any) => {
               mappedFlags[row.feature_id] = row.status;
+              if (row.coming_soon_message) {
+                mappedDescriptions[row.feature_id] = row.coming_soon_message;
+              }
             });
-            setFeatureFlags(prev => ({ ...prev, ...mappedFlags }));
+            setFeatureFlags(prev => {
+              const next = { ...prev, ...mappedFlags };
+              safeLocalStorageSet(STORAGE_KEY_FEATURE_FLAGS, JSON.stringify(next));
+              return next;
+            });
+            setFeatureDescriptions(prev => {
+              const next = { ...prev, ...mappedDescriptions };
+              safeLocalStorageSet(STORAGE_KEY_FEATURE_DESCRIPTIONS, JSON.stringify(next));
+              return next;
+            });
+          }
+          setIsFlagsLoaded(true);
+
+          // Load support tickets
+          const dbTickets = await supportService.getAll();
+          if (dbTickets && isMounted) {
+            setSupportTickets(dbTickets);
+            safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(dbTickets));
           }
         }
       } catch (err) {
@@ -880,6 +1023,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await catalogService.getAllVipRewards();
         if (isMounted && updated.length > 0) setVipCatalog(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_broadcast_announcements' }, async () => {
+        if (isSupabaseConfigured) {
+          const { data } = await supabase.from('system_broadcast_announcements').select('*').order('created_at', { ascending: false });
+          if (data && data.length > 0 && isMounted) {
+            const mapped: SystemAnnouncement[] = data.map(row => ({
+              id: row.id,
+              title: row.title,
+              content: row.content,
+              type: row.type || 'feature',
+              mediaType: row.media_type || 'none',
+              mediaUrl: row.media_url || undefined,
+              targetRoles: row.target_roles || ['master'],
+              targetAudience: row.target_roles?.length >= 5 ? 'all' : (row.target_roles?.length === 1 && row.target_roles[0] === 'master' ? 'masters' : 'custom'),
+              createdAt: row.created_at || new Date().toISOString(),
+              authorId: row.author_id || 'dev',
+              readReceipts: row.read_receipts || [],
+            }));
+            setAnnouncements(mapped);
+            safeLocalStorageSet(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(mapped));
+          }
+        }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sources' }, async () => {
         const updated = await sourceService.getAll();
         if (isMounted && updated.length > 0) setSources(updated);
@@ -888,7 +1053,50 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await sourceService.getAll();
         if (isMounted && updated.length > 0) setSources(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_feature_flags' }, async () => {
+        const { flags, descriptions } = await featureFlagService.getAll();
+        if (isMounted) {
+          if (Object.keys(flags).length > 0) {
+            setFeatureFlags(prev => {
+              const next = { ...prev, ...flags };
+              safeLocalStorageSet(STORAGE_KEY_FEATURE_FLAGS, JSON.stringify(next));
+              return next;
+            });
+          }
+          if (Object.keys(descriptions).length > 0) {
+            setFeatureDescriptions(prev => {
+              const next = { ...prev, ...descriptions };
+              safeLocalStorageSet(STORAGE_KEY_FEATURE_DESCRIPTIONS, JSON.stringify(next));
+              return next;
+            });
+          }
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, async () => {
+        const updated = await supportService.getAll();
+        if (isMounted) {
+          setSupportTickets(updated);
+          safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updated));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_ticket_messages' }, async () => {
+        const updated = await supportService.getAll();
+        if (isMounted) {
+          setSupportTickets(updated);
+          safeLocalStorageSet(STORAGE_KEY_SUPPORT_TICKETS, JSON.stringify(updated));
+        }
+      })
       .subscribe();
+
+    const handleLocalFlagChanged = (e: any) => {
+      if (e.detail?.flags) {
+        setFeatureFlags(prev => ({ ...prev, ...e.detail.flags }));
+      }
+      if (e.detail?.descriptions) {
+        setFeatureDescriptions(prev => ({ ...prev, ...e.detail.descriptions }));
+      }
+    };
+    window.addEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
 
     // Heartbeat Polling inteligente a cada 6 segundos para multi-dispositivos
     const adminPollingInterval = setInterval(async () => {
@@ -908,6 +1116,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isMounted = false;
       clearTimeout(debounceTimer);
       clearInterval(adminPollingInterval);
+      window.removeEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
       supabase.removeChannel(realtimeChannel);
       authListener?.subscription?.unsubscribe();
     };
@@ -1047,6 +1256,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.removeItem('bonomo_admin_user_v5');
       localStorage.removeItem('f5_system_user');
       localStorage.removeItem('bonomo_admin_active_tab'); // Limpa a aba ativa para abrir sempre em início
+      localStorage.removeItem('bonomo_impersonating_master');
+      setImpersonatingMaster(null);
       sessionStorage.clear();
       if (isSupabaseConfigured) {
         supabase.auth.signOut().catch(() => {});
@@ -1074,7 +1285,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const switchCollaborator = (c: Collaborator) => {
+  const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {
+    const saved = localStorage.getItem('bonomo_impersonating_master');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return null;
+  });
+
+  const startImpersonation = (c: Collaborator) => {
+    // If not already impersonating, remember original master user
+    if (!impersonatingMaster && currentUser) {
+      setImpersonatingMaster(currentUser);
+      safeLocalStorageSet('bonomo_impersonating_master', JSON.stringify(currentUser));
+    }
+
     const user: AdminUser = {
       id: c.id,
       name: c.name,
@@ -1083,6 +1308,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: c.avatarUrl,
       venueIds: c.venueId === 'all' ? [] : (c.venueIds && c.venueIds.length > 0 ? c.venueIds : [c.venueId]),
       phone: c.phone,
+      masterId: currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId,
     };
     setCurrentUser(user);
     safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
@@ -1091,6 +1317,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } else {
       setActiveVenueId(null);
     }
+  };
+
+  const stopImpersonation = () => {
+    if (impersonatingMaster) {
+      setCurrentUser(impersonatingMaster);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(impersonatingMaster));
+      setImpersonatingMaster(null);
+      localStorage.removeItem('bonomo_impersonating_master');
+      setActiveVenueId(null);
+    }
+  };
+
+  const switchCollaborator = (c: Collaborator) => {
+    startImpersonation(c);
   };
 
   const updateCurrentUserProfile = (data: Partial<AdminUser>) => {
@@ -3482,9 +3722,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       getFeatureStatus,
       featureDescriptions,
       updateFeatureComingSoonMessage,
+      isFlagsLoaded,
+      supportTickets,
+      createSupportTicket,
+      updateSupportTicketStatus,
+      sendSupportMessage,
       announcements,
       createAnnouncement,
       markAnnouncementAsRead,
+      impersonatingMaster,
+      startImpersonation,
+      stopImpersonation,
       allLeads: leads,
       allTasks: tasks,
       addMasterAccount,

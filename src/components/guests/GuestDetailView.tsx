@@ -579,7 +579,7 @@ export const GuestDetailView: React.FC<GuestDetailViewProps> = ({
                 textAlign: 'center'
               }}>
                 <span style={{ fontSize: '0.84rem', color: '#FCA5A5', fontWeight: 700 }}>
-                  Tem certeza que deseja excluir {guest.name} da lista?
+                  Deseja remover {guest.name} da lista oficial? (Poderá ser restaurado a qualquer momento na aba Removidos)
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <button
@@ -595,7 +595,7 @@ export const GuestDetailView: React.FC<GuestDetailViewProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    Sim, Excluir
+                    Sim, Remover
                   </button>
                   <button
                     onClick={() => setShowConfirmDelete(false)}
@@ -641,7 +641,7 @@ export const GuestDetailView: React.FC<GuestDetailViewProps> = ({
                 }}
               >
                 <Trash2 size={15} />
-                <span>Excluir Convidado da Lista</span>
+                <span>Remover Convidado da Lista</span>
               </button>
             )}
           </div>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   User, Phone, Lock, Moon, Sun, Bell, 
   CheckCircle2, ShieldCheck, Camera, 
-  ArrowLeft, ChevronRight, Save, Sparkles, MessageCircle
+  ArrowLeft, ChevronRight, Save, Sparkles, MessageCircle, Eye
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -13,7 +13,16 @@ interface AdminUserSettingsViewProps {
 }
 
 export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ onBack }) => {
-  const { currentUser, updateCurrentUserProfile, theme, setTheme } = useAdminState();
+  const { 
+    currentUser, 
+    updateCurrentUserProfile, 
+    theme, 
+    setTheme,
+    collaborators,
+    impersonatingMaster,
+    startImpersonation,
+    stopImpersonation,
+  } = useAdminState();
 
   const [activeSection, setActiveSection] = useState<'overview' | 'profile' | 'security'>('overview');
   
@@ -394,7 +403,153 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
             </div>
           </div>
 
-          {/* Card 3: Suporte & Sobre */}
+          {/* Card 3: Modo de Visualização da Equipe (Audio 3: Dentro da configuração do Master) */}
+          {(currentUser?.role === 'master' || impersonatingMaster || currentUser?.role === 'dev') && (
+            <div style={{
+              background: 'var(--adm-bg-card)',
+              border: '1.5px solid rgba(212, 175, 55, 0.35)',
+              borderRadius: '20px',
+              padding: '20px',
+              boxShadow: 'var(--adm-shadow)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Eye size={18} color="#D4AF37" />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                    Modo de Visualização da Equipe
+                  </span>
+                </div>
+                {impersonatingMaster && (
+                  <button
+                    type="button"
+                    onClick={stopImpersonation}
+                    style={{
+                      background: '#D4AF37',
+                      color: '#080C14',
+                      border: 'none',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span>Voltar para Master</span>
+                  </button>
+                )}
+              </div>
+
+              <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+                Como gestor Master, alterne sua visão para auditar e visualizar o sistema exatamente como qualquer colaborador da sua equipe (SDR, Closer, Gerente, CRM).
+              </p>
+
+              {impersonatingMaster && (
+                <div style={{
+                  background: 'rgba(212, 175, 55, 0.12)',
+                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  marginBottom: '14px',
+                  fontSize: '0.78rem',
+                  color: '#D4AF37',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <span>
+                    👁️ Simulando visão de: <strong>{currentUser?.name}</strong> ({currentUser?.role?.toUpperCase()})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={stopImpersonation}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Encerrar e Voltar
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                {collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').length === 0 ? (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '16px' }}>
+                    Nenhum colaborador adicional cadastrado na equipe.
+                  </div>
+                ) : (
+                  collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').map(c => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '12px',
+                        padding: '10px 12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {c.avatarUrl ? (
+                          <img src={c.avatarUrl} alt={c.name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.74rem' }}>
+                            {c.name.charAt(0)}
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                            {c.name}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 600, textTransform: 'uppercase' }}>
+                            {c.role}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => startImpersonation(c)}
+                        style={{
+                          background: 'rgba(212, 175, 55, 0.15)',
+                          border: '1px solid rgba(212, 175, 55, 0.4)',
+                          color: '#D4AF37',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#D4AF37';
+                          e.currentTarget.style.color = '#000';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(212, 175, 55, 0.15)';
+                          e.currentTarget.style.color = '#D4AF37';
+                        }}
+                      >
+                        Visualizar como
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Card 4: Suporte & Sobre */}
           <div style={{
             background: 'var(--adm-bg-card)',
             border: '1px solid var(--adm-border)',

@@ -279,57 +279,59 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           </div>
         </div>
 
-        {/* Right: Quick Stats & New Task Button */}
+        {/* Right: Quick Stats & New Task Button (Audio 1: Linha horizontal única e mesma altura do botão) */}
         <div className="admin-home-stats-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div style={{
             background: 'var(--adm-bg-input)',
             border: '1px solid var(--adm-border)',
             borderRadius: '12px',
-            padding: '8px 14px',
+            height: '42px',
+            padding: '0 16px',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
+            gap: '8px',
+            boxSizing: 'border-box',
           }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Pendentes
-              </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: todayTasksCount > 0 ? '#F59E0B' : 'var(--adm-text-title)' }}>
-                {todayTasksCount}
-              </div>
-            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Pendentes:
+            </span>
+            <span style={{ fontSize: '0.98rem', fontWeight: 800, color: todayTasksCount > 0 ? '#F59E0B' : 'var(--adm-text-title)' }}>
+              {todayTasksCount}
+            </span>
           </div>
 
           <div style={{
             background: 'var(--adm-bg-input)',
             border: '1px solid var(--adm-border)',
             borderRadius: '12px',
-            padding: '8px 14px',
+            height: '42px',
+            padding: '0 16px',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
+            gap: '8px',
+            boxSizing: 'border-box',
           }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Concluídas
-              </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-green)' }}>
-                {completedTodayCount}
-              </div>
-            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Concluídas:
+            </span>
+            <span style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-green)' }}>
+              {completedTodayCount}
+            </span>
           </div>
 
           <button
             onClick={handleOpenNewTask}
             className="adm-btn-primary admin-home-desktop-new-task"
             style={{
-              padding: '10px 18px',
+              height: '42px',
+              padding: '0 18px',
               borderRadius: '12px',
               fontWeight: 800,
               fontSize: '0.82rem',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              boxSizing: 'border-box',
             }}
           >
             <Plus size={16} />

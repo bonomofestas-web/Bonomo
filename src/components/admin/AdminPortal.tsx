@@ -24,9 +24,11 @@ import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
 import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
 import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
+import { AdminDevSupportView } from './AdminDevSupportView';
 import { AdminAnnouncementModal } from './AdminAnnouncementModal';
+import { AdminSupportModal } from './AdminSupportModal';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
-import { Menu, X, Building2 } from 'lucide-react';
+import { Menu, X, Building2, Headphones } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
 
 interface AdminPortalProps {
@@ -58,18 +60,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 }) => {
   const { 
     currentUser, 
-    switchUserRoleDemo, 
-    switchCollaborator, 
+    impersonatingMaster,
+    stopImpersonation,
     theme, 
     leads, 
     tasks, 
     venues, 
     debutantes, 
     collaborators, 
-    allCollaborators, 
     funnels, 
     getFeatureStatus,
     featureDescriptions,
+    isFlagsLoaded,
     announcements,
     markAnnouncementAsRead,
   } = useAdminState();
@@ -86,7 +88,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   
@@ -135,13 +137,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
 
-  // Check for unread announcement directed at this user (Audio 6 & 7)
+  // Check for unread announcement directed at this user (Audio 6 & 7 + Audio 2 roles)
+  const isUserTargetedByAnnouncement = (a: import('../../types/admin').SystemAnnouncement) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'dev') return true;
+    if (a.targetRoles && a.targetRoles.length > 0) {
+      return a.targetRoles.includes(currentUser.role);
+    }
+    if (a.targetAudience === 'all') return true;
+    if (a.targetAudience === 'masters' && currentUser.role === 'master') return true;
+    return false;
+  };
+
   const unreadAnnouncement = React.useMemo(() => {
     if (!currentUser) return null;
     return announcements.find(a => {
-      const isTarget = a.targetAudience === 'all' || (a.targetAudience === 'masters' && currentUser.role === 'master');
-      if (!isTarget) return false;
-      const alreadyRead = a.readReceipts.some(r => r.userId === currentUser.id);
+      if (!isUserTargetedByAnnouncement(a)) return false;
+      const alreadyRead = a.readReceipts && a.readReceipts.some(r => r.userId === currentUser.id);
       return !alreadyRead;
     }) || null;
   }, [announcements, currentUser]);
@@ -150,7 +162,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const todayStr = new Date().toISOString().split('T')[0];
   const dueTodayTasks = tasks.filter(t => t.status !== 'completed' && t.dueDate === todayStr);
   const newUnassignedLeads = leads.filter(l => l.stage === 'new_lead');
-  const userAnnouncements = announcements.filter(a => a.targetAudience === 'all' || (a.targetAudience === 'masters' && currentUser.role === 'master'));
+  const userAnnouncements = announcements.filter(isUserTargetedByAnnouncement);
   const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length + (unreadAnnouncement ? 1 : 0);
 
   // Global search filtering
@@ -188,8 +200,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       venues: 'venues',
     };
 
-    // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade
-    if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
+    // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade (exceto Dev ou Configurações)
+    const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');
+    if (venues.length === 0 && !isDevSession && activeTab !== 'settings') {
       return (
         <AdminVenuesView
           onNavigateToFunnel={(funnelId: string) => {
@@ -197,6 +210,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             setActiveTab('crm');
           }}
         />
+      );
+    }
+
+    // Anti-Leak Guard (Audio 2): Impede qualquer vazamento visual durante F5 em abas protegidas
+    if (!isFlagsLoaded && currentUser?.role !== 'dev' && activeTab !== 'home') {
+      return (
+        <div style={{
+          display: 'flex',
+          height: '100%',
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0B090E',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+            <img src="/f5_mark.png" alt="F5" style={{ width: '40px', height: '40px', opacity: 0.8 }} />
+            <div style={{ fontSize: '0.78rem', color: '#8096A8', fontFamily: "'Poppins', sans-serif" }}>
+              Verificando permissões de acesso...
+            </div>
+          </div>
+        </div>
       );
     }
 
@@ -213,6 +247,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         );
       }
       if (status === 'disabled') {
+        if (activeTab !== 'home') {
+          setActiveTab('home');
+          try { localStorage.setItem('bonomo_admin_active_tab', 'home'); } catch {}
+        }
         return <AdminHomeView onOpenLead={handleOpenLeadFromTask} onNavigateTab={(tab) => handleSelectTab(tab)} />;
       }
     }
@@ -280,6 +318,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminDevUsersManagerView />;
       case 'dev-announcements':
         return <AdminDevAnnouncementsView />;
+      case 'dev-support':
+        return <AdminDevSupportView />;
       default:
         return (
           <AdminHomeView
@@ -424,6 +464,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'dev-features') { category = 'Desenvolvedor'; title = 'Feature Flags & Controle de Módulos'; }
               else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários (Masters & Equipe)'; }
               else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais do App'; }
+              else if (activeTab === 'dev-support') { category = 'Desenvolvedor'; title = 'Painel de Suporte & Central de Bugs'; }
 
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
@@ -439,18 +480,71 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             })()}
           </div>
 
-          {/* Right Header Actions: Expandable Search + Notification Bell + Profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' }}>
-            {/* Expandable Search Capsule */}
-            <div className="admin-header-search" style={{ position: 'relative' }}>
+          {/* Right Header Actions: Impersonation Banner + Expandable Search + Notification Bell + Profile */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+            {/* Impersonation Active Banner (Audio 3: Exibido APENAS quando estiver no modo de visualização) */}
+            {impersonatingMaster && (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: 'var(--adm-bg-input)',
-                border: `1px solid ${isSearchFocused || globalSearch ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                background: 'rgba(212, 175, 55, 0.12)',
+                border: '1px solid rgba(212, 175, 55, 0.45)',
                 borderRadius: '50px',
-                padding: isSearchFocused || globalSearch ? '5px 12px' : '6px',
+                padding: '4px 12px 4px 10px',
+                color: '#D4AF37',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                boxShadow: '0 0 20px rgba(212, 175, 55, 0.18)',
+                animation: 'fadeIn 0.2s ease-out',
+                whiteSpace: 'nowrap',
+              }}>
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#D4AF37',
+                  boxShadow: '0 0 8px #D4AF37',
+                }} />
+                <span>
+                  Visualizando como: <strong style={{ color: '#FFFFFF' }}>{currentUser.name}</strong> ({ROLE_LABELS[currentUser.role] || currentUser.role.toUpperCase()})
+                </span>
+                <button
+                  type="button"
+                  onClick={stopImpersonation}
+                  style={{
+                    background: '#D4AF37',
+                    color: '#080C14',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '3px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginLeft: '4px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                  title="Encerrar simulação e voltar para sua conta de Master"
+                >
+                  <span>Voltar para Master</span>
+                </button>
+              </div>
+            )}
+
+            {/* Expandable Search Capsule (Audio 3: Centralização milimétrica da lupa) */}
+            <div className="admin-header-search" style={{ position: 'relative' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isSearchFocused || globalSearch ? 'flex-start' : 'center',
+                gap: '8px',
+                background: isSearchFocused || globalSearch ? '#141118' : 'rgba(255, 255, 255, 0.06)',
+                border: `1px solid ${isSearchFocused || globalSearch ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)'}`,
+                borderRadius: '50px',
+                padding: isSearchFocused || globalSearch ? '5px 12px' : '0',
                 width: isSearchFocused || globalSearch ? '280px' : '36px',
                 height: '36px',
                 boxSizing: 'border-box',
@@ -459,8 +553,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               }}
               onClick={() => setIsSearchFocused(true)}
               >
-                <span style={{ color: isSearchFocused || globalSearch ? 'var(--adm-accent)' : 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <span style={{
+                  color: isSearchFocused || globalSearch ? '#14A9D7' : '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '16px',
+                  height: '16px',
+                  lineHeight: 0,
+                  flexShrink: 0,
+                  margin: 0,
+                  padding: 0,
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                   </svg>
@@ -695,6 +800,39 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
+            {/* Support / Help Center Button (Audio 3) */}
+            <button
+              type="button"
+              onClick={() => setIsSupportModalOpen(true)}
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                background: isSupportModalOpen ? 'rgba(20, 169, 215, 0.2)' : '#141118',
+                border: `1px solid ${isSupportModalOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.25)'}`,
+                color: isSupportModalOpen ? '#14A9D7' : '#9E988D',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'all 0.15s ease',
+              }}
+              title="Central de Suporte & Report de Bugs"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#14A9D7';
+                e.currentTarget.style.borderColor = '#14A9D7';
+              }}
+              onMouseLeave={(e) => {
+                if (!isSupportModalOpen) {
+                  e.currentTarget.style.color = '#9E988D';
+                  e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.25)';
+                }
+              }}
+            >
+              <Headphones size={16} />
+            </button>
+
             {/* 1. Notification Bell & Dropdown */}
             <div style={{ position: 'relative' }}>
               <button
@@ -863,160 +1001,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               )}
             </div>
 
-            {/* 2. User Profile Pill & Collaborator Switcher Popover (Desktop Master Only) */}
-            {userRole === 'master' && (
-              <div className="admin-desktop-collaborator-switcher" style={{ position: 'relative' }}>
-                <div 
-                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            {/* 2. User Profile Pill (Clicks to open settings) */}
+            <div
+              onClick={() => setActiveTab('settings')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '4px 12px 4px 4px',
+                borderRadius: '24px',
+                cursor: 'pointer',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                transition: 'all 0.15s ease',
+              }}
+              title="Acessar Configurações e Perfil"
+            >
+              {currentUser?.avatarUrl ? (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.name}
                   style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'var(--adm-accent-bg)',
+                    color: 'var(--adm-accent)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    background: isProfileMenuOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118',
-                    border: `1px solid ${isProfileMenuOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                    borderRadius: '30px',
-                    padding: '3px 12px 3px 4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
+                    justifyContent: 'center',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
                   }}
                 >
-                  {currentUser?.avatarUrl ? (
-                    <img
-                      src={currentUser.avatarUrl}
-                      alt={currentUser.name}
-                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '50%',
-                      background: 'rgba(212, 175, 55, 0.15)',
-                      color: '#D4AF37',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.75rem',
-                      fontWeight: 800,
-                    }}>
-                      {currentUser?.name?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#FFFFFF', lineHeight: 1.1 }}>
-                      {currentUser?.name || 'Gestor'}
-                    </span>
-                    <span style={{ fontSize: '0.62rem', color: roleColor, fontWeight: 700, textTransform: 'uppercase' }}>
-                      {ROLE_LABELS[userRole]}
-                    </span>
-                  </div>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#9E988D', marginLeft: '2px' }}>
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </div>
-
-              {/* Profile / Collaborator Switcher Dropdown */}
-              {isProfileMenuOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  right: 0,
-                  width: '260px',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '16px',
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
-                  padding: '12px',
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  animation: 'fadeIn 0.15s ease-out',
-                }}>
-                  <div style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', paddingLeft: '4px' }}>
-                    Alternar Visão de Usuário
-                  </div>
-
-                  {/* Se estiver simulando visão de outro colaborador, botão direto para retornar */}
-                  {(currentUser.role !== 'master' && currentUser.role !== 'dev') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const masterCollab = allCollaborators.find(c => c.id === currentUser.masterId || c.role === 'master');
-                        if (masterCollab) switchCollaborator(masterCollab);
-                        else switchUserRoleDemo('master');
-                        setIsProfileMenuOpen(false);
-                      }}
-                      style={{
-                        width: '100%',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        border: '1px solid #D4AF37',
-                        color: '#D4AF37',
-                        borderRadius: '8px',
-                        padding: '8px 10px',
-                        fontSize: '0.74rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      <span>↩️ Voltar para Minha Conta (Master)</span>
-                    </button>
-                  )}
-
-                  {/* Lista de Colaboradores Reais Cadastrados */}
-                  {collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').length === 0 ? (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '12px 6px' }}>
-                      Nenhum colaborador cadastrado na equipe.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '220px', overflowY: 'auto' }}>
-                      {collaborators.filter(c => c.id !== currentUser?.id && c.role !== 'dev').map(c => (
-                        <div
-                          key={c.id}
-                          onClick={() => {
-                            switchCollaborator(c);
-                            setIsProfileMenuOpen(false);
-                          }}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            background: 'transparent',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          {c.avatarUrl ? (
-                            <img src={c.avatarUrl} alt={c.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontSize: '0.64rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {c.name.charAt(0)}
-                            </div>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{c.name}</div>
-                            <div style={{ fontSize: '0.64rem', color: 'var(--adm-accent)', fontWeight: 600 }}>{ROLE_LABELS[c.role] || c.role.toUpperCase()}</div>
-                          </div>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', padding: '2px 6px', borderRadius: '4px' }}>
-                            Ver como
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {currentUser?.name?.charAt(0) || 'U'}
                 </div>
               )}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', lineHeight: 1.1 }}>
+                  {currentUser?.name || 'Gestor'}
+                </span>
+                <span style={{ fontSize: '0.66rem', color: roleColor, fontWeight: 700, textTransform: 'uppercase' }}>
+                  {ROLE_LABELS[userRole]}
+                </span>
+              </div>
             </div>
-          )}
           </div>
         </header>
 
@@ -1048,6 +1086,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       <AdminSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+      />
+
+      <AdminSupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
       />
 
       <style>{`

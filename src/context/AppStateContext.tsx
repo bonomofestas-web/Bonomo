@@ -222,6 +222,8 @@ interface AppStateContextType {
   addGuest: (data: Omit<Guest, 'id'>) => string;
   updateGuest: (guestId: string, data: Partial<Guest>) => void;
   deleteGuest: (guestId: string) => void;
+  removeGuest: (guestId: string) => void;
+  restoreGuest: (guestId: string) => void;
   confirmGuestByDebutante: (guestId: string) => void;
   selfRegisterGuest: (data: { name: string; phone: string; age: number; gender?: import('../types').GuestGender; group: GuestGroup; plusOnes: number; companionNames?: string[]; sweetMessage?: string }) => void;
   updateGuestStatus: (guestId: string, status: GuestStatus) => void;
@@ -1098,8 +1100,19 @@ export const AppStateProvider: React.FC<{
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, ...data } : g));
   };
 
+  const removeGuest = (guestId: string) => {
+    setGuests(prev => prev.map(g => (g.id === guestId || g.parentGuestId === guestId) ? { ...g, isRemoved: true } : g));
+    guestService.setRemovedStatus(guestId, true);
+  };
+
+  const restoreGuest = (guestId: string) => {
+    setGuests(prev => prev.map(g => (g.id === guestId || g.parentGuestId === guestId) ? { ...g, isRemoved: false } : g));
+    guestService.setRemovedStatus(guestId, false);
+  };
+
   const deleteGuest = (guestId: string) => {
-    setGuests(prev => prev.filter(g => g.id !== guestId && g.parentGuestId !== guestId));
+    // Remoção segura conforme Áudio 4: não apaga a linha do banco, apenas oculta da lista principal e envia para a aba 'Removidos'
+    removeGuest(guestId);
   };
 
   const indicateGuestAsReferral = (guestId: string): boolean => {
@@ -1453,6 +1466,8 @@ export const AppStateProvider: React.FC<{
       addGuest,
       updateGuest,
       deleteGuest,
+      removeGuest,
+      restoreGuest,
       confirmGuestByDebutante,
       selfRegisterGuest,
       updateGuestStatus,

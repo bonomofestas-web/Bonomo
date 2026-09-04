@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
-  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders
+  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders, Headphones
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -31,7 +31,8 @@ export type AdminTabType =
   | 'settings'
   | 'dev-features'
   | 'dev-users'
-  | 'dev-announcements';
+  | 'dev-announcements'
+  | 'dev-support';
 
 interface AdminSidebarProps {
   activeTab: AdminTabType;
@@ -107,9 +108,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   };
 
   const devItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'dev-features', label: 'Feature Flags (Dev)', icon: <Sliders size={17} />, roles: ['dev'] },
-    { id: 'dev-users', label: 'Gestão de Usuários (Dev)', icon: <Users size={17} />, roles: ['dev'] },
-    { id: 'dev-announcements', label: 'Comunicados do App (Dev)', icon: <Radio size={17} />, roles: ['dev'] },
+    { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={17} />, roles: ['dev'] },
+    { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={17} />, roles: ['dev'] },
+    { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={17} />, roles: ['dev'] },
+    { id: 'dev-support', label: 'Suporte', icon: <Headphones size={17} />, roles: ['dev'] },
   ];
 
   // Grouped Navigation Items with updated concise labels
@@ -485,27 +487,46 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </div>
         ) : (
           <>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              minHeight: '38px',
+            }}>
+            {/* Centered Logo in the Middle (Audio 1) */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '100%',
+            }}>
               <img
                 src="/f5_logo.png"
                 alt="F5 System"
                 style={{
                   height: '34px',
                   width: 'auto',
-                  maxWidth: '140px',
+                  maxWidth: '145px',
                   objectFit: 'contain',
                   display: 'block',
+                  margin: '0 auto',
                 }}
               />
             </div>
 
-            {/* Collapse button */}
+            {/* Collapse button positioned neatly on the right */}
             {!isMobileOverlay && (
               <button
                 type="button"
                 onClick={onToggleCollapse}
                 title="Recolher Menu Lateral"
                 style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
                   width: '28px',
                   height: '28px',
                   borderRadius: '8px',
@@ -517,19 +538,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   justifyContent: 'center',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease',
+                  zIndex: 2,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = 'rgba(20, 169, 215, 0.2)';
-                  e.currentTarget.style.transform = 'scale(1.05)';
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
                 }}
               >
                 <ChevronLeft size={16} />
               </button>
             )}
+          </div>
 
             {/* Mobile Close Button */}
             {isMobileOverlay && onCloseMobile && (

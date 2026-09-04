@@ -47,7 +47,10 @@ export interface SystemAnnouncement {
   title: string;
   content: string;
   type: 'update' | 'feature' | 'maintenance' | 'general';
-  targetAudience: 'all' | 'masters';
+  mediaType: 'none' | 'image' | 'video';
+  mediaUrl?: string;
+  targetRoles: AdminRole[];
+  targetAudience?: 'all' | 'masters' | 'custom';
   createdAt: string;
   authorId: string;
   readReceipts: AnnouncementReadReceipt[];
@@ -497,4 +500,45 @@ export interface AdminAppState {
   activeVenueId: string | null; // Filtro de casa ativa no painel (null = Todas)
   activeDebutanteId: string | null;
   theme: ThemeMode;
+}
+
+// ── Support Tickets & Bug Reports (Audio 3) ──────────────────────────────────
+export type SupportTicketStatus = 'new' | 'in_progress' | 'resolved';
+
+export type SupportTicketModule = 
+  | 'home' 
+  | 'crm' 
+  | 'debutantes' 
+  | 'venues' 
+  | 'collaborators' 
+  | 'whatsapp' 
+  | 'other';
+
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  message: string;
+  createdAt: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  ticketCode: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userRole: string;
+  venueId?: string;
+  venueName?: string;
+  module: SupportTicketModule;
+  description: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  messages?: SupportTicketMessage[];
 }

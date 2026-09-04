@@ -367,8 +367,8 @@ export const AdminDevUsersManagerView: React.FC = () => {
               // Tasks of this master
               const masterTasks = allTasks.filter(t => (Boolean(t.venueId) && masterVenueIds.has(t.venueId!)) || (t.assignedToIds && t.assignedToIds.includes(master.id)));
 
-              // Guests generated across all debutantes of this master
-              const masterGuestsCount = masterDebutantes.reduce((acc, d) => acc + (d.guests?.length || d.currentGuestLimit || 0), 0);
+              // Real guests generated across all debutantes of this master (matching Supabase guests table)
+              const masterGuestsCount = masterDebutantes.reduce((acc, d) => acc + (Array.isArray(d.guests) ? d.guests.length : 0), 0);
 
               return (
                 <div

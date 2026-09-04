@@ -155,7 +155,7 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
           transition: 'transform 0.15s ease',
         }}>
           <Trash2 size={22} color="#FFF" />
-          <span>{isWillDelete ? 'Solte para Excluir' : 'Excluir'}</span>
+          <span>{isWillDelete ? 'Solte para Remover' : 'Remover'}</span>
         </div>
       </div>
 

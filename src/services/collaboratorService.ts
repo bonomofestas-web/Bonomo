@@ -111,37 +111,46 @@ export const collaboratorService = {
 };
 
 export const featureFlagService = {
-  async getAll(): Promise<Record<string, string>> {
-    if (!isSupabaseConfigured) return {};
+  async getAll(): Promise<{ flags: Record<string, string>; descriptions: Record<string, string> }> {
+    if (!isSupabaseConfigured) return { flags: {}, descriptions: {} };
     try {
       const { data, error } = await supabase
         .from('system_feature_flags')
-        .select('feature_id, status');
+        .select('feature_id, status, coming_soon_message');
 
       if (error) {
-        return {};
+        return { flags: {}, descriptions: {} };
       }
 
       const flags: Record<string, string> = {};
+      const descriptions: Record<string, string> = {};
       (data || []).forEach(row => {
         flags[row.feature_id] = row.status;
+        if (row.coming_soon_message) {
+          descriptions[row.feature_id] = row.coming_soon_message;
+        }
       });
-      return flags;
+      return { flags, descriptions };
     } catch {
-      return {};
+      return { flags: {}, descriptions: {} };
     }
   },
 
-  async update(featureId: string, status: string): Promise<boolean> {
+  async update(featureId: string, status: string, comingSoonMessage?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      const payload: any = {
+        feature_id: featureId,
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (comingSoonMessage !== undefined) {
+        payload.coming_soon_message = comingSoonMessage;
+      }
+
       const { error } = await supabase
         .from('system_feature_flags')
-        .upsert({
-          feature_id: featureId,
-          status,
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(payload);
 
       return !error;
     } catch {

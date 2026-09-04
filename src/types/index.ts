@@ -191,6 +191,9 @@ export interface Guest {
   parentGuestId?: string; // ID do convidado titular / principal
   parentGuestName?: string; // Nome do convidado titular / principal
   companionGuestIds?: string[]; // IDs dos registros de acompanhantes vinculados a este titular
+
+  // Remoção segura da lista (Áudio 4)
+  isRemoved?: boolean; // Se true, foi movido para a aba 'Removidos' sem exclusão do banco
 }
 
 export interface Appointment {
