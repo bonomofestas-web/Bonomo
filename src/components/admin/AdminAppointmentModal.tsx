@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, MapPin, FileText, UserCheck, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  X, Calendar, Clock, MapPin, FileText, UserCheck, AlertCircle, 
+  UtensilsCrossed, Sparkles, Camera, Music, Flower2, Heart,
+  CheckCircle2, Crown, Building2
+} from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Appointment, AppointmentCategory, AppointmentStatus } from '../../types';
 
@@ -11,6 +15,22 @@ interface AdminAppointmentModalProps {
   appointmentToEdit?: { debutanteId: string; appointment: Appointment } | null;
 }
 
+const CATEGORY_CONFIG: Record<AppointmentCategory, { label: string; icon: any; color: string }> = {
+  'Buffet & Degustação': { label: 'Buffet & Degustação', icon: UtensilsCrossed, color: '#10B981' },
+  'Vestido de Gala': { label: 'Vestido & Trajes', icon: Sparkles, color: '#EC4899' },
+  'Maquiagem & Cabelo': { label: 'Maquiagem & Cabelo', icon: Heart, color: '#F43F5E' },
+  'Decoração & Flores': { label: 'Decoração & Flores', icon: Flower2, color: '#8B5CF6' },
+  'Ensaio Fotográfico': { label: 'Ensaio Fotográfico', icon: Camera, color: '#06B6D4' },
+  'DJ & Pista': { label: 'DJ & Pista de Dança', icon: Music, color: '#F59E0B' },
+  'Cerimonial': { label: 'Cerimonial & Roteiro', icon: FileText, color: '#3B82F6' },
+};
+
+const STATUS_CONFIG: Record<AppointmentStatus, { label: string; icon: any; color: string; bg: string }> = {
+  confirmed: { label: 'Confirmado', icon: CheckCircle2, color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
+  scheduled: { label: 'Agendado', icon: Clock, color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.12)' },
+  completed: { label: 'Concluído', icon: Sparkles, color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' },
+};
+
 export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
   isOpen,
   onClose,
@@ -18,7 +38,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
   presetDate,
   appointmentToEdit,
 }) => {
-  const { debutantes, collaborators, addAppointmentForDebutante, updateAppointmentForDebutante } = useAdminState();
+  const { debutantes, venues, collaborators, addAppointmentForDebutante, updateAppointmentForDebutante } = useAdminState();
 
   const [debutanteId, setDebutanteId] = useState(
     appointmentToEdit?.debutanteId || presetDebutanteId || debutantes[0]?.id || ''
@@ -32,6 +52,24 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
   const [notes, setNotes] = useState('');
   const [responsibleCollaboratorId, setResponsibleCollaboratorId] = useState<string>('');
 
+  // Find currently selected debutante and venue
+  const selectedDebutante = useMemo(() => {
+    return debutantes.find(d => d.id === debutanteId || d.slug === debutanteId) || debutantes[0];
+  }, [debutantes, debutanteId]);
+
+  const selectedVenue = useMemo(() => {
+    if (!selectedDebutante?.venueId) return null;
+    return venues.find(v => v.id === selectedDebutante.venueId);
+  }, [venues, selectedDebutante]);
+
+  // Filter collaborators to prioritize pos_venda, master, crm
+  const eligibleCollaborators = useMemo(() => {
+    return [...collaborators].sort((a, b) => {
+      const order: Record<string, number> = { pos_venda: 1, master: 2, crm: 3, closer: 4, sdr: 5 };
+      return (order[a.role || ''] || 6) - (order[b.role || ''] || 6);
+    });
+  }, [collaborators]);
+
   useEffect(() => {
     if (appointmentToEdit) {
       setDebutanteId(appointmentToEdit.debutanteId);
@@ -44,17 +82,19 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
       setNotes(appointmentToEdit.appointment.notes || '');
       setResponsibleCollaboratorId(appointmentToEdit.appointment.responsibleCollaboratorId || '');
     } else {
-      setDebutanteId(presetDebutanteId || debutantes[0]?.id || '');
+      const initialDebId = presetDebutanteId || debutantes[0]?.id || '';
+      setDebutanteId(initialDebId);
       setTitle('Degustação do Menu de Gala');
       setCategory('Buffet & Degustação');
       setDate(presetDate || new Date().toISOString().split('T')[0]);
       setTime('19:00');
-      setLocation('Espaço Rio Lounge - Salão Nobre');
+      setLocation(selectedVenue?.name ? `${selectedVenue.name} - Salão Nobre` : 'Espaço Realizar - Salão Nobre');
       setStatus('confirmed');
       setNotes('Reunião acompanhada dos pais para escolha dos pratos.');
-      setResponsibleCollaboratorId(collaborators[0]?.id || '');
+      const defaultCollab = eligibleCollaborators[0]?.id || '';
+      setResponsibleCollaboratorId(defaultCollab);
     }
-  }, [appointmentToEdit, presetDebutanteId, presetDate, isOpen, debutantes, collaborators]);
+  }, [appointmentToEdit, presetDebutanteId, presetDate, isOpen, debutantes, selectedVenue, eligibleCollaborators]);
 
   if (!isOpen) return null;
 
@@ -64,7 +104,11 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
 
     const selectedCollab = collaborators.find(c => c.id === responsibleCollaboratorId);
     const responsibleName = selectedCollab?.name;
-    const responsibleRole = selectedCollab?.role === 'admin' ? 'Gerente do Evento' : 'Especialista em Degustação';
+    const responsibleRole = selectedCollab?.role === 'master' 
+      ? 'Gerente Geral / Master' 
+      : selectedCollab?.role === 'pos_venda' 
+      ? 'Especialista Pós-Venda' 
+      : 'Responsável do Evento';
     const responsiblePhone = selectedCollab?.phone;
 
     if (appointmentToEdit) {
@@ -80,6 +124,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
         responsibleName,
         responsibleRole,
         responsiblePhone,
+        venueId: selectedDebutante?.venueId,
       });
     } else {
       addAppointmentForDebutante(debutanteId, {
@@ -94,28 +139,19 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
         responsibleName,
         responsibleRole,
         responsiblePhone,
+        venueId: selectedDebutante?.venueId,
       });
     }
 
     onClose();
   };
 
-  const categories: AppointmentCategory[] = [
-    'Buffet & Degustação',
-    'Vestido de Gala',
-    'Maquiagem & Cabelo',
-    'Decoração & Flores',
-    'Ensaio Fotográfico',
-    'DJ & Pista',
-    'Cerimonial',
-  ];
-
   const inputStyle: React.CSSProperties = {
     width: '100%',
     background: 'var(--adm-bg-input)',
     border: '1px solid var(--adm-border)',
     borderRadius: '10px',
-    padding: '10px 14px',
+    padding: '9px 12px',
     color: 'var(--adm-text-title)',
     fontSize: '0.84rem',
     outline: 'none',
@@ -138,13 +174,13 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(0, 0, 0, 0.8)',
+      background: 'rgba(0, 0, 0, 0.82)',
       backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1100,
-      padding: '20px',
+      padding: '16px',
       animation: 'fadeIn 0.2s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
@@ -152,11 +188,11 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
         background: 'var(--adm-bg-card)',
         border: '1px solid var(--adm-border)',
         borderRadius: '20px',
-        maxWidth: '520px',
+        maxWidth: '560px',
         width: '100%',
-        maxHeight: '90vh',
+        maxHeight: '92vh',
         overflowY: 'auto',
-        padding: '28px',
+        padding: '24px',
         position: 'relative',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
       }}>
@@ -165,8 +201,8 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
           onClick={onClose}
           style={{
             position: 'absolute',
-            top: '20px',
-            right: '20px',
+            top: '18px',
+            right: '18px',
             background: 'var(--adm-bg-elevated)',
             border: '1px solid var(--adm-border)',
             borderRadius: '50%',
@@ -186,8 +222,8 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
           <div style={{
-            width: '36px',
-            height: '36px',
+            width: '38px',
+            height: '38px',
             borderRadius: '10px',
             background: 'var(--adm-accent-bg)',
             display: 'flex',
@@ -197,19 +233,21 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
           }}>
             <Calendar size={20} />
           </div>
-          <h2 style={{
-            fontSize: '1.25rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-title)',
-            margin: 0,
-            letterSpacing: '-0.3px',
-          }}>
-            {appointmentToEdit ? 'Editar Compromisso' : 'Agendar Compromisso'}
-          </h2>
+          <div>
+            <h2 style={{
+              fontSize: '1.2rem',
+              fontWeight: 800,
+              color: 'var(--adm-text-title)',
+              margin: 0,
+              letterSpacing: '-0.3px',
+            }}>
+              {appointmentToEdit ? 'Editar Compromisso' : 'Agendar Novo Compromisso'}
+            </h2>
+            <p style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', margin: 0 }}>
+              Sincronização imediata na agenda corporativa e no app da debutante.
+            </p>
+          </div>
         </div>
-        <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', marginBottom: '20px' }}>
-          Este evento sincronizará instantaneamente na timeline da debutante.
-        </p>
 
         {debutantes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '24px 12px' }}>
@@ -230,24 +268,87 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Aniversariante */}
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+            
+            {/* 1. Card Personalizado da Debutante com Avatar & Detalhes */}
             <div>
               <label style={labelStyle}>
                 Debutante / Aniversariante *
               </label>
-              <select
-                value={debutanteId}
-                onChange={(e) => setDebutanteId(e.target.value)}
-                disabled={Boolean(appointmentToEdit)}
-                style={inputStyle}
-              >
-                {debutantes.map(d => (
-                  <option key={d.id} value={d.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
-                    {d.name} ({d.partyDate.split('-').reverse().join('/')})
-                  </option>
-                ))}
-              </select>
+
+              {!appointmentToEdit ? (
+                <div style={{ marginBottom: '8px' }}>
+                  <select
+                    value={debutanteId}
+                    onChange={(e) => setDebutanteId(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {debutantes.map(d => (
+                      <option key={d.id} value={d.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
+                        {d.name} • Festa: {d.partyDate ? d.partyDate.split('-').reverse().join('/') : 'A definir'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {/* Visual Card da Debutante Selecionada */}
+              {selectedDebutante && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 14px',
+                  background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.08) 0%, rgba(212, 175, 55, 0.06) 100%)',
+                  border: '1px solid rgba(20, 169, 215, 0.25)',
+                  borderRadius: '12px',
+                }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #14A9D7 0%, #D4AF37 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FFFFFF',
+                    fontWeight: 900,
+                    fontSize: '1rem',
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  }}>
+                    {selectedDebutante.avatarUrl ? (
+                      <img 
+                        src={selectedDebutante.avatarUrl} 
+                        alt={selectedDebutante.name} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                    ) : (
+                      selectedDebutante.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <strong style={{ fontSize: '0.9rem', color: 'var(--adm-text-title)', fontWeight: 800 }}>
+                        {selectedDebutante.name}
+                      </strong>
+                      <Crown size={12} color="#D4AF37" />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={11} color="var(--adm-accent)" />
+                        Festa: {selectedDebutante.partyDate ? selectedDebutante.partyDate.split('-').reverse().join('/') : 'A definir'}
+                      </span>
+                      <span>•</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Building2 size={11} color="#D4AF37" />
+                        {selectedVenue?.name || 'Espaço Realizar'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Título do Compromisso */}
@@ -265,48 +366,93 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
               />
             </div>
 
-            {/* Categoria & Status */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>
-                  Categoria
-                </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as AppointmentCategory)}
-                  style={inputStyle}
-                >
-                  {categories.map(c => (
-                    <option key={c} value={c} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>
-                  Status
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  style={inputStyle}
-                >
-                  <option value="confirmed">Confirmado</option>
-                  <option value="pending">Pendente</option>
-                  <option value="rescheduled">Reagendado</option>
-                  <option value="cancelled">Cancelado</option>
-                </select>
+            {/* Categoria com Ícones Lucide */}
+            <div>
+              <label style={labelStyle}>
+                Categoria do Compromisso
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '6px' }}>
+                {(Object.keys(CATEGORY_CONFIG) as AppointmentCategory[]).map(catKey => {
+                  const item = CATEGORY_CONFIG[catKey];
+                  const Icon = item.icon;
+                  const isSelected = category === catKey;
+                  return (
+                    <button
+                      key={catKey}
+                      type="button"
+                      onClick={() => setCategory(catKey)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '7px 10px',
+                        background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-elevated)',
+                        border: isSelected ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                        borderRadius: '8px',
+                        color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                        fontSize: '0.74rem',
+                        fontWeight: isSelected ? 800 : 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <Icon size={14} color={isSelected ? 'var(--adm-accent)' : item.color} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Data & Hora */}
+            {/* Status com Símbolos e Cores */}
+            <div>
+              <label style={labelStyle}>
+                Status do Compromisso
+              </label>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {(Object.keys(STATUS_CONFIG) as AppointmentStatus[]).map(stKey => {
+                  const item = STATUS_CONFIG[stKey];
+                  const Icon = item.icon;
+                  const isSelected = status === stKey;
+                  return (
+                    <button
+                      key={stKey}
+                      type="button"
+                      onClick={() => setStatus(stKey)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '5px 12px',
+                        background: isSelected ? item.bg : 'var(--adm-bg-elevated)',
+                        border: isSelected ? `1.5px solid ${item.color}` : '1px solid var(--adm-border)',
+                        borderRadius: '16px',
+                        color: isSelected ? item.color : 'var(--adm-text-muted)',
+                        fontSize: '0.75rem',
+                        fontWeight: isSelected ? 800 : 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Icon size={13} color={item.color} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Data & Horário com Datepicker Limpo */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>
                   Data do Evento *
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Calendar size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <Calendar size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px', pointerEvents: 'none' }} />
                   <input
                     type="date"
                     required
@@ -314,7 +460,8 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                     onChange={(e) => setDate(e.target.value)}
                     style={{
                       ...inputStyle,
-                      paddingLeft: '38px',
+                      paddingLeft: '36px',
+                      cursor: 'pointer',
                     }}
                   />
                 </div>
@@ -325,7 +472,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                   Horário *
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Clock size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <Clock size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px', pointerEvents: 'none' }} />
                   <input
                     type="time"
                     required
@@ -333,31 +480,43 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                     onChange={(e) => setTime(e.target.value)}
                     style={{
                       ...inputStyle,
-                      paddingLeft: '38px',
+                      paddingLeft: '36px',
+                      cursor: 'pointer',
                     }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Colaborador Responsável pelo Atendimento */}
+            {/* Colaborador Responsável (Pós-Venda, Gerente ou Master com Avatar) */}
             <div>
               <label style={labelStyle}>
                 Colaborador / Responsável pelo Atendimento
               </label>
               <div style={{ position: 'relative' }}>
-                <UserCheck size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <UserCheck size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px', pointerEvents: 'none' }} />
                 <select
                   value={responsibleCollaboratorId}
                   onChange={(e) => setResponsibleCollaboratorId(e.target.value)}
-                  style={{ ...inputStyle, paddingLeft: '38px' }}
+                  style={{ ...inputStyle, paddingLeft: '38px', cursor: 'pointer' }}
                 >
                   <option value="" style={{ background: 'var(--adm-bg-card)' }}>Selecione o Responsável...</option>
-                  {collaborators.map(c => (
-                    <option key={c.id} value={c.id} style={{ background: 'var(--adm-bg-card)' }}>
-                      {c.name} — {c.role === 'admin' ? 'Gerente' : 'Especialista'} ({c.phone || 'Sem telefone'})
-                    </option>
-                  ))}
+                  {eligibleCollaborators.map(c => {
+                    const roleLabel = c.role === 'master' 
+                      ? 'Gerente Geral' 
+                      : c.role === 'pos_venda' 
+                      ? 'Pós-Venda' 
+                      : c.role === 'crm' 
+                      ? 'Gestor CRM' 
+                      : c.role === 'closer'
+                      ? 'Closer Comercial'
+                      : 'Consultor Comercial';
+                    return (
+                      <option key={c.id} value={c.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
+                        {c.name} — {roleLabel} ({c.phone || 'Sem WhatsApp'})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -398,46 +557,46 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                     ...inputStyle,
                     paddingLeft: '38px',
                     resize: 'vertical',
-                    minHeight: '65px',
+                    minHeight: '60px',
                   }}
                 />
               </div>
             </div>
 
-          {/* Botões de Ação */}
-          <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              className="adm-btn-secondary"
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 700,
-                fontSize: '0.84rem',
-              }}
-            >
-              Cancelar
-            </button>
+            {/* Botões de Ação */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="adm-btn-secondary"
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '12px',
+                  fontWeight: 700,
+                  fontSize: '0.84rem',
+                }}
+              >
+                Cancelar
+              </button>
 
-            <button
-              type="submit"
-              className="adm-btn-primary"
-              style={{
-                flex: 2,
-                padding: '10px',
-                borderRadius: '12px',
-                fontWeight: 800,
-                fontSize: '0.86rem',
-              }}
-            >
-              {appointmentToEdit ? 'Salvar Alterações' : 'Salvar Compromisso'}
-            </button>
-          </div>
-        </form>
-      )}
+              <button
+                type="submit"
+                className="adm-btn-primary"
+                style={{
+                  flex: 2,
+                  padding: '10px',
+                  borderRadius: '12px',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                }}
+              >
+                {appointmentToEdit ? 'Salvar Alterações' : 'Salvar Compromisso'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 };

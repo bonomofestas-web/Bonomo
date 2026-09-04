@@ -46,6 +46,8 @@ export const debutanteService = {
             isCompanion: g.is_companion || false,
             parentGuestId: g.parent_guest_id,
             confirmedAt: g.confirmed_at,
+            isRemoved: g.is_removed || false,
+            isReferred: g.is_referred || false,
           }));
 
         // Mescla referrals e leads vinculados a esta debutante
@@ -212,6 +214,7 @@ export const debutanteService = {
       parentGuestId: g.parent_guest_id,
       confirmedAt: g.confirmed_at,
       isRemoved: g.is_removed || false,
+      isReferred: g.is_referred || false,
     }));
 
     const debReferrals: Referral[] = (referralsData || []).map(r => ({

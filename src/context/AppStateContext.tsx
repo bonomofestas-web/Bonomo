@@ -230,6 +230,7 @@ interface AppStateContextType {
   confirmGuestRsvp: (guestId: string, sweetMessage?: string, companionNames?: string[]) => void;
   declineGuestRsvp: (guestId: string, declinedMessage?: string) => void;
   updateInviteSettings: (data: { useCustomInvitePhoto: boolean; customInvitePhotoUrl?: string; receptionMessage?: string }) => void;
+  updateDebutanteAvatar: (avatarUrl: string) => void;
   claimBenefit: (benefitId: string) => void;
   claimMilestoneReward: (milestoneId: string) => void;
   unreadNotificationsCount: number;
@@ -344,7 +345,7 @@ export const AppStateProvider: React.FC<{
   const [guests, setGuests] = useState<Guest[]>(() => 
     initialAccount?.guests || []
   );
-  const [appointments] = useState<Appointment[]>(() => 
+  const [appointments, setAppointments] = useState<Appointment[]>(() => 
     initialAccount?.appointments || []
   );
   const [benefits, setBenefits] = useState<Benefit[]>(mockBenefits.map(b => ({ ...b, status: 'locked' as const })));
@@ -372,8 +373,14 @@ export const AppStateProvider: React.FC<{
     milestones.filter(m => validCount >= m.requiredReferrals).forEach(m => list.push(`mile_${m.id}`));
     const vipSales = convertedReferralSales || 0;
     vipRewards.filter(v => vipSales >= v.requiredSales).forEach(v => list.push(`vip_${v.id}`));
+    
+    // Convidado que confirmou presença ou se cadastrou via convite digital
+    guests.filter(g => g.isSelfRegistered || g.origin === 'general_link' || g.status === 'confirmed').forEach(g => {
+      list.push(`guest_reg_${g.id}`);
+    });
+
     return list;
-  }, [referrals, milestones, vipRewards, convertedReferralSales]);
+  }, [referrals, milestones, vipRewards, convertedReferralSales, guests]);
 
   const unreadNotificationsCount = useMemo(() => {
     return activeNotificationIds.filter((id: string) => !readNotifIds[id]).length;
@@ -457,6 +464,7 @@ export const AppStateProvider: React.FC<{
             hasJourneyEnabled: fresh.hasJourneyEnabled,
           }));
           if (fresh.guests) setGuests(fresh.guests);
+          if (fresh.appointments) setAppointments(fresh.appointments);
           if (fresh.referrals) {
             // Deduplica estritamente por ID ou telefone para eliminar duplicações no envio
             const seenPhones = new Set<string>();
@@ -487,6 +495,7 @@ export const AppStateProvider: React.FC<{
       .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, refreshActiveDeb)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, refreshActiveDeb)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, refreshActiveDeb)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, refreshActiveDeb)
       .subscribe();
 
     // Sincronização inteligente ao focar na aba (o Realtime WebSocket já cuida das mudanças em tempo real)
@@ -1126,6 +1135,7 @@ export const AppStateProvider: React.FC<{
     const alreadyReferred = referrals.some(r => r.phone.replace(/\D/g, '') === cleanPhone);
     if (alreadyReferred) {
       updateGuest(guestId, { isReferred: true });
+      guestService.markAsReferred(guestId);
       return false;
     }
 
@@ -1138,6 +1148,7 @@ export const AppStateProvider: React.FC<{
     });
 
     updateGuest(guestId, { isReferred: true });
+    guestService.markAsReferred(guestId);
     return true;
   };
 
@@ -1336,6 +1347,17 @@ export const AppStateProvider: React.FC<{
     }));
   };
 
+  const updateDebutanteAvatar = (avatarUrl: string) => {
+    setDebutante(prev => ({ ...prev, avatarUrl }));
+    if (isSupabaseConfigured && debutante.id) {
+      debutanteService.upsert({
+        id: debutante.id,
+        slug: debutante.slug,
+        avatarUrl,
+      }).catch(err => console.error('Erro ao atualizar avatar da debutante no Supabase:', err));
+    }
+  };
+
   // Claim a Benefit
   const claimBenefit = (benefitId: string) => {
     setBenefits(prev => 
@@ -1475,6 +1497,7 @@ export const AppStateProvider: React.FC<{
       confirmGuestRsvp,
       declineGuestRsvp,
       updateInviteSettings,
+      updateDebutanteAvatar,
       claimBenefit,
       claimMilestoneReward,
       unreadNotificationsCount,

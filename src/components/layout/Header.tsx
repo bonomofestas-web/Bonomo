@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Bell, UserPlus, Crown, Calendar, Sparkles } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { DebutanteNotificationsModal } from '../notifications/DebutanteNotificationsModal';
+import { DebutanteProfileModal } from '../profile/DebutanteProfileModal';
 
 export const Header: React.FC = () => {
   const { 
@@ -17,6 +18,7 @@ export const Header: React.FC = () => {
     markNotificationsAsRead,
   } = useAppState();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const journeyStatus = debutante.journeyCycle.journeyStatus;
   const isJourneyActive = journeyStatus === 'active';
@@ -186,6 +188,12 @@ export const Header: React.FC = () => {
           onClose={() => setIsNotificationsOpen(false)}
         />
 
+        {/* Profile / Avatar Edit Modal */}
+        <DebutanteProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+        />
+
         {/* ── CARD DE IDENTIFICAÇÃO DA ANIVERSARIANTE ── */}
         <div style={{
           background: 'linear-gradient(135deg, rgba(32, 20, 48, 0.9) 0%, rgba(18, 12, 28, 0.95) 100%)',
@@ -201,8 +209,19 @@ export const Header: React.FC = () => {
           boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4), 0 0 15px rgba(212, 175, 55, 0.08)',
           animation: 'fadeIn 0.25s ease-out',
         }}>
-          {/* Foto da pessoa com aro dourado e coroa */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          {/* Foto da pessoa com aro dourado e coroa - Clicável para alterar foto */}
+          <div 
+            onClick={() => setIsProfileModalOpen(true)}
+            title="Clique para alterar sua foto de perfil"
+            style={{ 
+              position: 'relative', 
+              flexShrink: 0, 
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          >
             <img
               src={debutante.avatarUrl || '/avatar_debutante_1.png'}
               alt={debutante.name}

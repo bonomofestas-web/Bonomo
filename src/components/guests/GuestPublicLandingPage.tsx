@@ -598,14 +598,14 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
                   fontStyle: 'italic',
                 }}>
                   <Heart size={15} color="#D4AF37" fill="#D4AF37" />
-                  <span>Mensagem de carinho para Maria Eduarda</span>
+                  <span>Mensagem de carinho para {debutante.name}</span>
                 </label>
                 <div style={{ fontSize: '0.72rem', color: '#9E988D', marginBottom: '10px' }}>
                   Deixe uma mensagem ou votos especiais de 15 anos para a aniversariante.
                 </div>
                 <textarea
                   rows={3}
-                  placeholder="Escreva aqui seus votos de felicidades, carinho ou lembrança especial para a Maria..."
+                  placeholder={`Escreva aqui seus votos de felicidades, carinho ou lembrança especial para a ${debutante.name.split(' ')[0]}...`}
                   value={sweetMessage}
                   onChange={(e) => setSweetMessage(e.target.value)}
                   style={{

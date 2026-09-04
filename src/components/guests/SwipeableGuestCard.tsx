@@ -29,9 +29,9 @@ export const SwipeableGuestCard: React.FC<SwipeableGuestCardProps> = ({
   const isPending = guest.status === 'pending';
   const isDeclined = guest.status === 'declined';
 
-  // Regra de Indicação: Meninas de 12 a 14 anos + Jornada Ativada no Painel
+  // Regra de Indicação: Meninas de 10 a 15 anos + Jornada Ativada no Painel
   const isJourneyEnabled = debutante.hasJourneyEnabled !== false;
-  const isEligibleAgeAndGender = (guest.gender === 'female' || !guest.gender) && guest.age >= 12 && guest.age <= 14;
+  const isEligibleAgeAndGender = (guest.gender === 'female' || !guest.gender) && guest.age >= 10 && guest.age <= 15;
   
   const cleanPhone = guest.phone ? guest.phone.replace(/\D/g, '') : '';
   const isAlreadyReferred = Boolean(

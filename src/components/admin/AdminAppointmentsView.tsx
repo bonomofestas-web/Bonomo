@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Plus, Edit3, Trash2, Search, 
   Building2, UserCheck, ChevronLeft, ChevronRight, List,
-  Sparkles
+  Sparkles, UtensilsCrossed, FileText, Camera
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
@@ -311,30 +311,37 @@ export const AdminAppointmentsView: React.FC = () => {
         {/* Category Quick Filter Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           {[
-            { id: 'all', label: 'Todos os Tipos' },
-            { id: 'Buffet & Degustação', label: '🍽️ Degustações' },
-            { id: 'Vestido de Gala', label: '👗 Vestido & Trajes' },
-            { id: 'Cerimonial', label: '📋 Cerimonial & Roteiro' },
-            { id: 'Ensaio Fotográfico', label: '📸 Ensaio & Foto' },
-          ].map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setCategoryFilter(cat.id)}
-              style={{
-                background: categoryFilter === cat.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                border: categoryFilter === cat.id ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                color: categoryFilter === cat.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '16px',
-                padding: '5px 14px',
-                fontSize: '0.74rem',
-                fontWeight: categoryFilter === cat.id ? 800 : 600,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {cat.label}
-            </button>
-          ))}
+            { id: 'all', label: 'Todos os Tipos', icon: null },
+            { id: 'Buffet & Degustação', label: 'Degustações', icon: UtensilsCrossed },
+            { id: 'Vestido de Gala', label: 'Vestido & Trajes', icon: Sparkles },
+            { id: 'Cerimonial', label: 'Cerimonial & Roteiro', icon: FileText },
+            { id: 'Ensaio Fotográfico', label: 'Ensaio & Foto', icon: Camera },
+          ].map(cat => {
+            const Icon = cat.icon;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryFilter(cat.id)}
+                style={{
+                  background: categoryFilter === cat.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                  border: categoryFilter === cat.id ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                  color: categoryFilter === cat.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  borderRadius: '16px',
+                  padding: '5px 14px',
+                  fontSize: '0.74rem',
+                  fontWeight: categoryFilter === cat.id ? 800 : 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {Icon && <Icon size={13} />}
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Rich Filter Bar (Venue, Debutante, Responsible) */}

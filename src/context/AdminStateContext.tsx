@@ -43,6 +43,7 @@ import { funnelService } from '../services/funnelService';
 import { leadService } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
+import { appointmentService } from '../services/appointmentService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
@@ -3910,8 +3911,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── Appointments Methods ─────────────────────────────────────────────────────
 
-  const addAppointmentForDebutante = (debutanteId: string, appData: Omit<Appointment, 'id'>) => {
-    const newApp: Appointment = { ...appData, id: `app_${Date.now()}` };
+  const addAppointmentForDebutante = async (debutanteId: string, appData: Omit<Appointment, 'id'>) => {
+    const tempId = `app_${Date.now()}`;
+    const newApp: Appointment = { ...appData, id: tempId };
+    
+    // Atualização otimista local
     setDebutantes(prev => {
       const updated = prev.map(d => {
         if (d.id === debutanteId || d.slug === debutanteId) return { ...d, appointments: [...d.appointments, newApp] };
@@ -3920,9 +3924,41 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
       return updated;
     });
+
+    // Persistência real no banco Supabase
+    try {
+      const targetDeb = debutantes.find(d => d.id === debutanteId || d.slug === debutanteId);
+      const targetDebutanteId = targetDeb?.id || debutanteId;
+      const targetVenueId = targetDeb?.venueId;
+
+      const created = await appointmentService.create({
+        debutanteId: targetDebutanteId,
+        venueId: targetVenueId,
+        appointment: appData,
+      });
+
+      if (created) {
+        setDebutantes(prev => {
+          const updated = prev.map(d => {
+            if (d.id === targetDebutanteId || d.slug === debutanteId) {
+              return {
+                ...d,
+                appointments: d.appointments.map(a => a.id === tempId ? created : a)
+              };
+            }
+            return d;
+          });
+          safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error('Falha ao persistir agendamento no Supabase:', err);
+    }
   };
 
-  const updateAppointmentForDebutante = (debutanteId: string, appId: string, appData: Partial<Appointment>) => {
+  const updateAppointmentForDebutante = async (debutanteId: string, appId: string, appData: Partial<Appointment>) => {
+    // Atualização otimista local
     setDebutantes(prev => {
       const updated = prev.map(d => {
         if (d.id === debutanteId || d.slug === debutanteId) {
@@ -3933,9 +3969,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
       return updated;
     });
+
+    // Persistência real no banco Supabase
+    try {
+      if (!appId.startsWith('app_')) {
+        await appointmentService.update(appId, appData);
+      }
+    } catch (err) {
+      console.error('Falha ao atualizar agendamento no Supabase:', err);
+    }
   };
 
-  const deleteAppointmentForDebutante = (debutanteId: string, appId: string) => {
+  const deleteAppointmentForDebutante = async (debutanteId: string, appId: string) => {
+    // Atualização otimista local
     setDebutantes(prev => {
       const updated = prev.map(d => {
         if (d.id === debutanteId || d.slug === debutanteId) return { ...d, appointments: d.appointments.filter(a => a.id !== appId) };
@@ -3944,6 +3990,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
       return updated;
     });
+
+    // Persistência real no banco Supabase
+    try {
+      if (!appId.startsWith('app_')) {
+        await appointmentService.delete(appId);
+      }
+    } catch (err) {
+      console.error('Falha ao deletar agendamento no Supabase:', err);
+    }
   };
 
   // ── Query Helpers ────────────────────────────────────────────────────────────

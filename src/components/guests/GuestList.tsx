@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Users, UserPlus, CheckCircle2, Clock, Search, 
   Heart, Calendar, MessageSquareHeart, Sparkles,
-  UserX, RotateCcw
+  UserX, RotateCcw, Settings
 } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 import { GuestFormModal } from './GuestFormModal';
@@ -264,21 +264,24 @@ export const GuestList: React.FC = () => {
         </div>
       </div>
 
-      {/* ── 3. Sub-Tab View Selector: [ Lista de Convidados ]  [ Mensagens de Carinho ]  [ Removidos ] ── */}
+      {/* ── 3. Sub-Tab View Selector: [ Convidados ]  [ Recados ]  [ Removidos ] ── */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        display: 'flex',
         background: '#100E14',
-        padding: '5px',
+        padding: '4px',
         borderRadius: '16px',
         border: '1px solid rgba(212, 175, 55, 0.25)',
         marginBottom: '20px',
-        gap: '6px',
+        gap: '4px',
+        width: '100%',
+        boxSizing: 'border-box',
       }}>
         <button
           onClick={() => setGuestSubTab('guests')}
           style={{
-            padding: '10px 8px',
+            flex: 1,
+            minWidth: 0,
+            padding: '9px 6px',
             borderRadius: '12px',
             border: 'none',
             background: guestSubTab === 'guests'
@@ -286,28 +289,29 @@ export const GuestList: React.FC = () => {
               : 'transparent',
             color: guestSubTab === 'guests' ? '#000000' : '#E0DACD',
             fontWeight: 800,
-            fontSize: '0.80rem',
+            fontSize: 'clamp(0.72rem, 2.5vw, 0.78rem)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '6px',
-            fontFamily: "'Cinzel', serif",
-            letterSpacing: '0.3px',
+            gap: '5px',
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             boxShadow: guestSubTab === 'guests' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
             transition: 'all 0.2s ease',
             whiteSpace: 'nowrap',
           }}
           title="Lista Oficial de Convidados Ativos"
         >
-          <Users size={15} color={guestSubTab === 'guests' ? '#000' : '#D4AF37'} />
-          <span>Convidados ({totalHeadcount})</span>
+          <Users size={14} color={guestSubTab === 'guests' ? '#000' : '#D4AF37'} style={{ flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Convidados ({totalHeadcount})</span>
         </button>
 
         <button
           onClick={() => setGuestSubTab('messages')}
           style={{
-            padding: '10px 8px',
+            flex: 1,
+            minWidth: 0,
+            padding: '9px 6px',
             borderRadius: '12px',
             border: 'none',
             background: guestSubTab === 'messages'
@@ -315,28 +319,29 @@ export const GuestList: React.FC = () => {
               : 'transparent',
             color: guestSubTab === 'messages' ? '#000000' : '#E0DACD',
             fontWeight: 800,
-            fontSize: '0.80rem',
+            fontSize: 'clamp(0.72rem, 2.5vw, 0.78rem)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '6px',
-            fontFamily: "'Cinzel', serif",
-            letterSpacing: '0.3px',
+            gap: '5px',
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             boxShadow: guestSubTab === 'messages' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
             transition: 'all 0.2s ease',
             whiteSpace: 'nowrap',
           }}
           title="Mural de Recados dos Convidados"
         >
-          <MessageSquareHeart size={15} color={guestSubTab === 'messages' ? '#000' : '#D4AF37'} />
-          <span>Recados ({sweetMessagesCount})</span>
+          <MessageSquareHeart size={14} color={guestSubTab === 'messages' ? '#000' : '#D4AF37'} style={{ flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Recados ({sweetMessagesCount})</span>
         </button>
 
         <button
           onClick={() => setGuestSubTab('removed')}
           style={{
-            padding: '10px 8px',
+            flex: 1,
+            minWidth: 0,
+            padding: '9px 6px',
             borderRadius: '12px',
             border: 'none',
             background: guestSubTab === 'removed'
@@ -344,22 +349,21 @@ export const GuestList: React.FC = () => {
               : 'transparent',
             color: guestSubTab === 'removed' ? '#000000' : '#E0DACD',
             fontWeight: 800,
-            fontSize: '0.80rem',
+            fontSize: 'clamp(0.72rem, 2.5vw, 0.78rem)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '6px',
-            fontFamily: "'Cinzel', serif",
-            letterSpacing: '0.3px',
+            gap: '5px',
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
             boxShadow: guestSubTab === 'removed' ? '0 2px 10px rgba(212, 175, 55, 0.35)' : 'none',
             transition: 'all 0.2s ease',
             whiteSpace: 'nowrap',
           }}
           title="Convidados Removidos da Lista (Podem ser restaurados)"
         >
-          <UserX size={15} color={guestSubTab === 'removed' ? '#000' : '#EF4444'} />
-          <span>Removidos ({removedCount})</span>
+          <UserX size={14} color={guestSubTab === 'removed' ? '#000' : '#EF4444'} style={{ flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Removidos ({removedCount})</span>
         </button>
       </div>
 
@@ -371,12 +375,12 @@ export const GuestList: React.FC = () => {
             background: 'linear-gradient(135deg, #121212 0%, #0A0A0A 100%)',
             border: '1px solid rgba(212, 175, 55, 0.3)',
             borderRadius: '24px',
-            padding: '22px 22px',
+            padding: '20px',
             marginBottom: '20px',
             boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6)',
           }}>
             {/* Symmetrical 2-Column Action Buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', width: '100%', marginBottom: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', width: '100%', marginBottom: '16px' }}>
               <button 
                 onClick={() => setIsConfigModalOpen(true)}
                 style={{
@@ -392,11 +396,12 @@ export const GuestList: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  fontFamily: "'Cinzel', serif",
-                  letterSpacing: '0.5px',
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <span>⚙️ Personalizar Convite</span>
+                <Settings size={15} color="#D4AF37" />
+                <span>Personalizar Convite</span>
               </button>
 
               <button 
@@ -414,9 +419,9 @@ export const GuestList: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  fontFamily: "'Cinzel', serif",
-                  letterSpacing: '0.5px',
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
                   boxShadow: '0 4px 16px rgba(212, 175, 55, 0.3)',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <UserPlus size={15} color="#000" />

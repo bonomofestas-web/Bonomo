@@ -101,4 +101,23 @@ export const guestService = {
       return false;
     }
   },
+
+  async markAsReferred(guestId: string): Promise<boolean> {
+    if (!isSupabaseConfigured || !guestId) return true;
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .update({ is_referred: true })
+        .eq('id', guestId);
+
+      if (error) {
+        console.error('Erro ao marcar convidado como indicado:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha em guestService.markAsReferred:', err);
+      return false;
+    }
+  },
 };

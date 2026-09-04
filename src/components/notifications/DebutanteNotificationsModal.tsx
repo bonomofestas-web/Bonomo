@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Bell, Award, Crown, CheckCircle2, Sparkles, Clock } from 'lucide-react';
+import { X, Bell, Award, Crown, CheckCircle2, Sparkles, Clock, Users, ArrowRight } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
 
 interface DebutanteNotificationsModalProps {
@@ -11,18 +11,19 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
   isOpen,
   onClose,
 }) => {
-  const { debutante, referrals, milestones, vipRewards } = useAppState();
+  const { debutante, referrals, milestones, vipRewards, guests, setActiveTab } = useAppState();
 
   if (!isOpen) return null;
 
   // Build real notifications log
   const notifications: Array<{
     id: string;
-    type: 'referral_validated' | 'referral_pending' | 'milestone_unlocked' | 'vip_reward';
+    type: 'referral_validated' | 'referral_pending' | 'milestone_unlocked' | 'vip_reward' | 'guest_registered';
     title: string;
     description: string;
     time?: string;
     icon: React.ReactNode;
+    action?: () => void;
   }> = [];
 
   // 1. Validated Referrals
@@ -32,12 +33,32 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
       type: 'referral_validated',
       title: 'Indicação Validada pela Gerência!',
       description: `A indicação da sua amiga ${r.name} foi validada com sucesso. Você ganhou +1 ponto na sua jornada!`,
-      time: r.createdAt ? `Enviado em ${r.createdAt.split('T')[0].split('-').reverse().join('/')}` : 'Recentemente',
+      time: r.createdAt ? `Validado em ${r.createdAt.split('T')[0].split('-').reverse().join('/')}` : 'Recentemente',
       icon: <CheckCircle2 size={18} color="#22C55E" />,
+      action: () => {
+        setActiveTab('benefits');
+        onClose();
+      }
     });
   });
 
-  // 2. Pending Referrals
+  // 2. Convidado Preencheu Lista pelo Link de Convite
+  guests.filter(g => g.isSelfRegistered || g.origin === 'general_link' || g.status === 'confirmed').forEach((g) => {
+    notifications.push({
+      id: `guest_reg_${g.id}`,
+      type: 'guest_registered',
+      title: `${g.name} entrou na lista de convidados!`,
+      description: `${g.name} confirmou presença pelo seu convite digital (${g.group || 'Amigos'}${g.plusOnes > 0 ? ` + ${g.plusOnes} acompanhante(s)` : ''}).`,
+      time: g.confirmedAt ? `Confirmado em ${new Date(g.confirmedAt).toLocaleDateString('pt-BR')}` : 'Lista de convidados',
+      icon: <Users size={18} color="#10B981" />,
+      action: () => {
+        setActiveTab('guests');
+        onClose();
+      }
+    });
+  });
+
+  // 3. Pending Referrals
   referrals.filter(r => r.status === 'pending').forEach((r) => {
     notifications.push({
       id: `pend_${r.id}`,
@@ -46,10 +67,14 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
       description: `O contato de ${r.name} foi recebido e está sendo verificado pela nossa equipe comercial.`,
       time: r.createdAt ? `Enviado em ${r.createdAt.split('T')[0].split('-').reverse().join('/')}` : 'Aguardando',
       icon: <Clock size={18} color="#D4AF37" />,
+      action: () => {
+        setActiveTab('benefits');
+        onClose();
+      }
     });
   });
 
-  // 3. Unlocked Milestones
+  // 4. Unlocked Milestones
   const validCount = referrals.filter(r => r.status === 'validated').length;
   milestones.filter(m => validCount >= m.requiredReferrals).forEach((m) => {
     notifications.push({
@@ -59,10 +84,14 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
       description: `Parabéns! Você acumulou ${m.requiredReferrals} pontos e conquistou este benefício exclusivo para sua festa!`,
       time: 'Conquista Ativa',
       icon: <Award size={18} color="#D4AF37" />,
+      action: () => {
+        setActiveTab('benefits');
+        onClose();
+      }
     });
   });
 
-  // 4. VIP Rewards
+  // 5. VIP Rewards
   const vipSales = debutante.convertedReferralSales || 0;
   vipRewards.filter(v => vipSales >= v.requiredSales).forEach((v) => {
     notifications.push({
@@ -72,6 +101,10 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
       description: `Um contrato de festa foi fechado através de suas indicações! Seu presente VIP está garantido.`,
       time: 'Presente VIP',
       icon: <Crown size={18} color="#EC4899" />,
+      action: () => {
+        setActiveTab('benefits');
+        onClose();
+      }
     });
   });
 
@@ -172,6 +205,7 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
             notifications.map((n) => (
               <div
                 key={n.id}
+                onClick={n.action}
                 style={{
                   background: 'rgba(255, 255, 255, 0.04)',
                   border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -180,6 +214,20 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '12px',
+                  cursor: n.action ? 'pointer' : 'default',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (n.action) {
+                    e.currentTarget.style.background = 'rgba(212, 175, 55, 0.08)';
+                    e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (n.action) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                  }
                 }}
               >
                 <div style={{
@@ -205,6 +253,11 @@ export const DebutanteNotificationsModal: React.FC<DebutanteNotificationsModalPr
                   <p style={{ fontSize: '0.74rem', color: '#C5BDAD', margin: '3px 0 0 0', lineHeight: 1.4 }}>
                     {n.description}
                   </p>
+                  {n.action && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', color: '#D4AF37', fontWeight: 700, marginTop: '6px' }}>
+                      Ver detalhes <ArrowRight size={11} />
+                    </span>
+                  )}
                 </div>
               </div>
             ))

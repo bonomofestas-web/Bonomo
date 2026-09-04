@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Image as ImageIcon, MessageSquare, Check, Sparkles } from 'lucide-react';
 import { useAppState } from '../../context/AppStateContext';
+import { ImageUploadField } from '../admin/ImageUploadField';
 
 interface GuestInviteConfigModalProps {
   isOpen: boolean;
@@ -213,26 +214,16 @@ export const GuestInviteConfigModal: React.FC<GuestInviteConfigModalProps> = ({ 
             </div>
 
             {useCustomPhoto && (
-              <div>
-                <label style={{ fontSize: '0.72rem', color: '#B5AFA4', display: 'block', marginBottom: '4px' }}>
-                  URL da foto do convite:
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://exemplo.com/minha-foto-gala.jpg"
+              <div style={{ marginTop: '12px' }}>
+                <ImageUploadField
+                  label="Foto Exclusiva do Convite (Cloudflare R2)"
                   value={customPhotoUrl}
-                  onChange={(e) => setCustomPhotoUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: '#0D0D0D',
-                    border: '1px solid rgba(212, 175, 55, 0.3)',
-                    borderRadius: '10px',
-                    padding: '8px 12px',
-                    color: '#FFF',
-                    fontSize: '0.8rem',
-                    outline: 'none',
-                    fontFamily: "'Montserrat', sans-serif",
-                  }}
+                  onChange={(url) => setCustomPhotoUrl(url)}
+                  folder="invites"
+                  aspectRatio="16:9"
+                  previewHeight="130px"
+                  placeholder="Selecione uma foto exclusiva para o convite"
+                  helperText="Envie a foto oficial para exibir no convite dos seus convidados."
                 />
               </div>
             )}

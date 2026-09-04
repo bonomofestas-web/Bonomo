@@ -327,14 +327,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       
       {/* ── 1. CABEÇALHO DARK & F5 SYSTEM CIANO ──────────────────────────────────── */}
       <div style={{
-        padding: '16px 18px 12px',
+        padding: '10px 14px 8px',
         borderBottom: '1px solid rgba(20, 169, 215, 0.25)',
         background: 'linear-gradient(180deg, #0B111A 0%, #0F1724 100%)',
         color: '#FFFFFF',
         flexShrink: 0,
       }}>
         {/* Title row + Collapse Button (< / >) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <input
               type="text"
@@ -342,7 +342,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               onChange={(e) => handleUpdate({ name: e.target.value })}
               style={{
                 ...inlineInputStyle,
-                fontSize: '1.15rem',
+                fontSize: '1.05rem',
                 fontWeight: 900,
                 padding: '2px 4px',
                 color: '#FFFFFF',
@@ -363,8 +363,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   background: 'rgba(255, 255, 255, 0.08)',
                   border: '1px solid rgba(20, 169, 215, 0.3)',
                   color: '#14A9D7',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  padding: '4px 6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -372,26 +372,26 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   transition: 'all 0.15s ease',
                 }}
               >
-                {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </button>
             )}
           </div>
         </div>
 
         {/* Tag Oficial de Código Único do Lead (LEAD-XXXXXX) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '5px',
             background: 'rgba(20, 169, 215, 0.12)',
             border: '1px solid rgba(20, 169, 215, 0.35)',
             borderRadius: '6px',
-            padding: '3px 8px',
+            padding: '2px 6px',
           }}>
-            <Tag size={12} color="#14A9D7" />
-            <span style={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase' }}>CÓDIGO:</span>
-            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#14A9D7', letterSpacing: '0.8px', fontFamily: "'Poppins', monospace" }}>
+            <Tag size={11} color="#14A9D7" />
+            <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase' }}>CÓDIGO:</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#14A9D7', letterSpacing: '0.8px', fontFamily: "'Poppins', monospace" }}>
               {lead.code || 'LEAD-NOVO'}
             </span>
             <button
@@ -415,18 +415,18 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 marginLeft: '2px',
               }}
             >
-              {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+              {copiedCode ? <Check size={11} /> : <Copy size={11} />}
             </button>
           </div>
           {copiedCode && (
-            <span style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
+            <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 700 }}>
               Copiado!
             </span>
           )}
         </div>
 
         {/* Venue & Debutante info + Origin Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
           <span style={{
             fontSize: '0.74rem',
             color: '#A0988A',
@@ -689,96 +689,17 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           )}
         </div>
 
-        {/* Bloco de Destaque: Validação de Indicação no Topo da Ficha (Apenas para Leads de Indicação) */}
-        {isReferralLead && (
-          <div style={{ marginTop: '10px' }}>
-            {lead.isValidated ? (
-              <div style={{
-                padding: '8px 12px',
-                background: 'rgba(16, 185, 129, 0.12)',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle2 size={15} color="#10B981" />
-                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#10B981' }}>
-                    Indicação Validada (+1 Ponto na Jornada)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => invalidateLead(lead.id)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.6)',
-                    fontSize: '0.7rem',
-                    textDecoration: 'underline',
-                    cursor: 'pointer',
-                    padding: '2px 4px',
-                  }}
-                >
-                  Revogar
-                </button>
-              </div>
-            ) : (
-              <div style={{
-                padding: '8px 12px',
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(212, 175, 55, 0.08) 100%)',
-                border: '1px solid rgba(245, 158, 11, 0.5)',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Clock size={14} color="#F59E0B" />
-                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FDE68A' }}>
-                    Aguardando Validação
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => validateLead(lead.id)}
-                  style={{
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                    border: 'none',
-                    color: '#FFFFFF',
-                    borderRadius: '6px',
-                    padding: '5px 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <Check size={13} />
-                  <span>Validar Lead (+1 pt)</span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* 3 Top Tabs: Principal | Origem | MQL */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '2px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '6px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '2px' }}>
           <button
             type="button"
             onClick={() => setActiveTab('principal')}
             style={{
               background: 'transparent',
               border: 'none',
-              borderBottom: activeTab === 'principal' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
-              padding: '6px 10px',
-              color: activeTab === 'principal' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
+              borderBottom: activeTab === 'principal' ? '2px solid #14A9D7' : '2px solid transparent',
+              padding: '5px 10px',
+              color: activeTab === 'principal' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
               fontSize: '0.76rem',
               fontWeight: activeTab === 'principal' ? 800 : 600,
               cursor: 'pointer',
@@ -788,7 +709,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               transition: 'all 0.15s ease',
             }}
           >
-            <FileText size={13} color={activeTab === 'principal' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
+            <FileText size={13} color={activeTab === 'principal' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
             <span>Principal</span>
           </button>
 
@@ -799,9 +720,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               style={{
                 background: 'transparent',
                 border: 'none',
-                borderBottom: activeTab === 'origem' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
-                padding: '6px 10px',
-                color: activeTab === 'origem' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
+                borderBottom: activeTab === 'origem' ? '2px solid #14A9D7' : '2px solid transparent',
+                padding: '5px 10px',
+                color: activeTab === 'origem' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
                 fontSize: '0.76rem',
                 fontWeight: activeTab === 'origem' ? 800 : 600,
                 cursor: 'pointer',
@@ -811,7 +732,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 transition: 'all 0.15s ease',
               }}
             >
-              <Globe size={13} color={activeTab === 'origem' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
+              <Globe size={13} color={activeTab === 'origem' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
               <span>Origem</span>
               {isSourcesComingSoon && (
                 <span style={{ fontSize: '0.58rem', background: 'rgba(20,169,215,0.2)', color: '#14A9D7', padding: '1px 4px', borderRadius: '4px' }}>
@@ -828,9 +749,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               style={{
                 background: 'transparent',
                 border: 'none',
-                borderBottom: activeTab === 'mql' ? '2px solid var(--adm-accent, #14A9D7)' : '2px solid transparent',
-                padding: '6px 10px',
-                color: activeTab === 'mql' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted)',
+                borderBottom: activeTab === 'mql' ? '2px solid #14A9D7' : '2px solid transparent',
+                padding: '5px 10px',
+                color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
                 fontSize: '0.76rem',
                 fontWeight: activeTab === 'mql' ? 800 : 600,
                 cursor: 'pointer',
@@ -840,7 +761,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 transition: 'all 0.15s ease',
               }}
             >
-              <IcpTargetUserIcon size={14} color={activeTab === 'mql' ? 'var(--adm-accent, #14A9D7)' : 'currentColor'} />
+              <IcpTargetUserIcon size={14} color={activeTab === 'mql' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
               <span>ICP</span>
               {isIcpComingSoon ? (
                 <span style={{ fontSize: '0.58rem', background: 'rgba(20,169,215,0.2)', color: '#14A9D7', padding: '1px 4px', borderRadius: '4px' }}>
@@ -871,6 +792,85 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'principal' && (
           <>
+            {/* Bloco de Destaque: Validação de Indicação (Acima de Responsáveis Comerciais) */}
+            {isReferralLead && (
+              <div style={{ padding: '8px 14px 4px' }}>
+                {lead.isValidated ? (
+                  <div style={{
+                    padding: '8px 12px',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={15} color="#10B981" />
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#10B981' }}>
+                        Indicação Validada (+1 Ponto na Jornada)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => invalidateLead(lead.id)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        fontSize: '0.7rem',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                      }}
+                    >
+                      Revogar
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '8px 12px',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(212, 175, 55, 0.08) 100%)',
+                    border: '1px solid rgba(245, 158, 11, 0.5)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={14} color="#F59E0B" />
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#D97706' }}>
+                        Aguardando Validação
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => validateLead(lead.id)}
+                      style={{
+                        background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        borderRadius: '6px',
+                        padding: '5px 12px',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Check size={13} />
+                      <span>Validar Lead (+1 pt)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── SEÇÃO 1: 🛡️ RESPONSÁVEIS ── */}
             <div style={sectionHeaderStyle}>
               <Shield size={13} color="var(--adm-accent)" />

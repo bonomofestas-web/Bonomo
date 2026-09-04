@@ -10,7 +10,15 @@ export const JourneyCycleTimerBanner: React.FC = () => {
 
   // Calculate live countdown timer down to the second
   const calculateTimeLeft = () => {
-    const end = new Date(journeyCycle.currentCycleEndDate).getTime();
+    const rawEnd = journeyCycle?.currentCycleEndDate;
+    let end = rawEnd ? new Date(rawEnd).getTime() : NaN;
+
+    // Fallback seguro se a data do ciclo for inválida ou ausente
+    if (isNaN(end) || end <= 0) {
+      const fallbackStart = journeyCycle?.currentCycleStartDate ? new Date(journeyCycle.currentCycleStartDate).getTime() : Date.now();
+      end = isNaN(fallbackStart) ? Date.now() + 7 * 86400000 : fallbackStart + 7 * 86400000;
+    }
+
     const now = Date.now();
     const diff = end - now;
 
@@ -29,11 +37,11 @@ export const JourneyCycleTimerBanner: React.FC = () => {
 
     return {
       totalMs: diff,
-      days,
-      hours: totalHours % 24,
-      totalHours,
-      minutes,
-      seconds,
+      days: isNaN(days) ? 0 : days,
+      hours: isNaN(totalHours) ? 0 : totalHours % 24,
+      totalHours: isNaN(totalHours) ? 0 : totalHours,
+      minutes: isNaN(minutes) ? 0 : minutes,
+      seconds: isNaN(seconds) ? 0 : seconds,
       isCountdownMode,
       isRedAlert,
     };
