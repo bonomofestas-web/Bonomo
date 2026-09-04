@@ -44,7 +44,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [matchedCollab, setMatchedCollab] = useState<any>(null);
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
-  const [devOtpNotice, setDevOtpNotice] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -73,9 +72,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         const clean = decodeURIComponent(activateEmail).trim().toLowerCase();
         setActivationEmail(clean);
         setAuthMode('first_access_code');
-        const defaultCode = '123456';
-        setGeneratedOtp(defaultCode);
-        setOtpDigits(['1', '2', '3', '4', '5', '6']);
+        setOtpDigits(['', '', '', '', '', '']);
         const found = collaborators.find(c => c.email.toLowerCase() === clean);
         if (found) setMatchedCollab(found);
       }
@@ -167,7 +164,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       // Generate 6-digit OTP
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       setGeneratedOtp(otp);
-      setDevOtpNotice(otp);
       setCountdown(60);
       setOtpDigits(['', '', '', '', '', '']);
 
@@ -182,9 +178,16 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
         // Dispara envio de e-mail pelo Supabase Auth
         try {
-          await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          const { error: mailErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
             redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
           });
+          if (mailErr) {
+            console.warn('[Supabase Auth resetPasswordForEmail]', mailErr.message);
+            await supabase.auth.signInWithOtp({
+              email: cleanEmail,
+              options: { shouldCreateUser: false }
+            }).catch(() => {});
+          }
         } catch (supabaseMailErr) {
           console.warn('[Supabase Auth] resetPasswordForEmail erro ou limite de quota:', supabaseMailErr);
         }
@@ -240,7 +243,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     const cleanEmail = activationEmail.trim().toLowerCase();
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(newOtp);
-    setDevOtpNotice(newOtp);
     setOtpDigits(['', '', '', '', '', '']);
     setCountdown(60);
 
@@ -251,6 +253,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         used: false,
       });
+
+      try {
+        await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
+        }).catch(() => {});
+      } catch {}
     }
 
     setIsResending(false);
@@ -270,7 +278,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       return;
     }
 
-    let isCodeValid = fullCode === generatedOtp || fullCode === '123456';
+    let isCodeValid = fullCode === generatedOtp;
 
     if (!isCodeValid && isSupabaseConfigured) {
       const cleanEmail = activationEmail.trim().toLowerCase();
@@ -287,12 +295,22 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         if (dbCodes && dbCodes.length > 0) {
           isCodeValid = true;
           await supabase.from('password_reset_codes').update({ used: true }).eq('id', dbCodes[0].id);
+        } else {
+          // Tenta validar token nativo do Supabase Auth
+          const { data: verifyData } = await supabase.auth.verifyOtp({
+            email: cleanEmail,
+            token: fullCode,
+            type: 'recovery',
+          });
+          if (verifyData?.session) {
+            isCodeValid = true;
+          }
         }
       } catch {}
     }
 
     if (!isCodeValid) {
-      setError('Código de acesso incorreto ou expirado. Verifique os números, solicite um novo envio ou utilize o link direto de ativação fornecido pelo Master.');
+      setError('Código de acesso incorreto ou expirado. Verifique os 6 dígitos recebidos no seu e-mail corporativo ou solicite um novo reenvio.');
       return;
     }
 
@@ -712,25 +730,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 Alterar e-mail informado
               </button>
             </div>
-
-            {/* Test notice during development */}
-            {devOtpNotice && (
-              <div style={{
-                marginTop: '10px',
-                padding: '4px 10px',
-                borderRadius: '8px',
-                background: 'rgba(20, 169, 215, 0.1)',
-                border: '1px dashed rgba(20, 169, 215, 0.4)',
-                color: '#14A9D7',
-                fontSize: '0.74rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}>
-                <span>Código de teste:</span>
-                <strong style={{ letterSpacing: '2px', fontSize: '0.84rem' }}>{devOtpNotice}</strong>
-              </div>
-            )}
           </div>
 
           {error && (

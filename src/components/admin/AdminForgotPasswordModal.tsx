@@ -46,7 +46,6 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
   // Status & error messages
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [devOtpNotice, setDevOtpNotice] = useState<string | null>(null);
 
   // Countdown timer for code resend
   useEffect(() => {
@@ -136,9 +135,6 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
       // 3. Attempt Supabase Auth Password Reset and OTP table record
       if (isSupabaseConfigured) {
         try {
-          // Attempt standard Supabase Auth reset
-          supabase.auth.resetPasswordForEmail(cleanEmail).catch(() => {});
-
           // Save OTP to password_reset_codes table
           await supabase.from('password_reset_codes').insert({
             email: cleanEmail,
@@ -146,13 +142,24 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
             expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
             used: false,
           });
+
+          // Dispara o e-mail real do Supabase
+          const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
+          });
+
+          if (resetErr) {
+            console.warn('[Supabase Auth resetPasswordForEmail]', resetErr.message);
+            await supabase.auth.signInWithOtp({
+              email: cleanEmail,
+              options: { shouldCreateUser: false }
+            }).catch(() => {});
+          }
         } catch (supabaseErr) {
           console.warn('Registro de OTP no Supabase:', supabaseErr);
         }
       }
 
-      // Display dev notice with code for instant testing
-      setDevOtpNotice(otp);
       setCountdown(60);
       setStep('code');
       setTimeout(() => {
@@ -197,7 +204,7 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
     inputRefs.current[nextIdx]?.focus();
   };
 
-  const handleValidateCode = (e: React.FormEvent) => {
+  const handleValidateCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     const fullCode = otpDigits.join('');
@@ -207,23 +214,74 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
       return;
     }
 
-    // Check code against generated code
-    if (fullCode === generatedOtp || fullCode === '123456') {
+    setIsLoading(true);
+    let isCodeValid = fullCode === generatedOtp;
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isCodeValid && isSupabaseConfigured) {
+      try {
+        const { data: dbCodes } = await supabase
+          .from('password_reset_codes')
+          .select('id')
+          .eq('email', cleanEmail)
+          .eq('code', fullCode)
+          .eq('used', false)
+          .gt('expires_at', new Date().toISOString())
+          .limit(1);
+
+        if (dbCodes && dbCodes.length > 0) {
+          isCodeValid = true;
+          await supabase.from('password_reset_codes').update({ used: true }).eq('id', dbCodes[0].id);
+        } else {
+          // Tenta validar token nativo do Supabase Auth
+          const { data: verifyData } = await supabase.auth.verifyOtp({
+            email: cleanEmail,
+            token: fullCode,
+            type: 'recovery',
+          });
+          if (verifyData?.session) {
+            isCodeValid = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao validar OTP:', err);
+      }
+    }
+
+    setIsLoading(false);
+
+    if (isCodeValid) {
       setStep('password');
       setErrorMessage('');
     } else {
-      setErrorMessage('Código de verificação incorreto ou expirado. Verifique os dígitos e tente novamente.');
+      setErrorMessage('Código de verificação incorreto ou expirado. Verifique os 6 dígitos recebidos no seu e-mail corporativo ou solicite um novo envio.');
     }
   };
 
-  const handleResendCode = () => {
-    if (countdown > 0) return;
+  const handleResendCode = async () => {
+    if (countdown > 0 || isResending) return;
     setIsResending(true);
+    const cleanEmail = email.trim().toLowerCase();
     const newOtp = generateNumericOtp();
     setGeneratedOtp(newOtp);
-    setDevOtpNotice(newOtp);
     setOtpDigits(['', '', '', '', '', '']);
     setCountdown(60);
+
+    if (isSupabaseConfigured && cleanEmail) {
+      try {
+        await supabase.from('password_reset_codes').insert({
+          email: cleanEmail,
+          code: newOtp,
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          used: false,
+        });
+
+        await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
+        }).catch(() => {});
+      } catch {}
+    }
+
     setIsResending(false);
     setTimeout(() => {
       inputRefs.current[0]?.focus();
@@ -388,25 +446,6 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
             {step === 'password' && 'Defina uma senha com alto nível de segurança para proteger o acesso.'}
             {step === 'success' && 'Sua nova senha foi gravada com sucesso no sistema F5.'}
           </p>
-
-          {/* Dev OTP helper badge for immediate testing */}
-          {devOtpNotice && (step === 'code' || step === 'email') && (
-            <div style={{
-              marginTop: '12px',
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: 'rgba(20, 169, 215, 0.12)',
-              border: '1px dashed rgba(20, 169, 215, 0.5)',
-              color: '#14A9D7',
-              fontSize: '0.74rem',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}>
-              <span>Código de teste gerado:</span>
-              <strong style={{ letterSpacing: '2px', fontSize: '0.86rem' }}>{devOtpNotice}</strong>
-            </div>
-          )}
         </div>
 
         {/* Global Error Banner */}
