@@ -423,7 +423,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
                       </div>
 
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                             {master.name}
                           </span>
@@ -438,6 +438,23 @@ export const AdminDevUsersManagerView: React.FC = () => {
                           }}>
                             {master.active ? 'ATIVO' : 'DESATIVADO / SUSPENSO'}
                           </span>
+                          {master.isFirstAccess && (
+                            <span style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              color: '#F59E0B',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}>
+                              <Clock size={10} />
+                              AGUARDANDO 1º ACESSO
+                            </span>
+                          )}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px', flexWrap: 'wrap' }}>
@@ -451,9 +468,24 @@ export const AdminDevUsersManagerView: React.FC = () => {
                             <span>Cadastrado em {new Date(master.createdAt || '2026-01-01').toLocaleDateString('pt-BR')}</span>
                           </span>
                           <span>•</span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontWeight: 700 }}>
+                          <span style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px', 
+                            color: (master.isFirstAccess || (!master.lastLoginAt && !master.activatedAt)) ? '#F59E0B' : '#10B981', 
+                            fontWeight: 700 
+                          }}>
                             <Clock size={12} />
-                            <span>Último Acesso: Hoje</span>
+                            <span>
+                              Último Acesso:{' '}
+                              {(master.isFirstAccess || (!master.lastLoginAt && !master.activatedAt))
+                                ? 'Nunca acessou o sistema'
+                                : master.lastLoginAt
+                                  ? `${new Date(master.lastLoginAt).toLocaleDateString('pt-BR')} às ${new Date(master.lastLoginAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                                  : master.activatedAt
+                                    ? `Ativado em ${new Date(master.activatedAt).toLocaleDateString('pt-BR')}`
+                                    : 'Nunca acessou o sistema'}
+                            </span>
                           </span>
                         </div>
                       </div>

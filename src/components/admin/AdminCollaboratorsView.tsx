@@ -3,14 +3,13 @@ import {
   Building2, 
   Mail, Phone, Edit3, Trash2, 
   UserPlus, Shield, ShieldCheck, Plus,
-  CheckCircle2, Clock, Copy, Check,
+  CheckCircle2, Clock, Check,
   UserX, AlertTriangle, CheckSquare, Target, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminCollaboratorModal } from './AdminCollaboratorModal';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { formatPhone } from '../../utils/phoneFormatter';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import type { Collaborator } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
@@ -29,7 +28,6 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
   const [collabToDelete, setCollabToDelete] = useState<Collaborator | null>(null);
-  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
   const [sendingInviteEmail, setSendingInviteEmail] = useState<string | null>(null);
   const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
 
@@ -43,7 +41,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     return collaborators.filter(c => c.id !== collabToDelete.id && c.active && c.role !== 'dev');
   }, [collaborators, collabToDelete]);
 
-  // Leads atualmente atribuídos a este colaborador
+  // Leads atribuídos a este colaborador (para alerta no modal de exclusão)
   const affectedLeads = useMemo(() => {
     if (!collabToDelete) return [];
     return leads.filter(l => 
@@ -68,44 +66,6 @@ export const AdminCollaboratorsView: React.FC = () => {
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master' || c.role === 'dev') return false;
     return Boolean(c.isFirstAccess);
-  };
-
-  const handleCopyActivationLink = async (email: string) => {
-    const token = Math.floor(100000 + Math.random() * 900000).toString();
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('password_reset_codes').insert({
-          email: email.toLowerCase().trim(),
-          code: token,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          used: false,
-        });
-      } catch {}
-    }
-
-    const activationUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}&token=${token}`;
-    navigator.clipboard.writeText(activationUrl);
-    setCopiedEmail(email);
-    setTimeout(() => setCopiedEmail(null), 2500);
-  };
-
-  const handleCopyResetPasswordLink = async (email: string) => {
-    const token = Math.floor(100000 + Math.random() * 900000).toString();
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('password_reset_codes').insert({
-          email: email.toLowerCase().trim(),
-          code: token,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          used: false,
-        });
-      } catch {}
-    }
-
-    const resetUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}&token=${token}&mode=reset`;
-    navigator.clipboard.writeText(resetUrl);
-    setCopiedEmail(email);
-    setTimeout(() => setCopiedEmail(null), 2500);
   };
 
   const handleSendInviteEmail = async (collab: Collaborator) => {
@@ -432,19 +392,36 @@ export const AdminCollaboratorsView: React.FC = () => {
                     <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
                       {collab.name}
                     </h3>
-                    <span style={{
-                      display: 'inline-block',
-                      marginTop: '4px',
-                      background: badge.bg,
-                      color: badge.color,
-                      border: badge.border,
-                      borderRadius: '8px',
-                      padding: '2px 8px',
-                      fontSize: '0.66rem',
-                      fontWeight: 800,
-                    }}>
-                      {badge.label}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      <span style={{
+                        background: badge.bg,
+                        color: badge.color,
+                        border: badge.border,
+                        borderRadius: '8px',
+                        padding: '2px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                      }}>
+                        {badge.label}
+                      </span>
+                      {isPendingFirstAccess(collab) && (
+                        <span style={{
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          color: '#F59E0B',
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                          borderRadius: '8px',
+                          padding: '2px 8px',
+                          fontSize: '0.66rem',
+                          fontWeight: 800,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}>
+                          <Clock size={10} />
+                          Aguardando 1º Acesso
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -528,54 +505,33 @@ export const AdminCollaboratorsView: React.FC = () => {
                       type="button"
                       onClick={() => handleSendInviteEmail(collab)}
                       disabled={sendingInviteEmail === collab.email}
-                      title="Disparar e-mail de convite oficial com identidade visual F5 System"
+                      title="Disparar e-mail de convite oficial com instruções de 1º acesso"
                       style={{
                         background: 'rgba(20, 169, 215, 0.15)',
                         border: '1px solid rgba(20, 169, 215, 0.35)',
                         color: '#14A9D7',
                         borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
+                        padding: '4px 10px',
+                        fontSize: '0.68rem',
                         fontWeight: 700,
                         cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px',
+                        gap: '5px',
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       {inviteSentEmail === collab.email ? (
                         <>
-                          <Check size={11} color="#10B981" />
+                          <Check size={12} color="#10B981" />
                           <span style={{ color: '#10B981' }}>E-mail Enviado!</span>
                         </>
                       ) : (
                         <>
-                          <Mail size={11} />
+                          <Mail size={12} />
                           <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'Reenviar Convite'}</span>
                         </>
                       )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCopyActivationLink(collab.email)}
-                      title="Copiar Link com Token de 1º Acesso para enviar ao colaborador no WhatsApp"
-                      style={{
-                        background: 'rgba(245, 158, 11, 0.15)',
-                        border: '1px solid rgba(245, 158, 11, 0.35)',
-                        color: '#F59E0B',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
-                      <span>{copiedEmail === collab.email ? 'Copiado!' : 'Link WhatsApp'}</span>
                     </button>
                   </div>
                 )}
@@ -592,48 +548,27 @@ export const AdminCollaboratorsView: React.FC = () => {
                         border: '1px solid rgba(20, 169, 215, 0.3)',
                         color: '#14A9D7',
                         borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
+                        padding: '4px 10px',
+                        fontSize: '0.68rem',
                         fontWeight: 700,
                         cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px',
+                        gap: '5px',
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       {inviteSentEmail === collab.email ? (
                         <>
-                          <Check size={11} color="#10B981" />
+                          <Check size={12} color="#10B981" />
                           <span style={{ color: '#10B981' }}>Enviado!</span>
                         </>
                       ) : (
                         <>
-                          <Mail size={11} />
+                          <Mail size={12} />
                           <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'E-mail Senha'}</span>
                         </>
                       )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCopyResetPasswordLink(collab.email)}
-                      title="Copiar Link de Redefinição de Senha para enviar ao colaborador no WhatsApp"
-                      style={{
-                        background: 'rgba(99, 102, 241, 0.12)',
-                        border: '1px solid rgba(99, 102, 241, 0.3)',
-                        color: 'var(--adm-accent, #6366f1)',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
-                      <span>{copiedEmail === collab.email ? 'Copiado!' : 'Link WhatsApp'}</span>
                     </button>
                   </div>
                 )}
@@ -665,6 +600,22 @@ export const AdminCollaboratorsView: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Building2 size={13} color="var(--adm-accent)" />
                   <span>{venueName}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--adm-border)', paddingTop: '6px', marginTop: '2px' }}>
+                  <Clock size={13} color={isPendingFirstAccess(collab) ? '#F59E0B' : '#10B981'} />
+                  <span>
+                    <strong style={{ color: 'var(--adm-text-title)' }}>Último Acesso:</strong>{' '}
+                    <span style={{ color: isPendingFirstAccess(collab) ? '#F59E0B' : 'var(--adm-text-body)', fontWeight: isPendingFirstAccess(collab) ? 700 : 500 }}>
+                      {isPendingFirstAccess(collab)
+                        ? 'Nunca acessou o sistema'
+                        : collab.lastLoginAt
+                          ? `${new Date(collab.lastLoginAt).toLocaleDateString('pt-BR')} às ${new Date(collab.lastLoginAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                          : collab.activatedAt
+                            ? `Ativado em ${new Date(collab.activatedAt).toLocaleDateString('pt-BR')}`
+                            : 'Nunca acessou o sistema'}
+                    </span>
+                  </span>
                 </div>
               </div>
 

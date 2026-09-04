@@ -70,6 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Se admin.inviteUserByEmail falhou (ex: sem service role key), tenta signUp ou resetPasswordForEmail
     if (!inviteSuccess) {
       try {
+        const tempPassword = 'Bonomo_' + Math.random().toString(36).slice(-8) + '!';
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: cleanEmail,
           password: tempPassword,

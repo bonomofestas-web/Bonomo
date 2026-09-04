@@ -66,21 +66,59 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     return () => clearInterval(timer);
   }, [authMode, countdown]);
 
+  // Validação estrita de colaboradores excluídos ou inativos
+  const validateCollabStatus = async (userEmail: string) => {
+    const clean = userEmail.toLowerCase().trim();
+    if (isSupabaseConfigured) {
+      try {
+        const { data: dbRow } = await supabase
+          .from('collaborators')
+          .select('id, name, email, active, is_first_access, role')
+          .eq('email', clean)
+          .maybeSingle();
+
+        if (!dbRow || dbRow.active === false) {
+          await supabase.auth.signOut().catch(() => {});
+          setError('Este convite foi revogado, expirou ou o usuário não está mais ativo no sistema.');
+          setAuthMode('login');
+          setIsDirectRecoverySession(false);
+          setMatchedCollab(null);
+          setActivationEmail('');
+          return null;
+        }
+        return dbRow;
+      } catch (err) {
+        console.warn('Erro ao validar colaborador no Supabase:', err);
+      }
+    }
+    const local = collaborators.find(c => c.email.toLowerCase() === clean);
+    if (!local || !local.active) {
+      await supabase.auth.signOut().catch(() => {});
+      setError('Este convite foi revogado, expirou ou o usuário não está mais ativo no sistema.');
+      setAuthMode('login');
+      setIsDirectRecoverySession(false);
+      setMatchedCollab(null);
+      setActivationEmail('');
+      return null;
+    }
+    return local;
+  };
+
   // Detecção de link direto de ativação e recuperação Supabase Auth
   useEffect(() => {
     // 1. Escuta evento PASSWORD_RECOVERY do Supabase Auth
     const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
-        setIsDirectRecoverySession(true);
-        setAuthMode('first_access_code');
         if (session?.user?.email) {
           const clean = session.user.email.toLowerCase().trim();
+          const valid = await validateCollabStatus(clean);
+          if (!valid) return;
+          setIsDirectRecoverySession(true);
+          setAuthMode('first_access_code');
           setActivationEmail(clean);
-          const found = collaborators.find(c => c.email.toLowerCase() === clean);
-          if (found) {
-            setMatchedCollab(found);
-            setIsResetMode(!found.isFirstAccess);
-          }
+          setMatchedCollab(valid);
+          const isFirstAcc = 'is_first_access' in valid ? Boolean(valid.is_first_access) : Boolean((valid as any).isFirstAccess);
+          setIsResetMode(!isFirstAcc);
         }
       }
     });
@@ -93,17 +131,17 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       const isRecovery = hash.includes('type=recovery') || search.includes('type=recovery') || hash.includes('type=invite') || search.includes('type=invite');
 
       if (isRecovery) {
-        setIsDirectRecoverySession(true);
-        setAuthMode('first_access_code');
-        supabase.auth.getUser().then(({ data: userData }) => {
+        supabase.auth.getUser().then(async ({ data: userData }) => {
           if (userData?.user?.email) {
             const clean = userData.user.email.toLowerCase().trim();
+            const valid = await validateCollabStatus(clean);
+            if (!valid) return;
+            setIsDirectRecoverySession(true);
+            setAuthMode('first_access_code');
             setActivationEmail(clean);
-            const found = collaborators.find(c => c.email.toLowerCase() === clean);
-            if (found) {
-              setMatchedCollab(found);
-              setIsResetMode(!found.isFirstAccess);
-            }
+            setMatchedCollab(valid);
+            const isFirstAcc = 'is_first_access' in valid ? Boolean(valid.is_first_access) : Boolean((valid as any).isFirstAccess);
+            setIsResetMode(!isFirstAcc);
           }
         });
       }
@@ -114,24 +152,25 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
       if (activateEmail) {
         const clean = decodeURIComponent(activateEmail).trim().toLowerCase();
-        setActivationEmail(clean);
-        setAuthMode('first_access_code');
-        setIsResetMode(mode === 'reset');
+        validateCollabStatus(clean).then(valid => {
+          if (!valid) return;
+          setActivationEmail(clean);
+          setAuthMode('first_access_code');
+          setIsResetMode(mode === 'reset');
+          setMatchedCollab(valid);
 
-        if (token && token.trim().length >= 6) {
-          const cleanToken = token.trim().slice(0, 8);
-          const digits = Array(8).fill('');
-          cleanToken.split('').forEach((d, idx) => { if (idx < 8) digits[idx] = d; });
-          setOtpDigits(digits);
-          setGeneratedOtp(cleanToken);
-          setIsTokenFromUrl(true);
-        } else {
-          setOtpDigits(['', '', '', '', '', '', '', '']);
-          setIsTokenFromUrl(false);
-        }
-
-        const found = collaborators.find(c => c.email.toLowerCase() === clean);
-        if (found) setMatchedCollab(found);
+          if (token && token.trim().length >= 6) {
+            const cleanToken = token.trim().slice(0, 8);
+            const digits = Array(8).fill('');
+            cleanToken.split('').forEach((d, idx) => { if (idx < 8) digits[idx] = d; });
+            setOtpDigits(digits);
+            setGeneratedOtp(cleanToken);
+            setIsTokenFromUrl(true);
+          } else {
+            setOtpDigits(['', '', '', '', '', '', '', '']);
+            setIsTokenFromUrl(false);
+          }
+        });
       }
     } catch {}
 
@@ -402,8 +441,13 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
     try {
       const cleanEmail = activationEmail.trim().toLowerCase();
-      const target = matchedCollab || collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+      const validCollab = await validateCollabStatus(cleanEmail);
+      if (!validCollab) {
+        setLoading(false);
+        return;
+      }
 
+      const target = matchedCollab || collaborators.find(c => c.email.toLowerCase() === cleanEmail);
       const nowIso = new Date().toISOString();
 
       // 1. Se estiver sob sessão de recuperação do Supabase Auth, atualiza a senha na nuvem
@@ -418,13 +462,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         }
       }
 
-      // 2. Atualiza colaborador no banco de dados e localmente
-      const shouldKeepFirstAccess = target ? target.isFirstAccess : !isResetMode;
-
+      // 2. Atualiza colaborador no banco de dados e localmente: conta ATIVADA e primeiro acesso finalizado
       if (target) {
         updateCollaborator(target.id, {
           password: newPassword,
-          isFirstAccess: shouldKeepFirstAccess,
+          isFirstAccess: false,
+          lastLoginAt: nowIso,
           activatedAt: nowIso,
         });
       }
@@ -434,7 +477,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           .from('collaborators')
           .update({
             password: newPassword,
-            is_first_access: shouldKeepFirstAccess,
+            is_first_access: false,
+            last_login_at: nowIso,
             activated_at: nowIso,
           })
           .eq('email', cleanEmail);

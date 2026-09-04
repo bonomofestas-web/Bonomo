@@ -1329,6 +1329,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // 4. Criação do AdminUser estritamente com o role cadastrado no banco
+    const nowIso = new Date().toISOString();
     const user: AdminUser = {
       id: optUser?.id || foundCollab.id,
       name: optUser?.name || foundCollab.name,
@@ -1337,9 +1338,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
       phone: foundCollab.phone,
       venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
-      isFirstAccess: foundCollab.isFirstAccess,
+      isFirstAccess: false,
+      lastLoginAt: nowIso,
       masterId: foundCollab.masterId,
     };
+
+    // Atualiza estado local de colaboradores para refletir imediatamente o último acesso
+    setCollaborators(prev => prev.map(c => c.id === foundCollab!.id ? { ...c, lastLoginAt: nowIso, isFirstAccess: false } : c));
+
+    // Persiste no banco Supabase
+    if (isSupabaseConfigured) {
+      void supabase.from('collaborators').update({
+        last_login_at: nowIso,
+        is_first_access: false,
+      }).eq('id', foundCollab.id);
+    }
 
     setCurrentUser(user);
     safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
