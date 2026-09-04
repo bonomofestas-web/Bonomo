@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   CheckSquare, Calendar, Clock, Plus, Check, 
   Edit3, Phone, Users, Utensils, MessageSquare, Briefcase, 
-  ChevronLeft, ChevronRight, ExternalLink, ArrowRight
+  ChevronLeft, ChevronRight, ExternalLink, ArrowRight,
+  Target, Crown, MapPin, User
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminTaskModal } from './AdminTaskModal';
@@ -263,15 +264,14 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
               <h1 style={{
-                fontSize: '1.4rem',
-                fontWeight: 800,
+                fontSize: '1.35rem',
+                fontWeight: 650,
                 color: 'var(--adm-text-title)',
-                letterSpacing: '-0.4px',
+                letterSpacing: '-0.3px',
                 margin: 0,
               }}>
                 Olá, {currentUser?.name || 'Colaborador'}!
               </h1>
-              <span style={{ fontSize: '1.1rem' }}>👋</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: 0 }}>
               {formattedToday} • Painel de tarefas e agenda
@@ -522,11 +522,11 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                   <CheckSquare size={24} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 650, color: 'var(--adm-text-title)' }}>
                     {taskTab === 'today' ? 'Nenhuma tarefa pendente para hoje!' : taskTab === 'completed' ? 'Nenhuma tarefa finalizada ainda.' : 'Nenhuma tarefa encontrada.'}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                    {taskTab === 'today' ? 'Você está com a agenda em dia! 🎉' : 'Crie tarefas para organizar suas metas.'}
+                    {taskTab === 'today' ? 'Você está com a agenda em dia!' : 'Crie tarefas para organizar suas metas.'}
                   </div>
                 </div>
                 {taskTab !== 'completed' && (
@@ -688,7 +688,9 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                             }}
                             title="Abrir detalhes deste Lead no CRM"
                           >
-                            <span>🎯 Lead: {task.leadName || 'Ver Lead'}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Target size={11} /> Lead: {task.leadName || 'Ver Lead'}
+                            </span>
                             <ExternalLink size={11} />
                           </button>
                         )}
@@ -857,8 +859,9 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
             justifyContent: 'space-between',
             fontSize: '0.76rem',
           }}>
-            <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-              📅 {selectedCalendarDate.split('-').reverse().join('/')}
+            <div style={{ fontWeight: 650, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar size={13} color="var(--adm-accent)" />
+              <span>{selectedCalendarDate.split('-').reverse().join('/')}</span>
             </div>
             <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem' }}>
               {dayAppointments.length} compromissos • {dayTasks.length} afazeres
@@ -993,9 +996,21 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                               {app.title}
                             </span>
                           </div>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                            👑 <strong>{app.debutanteName}</strong> • 📍 {app.location || app.venueName}
-                            {app.responsibleName ? ` • 👤 ${app.responsibleName}` : ''}
+                          <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Crown size={11} color="var(--adm-accent)" />
+                              <strong>{app.debutanteName}</strong>
+                            </span>
+                            {(app.location || app.venueName) && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                • <MapPin size={11} /> {app.location || app.venueName}
+                              </span>
+                            )}
+                            {app.responsibleName && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                • <User size={11} /> {app.responsibleName}
+                              </span>
+                            )}
                           </div>
                         </div>
 

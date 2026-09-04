@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   ExternalLink, FileText, ChevronRight, ChevronLeft, Calendar,
-  Plus, Check, X, CheckSquare, Clock
+  Plus, Check, X, Clock, PhoneCall, Eye
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -298,7 +298,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       timestamp: new Date().toISOString(),
       type: 'contact',
       title: `Áudio gravado (${durationStr})`,
-      text: `🎤 Mensagem de voz gravada pela equipe comercial (${durationStr})`,
+      text: `Mensagem de voz gravada pela equipe comercial (${durationStr})`,
       authorName: author,
       authorId: currentUser?.id,
     };
@@ -615,9 +615,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
                     >
                       <option value="all">Todas as Temperaturas</option>
-                      <option value="hot">🔥 Quente (Alta Probabilidade)</option>
-                      <option value="warm">🟡 Morno (Em Negociação)</option>
-                      <option value="cold">🔵 Frio (Inicial)</option>
+                      <option value="hot">Quente (Alta Probabilidade)</option>
+                      <option value="warm">Morno (Em Negociação)</option>
+                      <option value="cold">Frio (Inicial)</option>
                     </select>
                   </div>
                 </div>
@@ -848,25 +848,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         color: '#10B981',
                         border: '1px solid rgba(16, 185, 129, 0.35)',
                       }}>
-                        📱 WhatsApp / {selectedLead.subSource}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <PhoneCall size={11} /> WhatsApp / {selectedLead.subSource}
+                        </span>
                       </span>
                     ) : (
                       <span style={{
                         fontSize: '0.66rem',
-                        fontWeight: 800,
+                        fontWeight: 600,
                         padding: '2px 7px',
                         borderRadius: '6px',
                         background: 'rgba(16, 185, 129, 0.12)',
                         color: '#10B981',
                         border: '1px solid rgba(16, 185, 129, 0.3)',
                       }}>
-                        📱 WhatsApp API
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <PhoneCall size={11} /> WhatsApp API
+                        </span>
                       </span>
                     )}
                     {icpRating && (
                       <span style={{
                         fontSize: '0.66rem',
-                        fontWeight: 800,
+                        fontWeight: 600,
                         padding: '2px 7px',
                         borderRadius: '6px',
                         background: icpRating.bg,
@@ -889,8 +893,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       <ExternalLink size={14} />
                     </a>
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                    📱 {selectedLead.phone} • {selectedLead.sdrName ? `SDR: ${selectedLead.sdrName}` : 'Sem SDR'}
+                  <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <PhoneCall size={11} /> {selectedLead.phone} • {selectedLead.sdrName ? `SDR: ${selectedLead.sdrName}` : 'Sem SDR'}
                   </div>
                 </div>
               </div>
@@ -996,8 +1000,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          📝 {act.authorName || 'Equipe Comercial'} • Nota Interna
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <FileText size={12} color="var(--adm-accent)" /> {act.authorName || 'Equipe Comercial'} • Nota Interna
                         </span>
                         <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
                           {new Date(act.timestamp).toLocaleDateString('pt-BR')} às {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1013,91 +1017,96 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               {/* 3. ABA TAREFAS: Exibe tarefas agendadas */}
               {composerTab === 'tasks' && (
-                (!selectedLead.tasks || selectedLead.tasks.length === 0) ? (
-                  <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--adm-text-muted)' }}>
-                    <Calendar size={36} style={{ opacity: 0.3, marginBottom: '8px' }} />
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Nenhuma tarefa agendada para este lead</div>
+                (!selectedLead?.tasks || selectedLead.tasks.length === 0) ? (
+                  <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--adm-text-muted)' }}>
+                    <Calendar size={28} style={{ opacity: 0.3, margin: '0 auto 8px auto' }} />
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Nenhuma tarefa agendada</div>
                     <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Agende retornos, confirmações de visita ou ligações no formulário abaixo.</div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {selectedLead.tasks.map((t) => {
-                      const isCompleted = t.status === 'completed';
-
-                      return (
-                        <div
-                          key={t.id}
-                          style={{
-                            background: isCompleted ? 'rgba(16, 185, 129, 0.06)' : 'rgba(59, 130, 246, 0.08)',
-                            border: `1px solid ${isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                            borderRadius: '12px',
-                            padding: '12px 14px',
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            justifyContent: 'space-between',
-                            gap: '12px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flex: 1 }}>
-                            <button
-                              type="button"
-                              onClick={() => completeLeadTask(selectedLead.id, t.id)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: isCompleted ? '#10B981' : '#60A5FA',
-                                cursor: 'pointer',
-                                padding: 0,
-                                marginTop: '2px',
-                              }}
-                            >
-                              <CheckSquare size={18} />
-                            </button>
-                            <div>
-                              <div style={{
-                                fontSize: '0.84rem',
-                                fontWeight: 800,
-                                color: isCompleted ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
-                                textDecoration: isCompleted ? 'line-through' : 'none',
-                              }}>
-                                {t.description}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                  <Clock size={11} /> {t.dueDate} {t.dueTime ? `às ${t.dueTime}` : ''}
+                  selectedLead.tasks.map(t => {
+                    const isCompleted = t.status === 'completed';
+                    return (
+                      <div
+                        key={t.id}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          background: isCompleted ? 'rgba(16,185,129,0.05)' : 'var(--adm-bg-card)',
+                          border: `1px solid ${isCompleted ? 'rgba(16,185,129,0.3)' : 'var(--adm-border)'}`,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1, minWidth: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => selectedLead && completeLeadTask(selectedLead.id, t.id)}
+                            style={{
+                              background: isCompleted ? '#10B981' : 'transparent',
+                              border: `1.5px solid ${isCompleted ? '#10B981' : 'var(--adm-border)'}`,
+                              borderRadius: '4px',
+                              width: '18px',
+                              height: '18px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: 0,
+                              flexShrink: 0,
+                              marginTop: '2px',
+                              color: '#FFF',
+                            }}
+                          >
+                            {isCompleted && <Check size={12} />}
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontSize: '0.84rem',
+                              fontWeight: 600,
+                              color: isCompleted ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                              textDecoration: isCompleted ? 'line-through' : 'none',
+                            }}>
+                              {t.description || (t as any).title}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                              {t.dueDate && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#F59E0B' }}>
+                                  <Clock size={11} /> {t.dueDate} {(t as any).dueTime ? `às ${(t as any).dueTime}` : ''}
                                 </span>
-                                <span>• Responsável: <strong>{t.assignedToName}</strong></span>
-                                {t.priority && (
-                                  <span style={{
-                                    fontSize: '0.62rem',
-                                    fontWeight: 800,
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    background: t.priority === 'high' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                                    color: t.priority === 'high' ? '#EF4444' : '#60A5FA',
-                                  }}>
-                                    {t.priority === 'high' ? 'Alta' : t.priority === 'medium' ? 'Média' : 'Baixa'}
-                                  </span>
-                                )}
-                              </div>
+                              )}
+                              {(t as any).assignedToName && (
+                                <span>• Responsável: <strong>{(t as any).assignedToName}</strong></span>
+                              )}
+                              <span style={{
+                                fontSize: '0.62rem',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: t.priority === 'high' ? 'rgba(239,68,68,0.15)' : t.priority === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.15)',
+                                color: t.priority === 'high' ? '#EF4444' : t.priority === 'medium' ? '#F59E0B' : '#94A3B8',
+                                fontWeight: 700,
+                              }}>
+                                {t.priority === 'high' ? 'Alta' : t.priority === 'medium' ? 'Média' : 'Baixa'}
+                              </span>
                             </div>
                           </div>
-
-                          <span style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            background: isCompleted ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                            color: isCompleted ? '#10B981' : '#60A5FA',
-                            flexShrink: 0,
-                          }}>
-                            {isCompleted ? 'Concluída' : 'Pendente'}
-                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <span style={{
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          color: isCompleted ? '#10B981' : '#F59E0B',
+                          background: isCompleted ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          flexShrink: 0,
+                        }}>
+                          {isCompleted ? 'Concluída' : 'Pendente'}
+                        </span>
+                      </div>
+                    );
+                  })
                 )
               )}
 
@@ -1114,7 +1123,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 alignItems: 'center',
                 gap: '12px',
               }}>
-                <span style={{ fontSize: '1.25rem' }}>👁️</span>
+                <Eye size={20} color="#06B6D4" />
                 <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)', lineHeight: 1.45 }}>
                   <strong style={{ color: '#06B6D4' }}>Modo Observador Comercial (Pós-Venda):</strong> Você pode acompanhar o histórico de conversas e notas deste lead. O envio de mensagens e interação direta neste funil são exclusivos do time comercial (habilitados em funis de Pós-Venda).
                 </div>
@@ -1279,7 +1288,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       >
                         <option value="low">Baixa</option>
                         <option value="medium">Média</option>
-                        <option value="high">🔥 Alta</option>
+                        <option value="high">Alta</option>
                       </select>
                     </div>
                   </div>

@@ -923,7 +923,7 @@ export const AdminDevUsersManagerView: React.FC = () => {
               {deactivatingMaster.active ? <ShieldAlert size={26} /> : <ShieldCheck size={26} />}
             </div>
 
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 8px 0', color: 'var(--adm-text-title)' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 650, margin: '0 0 8px 0', color: 'var(--adm-text-title)' }}>
               {deactivatingMaster.active ? 'Suspender Conta Master?' : 'Reativar Conta Master?'}
             </h3>
 
@@ -932,8 +932,9 @@ export const AdminDevUsersManagerView: React.FC = () => {
                 <>
                   Você está prestes a desativar a conta de <strong>{deactivatingMaster.name}</strong> ({deactivatingMaster.email}).
                   <br /><br />
-                  <span style={{ color: '#F87171', fontWeight: 600 }}>
-                    ⚠️ ATENÇÃO: Todos os colaboradores subordinados vinculados a este Master também serão imediatamente suspensos e terão o login bloqueado no aplicativo.
+                  <span style={{ color: '#F87171', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                    <span>ATENÇÃO: Todos os colaboradores subordinados vinculados a este Master também serão imediatamente suspensos e terão o login bloqueado no aplicativo.</span>
                   </span>
                 </>
               ) : (

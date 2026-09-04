@@ -520,11 +520,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                   border: 'none',
                   color: '#14A9D7',
                   fontSize: '0.78rem',
-                  fontWeight: 700,
+                  fontWeight: 650,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
+                  gap: '6px',
                   padding: '6px 12px',
                   borderRadius: '8px',
                   transition: 'background 0.15s ease',
@@ -532,7 +532,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(20, 169, 215, 0.1)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <span>✨ Primeiro acesso? Ative sua conta aqui</span>
+                <Sparkles size={13} />
+                <span>Primeiro acesso? Ative sua conta aqui</span>
                 <ArrowRight size={13} />
               </button>
             </div>

@@ -105,7 +105,7 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
       }
     } catch (err: any) {
       console.error('[VideoUpload] Falha no upload para R2:', err);
-      setUploadError(`❌ Falha no upload: ${err.message || 'Erro desconhecido. Tente novamente.'}`);
+      setUploadError(`Falha no upload: ${err.message || 'Erro desconhecido. Tente novamente.'}`);
       setResolvedSrc(''); // limpa preview local
     } finally {
       setIsUploading(false);
@@ -142,9 +142,9 @@ export const VideoUploadField: React.FC<VideoUploadFieldProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: "'Poppins', sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <label style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           <Film size={14} color="var(--adm-accent)" />
           <span>{label}</span>
         </label>

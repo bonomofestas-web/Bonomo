@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Image as ImageIcon, X, Loader2, Check } from 'lucide-react';
+import { Upload, Image as ImageIcon, X, Loader2, Check, AlertCircle } from 'lucide-react';
 import { cloudflareR2Service } from '../../lib/cloudflareR2';
 
 interface ImageUploadFieldProps {
@@ -165,11 +165,11 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontFamily: "'Poppins', sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <label style={{
           fontSize: '0.74rem',
-          fontWeight: 700,
+          fontWeight: 600,
           color: 'var(--adm-text-title)',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -223,7 +223,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
               borderRadius: '8px',
               padding: '8px 14px',
               fontSize: '0.76rem',
-              fontWeight: 700,
+              fontWeight: 600,
               cursor: 'pointer',
             }}
           >
@@ -241,8 +241,12 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
           color: '#EF4444',
           fontSize: '0.74rem',
           marginBottom: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
         }}>
-          ❌ {uploadError}
+          <AlertCircle size={13} color="#EF4444" />
+          <span>{uploadError}</span>
         </div>
       )}
 

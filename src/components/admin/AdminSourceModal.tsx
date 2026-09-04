@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Compass, PhoneCall, FileText, Gift,
-  AlertCircle, Plus, Trash2, KeyRound
+  AlertCircle, Plus, Trash2, KeyRound, Tag, Target
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Source, SourceType, FormField, FormFieldType, WhatsAppSubSource } from '../../types/sources';
@@ -399,7 +399,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 required
               >
                 {scopedFunnels.map(f => (
-                  <option key={f.id} value={f.id}>🎯 {f.name}</option>
+                  <option key={f.id} value={f.id}>{f.name}</option>
                 ))}
               </select>
             </div>
@@ -408,7 +408,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
           {/* 3. Nome da Origem e Status */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '14px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
                 Nome da Origem <span style={{ color: '#EF4444' }}>*</span>
               </label>
               <input
@@ -423,7 +423,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
                 Status da Origem
               </label>
               <select
@@ -432,8 +432,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 className="adm-input"
                 style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
               >
-                <option value="active">🟢 Ativa (Recebendo)</option>
-                <option value="inactive">⚪ Inativa (Pausada)</option>
+                <option value="active">Ativa (Recebendo)</option>
+                <option value="inactive">Inativa (Pausada)</option>
               </select>
             </div>
           </div>
@@ -515,8 +515,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              🏷️ {sub.name}
+                            <span style={{ fontWeight: 600, color: 'var(--adm-text-title)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Tag size={12} color="var(--adm-text-title)" /> {sub.name}
                             </span>
                             <span style={{
                               padding: '2px 6px',
@@ -524,7 +524,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                               background: 'rgba(59, 130, 246, 0.12)',
                               color: '#3B82F6',
                               fontSize: '0.68rem',
-                              fontWeight: 700,
+                              fontWeight: 600,
                               fontFamily: 'monospace'
                             }}>
                               "{sub.keyword}"
@@ -535,9 +535,12 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                               background: 'rgba(212, 175, 55, 0.1)',
                               color: 'var(--adm-accent)',
                               fontSize: '0.68rem',
-                              fontWeight: 700,
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}>
-                              🎯 {subFunnel?.name || 'Funil Padrão da Origem'}
+                              <Target size={11} color="var(--adm-accent)" /> {subFunnel?.name || 'Funil Padrão da Origem'}
                             </span>
                           </div>
 
@@ -604,9 +607,9 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                       className="adm-input"
                       style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
                     >
-                      <option value="">🎯 Funil Padrão ({scopedFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
+                      <option value="">Funil Padrão ({scopedFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
                       {scopedFunnels.map(f => (
-                        <option key={f.id} value={f.id}>🎯 {f.name}</option>
+                        <option key={f.id} value={f.id}>{f.name}</option>
                       ))}
                     </select>
                     <button
@@ -769,8 +772,9 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 </div>
               </div>
 
-              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', background: 'var(--adm-accent-bg)', padding: '8px 12px', borderRadius: '8px' }}>
-                📝 URL pública do Formulário: <strong>{typeof window !== 'undefined' ? window.location.origin : ''}/f/{slug || 'seu-form'}</strong>
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', background: 'var(--adm-accent-bg)', padding: '8px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FileText size={13} color="var(--adm-accent)" />
+                <span>URL pública do Formulário: <strong>{typeof window !== 'undefined' ? window.location.origin : ''}/f/{slug || 'seu-form'}</strong></span>
               </div>
             </div>
           )}

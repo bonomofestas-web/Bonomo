@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   X, Calendar,
   Phone, Users, Utensils, MessageSquare, Briefcase, 
-  ExternalLink, Edit3, Trash2, Check
+  ExternalLink, Edit3, Trash2, Check, CheckCircle2, Clock
 } from 'lucide-react';
 import type { AdminTask, TaskType } from '../../types/admin';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -117,8 +117,16 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
               <span style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Detalhes da Tarefa
               </span>
-              <div style={{ fontSize: '0.74rem', color: isCompleted ? '#34D399' : '#F59E0B', fontWeight: 800 }}>
-                {isCompleted ? '✓ Finalizada' : '● Pendente'}
+              <div style={{ fontSize: '0.74rem', color: isCompleted ? '#34D399' : '#F59E0B', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {isCompleted ? (
+                  <>
+                    <CheckCircle2 size={12} color="#34D399" /> Finalizada
+                  </>
+                ) : (
+                  <>
+                    <Clock size={12} color="#F59E0B" /> Pendente
+                  </>
+                )}
               </div>
             </div>
           </div>

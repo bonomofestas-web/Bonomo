@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, Code, ExternalLink } from 'lucide-react';
+import { X, Copy, Check, Code, ExternalLink, Lightbulb } from 'lucide-react';
 import type { Source } from '../../types/sources';
 
 interface AdminSourceEmbedModalProps {
@@ -206,8 +206,9 @@ export const AdminSourceEmbedModal: React.FC<AdminSourceEmbedModalProps> = ({
             />
           </div>
 
-          <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', lineHeight: '1.4' }}>
-            💡 <strong>Dica:</strong> Cole este código em qualquer página HTML ou bloco HTML personalizado no WordPress, Wix ou Elementor. As respostas enviadas cairão instantaneamente no seu CRM.
+          <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', lineHeight: '1.4', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+            <Lightbulb size={14} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span><strong>Dica:</strong> Cole este código em qualquer página HTML ou bloco HTML personalizado no WordPress, Wix ou Elementor. As respostas enviadas cairão instantaneamente no seu CRM.</span>
           </div>
         </div>
 
@@ -217,7 +218,7 @@ export const AdminSourceEmbedModal: React.FC<AdminSourceEmbedModalProps> = ({
             type="button"
             onClick={onClose}
             className="adm-btn-primary"
-            style={{ padding: '8px 20px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 800 }}
+            style={{ padding: '8px 20px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 650 }}
           >
             Fechar
           </button>

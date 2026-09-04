@@ -545,17 +545,22 @@ export const AdminMasterDashboardView: React.FC = () => {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 650, color: 'var(--adm-text-title)' }}>
                       {collab.name}
                     </div>
-                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                      {collab.role} • {collab.isOnline ? '🟢 Online agora' : '⚪ Ausente'}
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{collab.role}</span>
+                      <span>•</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: collab.isOnline ? '#10B981' : '#64748B' }} />
+                        {collab.isOnline ? 'Online agora' : 'Ausente'}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--adm-accent)' }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--adm-accent)' }}>
                     {collab.formattedTime}
                   </div>
                   <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>

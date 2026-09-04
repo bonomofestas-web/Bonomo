@@ -26,9 +26,9 @@ import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
 import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
 import { AdminDevSupportView } from './AdminDevSupportView';
 import { AdminAnnouncementModal } from './AdminAnnouncementModal';
-import { AdminSupportModal } from './AdminSupportModal';
+import { AdminSupportWidget } from './AdminSupportWidget';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
-import { Menu, X, Building2, Headset } from 'lucide-react';
+import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
 
 interface AdminPortalProps {
@@ -66,6 +66,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     isFlagsLoaded,
     announcements,
     markAnnouncementAsRead,
+    supportTickets,
   } = useAdminState();
   
   // Track active focus time for collaborators
@@ -83,6 +84,48 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Support notifications state (Audio 1 & 2: badge quando suporte responde)
+  const [lastSupportReadAt, setLastSupportReadAt] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('bonomo_last_support_read_at');
+      return saved ? Number(saved) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const unreadSupportCount = React.useMemo(() => {
+    if (!supportTickets || supportTickets.length === 0) return 0;
+    let count = 0;
+    if (currentUser?.role === 'dev') {
+      return supportTickets.filter(t => t.status !== 'resolved' && new Date(t.createdAt).getTime() > lastSupportReadAt).length;
+    }
+    const myTickets = supportTickets.filter(t => t.userId === currentUser?.id || t.userEmail === currentUser?.email);
+    for (const ticket of myTickets) {
+      const hasUnreadDevMessage = ticket.messages?.some(
+        m => m.senderRole === 'dev' && new Date(m.createdAt).getTime() > lastSupportReadAt
+      );
+      if (hasUnreadDevMessage) {
+        count++;
+      }
+    }
+    return count;
+  }, [supportTickets, currentUser, lastSupportReadAt]);
+
+  const handleToggleSupport = () => {
+    setIsSupportModalOpen(prev => {
+      const next = !prev;
+      if (next) {
+        const now = Date.now();
+        setLastSupportReadAt(now);
+        try {
+          localStorage.setItem('bonomo_last_support_read_at', String(now));
+        } catch {}
+      }
+      return next;
+    });
+  };
   
   // Fast creation and settings modals
   const [isNewVenueModalOpen, setIsNewVenueModalOpen] = useState(false);
@@ -383,7 +426,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       overflow: 'hidden',
       background: 'var(--adm-bg-app)',
       color: 'var(--adm-text-body)',
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      fontFamily: "'Poppins', sans-serif",
       position: 'relative',
     }}>
       {/* Pop-up de Comunicado Geral no Primeiro Acesso (Audio 6 & 7) */}
@@ -639,9 +682,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setGlobalSearch(''); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0, fontSize: '0.7rem' }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
                   >
-                    ✕
+                    <X size={12} />
                   </button>
                 )}
               </div>
@@ -674,8 +717,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {/* Casas de Festa */}
                       {matchedVenues.length > 0 && (
                         <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px' }}>
-                            🏢 Casas de Festa ({matchedVenues.length})
+                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: 'var(--adm-accent)', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Building2 size={12} color="var(--adm-accent)" /> Casas de Festa ({matchedVenues.length})
                           </div>
                           {matchedVenues.map(v => (
                             <div
@@ -699,7 +742,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             >
                               <Building2 size={14} color="var(--adm-accent)" />
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{v.name}</div>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{v.name}</div>
                                 <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.address}</div>
                               </div>
                             </div>
@@ -710,8 +753,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {/* Debutantes */}
                       {matchedDebutantes.length > 0 && (
                         <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#F472B6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px' }}>
-                            👑 Aniversariantes ({matchedDebutantes.length})
+                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#F472B6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Crown size={12} color="#F472B6" /> Aniversariantes ({matchedDebutantes.length})
                           </div>
                           {matchedDebutantes.map(d => {
                             const canAccessDebutantesTab = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'crm';
@@ -745,15 +788,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
                                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                               >
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(244,114,182,0.2)', color: '#F472B6', fontSize: '0.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(244,114,182,0.2)', color: '#F472B6', fontSize: '0.6rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {d.name.charAt(0)}
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{d.name}</div>
+                                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{d.name}</div>
                                   <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>{d.phone} • Festa: {d.partyDate || 'Data a definir'}</div>
                                 </div>
                                 {!canAccessDebutantesTab && (
-                                  <span style={{ fontSize: '0.62rem', color: '#818cf8', fontWeight: 700 }}>Ver Leads</span>
+                                  <span style={{ fontSize: '0.62rem', color: '#818cf8', fontWeight: 600 }}>Ver Leads</span>
                                 )}
                               </div>
                             );
@@ -764,8 +807,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {/* Leads do CRM */}
                       {matchedLeads.length > 0 && (
                         <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#3B82F6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px' }}>
-                            🎯 Leads do CRM ({matchedLeads.length})
+                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#3B82F6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Target size={12} color="#3B82F6" /> Leads do CRM ({matchedLeads.length})
                           </div>
                           {matchedLeads.map(l => (
                             <div
@@ -787,11 +830,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                             >
-                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(59,130,246,0.2)', color: '#3B82F6', fontSize: '0.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(59,130,246,0.2)', color: '#3B82F6', fontSize: '0.6rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {l.name.charAt(0)}
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{l.name}</div>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>{l.name}</div>
                                 <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>Indicada por {l.debutanteName} • {l.phone}</div>
                               </div>
                             </div>
@@ -802,8 +845,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {/* Colaboradores */}
                       {matchedCollaborators.length > 0 && (
                         <div>
-                          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#8B5CF6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px' }}>
-                            🛡️ Equipe & Colaboradores ({matchedCollaborators.length})
+                          <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#8B5CF6', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <ShieldCheck size={12} color="#8B5CF6" /> Equipe & Colaboradores ({matchedCollaborators.length})
                           </div>
                           {matchedCollaborators.map(c => (
                             <div
@@ -845,10 +888,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
-            {/* Support / Help Center Button (Audio 3) */}
+            {/* Support / Help Center Button (Audio 1, 2 & 3: Floating widget & unread badge) */}
             <button
               type="button"
-              onClick={() => setIsSupportModalOpen(true)}
+              onClick={handleToggleSupport}
               style={{
                 width: '38px',
                 height: '38px',
@@ -876,6 +919,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               }}
             >
               <Headset size={17} />
+              {unreadSupportCount > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '-3px',
+                    right: '-3px',
+                    minWidth: '17px',
+                    height: '17px',
+                    padding: '0 4px',
+                    borderRadius: '10px',
+                    background: '#EF4444',
+                    color: '#FFFFFF',
+                    fontSize: '0.62rem',
+                    fontWeight: 700,
+                    fontFamily: "'Poppins', sans-serif",
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                    border: '1.5px solid #090814',
+                  }}
+                >
+                  {unreadSupportCount}
+                </span>
+              )}
             </button>
 
             {/* 1. Notification Bell & Dropdown */}
@@ -964,8 +1032,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           gap: '2px',
                         }}
                       >
-                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#14A9D7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>📢 {ann.title}</span>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#14A9D7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Megaphone size={13} color="#14A9D7" /> {ann.title}</span>
                           <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>Clique para ler</span>
                         </div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -975,8 +1043,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     ))}
 
                     {totalNotificationsCount === 0 && userAnnouncements.length === 0 ? (
-                      <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                        🎉 Nenhuma pendência ou comunicado no momento!
+                      <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <Sparkles size={14} color="#10B981" /> Nenhuma pendência ou comunicado no momento!
                       </div>
                     ) : (
                       <>
@@ -998,8 +1066,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               gap: '2px',
                             }}
                           >
-                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-accent)' }}>
-                              🎉 Nova Indicação Recebida
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Sparkles size={12} color="var(--adm-accent)" /> Nova Indicação Recebida
                             </div>
                             <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-title)' }}>
                               {lead.name} • Indicada por {lead.debutanteName}
@@ -1028,8 +1096,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               gap: '2px',
                             }}
                           >
-                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F59E0B' }}>
-                              ⏰ Tarefa com Prazo Hoje ({task.dueTime || 'Hoje'})
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Clock size={12} color="#F59E0B" /> Tarefa com Prazo Hoje ({task.dueTime || 'Hoje'})
                             </div>
                             <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-title)' }}>
                               {task.title}
@@ -1078,9 +1146,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         onClose={() => setIsSettingsModalOpen(false)}
       />
 
-      <AdminSupportModal
+      <AdminSupportWidget
         isOpen={isSupportModalOpen}
         onClose={() => setIsSupportModalOpen(false)}
+        onMarkRead={() => {
+          const now = Date.now();
+          setLastSupportReadAt(now);
+          try {
+            localStorage.setItem('bonomo_last_support_read_at', String(now));
+          } catch {}
+        }}
       />
 
       <style>{`

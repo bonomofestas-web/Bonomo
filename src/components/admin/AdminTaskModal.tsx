@@ -325,9 +325,9 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                 {[
-                  { id: 'low', label: '🟢 Baixa', color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
-                  { id: 'medium', label: '🟡 Média', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.12)' },
-                  { id: 'high', label: '🔴 Alta / Urgente', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)' },
+                  { id: 'low', label: 'Baixa', color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
+                  { id: 'medium', label: 'Média', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.12)' },
+                  { id: 'high', label: 'Alta / Urgente', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)' },
                 ].map(p => (
                   <button
                     key={p.id}
@@ -338,16 +338,19 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                       border: `1.5px solid ${priority === p.id ? p.color : 'var(--adm-border)'}`,
                       color: priority === p.id ? p.color : 'var(--adm-text-muted)',
                       borderRadius: '10px',
-                      padding: '8px 8px',
+                      padding: '8px 4px',
                       fontSize: '0.74rem',
-                      fontWeight: 800,
+                      fontWeight: 600,
                       cursor: 'pointer',
-                      textAlign: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
                       transition: 'all 0.15s ease',
-                      boxShadow: priority === p.id ? `0 0 12px ${p.color}33` : 'none',
                     }}
                   >
-                    {p.label}
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.color, display: 'inline-block' }} />
+                    <span>{p.label}</span>
                   </button>
                 ))}
               </div>
@@ -489,9 +492,9 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <span style={{ fontSize: '0.78rem', color: selectedLead ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', fontWeight: selectedLead ? 700 : 500 }}>
+                    <span style={{ fontSize: '0.78rem', color: selectedLead ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', fontWeight: selectedLead ? 600 : 500 }}>
                       {selectedLead ? (
-                        <>🎯 {selectedLead.name} <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem', fontWeight: 500 }}>• Festa: {formatPartyDate(selectedLead.partyDate)}</span></>
+                        <><span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><Target size={12} color="#3B82F6" /> {selectedLead.name}</span> <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem', fontWeight: 500 }}>• Festa: {formatPartyDate(selectedLead.partyDate)}</span></>
                       ) : (
                         'Nenhum lead selecionado (Opcional)'
                       )}
@@ -556,10 +559,13 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                             fontSize: '0.74rem',
                             color: !selectedLeadId ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                             background: !selectedLeadId ? 'var(--adm-accent-bg)' : 'transparent',
-                            fontWeight: 700,
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
                           }}
                         >
-                          ✕ Nenhum lead (Tarefa geral)
+                          <X size={12} /> Nenhum lead (Tarefa geral)
                         </div>
 
                         {filteredLeads.map(l => (
@@ -619,9 +625,9 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                   transition: 'all 0.15s ease',
                 }}
               >
-                <span style={{ fontSize: '0.78rem', color: selectedDebutante ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', fontWeight: selectedDebutante ? 700 : 500 }}>
+                <span style={{ fontSize: '0.78rem', color: selectedDebutante ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', fontWeight: selectedDebutante ? 600 : 500 }}>
                   {selectedDebutante ? (
-                    <>👑 {selectedDebutante.name} <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem', fontWeight: 500 }}>• Festa: {formatPartyDate(selectedDebutante.partyDate)}</span></>
+                    <><span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><Crown size={12} color="#F472B6" /> {selectedDebutante.name}</span> <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem', fontWeight: 500 }}>• Festa: {formatPartyDate(selectedDebutante.partyDate)}</span></>
                   ) : (
                     'Nenhuma debutante selecionada (Opcional)'
                   )}
@@ -686,10 +692,13 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
                         fontSize: '0.74rem',
                         color: !selectedDebutanteId ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                         background: !selectedDebutanteId ? 'var(--adm-accent-bg)' : 'transparent',
-                        fontWeight: 700,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
                       }}
                     >
-                      ✕ Nenhuma debutante
+                      <X size={12} /> Nenhuma debutante
                     </div>
 
                     {filteredDebutantes.map(d => (

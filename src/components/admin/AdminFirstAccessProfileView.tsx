@@ -412,7 +412,10 @@ export const AdminFirstAccessProfileView: React.FC = () => {
                     <span>Foto salva no Cloudflare R2</span>
                   </>
                 ) : (
-                  <span>⚠️ Adição de foto obrigatória</span>
+                  <>
+                    <AlertCircle size={13} color="#F59E0B" />
+                    <span>Adição de foto obrigatória</span>
+                  </>
                 )}
               </div>
             </div>

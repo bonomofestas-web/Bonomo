@@ -4,7 +4,8 @@ import {
   ChevronLeft, ChevronRight, Plus,
   Shield, User, PartyPopper, DollarSign, Users,
   CheckCircle2, Clock, X, MessageCircle, Sparkles,
-  Globe, ExternalLink, Award, FileText, Copy, Tag
+  Globe, ExternalLink, Award, FileText, Copy, Tag,
+  Building2, Crown, PhoneCall, Eye
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -430,14 +431,20 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             color: '#A0988A',
             fontWeight: 600,
           }}>
-            🏢 {leadVenue?.name || 'Bonomo Festas'} • <strong style={{ color: '#D4AF37' }}>👑 Indicada por: {lead.debutanteName}</strong>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <Building2 size={13} color="var(--adm-accent)" /> {leadVenue?.name || 'Bonomo Festas'}
+            </span>
+            <span>•</span>
+            <strong style={{ color: '#D4AF37', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
+              <Crown size={12} color="#D4AF37" /> Indicada por: {lead.debutanteName}
+            </strong>
           </span>
 
           {/* Origin Badge */}
           {lead.subSource ? (
             <span style={{
               fontSize: '0.68rem',
-              fontWeight: 800,
+              fontWeight: 600,
               padding: '2px 8px',
               borderRadius: '8px',
               background: 'rgba(16, 185, 129, 0.2)',
@@ -447,12 +454,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               alignItems: 'center',
               gap: '4px',
             }}>
-              📱 WhatsApp / {lead.subSource}
+              <PhoneCall size={11} /> WhatsApp / {lead.subSource}
             </span>
           ) : (
             <span style={{
               fontSize: '0.68rem',
-              fontWeight: 800,
+              fontWeight: 600,
               padding: '2px 8px',
               borderRadius: '8px',
               background: (lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(212, 175, 55, 0.2)',
@@ -462,7 +469,15 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               alignItems: 'center',
               gap: '4px',
             }}>
-              {(lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? '📱 WhatsApp' : lead.sourceName || lead.source || '👑 Indicação'}
+              {(lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) ? (
+                <>
+                  <PhoneCall size={11} /> WhatsApp
+                </>
+              ) : (
+                <>
+                  <Crown size={11} /> {lead.sourceName || lead.source || 'Indicação'}
+                </>
+              )}
             </span>
           )}
         </div>
@@ -481,7 +496,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             fontSize: '0.74rem',
             color: 'var(--adm-text-title)',
           }}>
-            <span style={{ fontSize: '1.1rem' }}>👁️</span>
+            <Eye size={16} color="#06B6D4" />
             <div>
               <strong style={{ color: '#06B6D4' }}>Modo Somente Leitura (Pós-Venda):</strong> Visualização do lead e histórico comercial permitida. Ações comerciais diretas são restritas aos vendedores.
             </div>
@@ -1174,9 +1189,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   onChange={(e) => handleUpdate({ temperature: e.target.value as LeadTemperature })}
                   style={inlineSelectStyle}
                 >
-                  <option value="hot">🔥 Quente (Alta intenção)</option>
-                  <option value="warm">🟡 Morno (Pesquisando datas)</option>
-                  <option value="cold">🔵 Frio (Contato inicial)</option>
+                  <option value="hot">Quente (Alta intenção)</option>
+                  <option value="warm">Morno (Pesquisando datas)</option>
+                  <option value="cold">Frio (Contato inicial)</option>
                 </select>
               </div>
             </div>
@@ -1196,7 +1211,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   border: 'none',
                   color: 'var(--adm-accent)',
                   fontSize: '0.72rem',
-                  fontWeight: 800,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1217,10 +1232,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <strong style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)' }}>{contact.name}</strong>
+                    <strong style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>{contact.name}</strong>
                     <span style={{
                       fontSize: '0.64rem',
-                      fontWeight: 700,
+                      fontWeight: 600,
                       color: 'var(--adm-accent)',
                       background: 'rgba(212, 175, 55, 0.12)',
                       padding: '1px 6px',
@@ -1229,7 +1244,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       {CONTACT_ROLE_LABELS[contact.role] || contact.role}
                     </span>
                     {contact.isPrimaryDecisionMaker && (
-                      <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#10B981' }}>★ Decisor</span>
+                      <span style={{ fontSize: '0.64rem', fontWeight: 600, color: '#10B981', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <Check size={11} /> Decisor
+                      </span>
                     )}
                   </div>
                   <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{contact.phone}</span>
@@ -1395,7 +1412,17 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                                 handleUpdate({ customFieldValues: updatedCustom });
                               }}
                             />
-                            <span>{Boolean(currentValue) ? '✅ Concluído' : '⬜ Pendente'}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: Boolean(currentValue) ? '#10B981' : 'var(--adm-text-muted)' }}>
+                              {Boolean(currentValue) ? (
+                                <>
+                                  <CheckCircle2 size={13} color="#10B981" /> Concluído
+                                </>
+                              ) : (
+                                <>
+                                  <Clock size={13} color="var(--adm-text-muted)" /> Pendente
+                                </>
+                              )}
+                            </span>
                           </label>
                         ) : field.type === 'date' ? (
                           <input
@@ -1475,17 +1502,30 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </span>
                 <span style={{
                   fontSize: '0.7rem',
-                  fontWeight: 800,
+                  fontWeight: 600,
                   padding: '3px 8px',
                   borderRadius: '6px',
                   background: isReferralLead ? 'rgba(212, 175, 55, 0.15)' : 'rgba(59, 130, 246, 0.15)',
                   color: isReferralLead ? '#D4AF37' : '#60A5FA',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
                 }}>
-                  {isReferralLead ? '👑 Indicação de Debutante' : leadSource ? `🌐 ${leadSource.name}` : (lead.source || 'Entrada Direta')}
+                  {isReferralLead ? (
+                    <>
+                      <Crown size={12} /> Indicação de Debutante
+                    </>
+                  ) : leadSource ? (
+                    <>
+                      <Globe size={12} /> {leadSource.name}
+                    </>
+                  ) : (
+                    lead.source || 'Entrada Direta'
+                  )}
                 </span>
               </div>
 
-              <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', fontWeight: 700 }}>
+              <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>
                 {isReferralLead
                   ? `Lead gerado pelo programa de indicações da anfitriã ${lead.debutanteName}.`
                   : leadSource
@@ -1496,13 +1536,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Casa Vinculada:</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
                     {leadVenue?.name || 'Bonomo Festas'}
                   </span>
                 </div>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Funil de Destino:</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
                     {leadFunnel?.name || 'Funil Comercial Padrão'}
                   </span>
                 </div>
@@ -1522,26 +1562,37 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Award size={16} color="#D4AF37" />
-                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#D4AF37', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#D4AF37', textTransform: 'uppercase' }}>
                     Dados da Anfitriã / Debutante Indicadora
                   </span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px' }}>
                   <div>
-                    <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#FFFFFF' }}>{lead.debutanteName}</div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#FFFFFF' }}>{lead.debutanteName}</div>
                     <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Anfitriã • ID: {lead.debutanteId || 'N/A'}</div>
                   </div>
                   <span style={{
                     fontSize: '0.68rem',
-                    fontWeight: 800,
+                    fontWeight: 600,
                     padding: '3px 8px',
                     borderRadius: '6px',
                     background: lead.isValidated ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                     color: lead.isValidated ? '#10B981' : '#F59E0B',
                     border: `1px solid ${lead.isValidated ? '#10B981' : '#F59E0B'}`,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}>
-                    {lead.isValidated ? '✓ Validada (+1 Ponto)' : '⏳ Aguardando Validação'}
+                    {lead.isValidated ? (
+                      <>
+                        <CheckCircle2 size={11} /> Validada (+1 Ponto)
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={11} /> Aguardando Validação
+                      </>
+                    )}
                   </span>
                 </div>
 
@@ -1604,21 +1655,24 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Globe size={16} color="#10B981" />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 900, color: '#10B981', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase' }}>
                       Identificação de Sub-origem WhatsApp
                     </span>
                   </div>
                   {lead.subSource && (
                     <span style={{
                       fontSize: '0.7rem',
-                      fontWeight: 800,
+                      fontWeight: 600,
                       padding: '2px 8px',
                       borderRadius: '6px',
                       background: 'rgba(16, 185, 129, 0.2)',
                       color: '#10B981',
                       border: '1px solid #10B981',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
                     }}>
-                      🏷️ {lead.subSource}
+                      <Tag size={11} /> {lead.subSource}
                     </span>
                   )}
                 </div>
@@ -1626,15 +1680,21 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
                     <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Origem Principal:</span>
-                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)' }}>
-                      📱 {lead.sourceName || leadSource?.name || 'WhatsApp API'}
+                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                      <PhoneCall size={12} color="#10B981" /> {lead.sourceName || leadSource?.name || 'WhatsApp API'}
                     </strong>
                   </div>
 
                   <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
                     <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Sub-origem / Canal:</span>
-                    <strong style={{ fontSize: '0.82rem', color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)' }}>
-                      {lead.subSource ? `🏷️ ${lead.subSource}` : 'Sem sub-origem (Direto)'}
+                    <strong style={{ fontSize: '0.82rem', color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                      {lead.subSource ? (
+                        <>
+                          <Tag size={12} /> {lead.subSource}
+                        </>
+                      ) : (
+                        'Sem sub-origem (Direto)'
+                      )}
                     </strong>
                   </div>
                 </div>
@@ -1642,7 +1702,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 {/* Sub-source editor / selector */}
                 {leadSource?.configuration?.subSources && leadSource.configuration.subSources.length > 0 && (
                   <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
+                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
                       Alterar Sub-origem do Lead
                     </label>
                     <select
@@ -1653,7 +1713,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     >
                       <option value="">Nenhuma sub-origem (WhatsApp Direto)</option>
                       {leadSource.configuration.subSources.map(sub => (
-                        <option key={sub.id} value={sub.name}>🏷️ {sub.name} (Gatilho: "{sub.keyword}")</option>
+                        <option key={sub.id} value={sub.name}>{sub.name} (Gatilho: "{sub.keyword}")</option>
                       ))}
                     </select>
                   </div>
@@ -1753,11 +1813,19 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <span style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }} />
+                  <span style={{
                     fontSize: '1.25rem',
-                    fontWeight: 900,
+                    fontWeight: 700,
                     color: mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
                   }}>
-                    {mqlResult.level === 'top' ? '🟢 Nota ICP A (Lead Top)' : mqlResult.level === 'qualified' ? '🟡 Nota ICP B (Médio)' : '🔴 Nota ICP C (Baixo / Ruim)'}
+                    {mqlResult.level === 'top' ? 'Nota ICP A (Lead Top)' : mqlResult.level === 'qualified' ? 'Nota ICP B (Médio)' : 'Nota ICP C (Baixo / Ruim)'}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>

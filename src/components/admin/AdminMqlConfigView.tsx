@@ -334,9 +334,21 @@ export const AdminMqlConfigView: React.FC = () => {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <span style={{ fontSize: '1.4rem' }}>🟢</span>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'rgba(16, 185, 129, 0.2)',
+            border: '2px solid #10B981',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+          </div>
           <div>
-            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#10B981' }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#10B981' }}>
               Situação Ideal (100%)
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
@@ -355,9 +367,21 @@ export const AdminMqlConfigView: React.FC = () => {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <span style={{ fontSize: '1.4rem' }}>🔵</span>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'rgba(59, 130, 246, 0.2)',
+            border: '2px solid #60A5FA',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#60A5FA' }} />
+          </div>
           <div>
-            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#60A5FA' }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#60A5FA' }}>
               Situação Boa (70%)
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
@@ -376,9 +400,21 @@ export const AdminMqlConfigView: React.FC = () => {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <span style={{ fontSize: '1.4rem' }}>🟡</span>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'rgba(245, 158, 11, 0.2)',
+            border: '2px solid #F59E0B',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F59E0B' }} />
+          </div>
           <div>
-            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#F59E0B' }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#F59E0B' }}>
               Situação Média (40%)
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
@@ -397,9 +433,21 @@ export const AdminMqlConfigView: React.FC = () => {
           alignItems: 'center',
           gap: '12px',
         }}>
-          <span style={{ fontSize: '1.4rem' }}>🔴</span>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '2px solid #EF4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
+          </div>
           <div>
-            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#EF4444' }}>
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#EF4444' }}>
               Situação Ruim (0%)
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>

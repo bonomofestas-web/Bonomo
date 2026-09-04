@@ -2,19 +2,20 @@ import React, { useState, useMemo } from 'react';
 import { 
   Headset, Search, Send, Image as ImageIcon, Video, 
   X, MessageSquare, LayoutGrid, List, CheckCircle2,
-  Clock, AlertCircle
+  Clock, AlertCircle, LayoutDashboard, Target, Crown, Building2,
+  Users, Settings, User
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { SupportTicket, SupportTicketStatus } from '../../types/admin';
 
-const MODULE_MAP: Record<string, { label: string; icon: string }> = {
-  home: { label: 'Início', icon: '🏠' },
-  crm: { label: 'Funil de Vendas / CRM', icon: '🎯' },
-  debutantes: { label: 'Central de Debutantes', icon: '👑' },
-  venues: { label: 'Casas de Festa', icon: '🏢' },
-  collaborators: { label: 'Equipe & Colaboradores', icon: '🛡️' },
-  whatsapp: { label: 'WhatsApp & Atendimento', icon: '💬' },
-  other: { label: 'Outro Setor', icon: '⚙️' },
+const MODULE_MAP: Record<string, { label: string; icon: React.ComponentType<{ size?: number; color?: string; style?: React.CSSProperties }> }> = {
+  home: { label: 'Início', icon: LayoutDashboard },
+  crm: { label: 'Funil de Vendas / CRM', icon: Target },
+  debutantes: { label: 'Central de Debutantes', icon: Crown },
+  venues: { label: 'Casas de Festa', icon: Building2 },
+  collaborators: { label: 'Equipe & Colaboradores', icon: Users },
+  whatsapp: { label: 'WhatsApp & Atendimento', icon: MessageSquare },
+  other: { label: 'Outro Setor', icon: Settings },
 };
 
 export const AdminDevSupportView: React.FC = () => {
@@ -172,7 +173,8 @@ export const AdminDevSupportView: React.FC = () => {
 
   const renderKanbanCard = (ticket: SupportTicket) => {
     const isSelected = selectedTicketId === ticket.id;
-    const moduleInfo = MODULE_MAP[ticket.module] || { label: ticket.module, icon: '⚙️' };
+    const moduleInfo = MODULE_MAP[ticket.module] || { label: ticket.module, icon: Settings };
+    const ModuleIcon = moduleInfo.icon;
     const mediaUrl = ticket.imageUrl || ticket.screenshotUrl;
 
     return (
@@ -227,8 +229,12 @@ export const AdminDevSupportView: React.FC = () => {
               background: 'rgba(212, 175, 55, 0.12)',
               padding: '2px 6px',
               borderRadius: '6px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
             }}>
-              {moduleInfo.icon} {moduleInfo.label}
+              <ModuleIcon size={11} color="#D4AF37" />
+              <span>{moduleInfo.label}</span>
             </span>
           </div>
 
@@ -262,8 +268,8 @@ export const AdminDevSupportView: React.FC = () => {
           paddingTop: '6px',
           borderTop: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)'}`,
         }}>
-          <span style={{ fontWeight: 600, color: colors.textTitle }}>
-            👤 {ticket.userName}
+          <span style={{ fontWeight: 600, color: colors.textTitle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <User size={12} /> {ticket.userName}
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -482,13 +488,13 @@ export const AdminDevSupportView: React.FC = () => {
               }}
             >
               <option value="all" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Todos os Setores</option>
-              <option value="home" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🏠 Início</option>
-              <option value="crm" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🎯 Funil / CRM</option>
-              <option value="debutantes" style={{ background: colors.toolbarBg, color: colors.textTitle }}>👑 Debutantes</option>
-              <option value="venues" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🏢 Casas de Festa</option>
-              <option value="collaborators" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🛡️ Colaboradores</option>
-              <option value="whatsapp" style={{ background: colors.toolbarBg, color: colors.textTitle }}>💬 WhatsApp</option>
-              <option value="other" style={{ background: colors.toolbarBg, color: colors.textTitle }}>⚙️ Outros</option>
+              <option value="home" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Início</option>
+              <option value="crm" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Funil / CRM</option>
+              <option value="debutantes" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Debutantes</option>
+              <option value="venues" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Casas de Festa</option>
+              <option value="collaborators" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Colaboradores</option>
+              <option value="whatsapp" style={{ background: colors.toolbarBg, color: colors.textTitle }}>WhatsApp</option>
+              <option value="other" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Outros</option>
             </select>
           </div>
 
@@ -512,9 +518,9 @@ export const AdminDevSupportView: React.FC = () => {
                 }}
               >
                 <option value="all" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Todos os Status</option>
-                <option value="new" style={{ background: colors.toolbarBg, color: colors.textTitle }}>🚨 Novos</option>
-                <option value="in_progress" style={{ background: colors.toolbarBg, color: colors.textTitle }}>⏳ Em Andamento</option>
-                <option value="resolved" style={{ background: colors.toolbarBg, color: colors.textTitle }}>✅ Resolvidos</option>
+                <option value="new" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Novos</option>
+                <option value="in_progress" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Em Andamento</option>
+                <option value="resolved" style={{ background: colors.toolbarBg, color: colors.textTitle }}>Resolvidos</option>
               </select>
             </div>
           )}
@@ -737,7 +743,8 @@ export const AdminDevSupportView: React.FC = () => {
                   ) : (
                     filteredTickets.map(ticket => {
                       const isSelected = selectedTicketId === ticket.id;
-                      const moduleInfo = MODULE_MAP[ticket.module] || { label: ticket.module, icon: '⚙️' };
+                      const moduleInfo = MODULE_MAP[ticket.module] || { label: ticket.module, icon: Settings };
+                      const ModuleIcon = moduleInfo.icon;
                       const mediaUrl = ticket.imageUrl || ticket.screenshotUrl;
 
                       return (
@@ -763,7 +770,7 @@ export const AdminDevSupportView: React.FC = () => {
                               fontWeight: 800,
                               color: '#14A9D7',
                               background: 'rgba(20, 169, 215, 0.12)',
-                              padding: '2px 8px',
+                              padding: '3px 8px',
                               borderRadius: '6px',
                               border: '1px solid rgba(20, 169, 215, 0.25)',
                             }}>
@@ -772,10 +779,8 @@ export const AdminDevSupportView: React.FC = () => {
                           </td>
 
                           {/* Data */}
-                          <td style={{ padding: '12px 16px', color: colors.textSubtitle, whiteSpace: 'nowrap' }}>
-                            {new Date(ticket.createdAt).toLocaleDateString('pt-BR', { 
-                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
-                            })}
+                          <td style={{ padding: '12px 16px', color: colors.textSubtitle }}>
+                            {new Date(ticket.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </td>
 
                           {/* Solicitante */}
@@ -797,8 +802,12 @@ export const AdminDevSupportView: React.FC = () => {
                               fontWeight: 600,
                               fontSize: '0.72rem',
                               whiteSpace: 'nowrap',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}>
-                              {moduleInfo.icon} {moduleInfo.label}
+                              <ModuleIcon size={11} color="#D4AF37" />
+                              <span>{moduleInfo.label}</span>
                             </span>
                           </td>
 

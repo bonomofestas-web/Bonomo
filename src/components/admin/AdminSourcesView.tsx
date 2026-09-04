@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { 
   Compass, Plus, FileText, PhoneCall, Gift,
   Copy, Check, Code, Edit3, Trash2,
-  CheckCircle2, XCircle, Search, Building2
+  CheckCircle2, XCircle, Search, Building2,
+  Target, Zap, Tag, Crown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSourceModal } from './AdminSourceModal';
@@ -376,16 +377,16 @@ export const AdminSourcesView: React.FC = () => {
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '5px',
                           padding: '3px 8px',
                           borderRadius: '8px',
                           background: 'rgba(212, 175, 55, 0.1)',
                           border: '1px solid rgba(212, 175, 55, 0.25)',
                           color: 'var(--adm-accent)',
-                          fontWeight: 700,
+                          fontWeight: 600,
                           fontSize: '0.72rem',
                         }}>
-                          🎯 {funnel?.name || source.funnelId}
+                          <Target size={12} color="var(--adm-accent)" /> {funnel?.name || source.funnelId}
                         </span>
                       </td>
 
@@ -393,8 +394,8 @@ export const AdminSourcesView: React.FC = () => {
                       <td style={{ padding: '14px 18px' }}>
                         {source.type === 'whatsapp_api' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)', fontWeight: 700 }}>
-                              ⚡ {source.whatsappInstanceId || 'Instância Ativa'}
+                            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Zap size={12} color="#F59E0B" /> {source.whatsappInstanceId || 'Instância Ativa'}
                             </div>
                             {subSources.length > 0 ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
@@ -404,15 +405,18 @@ export const AdminSourcesView: React.FC = () => {
                                     title={`Palavra-chave: "${sub.keyword}"`}
                                     style={{
                                       fontSize: '0.64rem',
-                                      fontWeight: 800,
+                                      fontWeight: 600,
                                       padding: '1px 6px',
                                       borderRadius: '6px',
                                       background: 'rgba(16, 185, 129, 0.12)',
                                       color: '#10B981',
                                       border: '1px solid rgba(16, 185, 129, 0.25)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
                                     }}
                                   >
-                                    🏷️ {sub.name}
+                                    <Tag size={10} /> {sub.name}
                                   </span>
                                 ))}
                               </div>
@@ -424,13 +428,13 @@ export const AdminSourcesView: React.FC = () => {
                           </div>
                         )}
                         {source.type === 'form' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                            📝 {source.configuration?.fields?.length || 5} campos • Link público ativo
+                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <FileText size={12} color="var(--adm-accent)" /> {source.configuration?.fields?.length || 5} campos • Link público ativo
                           </div>
                         )}
                         {source.type === 'referral' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
-                            👑 App das Aniversariantes & Debutantes
+                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-accent)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Crown size={12} color="var(--adm-accent)" /> App das Aniversariantes & Debutantes
                           </div>
                         )}
                       </td>

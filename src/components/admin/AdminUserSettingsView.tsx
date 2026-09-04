@@ -367,7 +367,9 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
                     gap: '6px',
                   }}
                 >
-                  <span>{theme === 'dark' ? '🌙 Escuro' : '☀️ Claro'}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    {theme === 'dark' ? <><Moon size={13} /> Escuro</> : <><Sun size={13} /> Claro</>}
+                  </span>
                 </button>
               </div>
 
@@ -464,8 +466,8 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
                   alignItems: 'center',
                   justifyContent: 'space-between',
                 }}>
-                  <span>
-                    👁️ Simulando visão de: <strong>{currentUser?.name}</strong> ({currentUser?.role?.toUpperCase()})
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Eye size={14} color="#D4AF37" /> Simulando visão de: <strong>{currentUser?.name}</strong> ({currentUser?.role?.toUpperCase()})
                   </span>
                   <button
                     type="button"

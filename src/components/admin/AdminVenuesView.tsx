@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, MapPin, 
   Edit3, Trash2, Video, ArrowLeft,
-  Users, Save, Target, Sparkles, Play, X, Eye, Phone, Mail, ChevronRight, CheckCircle2, Film, Loader2
+  Users, Save, Target, Sparkles, Play, X, Eye, Phone, Mail, ChevronRight, CheckCircle2, Film, Loader2, Clock
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -470,8 +470,8 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
             gap: '12px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                🏛️ Métricas & Autoridade da Casa (Exibidas no Convite)
+              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={13} color="var(--adm-accent)" /> Métricas & Autoridade da Casa (Exibidas no Convite)
               </div>
               <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
                 Números reais que aparecem para os convidados da debutante
@@ -480,8 +480,10 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                  ⏳ Anos de Mercado / Tradição
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Clock size={12} color="var(--adm-accent)" /> Anos de Mercado / Tradição
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -498,7 +500,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
                     padding: '10px 12px',
                     color: 'var(--adm-text-title)',
                     fontSize: '0.86rem',
-                    fontWeight: 800,
+                    fontWeight: 600,
                     outline: 'none',
                     boxSizing: 'border-box',
                   }}
@@ -506,8 +508,10 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                  🎉 Eventos Realizados
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Sparkles size={12} color="var(--adm-accent)" /> Eventos Realizados
+                  </span>
                 </label>
                 <input
                   type="number"
@@ -523,7 +527,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
                     padding: '10px 12px',
                     color: 'var(--adm-text-title)',
                     fontSize: '0.86rem',
-                    fontWeight: 800,
+                    fontWeight: 600,
                     outline: 'none',
                     boxSizing: 'border-box',
                   }}
@@ -531,8 +535,10 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                  👥 Convidados Atendidos / Total
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 600, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Users size={12} color="var(--adm-accent)" /> Convidados Atendidos / Total
+                  </span>
                 </label>
                 <input
                   type="number"

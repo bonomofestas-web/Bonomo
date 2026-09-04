@@ -309,8 +309,9 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
             flexDirection: 'column',
             gap: '12px',
           }}>
-            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              📞 Canais de Contato & Suporte da Casa
+            <div style={{ fontSize: '0.74rem', fontWeight: 650, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Phone size={13} />
+              <span>Canais de Contato & Suporte da Casa</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -377,8 +378,9 @@ export const AdminVenueModal: React.FC<AdminVenueModalProps> = ({
             flexDirection: 'column',
             gap: '12px',
           }}>
-            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              🏛️ Métricas & Autoridade da Casa (Exibidas no Convite)
+            <div style={{ fontSize: '0.74rem', fontWeight: 650, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Building2 size={13} />
+              <span>Métricas & Autoridade da Casa (Exibidas no Convite)</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>

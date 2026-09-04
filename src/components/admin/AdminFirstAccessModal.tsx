@@ -872,7 +872,10 @@ export const AdminFirstAccessModal: React.FC<AdminFirstAccessModalProps> = ({
               fontWeight: 600,
               lineHeight: 1.6,
             }}>
-              ✨ <strong>Conta ativada com sucesso!</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} />
+                <strong>Conta ativada com sucesso!</strong>
+              </div>
               <div style={{ fontSize: '0.78rem', color: '#8096A8', marginTop: '6px' }}>
                 Entrando no painel corporativo F5 System...
               </div>
