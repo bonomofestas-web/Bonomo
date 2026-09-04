@@ -30,6 +30,8 @@ export const funnelService = {
         stagesCount: row.stages_count || 4,
         isPrimary: row.is_primary || false,
         isDemo: row.is_demo || false,
+        isPostSale: row.is_post_sale ?? false,
+        allowedRoles: row.allowed_roles || [],
         createdAt: row.created_at || new Date().toISOString(),
       }));
     } catch (err) {
@@ -57,6 +59,8 @@ export const funnelService = {
       if (funnel.stagesCount !== undefined) payload.stages_count = funnel.stagesCount;
       if (funnel.isPrimary !== undefined) payload.is_primary = funnel.isPrimary;
       if (funnel.isDemo !== undefined) payload.is_demo = funnel.isDemo;
+      if (funnel.isPostSale !== undefined) payload.is_post_sale = funnel.isPostSale;
+      if (funnel.allowedRoles !== undefined) payload.allowed_roles = funnel.allowedRoles;
 
       if (isUuid) {
         const { data: updated, error: updateErr } = await supabase
