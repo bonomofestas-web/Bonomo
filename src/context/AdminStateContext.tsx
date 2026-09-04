@@ -883,9 +883,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             const activeEmail = currentUser?.email;
             if (activeEmail) {
               const matched = dbCollabs.find(c => c.email.toLowerCase() === activeEmail.toLowerCase());
-              if (matched && matched.theme) {
-                setThemeState(matched.theme as ThemeMode);
-                safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
+              if (matched) {
+                if (matched.theme) {
+                  setThemeState(matched.theme as ThemeMode);
+                  safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
+                }
+                // Sincroniza currentUser com os dados mais recentes do banco (Single Source of Truth)
+                setCurrentUser(prev => {
+                  if (!prev) return null;
+                  const updatedUser: AdminUser = {
+                    ...prev,
+                    id: matched.id,
+                    name: matched.name || prev.name,
+                    role: matched.role || prev.role,
+                    avatarUrl: matched.avatarUrl !== undefined ? matched.avatarUrl : prev.avatarUrl,
+                    phone: matched.phone !== undefined ? matched.phone : prev.phone,
+                    venueIds: matched.venueId === 'all' ? [] : (matched.venueIds || [matched.venueId]),
+                    isFirstAccess: Boolean(matched.isFirstAccess),
+                    masterId: matched.masterId || prev.masterId,
+                  };
+                  safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+                  return updatedUser;
+                });
               }
             }
           }
@@ -950,22 +969,84 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       window.location.search.includes('type=invite')
     );
 
+    // Sincroniza sessão do Supabase Auth com o registro real do colaborador na tabela collaborators
+    const syncUserFromSession = async (u: any) => {
+      if (!u?.email || !isMounted) return;
+      const cleanEmail = u.email.toLowerCase().trim();
+
+      // 1. Tenta localizar na lista local de colaboradores já carregada
+      const local = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+      if (local && isMounted) {
+        const fullUser: AdminUser = {
+          id: local.id,
+          name: local.name,
+          email: local.email,
+          role: local.role as any,
+          avatarUrl: local.avatarUrl,
+          phone: local.phone,
+          venueIds: local.venueId === 'all' ? [] : (local.venueIds || [local.venueId]),
+          isFirstAccess: Boolean(local.isFirstAccess),
+          lastLoginAt: local.lastLoginAt,
+          masterId: local.masterId,
+        };
+        setCurrentUser(fullUser);
+        safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
+        return;
+      }
+
+      // 2. Busca direto no Supabase caso ainda não esteja na memória
+      try {
+        const { data: dbRow } = await supabase
+          .from('collaborators')
+          .select('*')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (dbRow && isMounted) {
+          const fullUser: AdminUser = {
+            id: dbRow.id,
+            name: dbRow.name || u.user_metadata?.name || cleanEmail.split('@')[0],
+            email: dbRow.email,
+            role: (dbRow.role as any) || 'sdr',
+            avatarUrl: dbRow.avatar_url || u.user_metadata?.avatar_url,
+            phone: dbRow.phone,
+            venueIds: dbRow.venue_id === 'all' ? [] : (dbRow.venue_ids || [dbRow.venue_id]),
+            isFirstAccess: Boolean(dbRow.is_first_access),
+            lastLoginAt: dbRow.last_login_at,
+            masterId: dbRow.master_id,
+          };
+          setCurrentUser(fullUser);
+          safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
+          return;
+        }
+      } catch (err) {
+        console.warn('Erro ao restaurar colaborador da sessão:', err);
+      }
+
+      // 3. Fallback estrito apenas se não existir em collaborators (ex: super admin dev)
+      if (isMounted) {
+        setCurrentUser(prev => {
+          if (prev && prev.email.toLowerCase() === cleanEmail) return prev;
+          const fallbackUser: AdminUser = {
+            id: u.id,
+            name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
+            email: u.email || '',
+            role: (u.user_metadata?.role as any) || 'master',
+            avatarUrl: u.user_metadata?.avatar_url,
+            venueIds: [],
+            isFirstAccess: false,
+          };
+          safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fallbackUser));
+          return fallbackUser;
+        });
+      }
+    };
+
     // Check and restore Supabase Auth session if active (apenas se NÃO for link de recuperação/convite)
     if (!isRecoveryNavigation) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (isMounted && session?.user) {
-          const u = session.user;
-          setCurrentUser(prev => {
-            if (prev) return prev;
-            return {
-              id: u.id,
-              name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
-              email: u.email || '',
-              role: (u.user_metadata?.role as any) || 'master',
-              avatarUrl: u.user_metadata?.avatar_url,
-              venueIds: [],
-            };
-          });
+          syncUserFromSession(session.user);
         }
       });
     }
@@ -979,15 +1060,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return;
         }
 
-        const u = session.user;
-        setCurrentUser({
-          id: u.id,
-          name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
-          email: u.email || '',
-          role: (u.user_metadata?.role as any) || 'master',
-          avatarUrl: u.user_metadata?.avatar_url,
-          venueIds: [],
-        });
+        syncUserFromSession(session.user);
       }
     });
 
