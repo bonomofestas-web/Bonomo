@@ -425,6 +425,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return saved ? JSON.parse(saved) : DEFAULT_DEBUTANTES;
   });
 
+  // Conjuntos de proteção anti-flicker para exclusões recentes
+  const deletedDebutanteIdsRef = React.useRef<Set<string>>(new Set());
+  const deletedLeadIdsRef = React.useRef<Set<string>>(new Set());
+  const deletedTaskIdsRef = React.useRef<Set<string>>(new Set());
+  const deletedCollabIdsRef = React.useRef<Set<string>>(new Set());
+
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
     const parsed: Lead[] = saved ? JSON.parse(saved) : DEFAULT_LEADS;
@@ -990,11 +996,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async () => {
         const updated = await leadService.getAll();
-        if (isMounted) setLeads(updated);
+        if (isMounted) {
+          const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
+          setLeads(filtered);
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filtered));
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, async () => {
         const updated = await debutanteService.getAll();
-        if (isMounted && updated.length > 0) setDebutantes(updated);
+        if (isMounted) {
+          const filtered = updated.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
+          setDebutantes(filtered);
+          safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filtered));
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, async () => {
         // Debutante cadastrou indicação -> atualiza debutantes e leads em tempo real
@@ -1004,8 +1018,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             leadService.getAll(),
           ]);
           if (isMounted) {
-            if (updatedDebs.length > 0) setDebutantes(updatedDebs);
-            if (updatedLeads.length > 0) setLeads(updatedLeads);
+            const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
+            const filteredLeads = updatedLeads.filter(l => !deletedLeadIdsRef.current.has(l.id));
+            setDebutantes(filteredDebs);
+            setLeads(filteredLeads);
+            safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filteredDebs));
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filteredLeads));
           }
         });
       })
@@ -1013,19 +1031,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Convidado confirmou -> atualiza lista de convidados em tempo real
         triggerDebouncedSync(async () => {
           const updatedDebs = await debutanteService.getAll();
-          if (isMounted && updatedDebs.length > 0) setDebutantes(updatedDebs);
+          if (isMounted) {
+            const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
+            setDebutantes(filteredDebs);
+            safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filteredDebs));
+          }
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, async () => {
         // Agendamento criado ou atualizado
         triggerDebouncedSync(async () => {
           const updatedDebs = await debutanteService.getAll();
-          if (isMounted && updatedDebs.length > 0) setDebutantes(updatedDebs);
+          if (isMounted) {
+            const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
+            setDebutantes(filteredDebs);
+            safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filteredDebs));
+          }
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_tasks' }, async () => {
         const updated = await taskService.getAll();
-        if (isMounted) setTasks(updated);
+        if (isMounted) {
+          const filtered = updated.filter(t => !deletedTaskIdsRef.current.has(t.id));
+          setTasks(filtered);
+          safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(filtered));
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_activities' }, async () => {
         const updated = await leadService.getAll();
@@ -1037,8 +1067,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
-        if (isMounted && updated.length > 0) {
-          setCollaborators(updated);
+        if (isMounted) {
+          const filtered = updated.filter(c => !deletedCollabIdsRef.current.has(c.id));
+          setCollaborators(filtered);
+          safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(filtered));
           setCurrentUser(prev => {
             if (!prev) return null;
             const me = updated.find(c => c.id === prev.id || c.email.toLowerCase() === prev.email.toLowerCase());
@@ -1623,6 +1655,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteCollaborator = (id: string, reassignToId?: string | null) => {
+    deletedCollabIdsRef.current.add(id);
     const targetCollab = collaborators.find(c => c.id === id);
     const targetName = targetCollab?.name;
     const targetCleanEmail = targetCollab?.email?.toLowerCase().trim();
@@ -2193,6 +2226,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const targetDeb = debutantes.find(d => d.id === idOrSlug || d.slug === idOrSlug);
     const targetName = targetDeb?.name;
+
+    // Registra imediatamente no conjunto anti-flicker
+    if (targetDeb) {
+      deletedDebutanteIdsRef.current.add(targetDeb.id);
+      deletedDebutanteIdsRef.current.add(targetDeb.slug);
+    }
+    deletedDebutanteIdsRef.current.add(idOrSlug);
 
     // PRESERVAÇÃO COMERCIAL: Mantém os leads e indicações no CRM com o nome da debutante indicadora preservado
     setLeads(prev => {
@@ -2925,6 +2965,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteLead = (leadId: string) => {
+    deletedLeadIdsRef.current.add(leadId);
     setLeads(prev => {
       const updated = prev.filter(l => l.id !== leadId);
       safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
@@ -3857,6 +3898,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteTask = (id: string) => {
+    deletedTaskIdsRef.current.add(id);
     setTasks(prev => {
       const updated = prev.filter(t => t.id !== id);
       safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));

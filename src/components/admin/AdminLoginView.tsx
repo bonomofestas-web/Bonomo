@@ -46,6 +46,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
+  const [isTokenFromUrl, setIsTokenFromUrl] = useState<boolean>(false);
+  const [isResetMode, setIsResetMode] = useState<boolean>(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Password Setup State in First Access
@@ -63,16 +65,30 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     return () => clearInterval(timer);
   }, [authMode, countdown]);
 
-  // Detecção de link direto de ativação (?admin=true&activate=email)
+  // Detecção de link direto de ativação (?admin=true&activate=email&token=123456)
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const activateEmail = urlParams.get('activate');
+      const token = urlParams.get('token');
+      const mode = urlParams.get('mode');
+
       if (activateEmail) {
         const clean = decodeURIComponent(activateEmail).trim().toLowerCase();
         setActivationEmail(clean);
         setAuthMode('first_access_code');
-        setOtpDigits(['', '', '', '', '', '']);
+        setIsResetMode(mode === 'reset');
+
+        if (token && token.trim().length >= 6) {
+          const cleanToken = token.trim().slice(0, 6);
+          setOtpDigits(cleanToken.split(''));
+          setGeneratedOtp(cleanToken);
+          setIsTokenFromUrl(true);
+        } else {
+          setOtpDigits(['', '', '', '', '', '']);
+          setIsTokenFromUrl(false);
+        }
+
         const found = collaborators.find(c => c.email.toLowerCase() === clean);
         if (found) setMatchedCollab(found);
       }
@@ -697,40 +713,57 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             </div>
 
             <h2 style={{ fontSize: '1.38rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
-              Validar Código & Criar Senha
+              {isResetMode ? 'Redefinir Senha de Acesso' : 'Ativar Conta & Criar Senha'}
             </h2>
 
-            <div style={{
-              fontSize: '0.78rem',
-              color: '#8096A8',
-              lineHeight: 1.4,
-              background: 'rgba(255,255,255,0.03)',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              border: '1px solid rgba(255,255,255,0.08)',
-              marginTop: '8px',
-            }}>
-              <div>Enviamos o código de segurança para:</div>
-              <strong style={{ color: '#14A9D7', display: 'block', margin: '3px 0' }}>{activationEmail}</strong>
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setAuthMode('first_access_email');
-                }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#8096A8',
-                  fontSize: '0.7rem',
-                  textDecoration: 'underline',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                Alterar e-mail informado
-              </button>
-            </div>
+            {isTokenFromUrl ? (
+              <div style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                color: '#10B981',
+                fontSize: '0.78rem',
+                marginTop: '10px',
+                lineHeight: 1.4,
+                textAlign: 'left',
+              }}>
+                <strong style={{ display: 'block', marginBottom: '2px' }}>✅ Link de acesso validado!</strong>
+                <span>Você está configurando o acesso de: <strong>{activationEmail}</strong>. Digite sua nova senha abaixo.</span>
+              </div>
+            ) : (
+              <div style={{
+                fontSize: '0.78rem',
+                color: '#8096A8',
+                lineHeight: 1.4,
+                background: 'rgba(255,255,255,0.03)',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                marginTop: '8px',
+              }}>
+                <div>Enviamos o código de segurança para:</div>
+                <strong style={{ color: '#14A9D7', display: 'block', margin: '3px 0' }}>{activationEmail}</strong>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setAuthMode('first_access_email');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#8096A8',
+                    fontSize: '0.7rem',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  Alterar e-mail informado
+                </button>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -753,63 +786,65 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           )}
 
           <form onSubmit={handleInitiateAccess} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* 6 OTP boxes */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
-                Digite o Código de 6 Dígitos *
-              </label>
+            {/* 6 OTP boxes (apenas exibidas se não veio pré-validado por link) */}
+            {!isTokenFromUrl && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
+                  Digite o Código de 6 Dígitos *
+                </label>
 
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
-                {otpDigits.map((digit, index) => (
-                  <input
-                    key={index}
-                    ref={(el) => { inputRefs.current[index] = el; }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={handlePaste}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
+                  {otpDigits.map((digit, index) => (
+                    <input
+                      key={index}
+                      ref={(el) => { inputRefs.current[index] = el; }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleDigitChange(index, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(index, e)}
+                      onPaste={handlePaste}
+                      style={{
+                        width: '44px',
+                        height: '48px',
+                        textAlign: 'center',
+                        fontSize: '1.25rem',
+                        fontWeight: 800,
+                        color: '#14A9D7',
+                        background: '#080C14',
+                        border: digit ? '1.5px solid #14A9D7' : '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: '10px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.15s ease',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '0.72rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={countdown > 0 || isResending}
                     style={{
-                      width: '44px',
-                      height: '48px',
-                      textAlign: 'center',
-                      fontSize: '1.25rem',
-                      fontWeight: 800,
-                      color: '#14A9D7',
-                      background: '#080C14',
-                      border: digit ? '1.5px solid #14A9D7' : '1px solid rgba(255, 255, 255, 0.15)',
-                      borderRadius: '10px',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'all 0.15s ease',
+                      background: 'transparent',
+                      border: 'none',
+                      color: countdown > 0 ? '#4E5B6E' : '#14A9D7',
+                      fontWeight: countdown > 0 ? 500 : 700,
+                      cursor: countdown > 0 ? 'default' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
                     }}
-                  />
-                ))}
+                  >
+                    <RefreshCw size={11} />
+                    <span>{countdown > 0 ? `Reenviar código em ${countdown}s` : 'Reenviar código agora'}</span>
+                  </button>
+                </div>
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '0.72rem' }}>
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={countdown > 0 || isResending}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: countdown > 0 ? '#4E5B6E' : '#14A9D7',
-                    fontWeight: countdown > 0 ? 500 : 700,
-                    cursor: countdown > 0 ? 'default' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <RefreshCw size={11} />
-                  <span>{countdown > 0 ? `Reenviar código em ${countdown}s` : 'Reenviar código agora'}</span>
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* Password Creation */}
             <div>

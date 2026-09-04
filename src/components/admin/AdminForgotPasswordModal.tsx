@@ -630,6 +630,20 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
                   <span>{countdown > 0 ? `Reenviar em ${countdown}s` : 'Reenviar código'}</span>
                 </button>
               </div>
+
+              <div style={{
+                background: 'rgba(20, 169, 215, 0.08)',
+                border: '1px solid rgba(20, 169, 215, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '0.72rem',
+                color: '#94a3b8',
+                marginTop: '12px',
+                textAlign: 'center',
+                lineHeight: 1.4,
+              }}>
+                💡 Se não encontrar o e-mail na caixa de entrada ou spam, solicite ao <strong>Administrador da sua unidade</strong> o <strong>Link Direto de Redefinição</strong> gerado no Painel de Colaboradores.
+              </div>
             </div>
 
             <button

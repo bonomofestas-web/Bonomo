@@ -10,6 +10,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { AdminCollaboratorModal } from './AdminCollaboratorModal';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import type { Collaborator } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
@@ -61,9 +62,45 @@ export const AdminCollaboratorsView: React.FC = () => {
     );
   }, [tasks, collabToDelete]);
 
-  const handleCopyActivationLink = (email: string) => {
-    const activationUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}`;
+  const isPendingFirstAccess = (c: Collaborator): boolean => {
+    if (c.role === 'master' || c.role === 'dev') return false;
+    return Boolean(c.isFirstAccess);
+  };
+
+  const handleCopyActivationLink = async (email: string) => {
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('password_reset_codes').insert({
+          email: email.toLowerCase().trim(),
+          code: token,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          used: false,
+        });
+      } catch {}
+    }
+
+    const activationUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}&token=${token}`;
     navigator.clipboard.writeText(activationUrl);
+    setCopiedEmail(email);
+    setTimeout(() => setCopiedEmail(null), 2500);
+  };
+
+  const handleCopyResetPasswordLink = async (email: string) => {
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('password_reset_codes').insert({
+          email: email.toLowerCase().trim(),
+          code: token,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          used: false,
+        });
+      } catch {}
+    }
+
+    const resetUrl = `${window.location.origin}/?admin=true&activate=${encodeURIComponent(email)}&token=${token}&mode=reset`;
+    navigator.clipboard.writeText(resetUrl);
     setCopiedEmail(email);
     setTimeout(() => setCopiedEmail(null), 2500);
   };
@@ -436,13 +473,13 @@ export const AdminCollaboratorsView: React.FC = () => {
                 borderRadius: '10px',
                 background: !collab.active 
                   ? 'rgba(239, 68, 68, 0.08)'
-                  : (collab.isFirstAccess || !collab.activatedAt)
+                  : isPendingFirstAccess(collab)
                     ? 'rgba(245, 158, 11, 0.1)'
                     : 'rgba(16, 185, 129, 0.08)',
                 border: `1px solid ${
                   !collab.active 
                     ? 'rgba(239, 68, 68, 0.25)' 
-                    : (collab.isFirstAccess || !collab.activatedAt) 
+                    : isPendingFirstAccess(collab) 
                       ? 'rgba(245, 158, 11, 0.35)' 
                       : 'rgba(16, 185, 129, 0.25)'
                 }`,
@@ -454,7 +491,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                       <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444' }} />
                       <span style={{ color: '#EF4444', fontWeight: 700 }}>Acesso Desativado</span>
                     </>
-                  ) : (collab.isFirstAccess || !collab.activatedAt) ? (
+                  ) : isPendingFirstAccess(collab) ? (
                     <>
                       <Clock size={13} color="#F59E0B" />
                       <span style={{ color: '#F59E0B', fontWeight: 700 }}>Aguardando 1º Acesso</span>
@@ -469,11 +506,11 @@ export const AdminCollaboratorsView: React.FC = () => {
                   )}
                 </div>
 
-                {collab.active && (collab.isFirstAccess || !collab.activatedAt) && (
+                {collab.active && isPendingFirstAccess(collab) && (
                   <button
                     type="button"
                     onClick={() => handleCopyActivationLink(collab.email)}
-                    title="Copiar Link de 1º Acesso para enviar ao colaborador"
+                    title="Copiar Link com Token de 1º Acesso para enviar ao colaborador no WhatsApp"
                     style={{
                       background: 'rgba(245, 158, 11, 0.15)',
                       border: '1px solid rgba(245, 158, 11, 0.35)',
@@ -489,7 +526,31 @@ export const AdminCollaboratorsView: React.FC = () => {
                     }}
                   >
                     {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
-                    <span>{copiedEmail === collab.email ? 'Copiado!' : 'Copiar Link'}</span>
+                    <span>{copiedEmail === collab.email ? 'Link Copiado!' : 'Copiar Link 1º Acesso'}</span>
+                  </button>
+                )}
+
+                {collab.active && !isPendingFirstAccess(collab) && collab.role !== 'master' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyResetPasswordLink(collab.email)}
+                    title="Copiar Link de Redefinição de Senha para enviar ao colaborador no WhatsApp"
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.12)',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      color: 'var(--adm-accent, #6366f1)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedEmail === collab.email ? 'Link Copiado!' : 'Link Senha'}</span>
                   </button>
                 )}
               </div>

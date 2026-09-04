@@ -544,21 +544,7 @@ export const debutanteService = {
           } catch {}
         }
 
-        // Remove convidados
-        try {
-          await supabase.from('guests').delete().eq('debutante_id', targetId);
-        } catch {}
-
-        // Remove compromissos e tarefas futuras
-        try {
-          await supabase.from('appointments').delete().eq('debutante_id', targetId);
-        } catch {}
-
-        try {
-          await supabase.from('admin_tasks').delete().eq('debutante_id', targetId);
-        } catch {}
-
-        // Exclui a debutante do banco
+        // Exclui a debutante do banco IMEDIATAMENTE para que queries concorrentes nunca a retornem
         const isTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
         const { error } = isTargetUuid
           ? await supabase.from('debutantes').delete().eq('id', targetId)
@@ -568,6 +554,17 @@ export const debutanteService = {
           console.warn('Tentando deleção alternativa por slug/id:', error);
           await supabase.from('debutantes').delete().or(`id.eq.${targetId},slug.eq.${rawId}`);
         }
+
+        // Limpeza de tabelas secundárias
+        try {
+          await supabase.from('guests').delete().eq('debutante_id', targetId);
+        } catch {}
+        try {
+          await supabase.from('appointments').delete().eq('debutante_id', targetId);
+        } catch {}
+        try {
+          await supabase.from('admin_tasks').delete().eq('debutante_id', targetId);
+        } catch {}
       } catch (err) {
         console.error('Falha na deleção direta Supabase:', err);
       }
