@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface AdminLoadingSplashProps {
   onComplete?: () => void;
@@ -17,8 +17,23 @@ export const AdminLoadingSplash: React.FC<AdminLoadingSplashProps> = ({
   isReady = false,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [progress, setProgress] = useState(15);
+  const [progress, setProgress] = useState(20);
   const [isFadingOut, setIsFadingOut] = useState(false);
+  const completedRef = useRef(false);
+
+  const triggerComplete = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    setProgress(100);
+    setCurrentStepIndex(LOADING_STEPS.length - 1);
+    
+    setTimeout(() => {
+      setIsFadingOut(true);
+      setTimeout(() => {
+        if (onComplete) onComplete();
+      }, 300);
+    }, 250);
+  }, [onComplete]);
 
   useEffect(() => {
     // Stepped text animation
@@ -29,39 +44,36 @@ export const AdminLoadingSplash: React.FC<AdminLoadingSplashProps> = ({
         }
         return prev;
       });
-    }, 400);
+    }, 350);
 
     // Progressive loading bar
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
-        if (prev < 85) {
-          return prev + Math.floor(Math.random() * 14) + 6;
+        if (prev < 88) {
+          return prev + Math.floor(Math.random() * 12) + 6;
         }
         return prev;
       });
-    }, 200);
+    }, 150);
+
+    // Safety timeout: Maximum 1.6s guarantee so it NEVER hangs
+    const safetyTimer = setTimeout(() => {
+      triggerComplete();
+    }, 1600);
 
     return () => {
       clearInterval(textInterval);
       clearInterval(progressInterval);
+      clearTimeout(safetyTimer);
     };
-  }, []);
+  }, [triggerComplete]);
 
-  // When backend sync is ready (or after minimum animation time), complete the bar and trigger onComplete
+  // When backend sync is ready, complete immediately
   useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout>;
     if (isReady) {
-      setProgress(100);
-      setCurrentStepIndex(LOADING_STEPS.length - 1);
-      timeout = setTimeout(() => {
-        setIsFadingOut(true);
-        setTimeout(() => {
-          if (onComplete) onComplete();
-        }, 300);
-      }, 350);
+      triggerComplete();
     }
-    return () => clearTimeout(timeout);
-  }, [isReady, onComplete]);
+  }, [isReady, triggerComplete]);
 
   return (
     <div

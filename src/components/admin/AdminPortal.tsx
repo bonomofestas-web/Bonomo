@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
@@ -28,9 +28,10 @@ import { AdminDevSupportView } from './AdminDevSupportView';
 import { AdminAnnouncementModal } from './AdminAnnouncementModal';
 import { AdminSupportWidget } from './AdminSupportWidget';
 import { AdminLoadingSplash } from './AdminLoadingSplash';
+import { AdminErrorBoundary } from './AdminErrorBoundary';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown } from 'lucide-react';
-import type { FeatureFlagId } from '../../types/admin';
+import type { FeatureFlagId, Venue, DebutanteAccount, Lead, Collaborator, AdminTask, SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
@@ -230,35 +231,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   }, [isInitialSyncComplete, activeTab, currentUser?.role, getFeatureStatus, getFirstAvailableTab]);
 
-  // If not authenticated, show login view
-  if (!currentUser) {
-    return <AdminLoginView />;
-  }
-
-  // Audio 2 & Novo Áudio: Tela de carregamento horizontal ultra clean sem caixa
-  if (!isSplashDismissed && currentUser.role !== 'dev') {
-    return (
-      <AdminLoadingSplash
-        isReady={isInitialSyncComplete}
-        onComplete={() => {
-          // Garante que a primeira aba visível seja uma aba válida antes de liberar a interface
-          const flag = TAB_FEATURE_FLAG[activeTab];
-          if (flag && getFeatureStatus(flag) === 'disabled') {
-            const fallback = getFirstAvailableTab();
-            setActiveTab(fallback);
-            try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
-          }
-          setIsSplashDismissed(true);
-        }}
-      />
-    );
-  }
-
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
 
   // Check for unread announcement directed at this user (Audio 6 & 7 + Audio 2 roles)
-  const isUserTargetedByAnnouncement = (a: import('../../types/admin').SystemAnnouncement) => {
+  const isUserTargetedByAnnouncement = useCallback((a: import('../../types/admin').SystemAnnouncement) => {
     if (!currentUser) return false;
     if (currentUser.role === 'dev') return true;
     if (a.targetRoles && a.targetRoles.length > 0) {
@@ -267,7 +244,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (a.targetAudience === 'all') return true;
     if (a.targetAudience === 'masters' && currentUser.role === 'master') return true;
     return false;
-  };
+  }, [currentUser]);
 
   const unreadAnnouncement = React.useMemo(() => {
     if (!currentUser) return null;
@@ -276,21 +253,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       const alreadyRead = a.readReceipts && a.readReceipts.some(r => r.userId === currentUser.id);
       return !alreadyRead;
     }) || null;
-  }, [announcements, currentUser]);
+  }, [announcements, currentUser, isUserTargetedByAnnouncement]);
 
   // Notifications calculation
-  const todayStr = new Date().toISOString().split('T')[0];
-  const dueTodayTasks = tasks.filter(t => t.status !== 'completed' && t.dueDate === todayStr);
-  const newUnassignedLeads = leads.filter(l => l.stage === 'new_lead');
-  const userAnnouncements = announcements.filter(isUserTargetedByAnnouncement);
+  const todayStr = useMemo<string>(() => new Date().toISOString().split('T')[0], []);
+  const dueTodayTasks = useMemo<AdminTask[]>(() => tasks.filter((t: AdminTask) => t.status !== 'completed' && t.dueDate === todayStr), [tasks, todayStr]);
+  const newUnassignedLeads = useMemo<Lead[]>(() => leads.filter((l: Lead) => l.stage === 'new_lead'), [leads]);
+  const userAnnouncements = useMemo<SystemAnnouncement[]>(() => announcements.filter(isUserTargetedByAnnouncement), [announcements, isUserTargetedByAnnouncement]);
   const totalNotificationsCount = dueTodayTasks.length + newUnassignedLeads.length + (unreadAnnouncement ? 1 : 0);
 
   // Global search filtering
   const cleanSearch = globalSearch.trim().toLowerCase();
-  const matchedVenues = cleanSearch ? venues.filter(v => v.name.toLowerCase().includes(cleanSearch) || v.address.toLowerCase().includes(cleanSearch)) : [];
-  const matchedDebutantes = cleanSearch ? debutantes.filter(d => d.name.toLowerCase().includes(cleanSearch) || d.phone.includes(cleanSearch)) : [];
-  const matchedLeads = cleanSearch ? leads.filter(l => l.name.toLowerCase().includes(cleanSearch) || l.phone.includes(cleanSearch) || l.debutanteName.toLowerCase().includes(cleanSearch)) : [];
-  const matchedCollaborators = cleanSearch ? collaborators.filter(c => c.name.toLowerCase().includes(cleanSearch) || c.email.toLowerCase().includes(cleanSearch) || c.role.toLowerCase().includes(cleanSearch)) : [];
+  const matchedVenues = useMemo<Venue[]>(() => cleanSearch ? venues.filter((v: Venue) => (v.name && v.name.toLowerCase().includes(cleanSearch)) || (v.address && v.address.toLowerCase().includes(cleanSearch))) : [], [venues, cleanSearch]);
+  const matchedDebutantes = useMemo<DebutanteAccount[]>(() => cleanSearch ? debutantes.filter((d: DebutanteAccount) => (d.name && d.name.toLowerCase().includes(cleanSearch)) || (d.phone && d.phone.includes(cleanSearch))) : [], [debutantes, cleanSearch]);
+  const matchedLeads = useMemo<Lead[]>(() => cleanSearch ? leads.filter((l: Lead) => (l.name && l.name.toLowerCase().includes(cleanSearch)) || (l.phone && l.phone.includes(cleanSearch)) || (l.debutanteName && l.debutanteName.toLowerCase().includes(cleanSearch))) : [], [leads, cleanSearch]);
+  const matchedCollaborators = useMemo<Collaborator[]>(() => cleanSearch ? collaborators.filter((c: Collaborator) => (c.name && c.name.toLowerCase().includes(cleanSearch)) || (c.email && c.email.toLowerCase().includes(cleanSearch)) || (c.role && c.role.toLowerCase().includes(cleanSearch))) : [], [collaborators, cleanSearch]);
   const totalSearchMatches = matchedVenues.length + matchedDebutantes.length + matchedLeads.length + matchedCollaborators.length;
 
   const handleOpenLeadFromTask = (leadId: string) => {
@@ -298,6 +275,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setActiveFunnelId('indicacao');
     setActiveTab('crm');
   };
+
+  // If not authenticated, show login view
+  if (!currentUser) {
+    return <AdminLoginView />;
+  }
 
   const renderContent = () => {
     // If collaborator has first access pending, render the profile completion onboarding workspace
@@ -462,6 +444,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       fontFamily: "'Poppins', sans-serif",
       position: 'relative',
     }}>
+      {/* Tela de Sincronização Inicial F5 System (Overlay Seguro que nunca trava nem quebra hooks) */}
+      {!isSplashDismissed && currentUser.role !== 'dev' && (
+        <AdminLoadingSplash
+          isReady={isInitialSyncComplete}
+          onComplete={() => {
+            const flag = TAB_FEATURE_FLAG[activeTab];
+            if (flag && getFeatureStatus(flag) === 'disabled') {
+              const fallback = getFirstAvailableTab();
+              setActiveTab(fallback);
+              try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+            }
+            setIsSplashDismissed(true);
+          }}
+        />
+      )}
       {/* Pop-up de Comunicado Geral no Primeiro Acesso (Audio 6 & 7) */}
       {(unreadAnnouncement || selectedAnnouncementDetail) && (
         <AdminAnnouncementModal
@@ -1159,7 +1156,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           display: 'flex',
           flexDirection: 'column',
         }}>
-          {renderContent()}
+          <AdminErrorBoundary fallbackTab="home" onResetTab={() => setActiveTab('home')}>
+            {renderContent()}
+          </AdminErrorBoundary>
         </div>
       </main>
 
