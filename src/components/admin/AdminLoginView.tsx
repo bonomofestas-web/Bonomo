@@ -47,6 +47,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
   const [isTokenFromUrl, setIsTokenFromUrl] = useState<boolean>(false);
+  const [isDirectRecoverySession, setIsDirectRecoverySession] = useState<boolean>(false);
   const [isResetMode, setIsResetMode] = useState<boolean>(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -65,10 +66,48 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     return () => clearInterval(timer);
   }, [authMode, countdown]);
 
-  // Detecção de link direto de ativação (?admin=true&activate=email&token=123456)
+  // Detecção de link direto de ativação e recuperação Supabase Auth
   useEffect(() => {
+    // 1. Escuta evento PASSWORD_RECOVERY do Supabase Auth
+    const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsDirectRecoverySession(true);
+        setAuthMode('first_access_code');
+        if (session?.user?.email) {
+          const clean = session.user.email.toLowerCase().trim();
+          setActivationEmail(clean);
+          const found = collaborators.find(c => c.email.toLowerCase() === clean);
+          if (found) {
+            setMatchedCollab(found);
+            setIsResetMode(!found.isFirstAccess);
+          }
+        }
+      }
+    });
+
+    // 2. Checagem de parâmetros de URL e Hash (Supabase Auth Implicit / PKCE)
     try {
-      const urlParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+      const search = window.location.search;
+      const urlParams = new URLSearchParams(search);
+      const isRecovery = hash.includes('type=recovery') || search.includes('type=recovery') || hash.includes('type=invite') || search.includes('type=invite');
+
+      if (isRecovery) {
+        setIsDirectRecoverySession(true);
+        setAuthMode('first_access_code');
+        supabase.auth.getUser().then(({ data: userData }) => {
+          if (userData?.user?.email) {
+            const clean = userData.user.email.toLowerCase().trim();
+            setActivationEmail(clean);
+            const found = collaborators.find(c => c.email.toLowerCase() === clean);
+            if (found) {
+              setMatchedCollab(found);
+              setIsResetMode(!found.isFirstAccess);
+            }
+          }
+        });
+      }
+
       const activateEmail = urlParams.get('activate');
       const token = urlParams.get('token');
       const mode = urlParams.get('mode');
@@ -93,6 +132,10 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         if (found) setMatchedCollab(found);
       }
     } catch {}
+
+    return () => {
+      authSub?.subscription?.unsubscribe();
+    };
   }, [collaborators]);
 
   // Password strength checklist
@@ -288,46 +331,50 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     e.preventDefault();
     setError(null);
 
-    const fullCode = otpDigits.join('');
-    if (fullCode.length !== 6) {
-      setError('Por favor, preencha os 6 dígitos completos do código de acesso.');
-      return;
-    }
+    const isLinkVerified = isDirectRecoverySession || isTokenFromUrl;
 
-    let isCodeValid = fullCode === generatedOtp;
+    if (!isLinkVerified) {
+      const fullCode = otpDigits.join('');
+      if (fullCode.length !== 6) {
+        setError('Por favor, preencha os 6 dígitos completos do código de acesso.');
+        return;
+      }
 
-    if (!isCodeValid && isSupabaseConfigured) {
-      const cleanEmail = activationEmail.trim().toLowerCase();
-      try {
-        const { data: dbCodes } = await supabase
-          .from('password_reset_codes')
-          .select('id')
-          .eq('email', cleanEmail)
-          .eq('code', fullCode)
-          .eq('used', false)
-          .gt('expires_at', new Date().toISOString())
-          .limit(1);
+      let isCodeValid = fullCode === generatedOtp;
 
-        if (dbCodes && dbCodes.length > 0) {
-          isCodeValid = true;
-          await supabase.from('password_reset_codes').update({ used: true }).eq('id', dbCodes[0].id);
-        } else {
-          // Tenta validar token nativo do Supabase Auth
-          const { data: verifyData } = await supabase.auth.verifyOtp({
-            email: cleanEmail,
-            token: fullCode,
-            type: 'recovery',
-          });
-          if (verifyData?.session) {
+      if (!isCodeValid && isSupabaseConfigured) {
+        const cleanEmail = activationEmail.trim().toLowerCase();
+        try {
+          const { data: dbCodes } = await supabase
+            .from('password_reset_codes')
+            .select('id')
+            .eq('email', cleanEmail)
+            .eq('code', fullCode)
+            .eq('used', false)
+            .gt('expires_at', new Date().toISOString())
+            .limit(1);
+
+          if (dbCodes && dbCodes.length > 0) {
             isCodeValid = true;
+            await supabase.from('password_reset_codes').update({ used: true }).eq('id', dbCodes[0].id);
+          } else {
+            // Tenta validar token nativo do Supabase Auth
+            const { data: verifyData } = await supabase.auth.verifyOtp({
+              email: cleanEmail,
+              token: fullCode,
+              type: 'recovery',
+            });
+            if (verifyData?.session) {
+              isCodeValid = true;
+            }
           }
-        }
-      } catch {}
-    }
+        } catch {}
+      }
 
-    if (!isCodeValid) {
-      setError('Código de acesso incorreto ou expirado. Verifique os 6 dígitos recebidos no seu e-mail corporativo ou solicite um novo reenvio.');
-      return;
+      if (!isCodeValid) {
+        setError('Código de acesso incorreto ou expirado. Verifique os 6 dígitos recebidos no seu e-mail corporativo ou solicite um novo reenvio.');
+        return;
+      }
     }
 
     if (strengthScore < 50) {
@@ -348,10 +395,25 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
       const nowIso = new Date().toISOString();
 
+      // 1. Se estiver sob sessão de recuperação do Supabase Auth, atualiza a senha na nuvem
+      if (isDirectRecoverySession && isSupabaseConfigured) {
+        try {
+          const { error: authUpdateErr } = await supabase.auth.updateUser({ password: newPassword });
+          if (authUpdateErr) {
+            console.warn('[Supabase Auth updateUser]:', authUpdateErr.message);
+          }
+        } catch (authErr) {
+          console.warn('[Supabase Auth updateUser erro]:', authErr);
+        }
+      }
+
+      // 2. Atualiza colaborador no banco de dados e localmente
+      const shouldKeepFirstAccess = target ? target.isFirstAccess : !isResetMode;
+
       if (target) {
         updateCollaborator(target.id, {
           password: newPassword,
-          isFirstAccess: false,
+          isFirstAccess: shouldKeepFirstAccess,
           activatedAt: nowIso,
         });
       }
@@ -361,13 +423,18 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           .from('collaborators')
           .update({
             password: newPassword,
-            is_first_access: false,
+            is_first_access: shouldKeepFirstAccess,
             activated_at: nowIso,
           })
           .eq('email', cleanEmail);
       }
 
-      // Log in with new credentials!
+      // Limpa os fragmentos de hash da URL
+      try {
+        window.history.replaceState(null, '', window.location.pathname + '?admin=true');
+      } catch {}
+
+      // 3. Log in with new credentials!
       const loginSuccess = await login(cleanEmail, newPassword);
 
       if (!loginSuccess) {
@@ -716,20 +783,22 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               {isResetMode ? 'Redefinir Senha de Acesso' : 'Ativar Conta & Criar Senha'}
             </h2>
 
-            {isTokenFromUrl ? (
+            {(isDirectRecoverySession || isTokenFromUrl) ? (
               <div style={{
                 background: 'rgba(16, 185, 129, 0.12)',
                 border: '1px solid rgba(16, 185, 129, 0.35)',
                 borderRadius: '10px',
-                padding: '10px 14px',
+                padding: '12px 14px',
                 color: '#10B981',
-                fontSize: '0.78rem',
+                fontSize: '0.8rem',
                 marginTop: '10px',
-                lineHeight: 1.4,
+                lineHeight: 1.45,
                 textAlign: 'left',
               }}>
-                <strong style={{ display: 'block', marginBottom: '2px' }}>✅ Link de acesso validado!</strong>
-                <span>Você está configurando o acesso de: <strong>{activationEmail}</strong>. Digite sua nova senha abaixo.</span>
+                <strong style={{ display: 'block', marginBottom: '3px', fontSize: '0.86rem' }}>✅ Link de convite autenticado!</strong>
+                <span>
+                  Olá{matchedCollab?.name ? `, ${matchedCollab.name}` : ''}! Crie sua senha de acesso abaixo para ativar sua conta no F5 System (<strong>{activationEmail}</strong>).
+                </span>
               </div>
             ) : (
               <div style={{
@@ -787,7 +856,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
           <form onSubmit={handleInitiateAccess} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* 6 OTP boxes (apenas exibidas se não veio pré-validado por link) */}
-            {!isTokenFromUrl && (
+            {!isDirectRecoverySession && !isTokenFromUrl && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
                   Digite o Código de 6 Dígitos *
@@ -961,7 +1030,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             {/* Initiate Access Button */}
             <button
               type="submit"
-              disabled={loading || otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword}
+              disabled={loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword}
               style={{
                 background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
                 color: '#080C14',
@@ -970,8 +1039,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 padding: '13px',
                 fontSize: '0.88rem',
                 fontWeight: 800,
-                cursor: (loading || otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
-                opacity: (otpDigits.join('').length !== 6 || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
+                cursor: (loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                opacity: ((!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -981,7 +1050,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 fontFamily: "'Poppins', sans-serif",
               }}
             >
-              <span>{loading ? 'INICIANDO ACESSO...' : 'Iniciar acesso'}</span>
+              <span>
+                {loading ? 'SALVANDO SENHA...' : (isDirectRecoverySession || isTokenFromUrl) ? 'Salvar Senha e Entrar' : 'Iniciar acesso'}
+              </span>
               <ArrowRight size={16} />
             </button>
 

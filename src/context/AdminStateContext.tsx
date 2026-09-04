@@ -399,6 +399,7 @@ export interface AdminContextType {
   addMasterAccount: (name: string, email: string) => string;
   toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
   isInitialSyncComplete: boolean;
+  sendCollaboratorInvite: (email: string, name?: string, role?: string) => Promise<{ success: boolean; message: string }>;
   forceLogout: (reason?: string) => void;
 }
 
@@ -941,28 +942,43 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     loadLiveSupabaseData();
 
-    // Check and restore Supabase Auth session if active
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (isMounted && session?.user) {
-        const u = session.user;
-        setCurrentUser(prev => {
-          if (prev) return prev;
-          return {
-            id: u.id,
-            name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
-            email: u.email || '',
-            role: (u.user_metadata?.role as any) || 'master',
-            avatarUrl: u.user_metadata?.avatar_url,
-            venueIds: [],
-          };
-        });
-      }
-    });
+    // Checa se a navegação atual é um retorno de link de recuperação/convite do Supabase
+    const isRecoveryNavigation = typeof window !== 'undefined' && (
+      window.location.hash.includes('type=recovery') || 
+      window.location.search.includes('type=recovery') ||
+      window.location.hash.includes('type=invite') ||
+      window.location.search.includes('type=invite')
+    );
+
+    // Check and restore Supabase Auth session if active (apenas se NÃO for link de recuperação/convite)
+    if (!isRecoveryNavigation) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (isMounted && session?.user) {
+          const u = session.user;
+          setCurrentUser(prev => {
+            if (prev) return prev;
+            return {
+              id: u.id,
+              name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
+              email: u.email || '',
+              role: (u.user_metadata?.role as any) || 'master',
+              avatarUrl: u.user_metadata?.avatar_url,
+              venueIds: [],
+            };
+          });
+        }
+      });
+    }
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         if (isMounted) setCurrentUser(null);
       } else if (session?.user && isMounted) {
+        if (event === 'PASSWORD_RECOVERY' || isRecoveryNavigation || (typeof window !== 'undefined' && (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')))) {
+          console.log('[Auth] Evento de recuperação/convite detectado no onAuthStateChange. Mantendo tela de nova senha ativa.');
+          return;
+        }
+
         const u = session.user;
         setCurrentUser({
           id: u.id,
@@ -1620,6 +1636,38 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── Collaborators CRUD ──────────────────────────────────────────────────────
 
+  const sendCollaboratorInvite = async (
+    email: string,
+    name?: string,
+    role?: string
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const response = await fetch('/api/invite-collaborator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          name,
+          role,
+          invitedByName: currentUser?.name || 'Administração Bonomo Festas',
+          redirectTo: `${origin}/?admin=true&type=recovery`,
+        }),
+      });
+      const data = await response.json();
+      return {
+        success: data?.success ?? true,
+        message: data?.message || 'Convite enviado com sucesso!',
+      };
+    } catch (err: any) {
+      console.warn('[Auth] Erro ao disparar convite:', err);
+      return {
+        success: false,
+        message: err?.message || 'Erro ao enviar convite.',
+      };
+    }
+  };
+
   const addCollaborator = (data: Omit<Collaborator, 'id' | 'createdAt'>): string => {
     const id = generateUuid();
     const newCollab: Collaborator = {
@@ -1627,6 +1675,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       id,
       masterId: data.masterId || scopedMasterId || currentUser?.id,
       createdAt: new Date().toISOString().split('T')[0],
+      isFirstAccess: data.isFirstAccess !== undefined ? data.isFirstAccess : true,
     };
     setCollaborators(prev => {
       const updated = [newCollab, ...prev];
@@ -1634,6 +1683,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
     collaboratorService.upsert(newCollab);
+
+    // Disparo automático e imediato do e-mail de convite oficial
+    if (newCollab.email) {
+      sendCollaboratorInvite(newCollab.email, newCollab.name, newCollab.role).then(res => {
+        console.log('[Auth] Convite automático enviado:', res);
+      }).catch(err => {
+        console.warn('[Auth] Falha no envio automático do convite:', err);
+      });
+    }
+
     return id;
   };
 
@@ -4091,6 +4150,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addMasterAccount,
       toggleMasterAccountStatus,
       isInitialSyncComplete,
+      sendCollaboratorInvite,
       forceLogout: (reason?: string) => {
         logout();
         if (reason) alert(reason);

@@ -23,12 +23,15 @@ export const AdminCollaboratorsView: React.FC = () => {
     currentUser,
     leads,
     tasks,
+    sendCollaboratorInvite,
   } = useAdminState();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
   const [collabToDelete, setCollabToDelete] = useState<Collaborator | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+  const [sendingInviteEmail, setSendingInviteEmail] = useState<string | null>(null);
+  const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
 
   // Estados do Modal de Revinculação / Transferência
   const [reassignMode, setReassignMode] = useState<'transfer' | 'open'>('transfer');
@@ -103,6 +106,19 @@ export const AdminCollaboratorsView: React.FC = () => {
     navigator.clipboard.writeText(resetUrl);
     setCopiedEmail(email);
     setTimeout(() => setCopiedEmail(null), 2500);
+  };
+
+  const handleSendInviteEmail = async (collab: Collaborator) => {
+    setSendingInviteEmail(collab.email);
+    try {
+      await sendCollaboratorInvite(collab.email, collab.name, collab.role);
+      setInviteSentEmail(collab.email);
+      setTimeout(() => setInviteSentEmail(null), 3000);
+    } catch (e) {
+      console.warn('Erro ao reenviar convite:', e);
+    } finally {
+      setSendingInviteEmail(null);
+    }
   };
 
   const handleOpenCreate = () => {
@@ -507,51 +523,119 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
 
                 {collab.active && isPendingFirstAccess(collab) && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopyActivationLink(collab.email)}
-                    title="Copiar Link com Token de 1º Acesso para enviar ao colaborador no WhatsApp"
-                    style={{
-                      background: 'rgba(245, 158, 11, 0.15)',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                      color: '#F59E0B',
-                      borderRadius: '6px',
-                      padding: '3px 8px',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
-                    <span>{copiedEmail === collab.email ? 'Link Copiado!' : 'Copiar Link 1º Acesso'}</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSendInviteEmail(collab)}
+                      disabled={sendingInviteEmail === collab.email}
+                      title="Disparar e-mail de convite oficial com identidade visual F5 System"
+                      style={{
+                        background: 'rgba(20, 169, 215, 0.15)',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        color: '#14A9D7',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {inviteSentEmail === collab.email ? (
+                        <>
+                          <Check size={11} color="#10B981" />
+                          <span style={{ color: '#10B981' }}>E-mail Enviado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mail size={11} />
+                          <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'Reenviar Convite'}</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyActivationLink(collab.email)}
+                      title="Copiar Link com Token de 1º Acesso para enviar ao colaborador no WhatsApp"
+                      style={{
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                        color: '#F59E0B',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
+                      <span>{copiedEmail === collab.email ? 'Copiado!' : 'Link WhatsApp'}</span>
+                    </button>
+                  </div>
                 )}
 
                 {collab.active && !isPendingFirstAccess(collab) && collab.role !== 'master' && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopyResetPasswordLink(collab.email)}
-                    title="Copiar Link de Redefinição de Senha para enviar ao colaborador no WhatsApp"
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.12)',
-                      border: '1px solid rgba(99, 102, 241, 0.3)',
-                      color: 'var(--adm-accent, #6366f1)',
-                      borderRadius: '6px',
-                      padding: '3px 8px',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
-                    <span>{copiedEmail === collab.email ? 'Link Copiado!' : 'Link Senha'}</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSendInviteEmail(collab)}
+                      disabled={sendingInviteEmail === collab.email}
+                      title="Disparar e-mail de redefinição de senha para este colaborador"
+                      style={{
+                        background: 'rgba(20, 169, 215, 0.12)',
+                        border: '1px solid rgba(20, 169, 215, 0.3)',
+                        color: '#14A9D7',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {inviteSentEmail === collab.email ? (
+                        <>
+                          <Check size={11} color="#10B981" />
+                          <span style={{ color: '#10B981' }}>Enviado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mail size={11} />
+                          <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'E-mail Senha'}</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyResetPasswordLink(collab.email)}
+                      title="Copiar Link de Redefinição de Senha para enviar ao colaborador no WhatsApp"
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.12)',
+                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                        color: 'var(--adm-accent, #6366f1)',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {copiedEmail === collab.email ? <Check size={11} /> : <Copy size={11} />}
+                      <span>{copiedEmail === collab.email ? 'Copiado!' : 'Link WhatsApp'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
