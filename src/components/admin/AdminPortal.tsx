@@ -27,6 +27,7 @@ import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
 import { AdminDevSupportView } from './AdminDevSupportView';
 import { AdminAnnouncementModal } from './AdminAnnouncementModal';
 import { AdminSupportWidget } from './AdminSupportWidget';
+import { AdminLoadingSplash } from './AdminLoadingSplash';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown } from 'lucide-react';
 import type { FeatureFlagId } from '../../types/admin';
@@ -77,7 +78,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     funnels, 
     getFeatureStatus,
     featureDescriptions,
-    isFlagsLoaded,
     announcements,
     markAnnouncementAsRead,
     supportTickets,
@@ -93,6 +93,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     } catch {}
     return 'home';
   });
+  const [isSplashDismissed, setIsSplashDismissed] = useState(false);
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -234,70 +235,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return <AdminLoginView />;
   }
 
-  // Audio 2: Sincronização inicial pré-portal para evitar qualquer vazamento ou flicker de menus desativados por feature flag
-  if (!isInitialSyncComplete && currentUser.role !== 'dev') {
+  // Audio 2 & Novo Áudio: Tela de carregamento horizontal ultra clean sem caixa
+  if (!isSplashDismissed && currentUser.role !== 'dev') {
     return (
-      <div style={{
-        display: 'flex',
-        height: '100vh',
-        width: '100vw',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0B090E',
-        fontFamily: "'Poppins', sans-serif",
-        color: '#FFFFFF',
-      }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '20px',
-          padding: '40px',
-          borderRadius: '16px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-          maxWidth: '380px',
-          textAlign: 'center',
-        }}>
-          <div style={{ position: 'relative', width: '56px', height: '56px' }}>
-            <img 
-              src="/f5_mark.png" 
-              alt="F5 System" 
-              style={{ 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'contain',
-              }} 
-            />
-          </div>
-          <div>
-            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 600, color: '#F1F5F9' }}>
-              F5 System
-            </h3>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.4 }}>
-              Sincronizando módulos e permissões em tempo real...
-            </p>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '0.74rem',
-            color: '#64748B',
-          }}>
-            <div style={{
-              width: '14px',
-              height: '14px',
-              border: '2px solid rgba(255,255,255,0.15)',
-              borderTopColor: '#3B82F6',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite',
-            }} />
-            <span>Validando configurações de banco</span>
-          </div>
-        </div>
-      </div>
+      <AdminLoadingSplash
+        isReady={isInitialSyncComplete}
+        onComplete={() => {
+          // Garante que a primeira aba visível seja uma aba válida antes de liberar a interface
+          const flag = TAB_FEATURE_FLAG[activeTab];
+          if (flag && getFeatureStatus(flag) === 'disabled') {
+            const fallback = getFirstAvailableTab();
+            setActiveTab(fallback);
+            try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
+          }
+          setIsSplashDismissed(true);
+        }}
+      />
     );
   }
 
@@ -352,9 +305,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       return <AdminFirstAccessProfileView />;
     }
 
-    // Se não há casas de festa cadastradas, a tela mandatória é registrar a 1ª unidade (exceto Dev ou Configurações)
+    // Se não há casas de festa cadastradas, a tela mandatória para Master é registrar a 1ª unidade (exceto Dev ou Configurações)
     const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');
-    if (venues.length === 0 && !isDevSession && activeTab !== 'settings') {
+    if (venues.length === 0 && !isDevSession && activeTab !== 'settings' && currentUser?.role === 'master') {
       return (
         <AdminVenuesView
           onNavigateToFunnel={(funnelId: string) => {
@@ -362,27 +315,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             setActiveTab('crm');
           }}
         />
-      );
-    }
-
-    // Anti-Leak Guard (Audio 2): Impede qualquer vazamento visual durante F5 em abas protegidas
-    if (!isFlagsLoaded && currentUser?.role !== 'dev' && activeTab !== 'home') {
-      return (
-        <div style={{
-          display: 'flex',
-          height: '100%',
-          width: '100%',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#0B090E',
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-            <img src="/f5_mark.png" alt="F5" style={{ width: '40px', height: '40px', opacity: 0.8 }} />
-            <div style={{ fontSize: '0.78rem', color: '#8096A8', fontFamily: "'Poppins', sans-serif" }}>
-              Verificando permissões de acesso...
-            </div>
-          </div>
-        </div>
       );
     }
 
@@ -410,7 +342,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             try { localStorage.setItem('bonomo_admin_active_tab', fallback); } catch {}
           }, 0);
         }
-        return null;
+        // Fallback imediato para evitar tela preta ou nula
+        switch (fallback) {
+          case 'crm':
+            return (
+              <AdminCrmKanbanView
+                initialLeadId={crmOpenLeadId}
+                activeFunnelId={activeFunnelId}
+                onSelectFunnel={(id) => setActiveFunnelId(id)}
+                onLeadOpened={() => setCrmOpenLeadId(undefined)}
+              />
+            );
+          case 'debutantes':
+            return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+          default:
+            return (
+              <AdminHomeView
+                onOpenLead={handleOpenLeadFromTask}
+                onNavigateTab={(tab) => handleSelectTab(tab)}
+              />
+            );
+        }
       }
     }
 
