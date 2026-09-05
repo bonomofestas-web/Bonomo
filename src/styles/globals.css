@@ -249,11 +249,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.admin-portal * {
-  font-family: 'Poppins', sans-serif !important;
+.admin-portal, .admin-portal * {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
-/* Dark Theme Variables (F5 Deep Slate Navy & Vibrant Cyan/Aqua System) */
+/* Dark Theme Variables (Clean Executive Slate & Tech Aqua) */
 .admin-theme-dark {
   --adm-bg-app: #080C14;
   --adm-bg-sidebar: #0B111A;
@@ -262,65 +262,65 @@ body {
   --adm-bg-card-hover: #141F30;
   --adm-bg-input: #0A1018;
   --adm-bg-elevated: #152236;
-  --adm-border: rgba(20, 169, 215, 0.22);
-  --adm-border-hover: rgba(20, 169, 215, 0.5);
+  --adm-border: rgba(255, 255, 255, 0.08);
+  --adm-border-hover: rgba(20, 169, 215, 0.4);
   --adm-text-title: #FFFFFF;
-  --adm-text-body: #D3E0EA;
-  --adm-text-muted: #8096A8;
-  --adm-accent: #14A9D7;
-  --adm-accent-hover: #0E8DB5;
-  --adm-accent-bg: rgba(20, 169, 215, 0.14);
-  --adm-accent-gradient: linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%);
-  --adm-green: #22C55E;
-  --adm-green-bg: rgba(34, 197, 94, 0.14);
+  --adm-text-body: #CBD5E1;
+  --adm-text-muted: #64748B;
+  --adm-accent: #0284C7;
+  --adm-accent-hover: #0369A1;
+  --adm-accent-bg: rgba(2, 132, 199, 0.12);
+  --adm-accent-gradient: #0284C7;
+  --adm-green: #10B981;
+  --adm-green-bg: rgba(16, 185, 129, 0.12);
   --adm-red: #EF4444;
-  --adm-red-bg: rgba(239, 68, 68, 0.14);
-  --adm-cyan: #14A9D7;
-  --adm-cyan-bg: rgba(20, 169, 215, 0.14);
-  --adm-gold: #14A9D7;
-  --adm-gold-bg: rgba(20, 169, 215, 0.14);
+  --adm-red-bg: rgba(239, 68, 68, 0.12);
+  --adm-cyan: #0284C7;
+  --adm-cyan-bg: rgba(2, 132, 199, 0.12);
+  --adm-gold: #D97706;
+  --adm-gold-bg: rgba(217, 119, 6, 0.12);
   --adm-table-stripe: #0A0F17;
-  --adm-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+  --adm-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
-/* Light Theme Variables (Clean Corporate Tech Light) */
+/* Light Theme Variables (Executive Minimalist Clean) */
 .admin-theme-light {
-  --adm-bg-app: #F4F8FA;
+  --adm-bg-app: #F8FAFC;
   --adm-bg-sidebar: #FFFFFF;
   --adm-bg-header: #FFFFFF;
   --adm-bg-card: #FFFFFF;
-  --adm-bg-card-hover: #F8FBFC;
-  --adm-bg-input: #EEF4F7;
-  --adm-bg-elevated: #E1ECF0;
-  --adm-border: #D1E1E8;
-  --adm-border-hover: #97C5D6;
-  --adm-text-title: #0A1E29;
-  --adm-text-body: #2C424E;
-  --adm-text-muted: #647E8C;
-  --adm-accent: #14A9D7;
-  --adm-accent-hover: #0E8DB5;
-  --adm-accent-bg: rgba(20, 169, 215, 0.12);
-  --adm-accent-gradient: linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%);
-  --adm-green: #16A34A;
-  --adm-green-bg: rgba(22, 163, 74, 0.12);
-  --adm-red: #DC2626;
-  --adm-red-bg: rgba(220, 38, 38, 0.12);
-  --adm-cyan: #14A9D7;
-  --adm-cyan-bg: rgba(20, 169, 215, 0.12);
-  --adm-gold: #14A9D7;
-  --adm-gold-bg: rgba(20, 169, 215, 0.12);
-  --adm-table-stripe: #F0F6F9;
-  --adm-shadow: 0 2px 12px rgba(20, 169, 215, 0.08);
+  --adm-bg-card-hover: #F8FAFC;
+  --adm-bg-input: #F1F5F9;
+  --adm-bg-elevated: #E2E8F0;
+  --adm-border: #E2E8F0;
+  --adm-border-hover: #CBD5E1;
+  --adm-text-title: #0F172A;
+  --adm-text-body: #334155;
+  --adm-text-muted: #64748B;
+  --adm-accent: #0284C7;
+  --adm-accent-hover: #0369A1;
+  --adm-accent-bg: rgba(2, 132, 199, 0.08);
+  --adm-accent-gradient: #0284C7;
+  --adm-green: #10B981;
+  --adm-green-bg: rgba(16, 185, 129, 0.08);
+  --adm-red: #EF4444;
+  --adm-red-bg: rgba(239, 68, 68, 0.08);
+  --adm-cyan: #0284C7;
+  --adm-cyan-bg: rgba(2, 132, 199, 0.08);
+  --adm-gold: #D97706;
+  --adm-gold-bg: rgba(217, 119, 6, 0.08);
+  --adm-table-stripe: #F8FAFC;
+  --adm-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 /* Modern SaaS Utility Classes */
 .saas-card {
   background: var(--adm-bg-card);
   border: 1px solid var(--adm-border);
-  border-radius: 18px;
-  padding: 20px;
+  border-radius: 12px;
+  padding: 18px;
   box-shadow: var(--adm-shadow);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.15s ease;
 }
 
 .saas-card:hover {

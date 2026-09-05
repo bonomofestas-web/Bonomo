@@ -20,6 +20,7 @@ export type AdminTabType =
   | 'dashboard' 
   | 'crm' 
   | 'whatsapp'
+  | 'team'
   | 'sources'
   | 'mql'
   | 'debutantes' 
@@ -126,6 +127,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'team', label: 'Equipe', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
   const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
@@ -1090,10 +1092,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       {/* Bottom Actions: User Info Card */}
       <div style={{
         borderTop: '1px solid rgba(212, 175, 55, 0.15)',
-        paddingTop: '12px',
-        marginTop: '12px',
+        paddingTop: '10px',
+        marginTop: '10px',
       }}>
-        {isCollapsed && !isMobileOverlay ? (
+        {isCollapsed ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
             <img
               src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}

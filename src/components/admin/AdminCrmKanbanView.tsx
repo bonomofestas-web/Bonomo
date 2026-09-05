@@ -9,12 +9,12 @@ import {
   Flame, Zap, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
   Compass, ShieldCheck, Star, ShoppingBag, Music, Camera,
-  UserPlus
+  UserPlus, Eye
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminFilterBar, type FilterState } from './AdminFilterBar';
+import type { FilterState } from './AdminFilterBar';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { ImageUploadField } from './ImageUploadField';
@@ -304,12 +304,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
 
   const [filterState, setFilterState] = useState<FilterState>({
-    period: '7d',
+    period: 'all',
     venueId: 'all',
     collaboratorId: 'all',
     debutanteId: 'all',
     sortBy: 'recent',
   });
+  const [leadOwnershipFilter, setLeadOwnershipFilter] = useState<'all' | 'mine'>('all');
   const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   const sortOptions = [
@@ -629,6 +630,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
+  const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
+  const isLeadSpectator = (l: Lead) => {
+    if (isManager) return false;
+    if (isReadOnlyForPosVenda) return true;
+    if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
+      const isAssigned = (l.sdrId && l.sdrId === currentUser.id) ||
+                         (l.closerId && l.closerId === currentUser.id) ||
+                         (l.assignedTo && l.assignedTo === currentUser.name);
+      return !isAssigned;
+    }
+    return false;
+  };
+
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
@@ -637,6 +651,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (l.venueId !== currentFunnel.venueId) return false;
       } else if (activeVenueId) {
         if (l.venueId !== activeVenueId) return false;
+      }
+
+      // Ownership Filter: Meus Leads vs Todos
+      if (leadOwnershipFilter === 'mine') {
+        const isMine = l.sdrId === currentUser?.id || l.closerId === currentUser?.id || l.assignedTo === currentUser?.name;
+        if (!isMine) return false;
       }
 
       // 2. Debutante Filter
@@ -692,7 +712,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       // default: recent
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [leads, currentFunnel, activeVenueId, filterState, search]);
+  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser]);
 
   const renderColumnIcon = (stage: CrmStage, size = 15) => {
     switch (stage) {
@@ -718,6 +738,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       e.preventDefault();
       return;
     }
+    const targetLead = leads.find(l => l.id === leadId);
+    if (targetLead && isLeadSpectator(targetLead)) {
+      e.preventDefault();
+      alert('Modo Espectador: Você tem apenas permissão de visualização neste lead atribuído a outro colaborador.');
+      return;
+    }
     e.dataTransfer.setData('text/plain', leadId);
     setDraggedLeadId(leadId);
   };
@@ -738,6 +764,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
+
+    if (isLeadSpectator(lead)) {
+      alert(`Modo Espectador: Este lead está sob atendimento de ${lead.assignedTo || 'outro SDR'}. Apenas o responsável ou Gerentes/Master podem alterar a etapa.`);
+      setDraggedLeadId(null);
+      return;
+    }
 
     const isPrivileged = currentUser?.role === 'master' || currentUser?.role === 'admin';
     if (currentUser?.role === 'sdr' && lead.sdrId && lead.sdrId !== currentUser.id && !isPrivileged) {
@@ -766,8 +798,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleWhatsApp = (lead: Lead, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isReadOnlyForPosVenda) {
-      alert('A equipe de Pós-Venda opera em modo de visualização neste funil comercial. O contato comercial direto é reservado aos SDRs e Closers.');
+    if (isReadOnlyForPosVenda || isLeadSpectator(lead)) {
+      alert('Modo Espectador: O contato comercial direto é reservado ao responsável designado pelo lead.');
       return;
     }
     const cleanPhone = lead.phone.replace(/\D/g, '');
@@ -2226,116 +2258,248 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        gap: '12px',
+        gap: '10px',
         flexShrink: 0,
         background: 'var(--adm-bg-card)',
         border: '1px solid var(--adm-border)',
         borderRadius: '14px',
         padding: '8px 14px',
+        flexWrap: 'wrap',
       }}>
-        {/* 1. Busca Fixa à Esquerda */}
-        <div style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
-          <Search size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '10px' }} />
-          <input
-            type="text"
-            placeholder="Buscar lead ou telefone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: '100%',
-              background: 'var(--adm-bg-input)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '8px',
-              padding: '7px 12px 7px 36px',
-              color: 'var(--adm-text-title)',
-              fontSize: '0.8rem',
-              outline: 'none',
-              boxSizing: 'border-box',
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          />
-        </div>
+        {/* Left Side: Receding Search Bar + Inline Expanding Filters + Meus Leads Pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+          {/* Busca (Recolhe se filtros estiverem abertos, expande caso contrário) */}
+          <div style={{
+            position: 'relative',
+            width: isFilterBarExpanded ? '180px' : '260px',
+            transition: 'width 0.2s ease',
+            flexShrink: 0,
+          }}>
+            <Search size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '10px' }} />
+            <input
+              type="text"
+              placeholder="Buscar lead ou telefone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '8px',
+                padding: '7px 12px 7px 34px',
+                color: 'var(--adm-text-title)',
+                fontSize: '0.8rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: "'Inter', sans-serif",
+              }}
+            />
+          </div>
 
-        {/* 2. Filtros Expansíveis + Seletor de Modo Minimalista */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Botão de Filtros com Painel Expansível para a Esquerda */}
-          <div style={{ position: 'relative' }}>
+          {/* Botão de Filtros (Expande inline dentro da barra, retraindo a pesquisa) */}
+          <button
+            type="button"
+            onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
+            title="Filtros avançados dentro da barra"
+            style={{
+              background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+              border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+              color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+            }}
+          >
+            <Settings size={14} />
+            <span>Filtros</span>
+            <ChevronDown size={12} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+          </button>
+
+          {/* Filtros Inline Diretos na Barra (Sem Dropdown/Popover Solto) */}
+          {isFilterBarExpanded && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              flexWrap: 'wrap',
+              animation: 'fadeIn 0.15s ease-out',
+            }}>
+              {/* Período */}
+              <select
+                value={filterState.period}
+                onChange={(e) => setFilterState(prev => ({ ...prev, period: e.target.value as any }))}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '8px',
+                  padding: '5px 8px',
+                  fontSize: '0.74rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="all">Todo o Período</option>
+                <option value="today">Hoje</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+                <option value="this_month">Este mês</option>
+              </select>
+
+              {/* Casa de Festas */}
+              {venues.length > 1 && (
+                <select
+                  value={filterState.venueId}
+                  onChange={(e) => setFilterState(prev => ({ ...prev, venueId: e.target.value }))}
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    borderRadius: '8px',
+                    padding: '5px 8px',
+                    fontSize: '0.74rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    maxWidth: '140px',
+                  }}
+                >
+                  <option value="all">Todas as Casas</option>
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Colaborador */}
+              <select
+                value={filterState.collaboratorId}
+                onChange={(e) => setFilterState(prev => ({ ...prev, collaboratorId: e.target.value }))}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '8px',
+                  padding: '5px 8px',
+                  fontSize: '0.74rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  maxWidth: '130px',
+                }}
+              >
+                <option value="all">Todos Colab.</option>
+                {collaborators.filter(c => c.active).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+
+              {/* Ordenação */}
+              <select
+                value={filterState.sortBy}
+                onChange={(e) => setFilterState(prev => ({ ...prev, sortBy: e.target.value as any }))}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '8px',
+                  padding: '5px 8px',
+                  fontSize: '0.74rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                {sortOptions.map(opt => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+
+              {/* Limpar Filtros */}
+              {(filterState.period !== 'all' || filterState.venueId !== 'all' || filterState.collaboratorId !== 'all' || filterState.sortBy !== 'recent') && (
+                <button
+                  type="button"
+                  onClick={() => setFilterState({
+                    period: 'all',
+                    venueId: 'all',
+                    collaboratorId: 'all',
+                    debutanteId: 'all',
+                    sortBy: 'recent',
+                  })}
+                  title="Limpar filtros"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-muted)',
+                    borderRadius: '6px',
+                    padding: '4px 7px',
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                  }}
+                >
+                  <X size={12} />
+                  <span>Limpar</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Toggle Rápido: Todos vs Meus Leads */}
+          <div style={{
+            display: 'inline-flex',
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '8px',
+            padding: '2px',
+            gap: '2px',
+            flexShrink: 0,
+          }}>
             <button
               type="button"
-              onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
-              title="Filtros avançados"
+              onClick={() => setLeadOwnershipFilter('all')}
               style={{
-                background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                fontSize: '0.76rem',
-                fontWeight: 800,
+                background: leadOwnershipFilter === 'all' ? 'var(--adm-accent-bg)' : 'transparent',
+                border: leadOwnershipFilter === 'all' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                color: leadOwnershipFilter === 'all' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '0.74rem',
+                fontWeight: leadOwnershipFilter === 'all' ? 700 : 500,
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease',
+                transition: 'all 0.12s ease',
               }}
             >
-              <Settings size={14} />
-              <span>Filtros</span>
-              <ChevronDown size={12} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              Todos
             </button>
-
-            {/* Popover de Filtros Deslizando para a Esquerda sem empurrar o funil */}
-            {isFilterBarExpanded && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                right: 0,
-                width: 'min(90vw, 640px)',
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '16px',
-                boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
-                padding: '16px',
-                zIndex: 9999,
-                animation: 'fadeIn 0.15s ease-out',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--adm-border)' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Settings size={14} color="var(--adm-accent)" />
-                    <span>Filtros do Funil</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterBarExpanded(false)}
-                    style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '50%',
-                      width: '24px',
-                      height: '24px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--adm-text-muted)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-                <AdminFilterBar
-                  filters={filterState}
-                  onChange={setFilterState}
-                  showDebutanteFilter={true}
-                  showSortFilter={true}
-                  sortOptions={sortOptions}
-                  resultCount={filteredLeads.length}
-                  totalCount={leads.length}
-                  labelUnit="leads"
-                />
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setLeadOwnershipFilter('mine')}
+              style={{
+                background: leadOwnershipFilter === 'mine' ? 'var(--adm-accent-bg)' : 'transparent',
+                border: leadOwnershipFilter === 'mine' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                color: leadOwnershipFilter === 'mine' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '0.74rem',
+                fontWeight: leadOwnershipFilter === 'mine' ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.12s ease',
+              }}
+            >
+              Meus Leads
+            </button>
           </div>
+        </div>
+
+        {/* Right Side: Ações e Seletor de Modo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
 
           {/* Botão + Adicionar Lead */}
           <button
@@ -2548,7 +2712,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           return (
                             <div
                               key={lead.id}
-                              draggable
+                              draggable={!isReadOnlyForPosVenda && !isLeadSpectator(lead)}
                               onDragStart={(e) => handleDragStart(e, lead.id)}
                               onClick={() => handleOpenLeadWorkspace(lead)}
                               style={{
@@ -2575,11 +2739,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               {/* Header: Name & Origin Badge on Top-Right */}
                               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
-                                  <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', wordBreak: 'break-word' }}>
-                                    {lead.name}
-                                  </span>
-                                  {lead.code && (
-                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--adm-accent, #14A9D7)', letterSpacing: '0.5px', fontFamily: "'Poppins', monospace" }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--adm-text-title)', wordBreak: 'break-word' }}>
+                                      {lead.name}
+                                    </span>
+                                    {isLeadSpectator(lead) && (
+                                      <span title="Modo Espectador: visualização somente leitura" style={{ fontSize: '0.6rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '1px 5px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                        <Eye size={10} /> Espectador
+                                      </span>
+                                    )}
+                                  </div>
+                                  {lead.code && (!lead.name || lead.name === lead.code || lead.name.startsWith('LEAD-')) && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-accent)', letterSpacing: '0.5px' }}>
                                       {lead.code}
                                     </span>
                                   )}

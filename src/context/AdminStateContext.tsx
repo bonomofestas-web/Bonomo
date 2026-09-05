@@ -2531,6 +2531,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       lost: 'Perdido / Recusado',
     };
 
+    const oldStageLabel = targetLead ? (stageLabels[targetLead.stage] || targetLead.stage) : 'Etapa inicial';
+    const newStageLabel = stageLabels[newStage] || newStage;
+
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
@@ -2540,11 +2543,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       leadId,
       timestamp: new Date().toISOString(),
       type: 'status_change',
-      title: `Etapa alterada para: ${stageLabels[newStage]}`,
-      text: `Status alterado por ${author}.`,
-      authorName: author,
-      authorId,
-      authorAvatarUrl: authorAvatar,
+      title: 'Ação do Sistema',
+      text: `Status movido de "${oldStageLabel}" para "${newStageLabel}" por ${author}.`,
+      authorName: 'Bot FC5 System',
+      authorId: 'system_bot',
+      authorAvatarUrl: '/logo_f5.png',
     };
 
     // Regra: Ao mover para qualquer estágio após "Novo Lead" (ex: Em Análise), se não tiver SDR, o usuário assume como SDR

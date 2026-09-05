@@ -18,6 +18,7 @@ import { AdminVenueGoalsView } from './AdminVenueGoalsView';
 import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
+import { AdminTeamView } from './AdminTeamView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
@@ -377,6 +378,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         );
       case 'whatsapp':
         return <AdminWhatsAppWorkspaceView />;
+      case 'team':
+        return <AdminTeamView />;
       case 'sources':
         return <AdminSourcesView />;
       case 'mql':
@@ -442,7 +445,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       overflow: 'hidden',
       background: 'var(--adm-bg-app)',
       color: 'var(--adm-text-body)',
-      fontFamily: "'Poppins', sans-serif",
+      fontFamily: "'Inter', sans-serif",
       position: 'relative',
     }}>
       {/* Tela de Sincronização Inicial F5 System (Overlay Seguro que nunca trava nem quebra hooks) */}
@@ -569,6 +572,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               } else if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
               else if (activeTab === 'whatsapp') { category = 'Comunicação'; title = 'WhatsApp Workspace'; }
+              else if (activeTab === 'team') { category = 'Equipe'; title = 'Equipe do Workspace & Organograma'; }
               else if (activeTab === 'sources') { category = 'Gestão da Casa'; title = 'Origens & Rastreamento'; }
               else if (activeTab === 'mql') { category = 'Inteligência'; title = 'ICP'; }
               else if (activeTab === 'venue-goals') { category = 'Gestão da Casa'; title = 'Metas Comerciais da Casa'; }

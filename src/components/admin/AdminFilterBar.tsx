@@ -116,7 +116,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
 
   const clearAllFilters = () => {
     onChange({
-      period: '7d', // 7 days default
+      period: 'all', // Todo o período por padrão conforme Áudio 5
       venueId: 'all',
       venueIds: [],
       collaboratorId: 'all',
@@ -132,13 +132,13 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
   // Helper Labels
   const getPeriodLabel = (p: PeriodFilterType) => {
     switch (p) {
+      case 'all': return 'Todo o Período';
       case '7d': return 'Últimos 7 Dias (Semana)';
       case 'today': return 'Hoje';
       case 'yesterday': return 'Ontem';
       case '30d': return 'Últimos 30 Dias';
       case 'this_month': return 'Este Mês';
       case '6m': return 'Últimos 6 Meses';
-      case 'all': return 'Todo o Período';
       case 'custom': 
         if (filters.customStartDate && filters.customEndDate) {
           const s = filters.customStartDate.split('-').reverse().join('/');
@@ -154,7 +154,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
   const selectedDebIds = filters.debutanteIds || (filters.debutanteId && filters.debutanteId !== 'all' && filters.debutanteId !== 'multi' ? [filters.debutanteId] : []);
 
   const hasActiveFilters = 
-    filters.period !== '7d' || 
+    filters.period !== 'all' || 
     selectedVenueIds.length > 0 || 
     selectedCollabIds.length > 0 || 
     selectedDebIds.length > 0 || 

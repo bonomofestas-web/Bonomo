@@ -19,6 +19,7 @@ import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroVie
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
 import { PublicFormLandingView } from './components/public/PublicFormLandingView';
+import { SystemWikiView } from './components/wiki/SystemWikiView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
@@ -219,7 +220,7 @@ export const AppContent: React.FC = () => {
 };
 
 const parseRouteFromLocation = (): { 
-  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite'; 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'wiki'; 
   slug?: string;
   guestId?: string;
 } => {
@@ -228,7 +229,12 @@ const parseRouteFromLocation = (): {
   const urlParams = new URLSearchParams(window.location.search);
   const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
 
-  // 0. Convite Oficial do Convidado (/convite ou ?convite=slug ou ?guestId=id)
+  // 0. Wiki Oficial (Ocultada provisoriamente para esta versão conforme solicitado no Áudio 1)
+  // if (urlParams.has('wiki') || pathname === 'wiki' || pathname.startsWith('wiki/')) {
+  //   return { mode: 'wiki' };
+  // }
+
+  // 1. Convite Oficial do Convidado (/convite ou ?convite=slug ou ?guestId=id)
   if (urlParams.has('convite') || urlParams.has('invite') || pathname === 'convite' || pathname.startsWith('convite/')) {
     const rawConviteSlug = urlParams.get('convite') || urlParams.get('invite') || (pathname.startsWith('convite/') ? pathname.replace(/^convite\//, '') : '');
     const guestIdParam = urlParams.get('guestId') || undefined;
@@ -387,7 +393,13 @@ const RootAppRouter: React.FC = () => {
 
     const venueIcon = activeVenue?.logoUrl || '/logo_riio_lounge.png';
 
-    if (viewMode === 'admin') {
+    if (viewMode === 'wiki') {
+      document.title = 'F5 System • Wiki Oficial & Base de Conhecimento';
+      link.href = '/favicon.png';
+      link.type = 'image/png';
+      appleLink.href = '/favicon.png';
+      appleTitleMeta.content = 'F5 System Wiki';
+    } else if (viewMode === 'admin') {
       document.title = 'Bonomo Festas • Painel de Gestão & CRM';
       link.href = '/favicon.png';
       link.type = 'image/png';
@@ -485,6 +497,10 @@ const RootAppRouter: React.FC = () => {
         />
       </AppStateProvider>
     );
+  }
+
+  if (viewMode === 'wiki') {
+    return <SystemWikiView />;
   }
 
   if (viewMode === 'admin') {

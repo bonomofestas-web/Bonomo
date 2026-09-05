@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
-  ExternalLink, FileText, ChevronRight, ChevronLeft, Calendar,
+  FileText, ChevronRight, ChevronLeft, Calendar,
   Plus, Check, X, Clock, PhoneCall, Eye
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
@@ -218,6 +218,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return leads.find(l => l.id === selectedLeadId) || null;
   }, [leads, selectedLeadId]);
 
+  const isManager = currentUser?.role === 'master' || currentUser?.role === 'admin';
+  const isLeadSpectator = useMemo(() => {
+    if (!selectedLead || isManager) return false;
+    if (isReadOnlyForPosVenda) return true;
+    if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
+      const isAssigned = (selectedLead.sdrId && selectedLead.sdrId === currentUser.id) ||
+                         (selectedLead.closerId && selectedLead.closerId === currentUser.id) ||
+                         (selectedLead.assignedTo && selectedLead.assignedTo === currentUser.name);
+      return !isAssigned;
+    }
+    return false;
+  }, [selectedLead, isManager, isReadOnlyForPosVenda, currentUser]);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -226,7 +239,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Handle Send Message / Note
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedLead || !messageText.trim()) return;
+    if (!selectedLead || !messageText.trim() || isLeadSpectator) return;
 
     const author = currentUser?.name || 'Equipe Comercial';
     
@@ -257,7 +270,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Handle Create Task from Composer
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLead || !taskDescription.trim()) return;
+    if (!selectedLead || !taskDescription.trim() || isLeadSpectator) return;
 
     const assignedCollab = collaborators.find(c => c.id === taskAssigneeId) || collaborators[0];
 
@@ -314,15 +327,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     clearInterval(recordingTimerRef.current);
     setIsRecording(false);
     setRecordingSeconds(0);
-  };
-
-  const getCleanWhatsappUrl = (phone: string, text?: string) => {
-    let clean = phone.replace(/\D/g, '');
-    if (clean.length === 10 || clean.length === 11) {
-      clean = `55${clean}`;
-    }
-    const query = text ? `?text=${encodeURIComponent(text)}` : '';
-    return `https://wa.me/${clean}${query}`;
   };
 
   const resetFilters = () => {
@@ -640,6 +644,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const venue = venues.find(v => v.id === lead.venueId);
               const lastActivity = lead.activities?.[lead.activities.length - 1];
 
+              const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
+              const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
+              const originLabel = lead.subSource || lead.sourceName || (lead.source === 'whatsapp' ? 'WhatsApp' : lead.source === 'instagram' ? 'Instagram' : lead.source === 'parceria' ? 'Parceria' : lead.source === 'evento_externo' ? 'Evento Externo' : (lead.source || 'Direto'));
+
               return (
                 <div
                   key={lead.id}
@@ -677,54 +685,46 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     fontSize: '0.88rem',
                     flexShrink: 0,
                   }}>
-                    {lead.name.charAt(0).toUpperCase()}
+                    {/* Avatar */}
+                    {displayName.charAt(0).toUpperCase()}
                   </div>
 
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {lead.name}
+                      <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {displayName}
                       </div>
                       <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', flexShrink: 0 }}>
                         {lastActivity ? new Date(lastActivity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </div>
                     </div>
 
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
-                      {lastActivity ? (lastActivity.text || lastActivity.title) : lead.phone}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      {lead.code && (
-                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', background: 'rgba(20, 169, 215, 0.12)', color: '#14A9D7', border: '1px solid rgba(20, 169, 215, 0.3)', fontFamily: "'Poppins', monospace" }}>
-                          {lead.code}
-                        </span>
-                      )}
-                      <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '6px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
+                    {/* Tags na Parte Superior do Card: Casa de Festa + Origem Real */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
                         {venue?.name || 'Unidade'}
                       </span>
-                      {lead.subSource ? (
-                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                          {lead.subSource}
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981' }}>
-                          WhatsApp
-                        </span>
-                      )}
+                      <span style={{ fontSize: '0.62rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                        {originLabel}
+                      </span>
                       {lead.mqlScore !== undefined && getFeatureStatus('icp') !== 'disabled' && (
                         <span style={{
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
+                          fontSize: '0.6rem',
+                          fontWeight: 600,
                           padding: '1px 5px',
                           borderRadius: '4px',
-                          background: lead.mqlLevel === 'top' ? 'rgba(16,185,129,0.15)' : lead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                          background: lead.mqlLevel === 'top' ? 'rgba(16,185,129,0.12)' : lead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
                           color: lead.mqlLevel === 'top' ? '#10B981' : lead.mqlLevel === 'qualified' ? '#F59E0B' : '#EF4444',
                         }}>
                           {lead.mqlLevel === 'top' ? 'ICP A' : lead.mqlLevel === 'qualified' ? 'ICP B' : 'ICP C'}
                         </span>
                       )}
+                    </div>
+
+                    {/* Trecho da Última Mensagem / Telefone */}
+                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {lastActivity ? (lastActivity.text || lastActivity.title) : lead.phone}
                     </div>
                   </div>
                 </div>
@@ -751,7 +751,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             lead={selectedLead}
             onStageChange={(newStage: CrmStage) => updateLeadStage(selectedLead.id, newStage)}
             onToggleCollapse={() => setIsInspectorOpen(false)}
-            readOnly={isReadOnlyForPosVenda}
+            readOnly={isReadOnlyForPosVenda || isLeadSpectator}
           />
         </div>
       )}
@@ -819,89 +819,89 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
 
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <h3 style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-                      {selectedLead.name}
-                    </h3>
-                    {selectedLead.code && (
-                      <span style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 900,
-                        padding: '1px 6px',
-                        borderRadius: '6px',
-                        background: 'rgba(20, 169, 215, 0.15)',
-                        color: '#14A9D7',
-                        border: '1px solid rgba(20, 169, 215, 0.35)',
-                        letterSpacing: '0.5px',
-                        fontFamily: "'Poppins', monospace",
-                      }}>
-                        {selectedLead.code}
-                      </span>
-                    )}
-                    {selectedLead.subSource ? (
-                      <span style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        padding: '2px 7px',
-                        borderRadius: '6px',
-                        background: 'rgba(16, 185, 129, 0.15)',
-                        color: '#10B981',
-                        border: '1px solid rgba(16, 185, 129, 0.35)',
-                      }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <PhoneCall size={11} /> WhatsApp / {selectedLead.subSource}
-                        </span>
-                      </span>
-                    ) : (
-                      <span style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 600,
-                        padding: '2px 7px',
-                        borderRadius: '6px',
-                        background: 'rgba(16, 185, 129, 0.12)',
-                        color: '#10B981',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                      }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <PhoneCall size={11} /> WhatsApp API
-                        </span>
-                      </span>
-                    )}
-                    {icpRating && (
-                      <span style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 600,
-                        padding: '2px 7px',
-                        borderRadius: '6px',
-                        background: icpRating.bg,
-                        color: icpRating.color,
-                        border: `1px solid ${icpRating.border}`,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}>
-                        <IcpTargetUserIcon size={12} color={icpRating.color} /> {icpRating.label} ({icpRating.score}%)
-                      </span>
-                    )}
-                    <a
-                      href={getCleanWhatsappUrl(selectedLead.phone)}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Abrir no WhatsApp Oficial"
-                      style={{ color: '#10B981', display: 'flex', alignItems: 'center' }}
-                    >
-                      <ExternalLink size={14} />
-                    </a>
-                  </div>
+                  {(() => {
+                    const hasRealLeadName = Boolean(selectedLead.name && selectedLead.name.trim() !== '' && !selectedLead.name.startsWith('LEAD-') && selectedLead.name !== selectedLead.code);
+                    const headerDisplayName = hasRealLeadName ? selectedLead.name : (selectedLead.code || 'Lead sem nome');
+
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <h3 style={{ fontSize: '0.96rem', fontWeight: 700, color: 'var(--adm-text-title)', margin: 0 }}>
+                          {headerDisplayName}
+                        </h3>
+                        {!hasRealLeadName && selectedLead.code && (
+                          <span style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: 'var(--adm-bg-card)',
+                            color: 'var(--adm-text-muted)',
+                            border: '1px solid var(--adm-border)',
+                          }}>
+                            {selectedLead.code}
+                          </span>
+                        )}
+                        {icpRating && (
+                          <span style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 600,
+                            padding: '2px 7px',
+                            borderRadius: '6px',
+                            background: icpRating.bg,
+                            color: icpRating.color,
+                            border: `1px solid ${icpRating.border}`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}>
+                            <IcpTargetUserIcon size={12} color={icpRating.color} /> {icpRating.label} ({icpRating.score}%)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <PhoneCall size={11} /> {selectedLead.phone} • {selectedLead.sdrName ? `SDR: ${selectedLead.sdrName}` : 'Sem SDR'}
                   </div>
                 </div>
               </div>
 
-              {/* Close Button if modal */}
-              {onClose && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              {/* Right: WhatsApp Web Button & Close Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                {(() => {
+                  const cleanDigits = selectedLead.phone.replace(/\D/g, '');
+                  const phoneWithDdi = cleanDigits.startsWith('55') ? cleanDigits : `55${cleanDigits}`;
+                  const whatsappWebUrl = `https://web.whatsapp.com/send?phone=${phoneWithDdi}`;
+
+                  return (
+                    <a
+                      href={whatsappWebUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir no WhatsApp Web"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: '#25D366',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'opacity 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                    >
+                      <MessageSquare size={14} />
+                      <span>WhatsApp Web</span>
+                    </a>
+                  );
+                })()}
                   <button
                     type="button"
                     onClick={onClose}
@@ -920,8 +920,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <X size={15} />
                   </button>
                 </div>
-              )}
             </div>
+
+            {/* Spectator Mode Notice Banner */}
+            {isLeadSpectator && (
+              <div style={{
+                background: 'rgba(148, 163, 184, 0.08)',
+                borderBottom: '1px solid var(--adm-border)',
+                padding: '8px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '0.74rem',
+                color: 'var(--adm-text-muted)',
+              }}>
+                <Eye size={14} color="var(--adm-accent)" />
+                <span><strong>Modo Espectador:</strong> Este lead pertence a <strong>{selectedLead.assignedTo || 'outro colaborador'}</strong>. Apenas visualização permitida.</span>
+              </div>
+            )}
 
             {/* ── TIMELINE DINÂMICA CONECTADA À ABA DO COMPOSER ── */}
             <div style={{
@@ -983,35 +999,152 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Registre anotações privadas da equipe sobre este lead abaixo.</div>
                   </div>
                 ) : (
-                  timelineActivities.map((act) => (
-                    <div
-                      key={act.id}
-                      style={{
-                        alignSelf: 'center',
-                        width: '100%',
-                        maxWidth: '560px',
-                        background: 'rgba(212, 175, 55, 0.08)',
-                        border: '1px dashed var(--adm-accent)',
-                        borderRadius: '14px',
-                        padding: '14px 16px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <FileText size={12} color="var(--adm-accent)" /> {act.authorName || 'Equipe Comercial'} • Nota Interna
-                        </span>
-                        <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                          {new Date(act.timestamp).toLocaleDateString('pt-BR')} às {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                  timelineActivities.map((act) => {
+                    const isSystemAction = act.type === 'status_change' || act.type === 'assignment' || act.type === 'creation' || act.type === 'deal_closed' || act.type === 'validation' || act.authorId === 'system_bot' || act.authorName?.toLowerCase().includes('bot') || act.authorName?.toLowerCase().includes('sistema');
+                    const isMine = !isSystemAction && Boolean(currentUser && (act.authorId === currentUser.id || (act.authorName && currentUser.name && act.authorName.toLowerCase() === currentUser.name.toLowerCase())));
+
+                    // System action display
+                    if (isSystemAction) {
+                      return (
+                        <div
+                          key={act.id}
+                          style={{
+                            alignSelf: 'flex-start',
+                            maxWidth: '85%',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '10px',
+                            margin: '4px 0',
+                          }}
+                        >
+                          {/* Logo FC5 / Bot Avatar */}
+                          <div style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            background: '#0F1724',
+                            border: '1.5px solid var(--adm-accent)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                          }}>
+                            <img 
+                              src="/logo_f5.png" 
+                              alt="FC5" 
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                              style={{ width: '22px', height: '22px', objectFit: 'contain' }} 
+                            />
+                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-accent)' }}>F5</span>
+                          </div>
+
+                          {/* Bubble */}
+                          <div style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '14px',
+                            borderTopLeftRadius: '3px',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span>Bot FC5 System</span>
+                                <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)' }}>Sistema</span>
+                              </span>
+                              <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
+                                {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)', lineHeight: '1.4' }}>
+                              {act.text || act.title}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // User Note: Aligned Right if Mine, Left if Other User
+                    return (
+                      <div
+                        key={act.id}
+                        style={{
+                          alignSelf: isMine ? 'flex-end' : 'flex-start',
+                          maxWidth: '80%',
+                          display: 'flex',
+                          flexDirection: isMine ? 'row-reverse' : 'row',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          margin: '4px 0',
+                        }}
+                      >
+                        {/* User Photo / Avatar */}
+                        {act.authorAvatarUrl ? (
+                          <img
+                            src={act.authorAvatarUrl}
+                            alt={act.authorName}
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: `1.5px solid ${isMine ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            background: isMine ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                            border: `1.5px solid ${isMine ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                            color: isMine ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            {(act.authorName || 'U').slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+
+                        {/* Note Bubble */}
+                        <div style={{
+                          background: isMine ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                          border: `1px solid ${isMine ? 'rgba(2, 132, 199, 0.35)' : 'var(--adm-border)'}`,
+                          borderRadius: '14px',
+                          borderTopRightRadius: isMine ? '3px' : '14px',
+                          borderTopLeftRadius: isMine ? '14px' : '3px',
+                          padding: '10px 14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: isMine ? 'var(--adm-accent)' : 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <FileText size={11} /> {isMine ? 'Você (Nota Interna)' : `${act.authorName} • Nota Interna`}
+                            </span>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
+                              {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                            {act.text || act.title}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-body)', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
-                        {act.text || act.title}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )
               )}
 
@@ -1114,7 +1247,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             </div>
 
             {/* ── MULTI-TAB COMPOSER: WHATSAPP | ANOTAÇÕES | TAREFAS ── */}
-            {isReadOnlyForPosVenda ? (
+            {isLeadSpectator ? (
+              <div style={{
+                padding: '16px 20px',
+                background: 'var(--adm-bg-input)',
+                borderTop: '1px solid var(--adm-border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+              }}>
+                <Eye size={20} color="var(--adm-accent)" />
+                <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)', lineHeight: 1.45 }}>
+                  <strong style={{ color: 'var(--adm-accent)' }}>Modo Espectador:</strong> Você está visualizando este lead em modo somente leitura (atribuído a {selectedLead.assignedTo || 'outro colaborador'}). Envio de mensagens e notas são permitidos apenas para o responsável ou gerentes.
+                </div>
+              </div>
+            ) : isReadOnlyForPosVenda ? (
               <div style={{
                 padding: '16px 20px',
                 background: 'rgba(6, 182, 212, 0.08)',

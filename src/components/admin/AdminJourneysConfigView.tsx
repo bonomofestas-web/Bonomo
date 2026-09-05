@@ -120,7 +120,14 @@ export const AdminJourneysConfigView: React.FC = () => {
           gap: '20px',
         }}>
           {templates.map(tmpl => {
-            const debutantesUsingCount = debutantes.filter(d => d.journeyTemplateId === tmpl.id).length;
+            const isDefaultTemplate = Boolean((tmpl as any).isDefault) || tmpl.id === templates[0]?.id;
+            const debutantesUsingCount = debutantes.filter(d => {
+              if (d.journeyTemplateId === tmpl.id) return true;
+              if (isDefaultTemplate && (!d.journeyTemplateId || d.journeyTemplateId === 'default' || d.journeyTemplateId === 'template-bonomo-padrao') && !d.isJourneyPending && (d.hasJourneyEnabled || Boolean((d as any).hasActiveJourney) || Boolean((d as any).milestones?.length > 0))) {
+                return true;
+              }
+              return false;
+            }).length;
 
             return (
               <div
@@ -179,7 +186,9 @@ export const AdminJourneysConfigView: React.FC = () => {
                     {tmpl.milestones.map((m, i) => (
                       <div key={i} style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: 'var(--adm-text-title)', fontWeight: 500 }}>{m.rewardTitle}</span>
-                        <strong style={{ color: 'var(--adm-accent)', fontWeight: 700 }}>{m.requiredReferrals} refs</strong>
+                        <strong style={{ color: 'var(--adm-accent)', fontWeight: 700 }}>
+                          {m.requiredReferrals} {m.requiredReferrals === 1 ? 'indicação' : 'indicações'}
+                        </strong>
                       </div>
                     ))}
                   </div>

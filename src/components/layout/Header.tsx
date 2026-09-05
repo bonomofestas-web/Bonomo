@@ -112,15 +112,9 @@ export const Header: React.FC = () => {
         <div className="mobile-only-header-bar" style={{
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: 'max(8px, env(safe-area-inset-top, 0px)) 0 10px 0',
+          padding: 'max(52px, env(safe-area-inset-top, 52px)) 0 10px 0',
           marginBottom: '10px',
         }}>
-          {/* Left: icon placeholder balancing the bell */}
-          <div style={{
-            width: '38px',
-            height: '38px',
-          }} />
-
           {/* Center: Dynamic Venue Logo */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
             <img 
@@ -366,21 +360,27 @@ export const Header: React.FC = () => {
           )}
 
           {/* Bell Notification */}
-          <div style={{
-            position: 'relative',
-            width: '42px',
-            height: '42px',
-            borderRadius: '50%',
-            background: 'rgba(255, 255, 255, 0.12)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.22)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          }}>
+          <div 
+            onClick={() => {
+              setIsNotificationsOpen(true);
+              markNotificationsAsRead();
+            }}
+            style={{
+              position: 'relative',
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.12)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.22)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            }}
+          >
             <Bell size={18} color="#FFF" />
             <span style={{
               position: 'absolute',

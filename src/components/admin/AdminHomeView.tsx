@@ -215,47 +215,42 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
-      {/* ── TOP HERO BANNER & GREETING ── */}
+      {/* ── TOP HERO BANNER & GREETING (Soft & Clean Executive Layout) ── */}
       <div style={{
-        background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
-        borderRadius: '20px',
-        padding: '24px 28px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '20px',
-        boxShadow: 'var(--adm-shadow)',
+        gap: '16px',
+        padding: '4px 0 12px 0',
       }}>
         {/* Left: Personalized Greeting */}
-        <div className="admin-home-greeting" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="admin-home-greeting" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           {currentUser?.avatarUrl ? (
             <img 
               src={currentUser.avatarUrl} 
               alt={currentUser.name}
               style={{
-                width: 54,
-                height: 54,
+                width: 46,
+                height: 46,
                 borderRadius: '50%',
                 objectFit: 'cover',
-                border: '2px solid var(--adm-accent)',
-                boxShadow: '0 0 16px rgba(212, 175, 55, 0.3)',
+                border: '1.5px solid var(--adm-border)',
               }}
             />
           ) : (
             <div style={{
-              width: 54,
-              height: 54,
+              width: 46,
+              height: 46,
               borderRadius: '50%',
               background: 'var(--adm-accent-bg)',
               color: 'var(--adm-accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontWeight: 800,
-              fontSize: '1.2rem',
-              border: '2px solid var(--adm-accent)',
+              fontWeight: 600,
+              fontSize: '1rem',
+              border: '1.5px solid var(--adm-border)',
             }}>
               {(currentUser?.name || 'A').slice(0, 2).toUpperCase()}
             </div>
@@ -264,77 +259,83 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
               <h1 style={{
-                fontSize: '1.35rem',
-                fontWeight: 650,
+                fontSize: '1.25rem',
+                fontWeight: 600,
                 color: 'var(--adm-text-title)',
-                letterSpacing: '-0.3px',
+                letterSpacing: '-0.2px',
                 margin: 0,
               }}>
                 Olá, {currentUser?.name || 'Colaborador'}!
               </h1>
             </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: 0 }}>
+            <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: 0 }}>
               {formattedToday} • Painel de tarefas e agenda
             </p>
           </div>
         </div>
 
-        {/* Right: Quick Stats & New Task Button (Audio 1: Linha horizontal única e mesma altura do botão) */}
-        <div className="admin-home-stats-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        {/* Right: Quick Stats & New Task Button */}
+        <div className="admin-home-stats-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{
-            background: 'var(--adm-bg-input)',
+            background: 'var(--adm-bg-card)',
             border: '1px solid var(--adm-border)',
-            borderRadius: '12px',
-            height: '42px',
-            padding: '0 16px',
+            borderRadius: '8px',
+            height: '38px',
+            padding: '0 14px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             boxSizing: 'border-box',
           }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 500 }}>
               Pendentes:
             </span>
-            <span style={{ fontSize: '0.98rem', fontWeight: 800, color: todayTasksCount > 0 ? '#F59E0B' : 'var(--adm-text-title)' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: todayTasksCount > 0 ? '#D97706' : 'var(--adm-text-title)' }}>
               {todayTasksCount}
             </span>
           </div>
 
           <div style={{
-            background: 'var(--adm-bg-input)',
+            background: 'var(--adm-bg-card)',
             border: '1px solid var(--adm-border)',
-            borderRadius: '12px',
-            height: '42px',
-            padding: '0 16px',
+            borderRadius: '8px',
+            height: '38px',
+            padding: '0 14px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             boxSizing: 'border-box',
           }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 500 }}>
               Concluídas:
             </span>
-            <span style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-green)' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--adm-green)' }}>
               {completedTodayCount}
             </span>
           </div>
 
           <button
             onClick={handleOpenNewTask}
-            className="adm-btn-primary admin-home-desktop-new-task"
+            type="button"
+            className="admin-home-desktop-new-task"
             style={{
-              height: '42px',
-              padding: '0 18px',
-              borderRadius: '12px',
-              fontWeight: 800,
-              fontSize: '0.82rem',
+              height: '38px',
+              padding: '0 16px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '0.8rem',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               boxSizing: 'border-box',
+              background: 'var(--adm-accent)',
+              color: '#FFFFFF',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background-color 0.15s ease',
             }}
           >
-            <Plus size={16} />
+            <Plus size={15} />
             <span>Criar Nova Tarefa</span>
           </button>
         </div>
