@@ -63,6 +63,25 @@ export const AdminCollaboratorsView: React.FC = () => {
     );
   }, [tasks, collabToDelete]);
 
+  const rolePriority: Record<string, number> = {
+    master: 1,
+    dev: 2,
+    admin: 3,
+    closer: 4,
+    sdr: 5,
+    pos_venda: 6,
+    crm: 7,
+  };
+
+  const sortedCollaborators = useMemo(() => {
+    return [...collaborators].sort((a, b) => {
+      const priorityA = rolePriority[a.role] || 99;
+      const priorityB = rolePriority[b.role] || 99;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return a.name.localeCompare(b.name);
+    });
+  }, [collaborators]);
+
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master' || c.role === 'dev') return false;
     return Boolean(c.isFirstAccess);
@@ -359,7 +378,7 @@ export const AdminCollaboratorsView: React.FC = () => {
           gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
           gap: '18px',
         }}>
-          {collaborators.map(collab => {
+          {sortedCollaborators.map(collab => {
           const badge = getRoleBadge(collab.role);
           const venue = venues.find(v => v.id === collab.venueId);
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
@@ -392,6 +411,11 @@ export const AdminCollaboratorsView: React.FC = () => {
                     <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
                       {collab.name}
                     </h3>
+                    {collab.customJobTitle && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700, marginTop: '2px' }}>
+                        {collab.customJobTitle}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
                       <span style={{
                         background: badge.bg,
@@ -404,6 +428,19 @@ export const AdminCollaboratorsView: React.FC = () => {
                       }}>
                         {badge.label}
                       </span>
+                      {collab.department && (
+                        <span style={{
+                          background: 'rgba(99, 102, 241, 0.1)',
+                          color: '#818cf8',
+                          border: '1px solid rgba(99, 102, 241, 0.25)',
+                          borderRadius: '8px',
+                          padding: '2px 7px',
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                        }}>
+                          {collab.department}
+                        </span>
+                      )}
                       {isPendingFirstAccess(collab) && (
                         <span style={{
                           background: 'rgba(245, 158, 11, 0.15)',

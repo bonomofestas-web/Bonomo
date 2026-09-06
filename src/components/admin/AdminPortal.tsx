@@ -19,6 +19,7 @@ import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminTeamView } from './AdminTeamView';
+import { AdminFollowUpsView } from './AdminFollowUpsView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
@@ -376,6 +377,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onLeadOpened={() => setCrmOpenLeadId(undefined)}
           />
         );
+      case 'followups':
+        return <AdminFollowUpsView onOpenLead={handleOpenLeadFromTask} />;
       case 'whatsapp':
         return <AdminWhatsAppWorkspaceView />;
       case 'team':
@@ -571,6 +574,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 title = 'Registrar Primeira Casa de Festas';
               } else if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
+              else if (activeTab === 'followups') { category = 'Comercial'; title = 'Agenda de Follow-ups'; }
               else if (activeTab === 'whatsapp') { category = 'Comunicação'; title = 'WhatsApp Workspace'; }
               else if (activeTab === 'team') { category = 'Equipe'; title = 'Equipe do Workspace & Organograma'; }
               else if (activeTab === 'sources') { category = 'Gestão da Casa'; title = 'Origens & Rastreamento'; }

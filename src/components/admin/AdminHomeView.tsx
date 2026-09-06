@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   CheckSquare, Calendar, Clock, Plus, Check, 
   Edit3, Phone, Users, Utensils, MessageSquare, Briefcase, 
@@ -83,11 +83,20 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // Hours list for Day Time Grid (07:00 to 22:00)
+  // Hours list for Day Time Grid (07:00 to 23:59 for night events)
   const timeSlots = [
     '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00',
-    '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'
+    '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '23:59'
   ];
+
+  // Ref to center auto-scroll on current hour in timeline
+  const currentHourRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (selectedCalendarDate === todayStr && currentHourRef.current) {
+      currentHourRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [selectedCalendarDate, todayStr]);
 
   // Formatted greeting date
   const formattedToday = useMemo(() => {
@@ -360,7 +369,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
           boxSizing: 'border-box',
           overflow: 'hidden',
         }}>
@@ -769,7 +778,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '16px',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
         }}>
           {/* Calendar Header & Date Navigator */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
@@ -892,6 +901,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               return (
                 <div
                   key={hour}
+                  ref={isCurrentHourSlot ? currentHourRef : undefined}
                   style={{
                     position: 'relative',
                     display: 'flex',
@@ -903,7 +913,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                     paddingBottom: '6px',
                   }}
                 >
-                  {/* Live Moving Current Time Indicator Line (Linha de Horário em Tempo Real) */}
+                  {/* Live Moving Current Time Indicator Line (Clean Executive) */}
                   {isCurrentHourSlot && (
                     <div style={{
                       position: 'absolute',
@@ -915,15 +925,14 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                       zIndex: 20,
                       pointerEvents: 'none',
                     }}>
-                      {/* Live Badge with Indicator Dot */}
+                      {/* Live Badge */}
                       <div style={{
                         background: 'var(--adm-accent)',
                         color: '#FFFFFF',
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        boxShadow: '0 2px 10px rgba(79, 70, 229, 0.45)',
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        padding: '2px 7px',
+                        borderRadius: '6px',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '5px',
@@ -936,7 +945,6 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                           borderRadius: '50%',
                           background: '#FFFFFF',
                           display: 'inline-block',
-                          boxShadow: '0 0 6px #FFFFFF',
                         }} />
                         <span>{String(slotHour).padStart(2, '0')}:{String(currentMinute).padStart(2, '0')}</span>
                       </div>
@@ -944,8 +952,9 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                       {/* Horizontal Moving Line across the timeline */}
                       <div style={{
                         flex: 1,
-                        height: '2px',
-                        background: 'linear-gradient(90deg, var(--adm-accent) 0%, rgba(79, 70, 229, 0.45) 70%, transparent 100%)',
+                        height: '1.5px',
+                        background: 'var(--adm-accent)',
+                        opacity: 0.6,
                       }} />
                     </div>
                   )}
@@ -1036,15 +1045,24 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                     {matchedTasks.map(task => (
                       <div
                         key={`task_${task.id}`}
+                        onClick={() => setSelectedTaskForDetail(task)}
                         style={{
-                          background: 'rgba(96, 165, 250, 0.12)',
-                          border: '1px solid rgba(96, 165, 250, 0.4)',
-                          borderRadius: '10px',
+                          background: 'rgba(96, 165, 250, 0.08)',
+                          border: '1px solid rgba(96, 165, 250, 0.25)',
+                          borderRadius: '8px',
                           padding: '7px 10px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           gap: '8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(96, 165, 250, 0.25)';
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
@@ -1066,7 +1084,10 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                         {task.leadId && (
                           <button
                             type="button"
-                            onClick={() => onOpenLead(task.leadId!)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenLead(task.leadId!);
+                            }}
                             style={{
                               background: 'transparent',
                               border: 'none',

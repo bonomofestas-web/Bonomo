@@ -251,6 +251,7 @@ export interface AdminContextType {
   addFunnel: (data: Omit<CommercialFunnel, 'id' | 'createdAt'>) => string;
   updateFunnel: (id: string, data: Partial<CommercialFunnel>) => void;
   deleteFunnel: (id: string) => void;
+  duplicateFunnel: (funnelId: string, targetVenueId?: string) => string;
 
   // CRM Leads — Stage & Assignment
   updateLeadStage: (leadId: string, newStage: CrmStage) => void;
@@ -358,6 +359,8 @@ export interface AdminContextType {
   updateTask: (id: string, data: Partial<AdminTask>) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
+  addTaskComment: (taskId: string, text: string) => void;
+  completeTaskWithFeedback: (taskId: string, feedback: string) => void;
 
   // MQL (Marketing Qualified Lead) System
   mqlQuestions: MqlQuestion[];
@@ -2344,6 +2347,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     funnelService.delete(id);
   };
 
+  const duplicateFunnel = (funnelId: string, targetVenueId?: string): string => {
+    const source = funnels.find(f => f.id === funnelId);
+    if (!source) return '';
+    const newId = generateUuid();
+    const clonedFunnel: CommercialFunnel = {
+      ...source,
+      id: newId,
+      name: `${source.name} (Cópia)`,
+      venueId: targetVenueId || source.venueId,
+      isPrimary: false,
+      isPinned: false,
+      createdAt: new Date().toISOString().split('T')[0],
+      stages: source.stages ? JSON.parse(JSON.stringify(source.stages)) : undefined,
+      customFields: source.customFields ? JSON.parse(JSON.stringify(source.customFields)) : undefined,
+    };
+    setFunnels(prev => {
+      const updated = [clonedFunnel, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
+      return updated;
+    });
+    funnelService.upsert(clonedFunnel);
+    return newId;
+  };
+
   // ── Unconfigured Sources Warning ───────────────────────────────────────────
   const unconfiguredSources = useMemo(() => {
     const validFunnelIds = new Set(funnels.map(f => f.id));
@@ -4088,7 +4115,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         description: data.title + (data.description ? ` - ${data.description}` : ''),
         dueDate: data.dueDate,
         dueTime: data.dueTime,
-        priority: data.priority,
+        priority: data.priority === 'urgent' ? 'high' : (data.priority as 'low' | 'medium' | 'high' | undefined),
         status: data.status === 'completed' ? 'completed' : 'pending',
         assignedToId: data.assignedToIds?.[0] || 'master',
         assignedToName: assignee?.name || data.createdByName || 'Responsável',
@@ -4200,6 +4227,80 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const addTaskComment = (taskId: string, text: string) => {
+    if (!text.trim()) return;
+    const comment = {
+      id: generateUuid(),
+      authorId: currentUser?.id || 'admin',
+      authorName: currentUser?.name || 'Administrador',
+      authorAvatar: currentUser?.avatarUrl,
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id !== taskId) return t;
+        const comments = [...(t.comments || []), comment];
+        return { ...t, comments };
+      });
+      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const completeTaskWithFeedback = (taskId: string, feedback: string) => {
+    let targetTask: AdminTask | undefined;
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskId) {
+          targetTask = {
+            ...t,
+            status: 'completed' as const,
+            mandatoryFeedback: feedback.trim(),
+            completedAt: new Date().toISOString(),
+          };
+          return targetTask;
+        }
+        return t;
+      });
+      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (targetTask && targetTask.leadId) {
+      const author = currentUser?.name || 'Administrador';
+      const newActivity: LeadActivity = {
+        id: generateUuid(),
+        leadId: targetTask.leadId,
+        timestamp: new Date().toISOString(),
+        type: 'task_completed',
+        title: `Tarefa concluída: ${targetTask.title}`,
+        text: feedback.trim() ? `Feedback registrado: "${feedback.trim()}"` : 'Tarefa marcada como concluída.',
+        authorName: author,
+        authorId: currentUser?.id,
+        authorAvatarUrl: currentUser?.avatarUrl,
+      };
+
+      setLeads(prev => {
+        const updated = prev.map(lead => {
+          if (lead.id !== targetTask?.leadId) return lead;
+          return {
+            ...lead,
+            tasks: (lead.tasks || []).map(t => t.id === taskId ? {
+              ...t,
+              status: 'completed' as const,
+              completedAt: new Date().toISOString(),
+            } : t),
+            activities: [newActivity, ...(lead.activities || [])],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        });
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
   // ── Provider ────────────────────────────────────────────────────────────────
 
   return (
@@ -4248,6 +4349,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addFunnel,
       updateFunnel,
       deleteFunnel,
+      duplicateFunnel,
       sources: scopedSources,
       allSources: sources,
       addSource,
@@ -4284,6 +4386,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateTask,
       deleteTask,
       toggleTaskStatus,
+      addTaskComment,
+      completeTaskWithFeedback,
       getLeadsByCollaborator,
       getTasksByCollaborator,
       addBenefitCatalogItem,

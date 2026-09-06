@@ -19,6 +19,7 @@ export type AdminTabType =
   | 'home'
   | 'dashboard' 
   | 'crm' 
+  | 'followups'
   | 'whatsapp'
   | 'team'
   | 'sources'
@@ -121,20 +122,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { id: 'dev-support', label: 'Suporte', icon: <Headset size={17} />, roles: ['dev'] },
   ];
 
-  // Grouped Navigation Items with updated concise labels
-  const globalItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
+  // Grouped Navigation Items by Sectors (Audios 9 & 10)
+  const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'crm', label: 'Funil', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'whatsapp', label: 'WhatsApp', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'team', label: 'Equipe', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  const venueItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
-    { id: 'venue-goals', label: 'Metas', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
+  const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
+    { id: 'crm', label: 'Funis de Vendas', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'followups', label: 'Follow-ups', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <PhoneCall size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'dashboard', label: 'Dashboard Geral', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'venue-goals', label: 'Metas', icon: <Star size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['dev', 'master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
-    { id: 'mql', label: 'ICP', icon: <IcpTargetUserIcon size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
+    { id: 'mql', label: 'ICP / Qualificação', icon: <IcpTargetUserIcon size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
+  ];
+
+  const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
+    { id: 'debutantes', label: 'Aniversariantes', icon: <Sparkles size={17} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
   ];
 
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
@@ -904,83 +909,130 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           gap: isCollapsed ? '10px' : '14px',
           flex: 1,
         }}>
-          {/* 1. Global Group: Início, Dashboard, Funil */}
+          {/* 1. Setor Workspace: Início & Equipe */}
           <div>
-          {!isCollapsed && (
-            <div style={{
-              fontSize: '0.62rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              color: '#9E988D',
-              letterSpacing: '0.8px',
-              padding: '0 8px 6px 8px',
-            }}>
-              Workspace
-            </div>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {globalItems.map(item => renderNavButton(item))}
-
-            {/* Pinned Funnels List under Funil */}
-            {!isCollapsed && visibleFunnels.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '8px', marginTop: '2px' }}>
-                {visibleFunnels.map(f => {
-                  const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => handleTabClick('crm', f.id)}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '6px 10px 6px 14px',
-                        borderRadius: '8px',
-                        background: isFunnelActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
-                        border: isFunnelActive ? '1px solid #D4AF37' : '1px solid transparent',
-                        color: isFunnelActive ? '#D4AF37' : 'rgba(255, 255, 255, 0.8)',
-                        fontSize: '0.76rem',
-                        fontWeight: isFunnelActive ? 700 : 400,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <span>{renderSidebarFunnelIcon(f.icon, 13, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
-                      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {f.name}
-                      </span>
-                    </button>
-                  );
-                })}
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#9E988D',
+                letterSpacing: '0.8px',
+                padding: '0 8px 6px 8px',
+              }}>
+                Workspace
               </div>
             )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {workspaceItems.map(item => renderNavButton(item))}
+            </div>
           </div>
-        </div>
 
-        {/* 2. Venue Group: Aniversariantes & Metas da Casa */}
-        <div>
+          {/* 2. Setor Comercial: Funis, Follow-ups, WhatsApp, Dashboard, Metas */}
+          <div>
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#14A9D7',
+                letterSpacing: '0.8px',
+                padding: '0 8px 6px 8px',
+              }}>
+                Comercial
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {commercialItems.map(item => {
+                const btn = renderNavButton(item);
+                if (item.id === 'crm') {
+                  return (
+                    <React.Fragment key={item.id}>
+                      {btn}
+                      {/* Pinned Funnels List directly below Funis de Vendas */}
+                      {!isCollapsed && visibleFunnels.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', marginTop: '2px', marginBottom: '4px' }}>
+                          {visibleFunnels.map(f => {
+                            const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => handleTabClick('crm', f.id)}
+                                style={{
+                                  width: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '5px 10px 5px 10px',
+                                  borderRadius: '6px',
+                                  background: isFunnelActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
+                                  border: isFunnelActive ? '1px solid #D4AF37' : '1px solid transparent',
+                                  color: isFunnelActive ? '#D4AF37' : 'rgba(255, 255, 255, 0.75)',
+                                  fontSize: '0.74rem',
+                                  fontWeight: isFunnelActive ? 700 : 400,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <span>{renderSidebarFunnelIcon(f.icon, 12, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
+                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {f.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                }
+                return btn;
+              })}
+            </div>
+          </div>
+
+          {/* 3. Setor Pós-Venda: Aniversariantes */}
+          <div>
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#D4AF37',
+                letterSpacing: '0.8px',
+                padding: '0 8px 6px 8px',
+              }}>
+                Pós-Venda
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {postSaleItems.map(item => renderNavButton(item))}
+            </div>
+          </div>
+
+          {/* 4. Setor Financeiro: Preparado */}
           {!isCollapsed && (
-            <div style={{
-              fontSize: '0.62rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              color: '#D4AF37',
-              letterSpacing: '0.8px',
-              padding: '0 8px 6px 8px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>
-              {activeVenue ? activeVenue.name : 'Gestão da Casa'}
+            <div>
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#8096A8',
+                letterSpacing: '0.8px',
+                padding: '0 8px 6px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span>Financeiro</span>
+                <span style={{ fontSize: '0.55rem', background: 'rgba(148, 163, 184, 0.15)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>
+                  Em Breve
+                </span>
+              </div>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {venueItems.map(item => renderNavButton(item))}
-          </div>
-        </div>
 
         {/* 3. Master Administration: Dashboard Master, Colaboradores, Casas de Festa */}
         {(userRole === 'dev' || userRole === 'master') && (

@@ -89,6 +89,8 @@ export interface Collaborator {
   activatedAt?: string;
   lastLoginAt?: string;
   password?: string;
+  customJobTitle?: string; // Cargo/Título executivo customizado (ex: 'Coordenador Geral', 'Líder Comercial')
+  department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;
@@ -178,14 +180,26 @@ export interface LeadParticipant {
   timestamp: string; // ISO String
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'completed';
-export type TaskPriority = 'low' | 'medium' | 'high';
-export type TaskType = 'call' | 'meeting' | 'tasting' | 'followup' | 'general';
+export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'completed';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type TaskType = 'call' | 'meeting' | 'tasting' | 'followup' | 'document' | 'general';
+
+export interface TaskComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  text: string;
+  createdAt: string;
+}
 
 export interface AdminTask {
   id: string;
   title: string;
   description?: string;
+  content?: string; // Notion-style document body
+  icon?: string;
+  coverUrl?: string;
   dueDate: string; // YYYY-MM-DD
   dueTime?: string; // HH:mm
   status: TaskStatus;
@@ -199,6 +213,8 @@ export interface AdminTask {
   debutanteId?: string; // Debutante connection
   debutanteName?: string;
   venueId?: string;
+  comments?: TaskComment[];
+  mandatoryFeedback?: string;
   createdAt: string;
   completedAt?: string;
 }
@@ -255,6 +271,15 @@ export interface LeadContact {
   isPrimaryDecisionMaker?: boolean;
 }
 
+export interface FunnelStageTrigger {
+  id: string;
+  type: 'notify_closer' | 'move_copy_to_funnel' | 'assign_role' | 'send_whatsapp';
+  label: string;
+  targetFunnelId?: string;
+  targetRoleId?: string;
+  description?: string;
+}
+
 export interface FunnelStageConfig {
   id: string;
   name: string;
@@ -263,6 +288,8 @@ export interface FunnelStageConfig {
   isWon?: boolean;    // Estágio de Sucesso/Ganho
   isLoss?: boolean;   // Estágio de Perda
   order?: number;
+  hints?: string;     // Dicas de negociação da etapa (estilo Como CRM)
+  triggers?: FunnelStageTrigger[]; // Gatilhos de automação da etapa
 }
 
 export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select';
@@ -379,6 +406,7 @@ export interface Lead {
   tasks: LeadTask[];
 
   partyDate?: string;   // Data prevista para a festa de 15 anos do lead
+  secondaryFunnelIds?: string[]; // IDs dos funis secundários onde o lead também é exibido simultaneamente
   activities: LeadActivity[];
   createdAt: string;
   updatedAt: string;
@@ -391,9 +419,14 @@ export interface CommercialFunnel {
   category: string;
   description?: string;
   venueId: string; // ID específico da casa
+  sharedVenueIds?: string[]; // IDs de casas adicionais que compartilham este funil
   allowedCollaboratorIds?: string[]; // IDs dos colaboradores permitidos (vazio = todos)
   allowedRoles?: AdminRole[]; // Cargos que podem interagir neste funil
   isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda
+  isEntryStageActive?: boolean; // Etapa de leads de entrada ativada (estilo Como CRM)
+  detectDuplicates?: boolean; // Detectar leads duplicados
+  duplicateRules?: string; // Regras de duplicidade
+  phoneWidgetEnabled?: boolean;
   badge?: string;
   badgeColor?: string;
   icon?: string;

@@ -12,6 +12,7 @@ import {
   UserPlus, Eye
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
+import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { FilterState } from './AdminFilterBar';
@@ -279,6 +280,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   );
   const [funnelSearch, setFunnelSearch] = useState('');
 
+  // Como CRM Funnel Settings Modal
+  const [isComoFunnelSettingsOpen, setIsComoFunnelSettingsOpen] = useState(false);
+  const [comoFunnelId, setComoFunnelId] = useState<string | undefined>(undefined);
+
   // Funnel Configuration & Access Modal
   const [funnelToConfigure, setFunnelToConfigure] = useState<CommercialFunnel | null>(null);
   const [isCreateFunnelModalOpen, setIsCreateFunnelModalOpen] = useState(false);
@@ -377,24 +382,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setIsCreateFunnelModalOpen(true);
   };
 
-  // Open Edit / Configure Funnel Modal
+  // Open Edit / Configure Funnel Modal (Como CRM Style)
   const handleOpenConfigureFunnel = (funnel: CommercialFunnel, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setFunnelToConfigure(funnel);
-    setFormFunnelName(funnel.name);
-    setFormFunnelCategory(funnel.category);
-    setFormFunnelDescription(funnel.description || '');
-    setFormFunnelVenueId(funnel.venueId || (venues[0]?.id || ''));
-    setFormFunnelIcon(funnel.icon || 'target');
-    setFormCustomImageUrl(funnel.customImageUrl || '');
-    setIconMode(funnel.customImageUrl ? 'image' : 'icon');
-    const hasCustomAccess = funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0;
-    setFormAccessMode(hasCustomAccess ? 'custom' : 'all');
-    setFormAllowedCollaboratorIds(funnel.allowedCollaboratorIds || []);
-    setFormStages(funnel.stages && funnel.stages.length > 0 ? funnel.stages : DEFAULT_FORM_STAGES);
-    setFormCustomFields(funnel.customFields || []);
-    setFormIsPostSale(funnel.isPostSale === true || funnel.category === 'Pós-Venda');
-    setIsCreateFunnelModalOpen(true);
+    setComoFunnelId(funnel.id);
+    setIsComoFunnelSettingsOpen(true);
   };
 
   // Stage Helpers
@@ -1780,11 +1772,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               Pipelines de vendas estruturados e organizados por Casa de Festa. Gerencie oportunidades, mova etapas e acompanhe fechamentos.
             </p>
           </div>
-          {canConfigureFunnels && venues.length > 0 && (
-            <button onClick={() => handleOpenCreateFunnel()} className="adm-btn-primary" style={{ padding: '8px 18px', borderRadius: '12px', fontWeight: 800, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Plus size={16} /> <span>Criar Novo Funil</span>
-            </button>
-          )}
         </div>
 
         {/* Overview KPIs */}
@@ -2596,6 +2583,39 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             >
               <List size={15} />
             </button>
+
+            {canConfigureFunnels && selectedFunnelId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setComoFunnelId(selectedFunnelId);
+                  setIsComoFunnelSettingsOpen(true);
+                }}
+                title="Configurações do Funil (Como CRM)"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  color: 'var(--adm-text-muted)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--adm-border)',
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-accent)';
+                  e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-text-muted)';
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                }}
+              >
+                <Settings size={15} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -3031,6 +3051,21 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
       {/* Funnel Configuration Modal */}
       {renderFunnelConfigModal()}
+
+      {/* Como CRM Style Funnel Configuration */}
+      {isComoFunnelSettingsOpen && (
+        <AdminFunnelSettingsView
+          initialFunnelId={comoFunnelId || selectedFunnelId || undefined}
+          onClose={() => {
+            setIsComoFunnelSettingsOpen(false);
+            setComoFunnelId(undefined);
+          }}
+          onSaved={() => {
+            setIsComoFunnelSettingsOpen(false);
+            setComoFunnelId(undefined);
+          }}
+        />
+      )}
     </div>
   );
 };

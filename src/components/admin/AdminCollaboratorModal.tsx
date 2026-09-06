@@ -23,6 +23,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('123456');
   const [role, setRole] = useState<AdminRole>('crm');
+  const [customJobTitle, setCustomJobTitle] = useState('');
+  const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | ''>('');
   const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [active, setActive] = useState(true);
@@ -34,6 +36,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setPhone(collaboratorToEdit.phone ? formatPhone(collaboratorToEdit.phone) : '');
       setPassword(collaboratorToEdit.password || '••••••••');
       setRole(collaboratorToEdit.role);
+      setCustomJobTitle(collaboratorToEdit.customJobTitle || '');
+      setDepartment(collaboratorToEdit.department || '');
       const vIds = collaboratorToEdit.venueIds || (collaboratorToEdit.venueId && collaboratorToEdit.venueId !== 'all' ? [collaboratorToEdit.venueId] : venues.map(v => v.id));
       setSelectedVenueIds(vIds);
       setAvatarUrl(collaboratorToEdit.avatarUrl || '');
@@ -44,6 +48,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setPhone('');
       setPassword('123456');
       setRole('crm');
+      setCustomJobTitle('');
+      setDepartment('');
       setSelectedVenueIds(venues.map(v => v.id));
       setAvatarUrl('');
       setActive(true);
@@ -58,12 +64,16 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
 
     const primaryVenueId = selectedVenueIds.length === 1 ? selectedVenueIds[0] : 'all';
 
+    const finalDepartment = department ? department : undefined;
+
     if (collaboratorToEdit) {
       updateCollaborator(collaboratorToEdit.id, {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
         role,
+        customJobTitle: customJobTitle.trim() || undefined,
+        department: finalDepartment,
         venueId: role === 'master' ? 'all' : primaryVenueId,
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
@@ -76,6 +86,8 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         email: email.trim(),
         phone: phone.trim() || undefined,
         role,
+        customJobTitle: customJobTitle.trim() || undefined,
+        department: finalDepartment,
         venueId: role === 'master' ? 'all' : primaryVenueId,
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
@@ -249,6 +261,43 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                   }}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Cargo / Título no Organograma & Departamento */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>
+                Cargo / Título no Organograma (Opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Diretora de Operações, Head Comercial..."
+                value={customJobTitle}
+                onChange={(e) => setCustomJobTitle(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Setor / Departamento (Opcional)
+              </label>
+              <select
+                value={department}
+                onChange={(e) => setDepartment(e.target.value as any)}
+                style={{
+                  ...inputStyle,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Geral / Sem setor específico</option>
+                <option value="diretoria">Diretoria Executiva</option>
+                <option value="gerencia">Gerência de Unidade</option>
+                <option value="comercial">Comercial & Vendas</option>
+                <option value="pos_venda">Pós-Venda & Sucesso</option>
+                <option value="financeiro">Financeiro & Contratos</option>
+              </select>
             </div>
           </div>
 

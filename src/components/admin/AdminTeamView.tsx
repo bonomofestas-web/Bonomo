@@ -22,9 +22,15 @@ export const AdminTeamView: React.FC = () => {
   }, [collaborators, selectedVenueFilter]);
 
   // Hierarchical groupings:
-  // Level 1: Diretoria & Master
+  // Level 1: Diretoria & Master (Master strictly first at the top)
   const leadership = useMemo(() => {
-    return activeCollaborators.filter(c => c.role === 'master' || c.role === 'dev');
+    return activeCollaborators
+      .filter(c => c.role === 'master' || c.role === 'dev')
+      .sort((a, b) => {
+        if (a.role === 'master' && b.role !== 'master') return -1;
+        if (b.role === 'master' && a.role !== 'master') return 1;
+        return a.name.localeCompare(b.name);
+      });
   }, [activeCollaborators]);
 
   // Level 2: Gerência & Coordenação
@@ -72,13 +78,13 @@ export const AdminTeamView: React.FC = () => {
         style={{
           background: isMe ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
           border: isMe ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-          borderRadius: '16px',
-          padding: '18px 20px',
+          borderRadius: '14px',
+          padding: '14px 16px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: '10px',
           position: 'relative',
-          boxShadow: isMe ? '0 4px 20px rgba(212, 175, 55, 0.15)' : 'none',
+          boxShadow: isMe ? '0 2px 12px rgba(212, 175, 55, 0.12)' : 'none',
           transition: 'all 0.18s ease',
         }}
       >
@@ -86,33 +92,33 @@ export const AdminTeamView: React.FC = () => {
         {isMe && (
           <div style={{
             position: 'absolute',
-            top: '-10px',
-            right: '16px',
+            top: '-9px',
+            right: '14px',
             background: 'var(--adm-accent)',
             color: '#000000',
-            fontSize: '0.66rem',
+            fontSize: '0.64rem',
             fontWeight: 800,
-            padding: '2px 10px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            padding: '2px 8px',
+            borderRadius: '10px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
           }}>
-            <Sparkles size={11} />
+            <Sparkles size={10} />
             <span>Você está aqui</span>
           </div>
         )}
 
         {/* Member Header: Photo + Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {collab.avatarUrl ? (
             <img
               src={collab.avatarUrl}
               alt={collab.name}
               style={{
-                width: '50px',
-                height: '50px',
+                width: '42px',
+                height: '42px',
                 borderRadius: '50%',
                 objectFit: 'cover',
                 border: isMe ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
@@ -121,8 +127,8 @@ export const AdminTeamView: React.FC = () => {
             />
           ) : (
             <div style={{
-              width: '50px',
-              height: '50px',
+              width: '42px',
+              height: '42px',
               borderRadius: '50%',
               background: 'var(--adm-bg-input)',
               border: isMe ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
@@ -131,7 +137,7 @@ export const AdminTeamView: React.FC = () => {
               justifyContent: 'center',
               color: isMe ? 'var(--adm-accent)' : 'var(--adm-text-title)',
               fontWeight: 800,
-              fontSize: '1rem',
+              fontSize: '0.92rem',
               flexShrink: 0,
             }}>
               {collab.name.slice(0, 2).toUpperCase()}
@@ -139,26 +145,47 @@ export const AdminTeamView: React.FC = () => {
           )}
 
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {collab.name}
             </div>
 
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginTop: '4px',
-              padding: '2px 8px',
-              borderRadius: '6px',
-              background: roleConfig.bg,
-              border: `1px solid ${roleConfig.border}`,
-              color: roleConfig.color,
-              fontSize: '0.68rem',
-              fontWeight: 700,
-            }}>
-              <RoleIcon size={11} />
-              <span>{roleConfig.label}</span>
-            </span>
+            {collab.customJobTitle && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '1px' }}>
+                {collab.customJobTitle}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '3px' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                background: roleConfig.bg,
+                border: `1px solid ${roleConfig.border}`,
+                color: roleConfig.color,
+                fontSize: '0.64rem',
+                fontWeight: 700,
+              }}>
+                <RoleIcon size={10} />
+                <span>{roleConfig.label}</span>
+              </span>
+
+              {collab.department && (
+                <span style={{
+                  padding: '1px 6px',
+                  borderRadius: '6px',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  color: '#818cf8',
+                  fontSize: '0.62rem',
+                  fontWeight: 600,
+                }}>
+                  {collab.department}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
