@@ -1,57 +1,59 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Users, Crown, ShieldCheck, PhoneCall, Handshake, 
-  Building2, Mail, Phone, Sparkles, Compass
+  Building2, Sparkles, Compass
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { Collaborator } from '../../types/admin';
+
+// WhatsApp Brand SVG Icon
+const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 14, color = '#25D366' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ flexShrink: 0 }}>
+    <path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-1.781-.892-2.946-1.597-4.108-3.593-.306-.527.306-.489.876-1.629.096-.192.048-.36-.024-.51-.072-.15-.678-1.636-.93-2.242-.244-.588-.493-.509-.678-.518-.176-.008-.377-.01-.578-.01s-.527.075-.803.376c-.276.301-1.055 1.03-1.055 2.511s1.08 2.913 1.231 3.114c.151.2 2.126 3.246 5.15 4.553.719.311 1.28.497 1.718.636.723.23 1.381.198 1.901.12.58-.087 1.78-.728 2.032-1.431.252-.703.252-1.305.176-1.431-.076-.126-.276-.201-.577-.351z"/>
+    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.92.545 3.715 1.488 5.237L2.05 21.95l4.857-1.39A9.957 9.957 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18.2c-1.634 0-3.175-.483-4.472-1.314l-.321-.205-2.887.826.837-2.822-.218-.337A8.17 8.17 0 0 1 3.8 12c0-4.522 3.678-8.2 8.2-8.2 4.522 0 8.2 3.678 8.2 8.2 0 4.522-3.678 8.2-8.2 8.2z"/>
+  </svg>
+);
+
+const HIERARCHY_ORDER: Record<string, number> = {
+  master: 1,
+  dev: 1,
+  admin: 2,
+  closer: 3,
+  sdr: 4,
+  pos_venda: 5,
+  crm: 6,
+};
 
 export const AdminTeamView: React.FC = () => {
   const { collaborators, venues, currentUser, activeVenueId } = useAdminState();
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>(activeVenueId || 'all');
 
-  // Filter collaborators by venue if selected
-  const activeCollaborators = useMemo(() => {
-    return collaborators.filter(c => {
-      if (!c.active) return false;
-      if (selectedVenueFilter === 'all') return true;
-      if (c.role === 'master' || c.role === 'dev') return true; // Leadership serves all venues
-      return c.venueIds && c.venueIds.includes(selectedVenueFilter);
-    });
-  }, [collaborators, selectedVenueFilter]);
-
-  // Hierarchical groupings:
-  // Level 1: Diretoria & Master (Master strictly first at the top)
-  const leadership = useMemo(() => {
-    return activeCollaborators
-      .filter(c => c.role === 'master' || c.role === 'dev')
+  // Filter and sort collaborators by strict hierarchy
+  const sortedCollaborators = useMemo(() => {
+    return collaborators
+      .filter(c => {
+        if (!c.active) return false;
+        if (selectedVenueFilter === 'all') return true;
+        if (c.role === 'master' || c.role === 'dev') return true;
+        return c.venueIds && c.venueIds.includes(selectedVenueFilter);
+      })
       .sort((a, b) => {
-        if (a.role === 'master' && b.role !== 'master') return -1;
-        if (b.role === 'master' && a.role !== 'master') return 1;
+        const rankA = HIERARCHY_ORDER[a.role] ?? 99;
+        const rankB = HIERARCHY_ORDER[b.role] ?? 99;
+        if (rankA !== rankB) return rankA - rankB;
         return a.name.localeCompare(b.name);
       });
-  }, [activeCollaborators]);
-
-  // Level 2: Gerência & Coordenação
-  const management = useMemo(() => {
-    return activeCollaborators.filter(c => c.role === 'admin');
-  }, [activeCollaborators]);
-
-  // Level 3: Equipe Comercial & Operações (SDRs, Closers, Pós-Venda, CRM)
-  const operationalTeam = useMemo(() => {
-    return activeCollaborators.filter(c => c.role !== 'master' && c.role !== 'dev' && c.role !== 'admin');
-  }, [activeCollaborators]);
+  }, [collaborators, selectedVenueFilter]);
 
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'master':
       case 'dev':
-        return { label: 'Diretoria Executiva', bg: 'rgba(212, 175, 55, 0.15)', color: 'var(--adm-accent)', border: 'rgba(212, 175, 55, 0.35)', icon: Crown };
+        return { label: 'Diretoria / Master', bg: 'rgba(212, 175, 55, 0.15)', color: '#D4AF37', border: 'rgba(212, 175, 55, 0.35)', icon: Crown };
       case 'admin':
         return { label: 'Gerente Geral', bg: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA', border: 'rgba(59, 130, 246, 0.35)', icon: ShieldCheck };
       case 'closer':
-        return { label: 'Closer (Fechamento VIP)', bg: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: 'rgba(16, 185, 129, 0.35)', icon: Handshake };
+        return { label: 'Closer (Fechamento)', bg: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: 'rgba(16, 185, 129, 0.35)', icon: Handshake };
       case 'sdr':
         return { label: 'SDR (Qualificação)', bg: 'rgba(139, 92, 246, 0.15)', color: '#A78BFA', border: 'rgba(139, 92, 246, 0.35)', icon: PhoneCall };
       case 'pos_venda':
@@ -63,186 +65,18 @@ export const AdminTeamView: React.FC = () => {
     }
   };
 
-  const renderMemberCard = (collab: Collaborator) => {
-    const isMe = Boolean(currentUser && (collab.id === currentUser.id || collab.email === currentUser.email));
-    const roleConfig = getRoleBadge(collab.role);
-    const RoleIcon = roleConfig.icon;
-
-    const assignedVenues = (collab.venueIds || [])
-      .map(id => venues.find(v => v.id === id)?.name)
-      .filter(Boolean);
-
-    return (
-      <div
-        key={collab.id}
-        style={{
-          background: isMe ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-          border: isMe ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-          borderRadius: '14px',
-          padding: '14px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
-          position: 'relative',
-          boxShadow: isMe ? '0 2px 12px rgba(212, 175, 55, 0.12)' : 'none',
-          transition: 'all 0.18s ease',
-        }}
-      >
-        {/* "Você está aqui" Badge */}
-        {isMe && (
-          <div style={{
-            position: 'absolute',
-            top: '-9px',
-            right: '14px',
-            background: 'var(--adm-accent)',
-            color: '#000000',
-            fontSize: '0.64rem',
-            fontWeight: 800,
-            padding: '2px 8px',
-            borderRadius: '10px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-          }}>
-            <Sparkles size={10} />
-            <span>Você está aqui</span>
-          </div>
-        )}
-
-        {/* Member Header: Photo + Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {collab.avatarUrl ? (
-            <img
-              src={collab.avatarUrl}
-              alt={collab.name}
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: isMe ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '50%',
-              background: 'var(--adm-bg-input)',
-              border: isMe ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: isMe ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-              fontWeight: 800,
-              fontSize: '0.92rem',
-              flexShrink: 0,
-            }}>
-              {collab.name.slice(0, 2).toUpperCase()}
-            </div>
-          )}
-
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {collab.name}
-            </div>
-
-            {collab.customJobTitle && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '1px' }}>
-                {collab.customJobTitle}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '3px' }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '1px 6px',
-                borderRadius: '6px',
-                background: roleConfig.bg,
-                border: `1px solid ${roleConfig.border}`,
-                color: roleConfig.color,
-                fontSize: '0.64rem',
-                fontWeight: 700,
-              }}>
-                <RoleIcon size={10} />
-                <span>{roleConfig.label}</span>
-              </span>
-
-              {collab.department && (
-                <span style={{
-                  padding: '1px 6px',
-                  borderRadius: '6px',
-                  background: 'rgba(99, 102, 241, 0.1)',
-                  border: '1px solid rgba(99, 102, 241, 0.25)',
-                  color: '#818cf8',
-                  fontSize: '0.62rem',
-                  fontWeight: 600,
-                }}>
-                  {collab.department}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Contact info */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '5px',
-          fontSize: '0.74rem',
-          color: 'var(--adm-text-muted)',
-          borderTop: '1px solid var(--adm-border)',
-          paddingTop: '10px',
-        }}>
-          {collab.email && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <Mail size={12} style={{ flexShrink: 0 }} />
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{collab.email}</span>
-            </div>
-          )}
-          {collab.phone && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Phone size={12} style={{ flexShrink: 0 }} />
-              <span>{formatPhone(collab.phone)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Venue affiliations */}
-        {assignedVenues.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', paddingTop: '4px' }}>
-            {assignedVenues.map((vName, i) => (
-              <span key={i} style={{
-                fontSize: '0.64rem',
-                color: 'var(--adm-text-muted)',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '6px',
-                padding: '2px 6px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '3px',
-              }}>
-                <Building2 size={10} />
-                <span>{vName}</span>
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    );
+  const cleanWhatsappNumber = (phone?: string) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('55')) return digits;
+    return `55${digits}`;
   };
 
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      gap: '28px',
+      gap: '20px',
       padding: '24px 32px 60px 32px',
       width: '100%',
       boxSizing: 'border-box',
@@ -250,16 +84,27 @@ export const AdminTeamView: React.FC = () => {
       fontFamily: "'Inter', sans-serif",
     }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <Users size={24} color="var(--adm-accent)" />
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.4px', margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Users size={22} color="var(--adm-accent)" />
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.3px', margin: 0 }}>
               Equipe do Workspace
             </h1>
+            <span style={{
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              background: 'rgba(20, 169, 215, 0.12)',
+              color: '#14A9D7',
+              border: '1px solid rgba(20, 169, 215, 0.3)',
+              padding: '2px 8px',
+              borderRadius: '20px',
+            }}>
+              {sortedCollaborators.length} membros
+            </span>
           </div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>
-            Estrutura hierárquica e organograma dos colaboradores integrados à Bonomo Festas. Localize gestores, atendentes e colegas de time.
+          <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
+            Colaboradores e atendentes da rede, ordenados por hierarquia com canal direto de contato.
           </p>
         </div>
 
@@ -290,73 +135,218 @@ export const AdminTeamView: React.FC = () => {
         )}
       </div>
 
-      {/* ── NÍVEL 1: DIRETORIA & MASTER ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1.5px solid var(--adm-border)', paddingBottom: '8px' }}>
-          <Crown size={18} color="var(--adm-accent)" />
-          <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Diretoria Executiva & Master
-          </h2>
-          <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>({leadership.length})</span>
-        </div>
+      {/* Grid of Clean Cards (5 per row on desktop) */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+        gap: '16px',
+      }}>
+        {sortedCollaborators.map(collab => {
+          const isMe = Boolean(currentUser && (collab.id === currentUser.id || collab.email === currentUser.email));
+          const roleConfig = getRoleBadge(collab.role);
+          const RoleIcon = roleConfig.icon;
+          const cleanPhone = cleanWhatsappNumber(collab.phone);
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '16px',
-        }}>
-          {leadership.map(renderMemberCard)}
-        </div>
-      </div>
+          const assignedVenues = (collab.venueIds || [])
+            .map(id => venues.find(v => v.id === id)?.name)
+            .filter(Boolean);
 
-      {/* ── NÍVEL 2: GERÊNCIA & COORDENAÇÃO GERAL ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1.5px solid var(--adm-border)', paddingBottom: '8px' }}>
-          <ShieldCheck size={18} color="#60A5FA" />
-          <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Gerência Geral & Coordenação
-          </h2>
-          <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>({management.length})</span>
-        </div>
+          return (
+            <div
+              key={collab.id}
+              style={{
+                background: isMe ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                border: isMe ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                borderRadius: '16px',
+                padding: '18px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+                gap: '10px',
+                position: 'relative',
+                boxShadow: isMe ? '0 4px 16px rgba(20, 169, 215, 0.15)' : '0 2px 8px rgba(0,0,0,0.06)',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = isMe ? '0 4px 16px rgba(20, 169, 215, 0.15)' : '0 2px 8px rgba(0,0,0,0.06)';
+              }}
+            >
+              {/* "Você" Indicator */}
+              {isMe && (
+                <div style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  background: 'var(--adm-accent)',
+                  color: '#FFFFFF',
+                  fontSize: '0.58rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                }}>
+                  <Sparkles size={9} />
+                  <span>Você</span>
+                </div>
+              )}
 
-        {management.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '10px 0' }}>
-            Nenhum gerente designado para este filtro.
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '16px',
-          }}>
-            {management.map(renderMemberCard)}
-          </div>
-        )}
-      </div>
+              {/* Photo / Avatar */}
+              <div style={{ position: 'relative' }}>
+                {collab.avatarUrl ? (
+                  <img
+                    src={collab.avatarUrl}
+                    alt={collab.name}
+                    style={{
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: isMe ? '2.5px solid var(--adm-accent)' : '2px solid var(--adm-border)',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.2) 0%, rgba(20, 169, 215, 0.05) 100%)',
+                    border: isMe ? '2.5px solid var(--adm-accent)' : '2px solid var(--adm-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--adm-accent)',
+                    fontWeight: 900,
+                    fontSize: '1.2rem',
+                    fontFamily: "'Cinzel', serif",
+                  }}>
+                    {collab.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
 
-      {/* ── NÍVEL 3: EQUIPE COMERCIAL & OPERAÇÕES ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1.5px solid var(--adm-border)', paddingBottom: '8px' }}>
-          <Users size={18} color="#10B981" />
-          <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Equipe Comercial, SDRs & Pós-Venda
-          </h2>
-          <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>({operationalTeam.length})</span>
-        </div>
+              {/* Name & Custom Job */}
+              <div style={{ width: '100%', minWidth: 0 }}>
+                <div style={{
+                  fontSize: '0.88rem',
+                  fontWeight: 800,
+                  color: 'var(--adm-text-title)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {collab.name}
+                </div>
 
-        {operationalTeam.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '10px 0' }}>
-            Nenhum membro comercial cadastrado para este filtro.
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '16px',
-          }}>
-            {operationalTeam.map(renderMemberCard)}
-          </div>
-        )}
+                {collab.customJobTitle && (
+                  <div style={{
+                    fontSize: '0.70rem',
+                    color: 'var(--adm-accent)',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginTop: '2px',
+                  }}>
+                    {collab.customJobTitle}
+                  </div>
+                )}
+              </div>
+
+              {/* Role Badge */}
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                background: roleConfig.bg,
+                border: `1px solid ${roleConfig.border}`,
+                color: roleConfig.color,
+                fontSize: '0.62rem',
+                fontWeight: 700,
+              }}>
+                <RoleIcon size={10} />
+                <span>{roleConfig.label}</span>
+              </span>
+
+              {/* Assigned Venues */}
+              {assignedVenues.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  flexWrap: 'wrap',
+                  fontSize: '0.62rem',
+                  color: 'var(--adm-text-muted)',
+                }}>
+                  <Building2 size={10} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>
+                    {assignedVenues.join(', ')}
+                  </span>
+                </div>
+              )}
+
+              {/* WhatsApp Button (wa.me) */}
+              <div style={{ marginTop: 'auto', width: '100%', paddingTop: '4px' }}>
+                {cleanPhone ? (
+                  <a
+                    href={`https://wa.me/${cleanPhone}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(37, 211, 102, 0.12)',
+                      border: '1px solid rgba(37, 211, 102, 0.35)',
+                      color: '#25D366',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      transition: 'all 0.15s ease',
+                      boxSizing: 'border-box',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(37, 211, 102, 0.22)';
+                      e.currentTarget.style.borderColor = '#25D366';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(37, 211, 102, 0.12)';
+                      e.currentTarget.style.borderColor = 'rgba(37, 211, 102, 0.35)';
+                    }}
+                  >
+                    <WhatsAppBrandIcon size={13} color="#25D366" />
+                    <span>{formatPhone(collab.phone || '')}</span>
+                  </a>
+                ) : (
+                  <span style={{
+                    fontSize: '0.66rem',
+                    color: 'var(--adm-text-muted)',
+                    fontStyle: 'italic',
+                    padding: '4px 0',
+                    display: 'block',
+                  }}>
+                    Sem WhatsApp
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

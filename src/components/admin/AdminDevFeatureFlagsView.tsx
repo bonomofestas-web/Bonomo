@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Sliders, ShieldCheck, CheckCircle2, Clock, EyeOff, 
-  MessageSquare, Target, Users, Compass, 
-  Building2, Crown, LayoutDashboard, CheckSquare,
-  AlertTriangle
+  Crown, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { FeatureFlagId, FeatureFlagStatus, FeatureFlagConfig } from '../../types/admin';
@@ -25,81 +23,11 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
 
   const featureDefinitions: FeatureFlagConfig[] = [
     {
-      id: 'home',
-      name: 'Página Inicial (Início / Meu Dia)',
-      description: 'Visão inicial com tarefas pendentes, lembretes, atalhos rápidos e agenda do dia.',
-      category: 'Comercial & CRM',
-      status: featureFlags.home || 'active',
-    },
-    {
-      id: 'dashboard',
-      name: 'Dashboard Geral & Indicadores',
-      description: 'Painel visual de métricas, taxa de conversão, gráficos de desempenho e volume de vendas.',
-      category: 'Inteligência',
-      status: featureFlags.dashboard || 'active',
-    },
-    {
-      id: 'whatsapp',
-      name: 'WhatsApp & Atendimento',
-      description: 'Caixa de entrada integrada, disparos de mensagens, histórico e botões de WhatsApp em todo o CRM.',
-      category: 'Atendimento',
-      status: featureFlags.whatsapp || 'active',
-    },
-    {
-      id: 'icp',
-      name: 'Qualificação ICP & MQL',
-      description: 'Perguntas de qualificação da casa, cálculo de notas (ICP A, B, C), gauges e badges nos leads.',
-      category: 'Inteligência',
-      status: featureFlags.icp || 'active',
-    },
-    {
-      id: 'sources',
-      name: 'Origens & Rastreamento',
-      description: 'Rastreamento de canais de entrada, formulários incorporáveis, parâmetros UTM e links públicos.',
-      category: 'Comercial & CRM',
-      status: featureFlags.sources || 'active',
-    },
-    {
-      id: 'debutantes',
-      name: 'Aniversariantes & Debutantes',
-      description: 'Gestão de anfitriãs de 15 anos, vinculação de jornadas, acompanhamento de metas e convites.',
-      category: 'Comercial & CRM',
-      status: featureFlags.debutantes || 'active',
-    },
-    {
-      id: 'venue_goals',
-      name: 'Metas & Indicadores da Casa',
-      description: 'Metas de faturamento, novos contratos e acompanhamento de desempenho por unidade.',
-      category: 'Comercial & CRM',
-      status: featureFlags.venue_goals || 'active',
-    },
-    {
-      id: 'funnels',
-      name: 'Funis Comerciais & Kanban',
-      description: 'Pipeline comercial, etapas customizadas, distribuição Round-Robin e arrasto de cards.',
-      category: 'Comercial & CRM',
-      status: featureFlags.funnels || 'active',
-    },
-    {
       id: 'master_dashboard',
       name: 'Dashboard Executivo Master',
       description: 'Visão consolidada multi-unidades, métricas globais e volume de vendas de toda a rede.',
       category: 'Administrativo',
       status: featureFlags.master_dashboard || 'active',
-    },
-    {
-      id: 'collaborators',
-      name: 'Equipe & Colaboradores',
-      description: 'Gestão de usuários, atribuição de cargos operacionais (SDR, Closer, CRM) e permissões.',
-      category: 'Administrativo',
-      status: featureFlags.collaborators || 'active',
-    },
-    {
-      id: 'venues',
-      name: 'Casas de Festa & Unidades',
-      description: 'Cadastro de unidades, salões, fotos, capacidade, dados estruturais e endereços.',
-      category: 'Administrativo',
-      status: featureFlags.venues || 'active',
     },
   ];
 
@@ -111,17 +39,7 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
 
   const getFeatureIcon = (id: FeatureFlagId) => {
     switch (id) {
-      case 'home': return <CheckSquare size={20} color="#14A9D7" />;
-      case 'dashboard': return <LayoutDashboard size={20} color="#14A9D7" />;
-      case 'whatsapp': return <MessageSquare size={20} color="#14A9D7" />;
-      case 'icp': return <Target size={20} color="#14A9D7" />;
-      case 'sources': return <Compass size={20} color="#14A9D7" />;
-      case 'debutantes': return <Users size={20} color="#14A9D7" />;
-      case 'venue_goals': return <Target size={20} color="#14A9D7" />;
-      case 'funnels': return <LayoutDashboard size={20} color="#14A9D7" />;
       case 'master_dashboard': return <Crown size={20} color="#14A9D7" />;
-      case 'collaborators': return <ShieldCheck size={20} color="#14A9D7" />;
-      case 'venues': return <Building2 size={20} color="#14A9D7" />;
       default: return <Sliders size={20} color="#14A9D7" />;
     }
   };

@@ -19,7 +19,6 @@ import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroVie
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
 import { PublicFormLandingView } from './components/public/PublicFormLandingView';
-import { SystemWikiView } from './components/wiki/SystemWikiView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
@@ -220,7 +219,7 @@ export const AppContent: React.FC = () => {
 };
 
 const parseRouteFromLocation = (): { 
-  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'wiki'; 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite'; 
   slug?: string;
   guestId?: string;
 } => {
@@ -228,11 +227,6 @@ const parseRouteFromLocation = (): {
 
   const urlParams = new URLSearchParams(window.location.search);
   const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
-
-  // 0. Wiki Oficial (Ocultada provisoriamente para esta versão conforme solicitado no Áudio 1)
-  // if (urlParams.has('wiki') || pathname === 'wiki' || pathname.startsWith('wiki/')) {
-  //   return { mode: 'wiki' };
-  // }
 
   // 1. Convite Oficial do Convidado (/convite ou ?convite=slug ou ?guestId=id)
   if (urlParams.has('convite') || urlParams.has('invite') || pathname === 'convite' || pathname.startsWith('convite/')) {
@@ -391,20 +385,14 @@ const RootAppRouter: React.FC = () => {
 
     let manifestLink: HTMLLinkElement | null = document.querySelector("link[rel='manifest']");
 
-    const venueIcon = activeVenue?.logoUrl || '/logo_riio_lounge.png';
+    const venueIcon = activeVenue?.logoUrl || '/favicon.png';
 
-    if (viewMode === 'wiki') {
-      document.title = 'F5 System • Wiki Oficial & Base de Conhecimento';
+    if (viewMode === 'admin') {
+      document.title = 'F5 System • Painel de Gestão & CRM';
       link.href = '/favicon.png';
       link.type = 'image/png';
       appleLink.href = '/favicon.png';
-      appleTitleMeta.content = 'F5 System Wiki';
-    } else if (viewMode === 'admin') {
-      document.title = 'Bonomo Festas • Painel de Gestão & CRM';
-      link.href = '/favicon.png';
-      link.type = 'image/png';
-      appleLink.href = '/favicon.png';
-      appleTitleMeta.content = 'Bonomo Festas';
+      appleTitleMeta.content = 'F5 System';
     } else {
       const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
       const venueName = activeVenue?.name || 'Bonomo Festas';
@@ -499,10 +487,6 @@ const RootAppRouter: React.FC = () => {
     );
   }
 
-  if (viewMode === 'wiki') {
-    return <SystemWikiView />;
-  }
-
   if (viewMode === 'admin') {
     return <AdminPortal onOpenDebutanteApp={handleOpenDebutanteApp} />;
   }
@@ -527,7 +511,7 @@ const RootAppRouter: React.FC = () => {
           Carregando a experiência VIP de 15 Anos...
         </div>
         <div style={{ fontSize: '0.78rem', color: '#A0988A' }}>
-          Bonomo Festas
+          F5 System
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, Phone, Lock, Moon, Sun, Bell, 
   CheckCircle2, ShieldCheck, Camera, 
@@ -7,7 +7,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
-import { APP_VERSION } from '../../types/admin';
+import { APP_VERSION, type ThemeMode } from '../../types/admin';
 
 interface AdminUserSettingsViewProps {
   onBack?: () => void;
@@ -36,6 +36,45 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  // Theme state for live preview & definitive save
+  const [savedTheme, setSavedTheme] = useState<ThemeMode>(theme);
+  const [isThemeSaved, setIsThemeSaved] = useState(true);
+  const [themeSuccessMsg, setThemeSuccessMsg] = useState('');
+
+  // When theme changes externally, keep savedTheme in sync if not pending preview
+  useEffect(() => {
+    if (isThemeSaved) {
+      setSavedTheme(theme);
+    }
+  }, [theme, isThemeSaved]);
+
+  const handleThemeChange = (newTheme: ThemeMode) => {
+    // Immediate live preview across the entire system!
+    setTheme(newTheme);
+    setIsThemeSaved(newTheme === savedTheme);
+    setThemeSuccessMsg('');
+  };
+
+  const handleSaveThemeDefinitive = () => {
+    setSavedTheme(theme);
+    setIsThemeSaved(true);
+    setThemeSuccessMsg('Tema definitivo salvo com sucesso!');
+    setTimeout(() => setThemeSuccessMsg(''), 3500);
+  };
+
+  const handleRevertTheme = () => {
+    setTheme(savedTheme);
+    setIsThemeSaved(true);
+    setThemeSuccessMsg('');
+  };
+
+  const handleBackNavigation = () => {
+    if (!isThemeSaved) {
+      setTheme(savedTheme);
+    }
+    if (onBack) onBack();
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +152,7 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
         <div style={{ marginBottom: '16px' }}>
           <button
             type="button"
-            onClick={onBack}
+            onClick={handleBackNavigation}
             style={{
               background: 'transparent',
               border: 'none',
@@ -318,95 +357,261 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
             </div>
           </div>
 
-          {/* Card 2: Preferências & Sistema (Tema e Notificações) */}
+          {/* Card 2: Tema Visual do Sistema (Modo Escuro / Modo Claro) */}
           <div style={{
             background: 'var(--adm-bg-card)',
             border: '1px solid var(--adm-border)',
             borderRadius: '20px',
-            padding: '18px 20px',
+            padding: '22px 24px',
             boxShadow: 'var(--adm-shadow)',
           }}>
-            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '12px' }}>
-              Preferências do Aplicativo
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <div>
+                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  Tema Visual da Plataforma
+                </div>
+                <div style={{ fontSize: '0.84rem', color: 'var(--adm-text-title)', marginTop: '2px', fontWeight: 600 }}>
+                  Selecione o tema para visualizar em tempo real e salve para fixar
+                </div>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* Theme Switch */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                borderRadius: '12px',
-                background: 'var(--adm-bg-input)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {theme === 'dark' ? <Moon size={18} color="#D4AF37" /> : <Sun size={18} color="#D4AF37" />}
-                  <div>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Tema Visual</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                      {theme === 'dark' ? 'Modo Escuro (Preto Ônix)' : 'Modo Claro'}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  style={{
-                    background: theme === 'dark' ? 'rgba(212, 175, 55, 0.2)' : 'rgba(0,0,0,0.06)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '20px',
-                    padding: '6px 14px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
+            {/* Grid dos dois temas: Modo Escuro & Modo Claro */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+              {/* Card Modo Escuro - escuro por natureza */}
+              <button
+                type="button"
+                onClick={() => handleThemeChange('dark')}
+                style={{
+                  background: '#0D0B12',
+                  border: theme === 'dark' ? '2px solid #D4AF37' : '1.5px solid rgba(255, 255, 255, 0.14)',
+                  borderRadius: '16px',
+                  padding: '16px 18px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  position: 'relative',
+                  boxShadow: theme === 'dark' ? '0 0 16px rgba(212, 175, 55, 0.35), inset 0 0 14px rgba(212, 175, 55, 0.08)' : '0 4px 12px rgba(0,0,0,0.35)',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'rgba(212, 175, 55, 0.16)',
+                    border: '1px solid rgba(212, 175, 55, 0.35)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                    {theme === 'dark' ? <><Moon size={13} /> Escuro</> : <><Sun size={13} /> Claro</>}
-                  </span>
-                </button>
-              </div>
+                    justifyContent: 'center',
+                    color: '#D4AF37',
+                  }}>
+                    <Moon size={19} />
+                  </div>
+                  {theme === 'dark' && (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      padding: '3px 9px',
+                      borderRadius: '20px',
+                      background: '#D4AF37',
+                      color: '#080C14',
+                      letterSpacing: '0.5px',
+                    }}>
+                      Ativo
+                    </span>
+                  )}
+                </div>
 
-              {/* Push Notifications Switch */}
+                <div>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '3px' }}>
+                    Modo Escuro
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#9E988D', lineHeight: 1.35 }}>
+                    Paleta escura em preto ônix com detalhes e destaques dourados.
+                  </div>
+                </div>
+              </button>
+
+              {/* Card Modo Claro - claro por natureza */}
+              <button
+                type="button"
+                onClick={() => handleThemeChange('light')}
+                style={{
+                  background: '#FFFFFF',
+                  border: theme === 'light' ? '2px solid #D4AF37' : '1.5px solid rgba(0, 0, 0, 0.14)',
+                  borderRadius: '16px',
+                  padding: '16px 18px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  position: 'relative',
+                  boxShadow: theme === 'light' ? '0 0 16px rgba(212, 175, 55, 0.35), inset 0 0 14px rgba(212, 175, 55, 0.08)' : '0 4px 12px rgba(0,0,0,0.06)',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'rgba(212, 175, 55, 0.16)',
+                    border: '1px solid rgba(212, 175, 55, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#D4AF37',
+                  }}>
+                    <Sun size={19} />
+                  </div>
+                  {theme === 'light' && (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      padding: '3px 9px',
+                      borderRadius: '20px',
+                      background: '#D4AF37',
+                      color: '#080C14',
+                      letterSpacing: '0.5px',
+                    }}>
+                      Ativo
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A', marginBottom: '3px' }}>
+                    Modo Claro
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', lineHeight: 1.35 }}>
+                    Paleta clara e iluminada para uso diurno com alto contraste.
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Aviso de Pré-visualização com Ação de Salvar Definitivo */}
+            {!isThemeSaved && (
               <div style={{
+                marginTop: '16px',
+                background: 'rgba(212, 175, 55, 0.12)',
+                border: '1px solid rgba(212, 175, 55, 0.35)',
+                borderRadius: '12px',
+                padding: '12px 16px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '10px 12px',
-                borderRadius: '12px',
-                background: 'var(--adm-bg-input)',
+                flexWrap: 'wrap',
+                gap: '10px',
+                animation: 'fadeIn 0.2s ease-out',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Bell size={18} color="#D4AF37" />
-                  <div>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Notificações Push</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Alertas de novas indicações e tarefas</div>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={16} color="#D4AF37" />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>
+                    Pré-visualização ativa no sistema. Deseja manter este tema?
+                  </span>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleToggleNotifications}
-                  style={{
-                    background: notificationsEnabled ? 'rgba(34, 197, 94, 0.18)' : 'rgba(239, 68, 68, 0.18)',
-                    border: `1px solid ${notificationsEnabled ? '#22C55E' : '#EF4444'}`,
-                    color: notificationsEnabled ? '#22C55E' : '#EF4444',
-                    borderRadius: '20px',
-                    padding: '6px 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {notificationsEnabled ? 'Ativadas' : 'Desativadas'}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={handleRevertTheme}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reverter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveThemeDefinitive}
+                    style={{
+                      background: 'linear-gradient(135deg, #F3E5AB 0%, #D4AF37 50%, #AA7C11 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      color: '#080C14',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 2px 8px rgba(212, 175, 55, 0.3)',
+                    }}
+                  >
+                    <Save size={13} />
+                    <span>Salvar Tema</span>
+                  </button>
+                </div>
               </div>
+            )}
+
+            {themeSuccessMsg && (
+              <div style={{
+                marginTop: '12px',
+                background: 'rgba(34, 197, 94, 0.12)',
+                border: '1px solid #22C55E',
+                color: '#4ADE80',
+                borderRadius: '12px',
+                padding: '10px 14px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}>
+                <CheckCircle2 size={16} />
+                <span>{themeSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Push Notifications Separator & Switch */}
+            <div style={{
+              marginTop: '16px',
+              paddingTop: '14px',
+              borderTop: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Bell size={18} color="#D4AF37" />
+                <div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Notificações Push</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Alertas de novas indicações e tarefas</div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToggleNotifications}
+                style={{
+                  background: notificationsEnabled ? 'rgba(34, 197, 94, 0.18)' : 'rgba(239, 68, 68, 0.18)',
+                  border: `1px solid ${notificationsEnabled ? '#22C55E' : '#EF4444'}`,
+                  color: notificationsEnabled ? '#22C55E' : '#EF4444',
+                  borderRadius: '20px',
+                  padding: '6px 12px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                {notificationsEnabled ? 'Ativadas' : 'Desativadas'}
+              </button>
             </div>
           </div>
 

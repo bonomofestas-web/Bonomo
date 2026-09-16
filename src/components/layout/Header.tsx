@@ -115,19 +115,34 @@ export const Header: React.FC = () => {
           padding: 'max(52px, env(safe-area-inset-top, 52px)) 0 10px 0',
           marginBottom: '10px',
         }}>
-          {/* Center: Dynamic Venue Logo */}
+          {/* Center: Dynamic Venue Logo or Clean Typography */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-            <img 
-              src={currentTheme.logoUrl || '/logo_riio_lounge.png'} 
-              alt={currentTheme.name || 'Casa de Festas'} 
-              style={{ 
-                height: '84px', 
-                maxWidth: '180px',
-                width: 'auto', 
-                objectFit: 'contain',
-                filter: 'drop-shadow(0 0 12px rgba(212, 175, 55, 0.6))'
-              }} 
-            />
+            {currentTheme.logoUrl ? (
+              <img 
+                src={currentTheme.logoUrl} 
+                alt={currentTheme.name || 'Casa de Festas'} 
+                style={{ 
+                  height: '84px', 
+                  maxWidth: '180px',
+                  width: 'auto', 
+                  objectFit: 'contain',
+                  filter: 'drop-shadow(0 0 12px rgba(212, 175, 55, 0.6))'
+                }} 
+              />
+            ) : (
+              <div style={{
+                fontFamily: "'Cinzel', 'Playfair Display', serif",
+                fontSize: '1.2rem',
+                fontWeight: 800,
+                letterSpacing: '2px',
+                color: '#D4AF37',
+                textTransform: 'uppercase',
+                textShadow: '0 0 16px rgba(212, 175, 55, 0.5)',
+                padding: '10px 0'
+              }}>
+                {currentTheme.name || 'Casa de Festas'}
+              </div>
+            )}
           </div>
 
           {/* Right: Bell notification with dynamic counter */}

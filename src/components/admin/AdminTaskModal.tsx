@@ -13,6 +13,9 @@ interface AdminTaskModalProps {
   taskToEdit?: AdminTask | null;
   presetLeadId?: string;
   presetDebutanteId?: string;
+  defaultDueDate?: string;
+  defaultDueTime?: string;
+  defaultType?: TaskType;
 }
 
 export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
@@ -21,6 +24,9 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
   taskToEdit,
   presetLeadId,
   presetDebutanteId,
+  defaultDueDate,
+  defaultDueTime,
+  defaultType,
 }) => {
   const { 
     currentUser, 
@@ -33,10 +39,10 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dueDate, setDueDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [dueTime, setDueTime] = useState('14:00');
+  const [dueDate, setDueDate] = useState(() => defaultDueDate || new Date().toISOString().split('T')[0]);
+  const [dueTime, setDueTime] = useState(() => defaultDueTime || '14:00');
   const [priority, setPriority] = useState<TaskPriority>('medium');
-  const [type, setType] = useState<TaskType>('general');
+  const [type, setType] = useState<TaskType>(() => defaultType || 'general');
   const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [selectedDebutanteId, setSelectedDebutanteId] = useState<string>('');
@@ -56,7 +62,7 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
     if (taskToEdit) {
       setTitle(taskToEdit.title);
       setDescription(taskToEdit.description || '');
-      setDueDate(taskToEdit.dueDate);
+      setDueDate(taskToEdit.dueDate || '');
       setDueTime(taskToEdit.dueTime || '14:00');
       setPriority(taskToEdit.priority);
       setType(taskToEdit.type || 'general');
@@ -67,10 +73,10 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
     } else {
       setTitle('');
       setDescription('');
-      setDueDate(new Date().toISOString().split('T')[0]);
-      setDueTime('14:00');
+      setDueDate(defaultDueDate || new Date().toISOString().split('T')[0]);
+      setDueTime(defaultDueTime || '14:00');
       setPriority('medium');
-      setType('call');
+      setType(defaultType || 'call');
       setAssignedToIds(currentUser ? [currentUser.id] : []);
       setSelectedLeadId(presetLeadId || '');
       setSelectedDebutanteId(presetDebutanteId || '');
@@ -145,12 +151,15 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
     const lead = leads.find(l => l.id === selectedLeadId);
     const debutante = debutantes.find(d => d.id === selectedDebutanteId);
 
+    const masterFallbackUuid = 'a0000000-0000-0000-0000-000000000001';
+    const effectiveUserId = (currentUser?.id && currentUser.id !== 'master') ? currentUser.id : masterFallbackUuid;
+
     let finalAssignedIds = assignedToIds;
     if (!isManager && currentUser?.id && !finalAssignedIds.includes(currentUser.id)) {
       finalAssignedIds = [...finalAssignedIds, currentUser.id];
     }
     if (finalAssignedIds.length === 0) {
-      finalAssignedIds = [currentUser?.id || 'master'];
+      finalAssignedIds = [effectiveUserId];
     }
 
     const taskData = {
@@ -161,7 +170,7 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
       priority,
       type,
       status: taskToEdit ? taskToEdit.status : 'todo' as const,
-      createdById: currentUser?.id || 'master',
+      createdById: effectiveUserId,
       createdByName: currentUser?.name || 'Diretoria',
       assignedToIds: finalAssignedIds,
       leadId: selectedLeadId || undefined,

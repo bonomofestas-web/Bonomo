@@ -1,64 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { MqlQuestion, Venue } from '../types/admin';
 
-export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
-  {
-    id: `mql_q1_${venueId}`,
-    venueId,
-    title: 'Data Prevista & Urgência da Festa',
-    description: 'Avalia a maturidade de decisão em relação à data da celebração.',
-    weight: 1,
-    order: 0,
-    options: [
-      { id: 'mql_q1_opt1', label: 'Data Fixa Definida (Próximos 3 a 12 meses)', points: 100 },
-      { id: 'mql_q1_opt2', label: 'Mês ou Semestre Previsto (Planejamento Ativo)', points: 75 },
-      { id: 'mql_q1_opt3', label: 'Data Aberta / Apenas Pesquisando Valores', points: 30 },
-      { id: 'mql_q1_opt4', label: 'Sem data definida / Indeciso', points: 0 },
-    ],
-  },
-  {
-    id: `mql_q2_${venueId}`,
-    venueId,
-    title: 'Estimativa de Convidados',
-    description: 'Capacidade e alinhamento com a estrutura da casa de festas.',
-    weight: 1,
-    order: 1,
-    options: [
-      { id: 'mql_q2_opt1', label: '150 a 250+ Convidados (Porte Ideal / Grande)', points: 100 },
-      { id: 'mql_q2_opt2', label: '100 a 150 Convidados (Porte Padrão)', points: 80 },
-      { id: 'mql_q2_opt3', label: '50 a 100 Convidados (Mini Evento)', points: 50 },
-      { id: 'mql_q2_opt4', label: 'Abaixo de 50 Convidados', points: 20 },
-    ],
-  },
-  {
-    id: `mql_q3_${venueId}`,
-    venueId,
-    title: 'Alinhamento Orçamentário / Pacote',
-    description: 'Verifica a expectativa de investimento do cliente.',
-    weight: 1,
-    order: 2,
-    options: [
-      { id: 'mql_q3_opt1', label: 'Pacote Completo VIP / Luxo (Decisão Imediata)', points: 100 },
-      { id: 'mql_q3_opt2', label: 'Pacote Intermediário com Adicionais', points: 80 },
-      { id: 'mql_q3_opt3', label: 'Pacote Essencial / Orçamento Justo', points: 50 },
-      { id: 'mql_q3_opt4', label: 'Buscando Menor Preço / Fora do Perfil', points: 0 },
-    ],
-  },
-  {
-    id: `mql_q4_${venueId}`,
-    venueId,
-    title: 'Poder de Decisão & Presença',
-    description: 'Identifica se os responsáveis financeiros estão participando.',
-    weight: 1,
-    order: 3,
-    options: [
-      { id: 'mql_q4_opt1', label: 'Pais / Pagantes presentes no atendimento', points: 100 },
-      { id: 'mql_q4_opt2', label: 'Aniversariante com apoio financeiro confirmado', points: 80 },
-      { id: 'mql_q4_opt3', label: 'Terceiro / Assessoria consultando preliminarmente', points: 40 },
-      { id: 'mql_q4_opt4', label: 'Apenas curioso / Sem decisor envolvido', points: 0 },
-    ],
-  },
-];
+export const createDefaultMqlQuestionsForVenue = (_venueId: string): MqlQuestion[] => [];
 
 export const mqlService = {
   async getAll(): Promise<MqlQuestion[]> {
@@ -74,15 +17,29 @@ export const mqlService = {
         return [];
       }
 
-      return (data || []).map(row => ({
-        id: row.id,
-        venueId: row.venue_id || 'all',
-        title: row.title,
-        description: row.description || '',
-        weight: row.weight ?? 1,
-        order: row.order_index ?? 0,
-        options: Array.isArray(row.options) ? row.options : [],
-      }));
+      return (data || []).map(row => {
+        const rawVenueIds: string[] = Array.isArray(row.venue_ids) 
+          ? row.venue_ids 
+          : (row.venue_id ? [row.venue_id] : []);
+
+        const rawFunnelIds: string[] = Array.isArray(row.funnel_ids)
+          ? row.funnel_ids
+          : (row.funnel_id ? [row.funnel_id] : []);
+
+        return {
+          id: row.id,
+          venueId: row.venue_id || (rawVenueIds[0] || 'all'),
+          venueIds: rawVenueIds,
+          funnelId: row.funnel_id || (rawFunnelIds[0] || undefined),
+          funnelIds: rawFunnelIds,
+          profileName: row.profile_name || '',
+          title: row.title,
+          description: row.description || '',
+          weight: row.weight ?? 1,
+          order: row.order_index ?? 0,
+          options: Array.isArray(row.options) ? row.options : [],
+        };
+      });
     } catch (err) {
       console.error('Falha em mqlService.getAll:', err);
       return [];
@@ -92,11 +49,33 @@ export const mqlService = {
   async upsert(question: MqlQuestion): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
-      const isUuidVenue = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(question.venueId);
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      const venueIds = (question.venueIds || [])
+        .filter(id => uuidRegex.test(id));
 
-      const payload = {
+      if (venueIds.length === 0 && question.venueId && uuidRegex.test(question.venueId)) {
+        venueIds.push(question.venueId);
+      }
+
+      const primaryVenueId = venueIds[0] || (question.venueId && uuidRegex.test(question.venueId) ? question.venueId : null);
+
+      const funnelIds = (question.funnelIds || [])
+        .filter(id => uuidRegex.test(id));
+
+      if (funnelIds.length === 0 && question.funnelId && uuidRegex.test(question.funnelId)) {
+        funnelIds.push(question.funnelId);
+      }
+
+      const primaryFunnelId = funnelIds[0] || (question.funnelId && uuidRegex.test(question.funnelId) ? question.funnelId : null);
+
+      const payload: any = {
         id: question.id,
-        venue_id: isUuidVenue ? question.venueId : null,
+        venue_id: primaryVenueId,
+        venue_ids: venueIds,
+        funnel_id: primaryFunnelId,
+        funnel_ids: funnelIds,
+        profile_name: question.profileName || null,
         title: question.title,
         description: question.description || null,
         weight: question.weight ?? 1,

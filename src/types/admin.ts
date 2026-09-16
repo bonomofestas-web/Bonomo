@@ -8,19 +8,19 @@ import type {
 } from './index';
 
 // All roles in the system (dev is the exclusive root developer super-role)
-export type AdminRole = 'dev' | 'master' | 'admin' | 'crm' | 'sdr' | 'closer' | 'pos_venda';
+export type AdminRole = 
+  | 'dev' 
+  | 'master' 
+  | 'admin' 
+  | 'gerencia' 
+  | 'comercial' 
+  | 'crm' 
+  | 'sdr' 
+  | 'closer' 
+  | 'pos_venda' 
+  | 'financeiro';
 
 export type FeatureFlagId = 
-  | 'home'
-  | 'dashboard'
-  | 'whatsapp'
-  | 'icp'
-  | 'sources'
-  | 'debutantes'
-  | 'venue_goals'
-  | 'collaborators'
-  | 'venues'
-  | 'funnels'
   | 'master_dashboard';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
@@ -73,6 +73,7 @@ export interface AdminUser {
   activatedAt?: string;
   lastLoginAt?: string;
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
+  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[];
 }
 
 export interface Collaborator {
@@ -91,6 +92,7 @@ export interface Collaborator {
   password?: string;
   customJobTitle?: string; // Cargo/Título executivo customizado (ex: 'Coordenador Geral', 'Líder Comercial')
   department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
+  sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]; // Setores que o colaborador participa
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;
@@ -102,7 +104,8 @@ export interface Venue {
   name: string;
   tagline: string;
   logoUrl?: string;
-  ballroomImageUrl: string;
+  bannerImageUrl?: string; // Foto panorâmica cover do banner da unidade (ERP)
+  ballroomImageUrl: string; // Foto oficial da casa usada na seção de convites das debutantes
   description: string;
   experienceText: string;
   address: string;
@@ -123,6 +126,7 @@ export interface Venue {
   fontFamily: string;
   welcomeVideoUrl?: string; // Vídeo vertical 9:16 padrão da casa
   welcomeVideoName?: string;
+  active?: boolean; // Status da unidade (ativa ou desativada/pausada)
   createdAt: string;
   // Lead distribution config for this venue
   leadDistributionMode?: 'queue' | 'round_robin'; // 'queue' = SDRs puxam, 'round_robin' = automático
@@ -181,12 +185,68 @@ export interface LeadParticipant {
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'completed';
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent' | 'none';
 export type TaskType = 'call' | 'meeting' | 'tasting' | 'followup' | 'document' | 'general';
+
+export interface TaskDatabase {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  venueId?: string;
+  isDefault: boolean;
+  propertyOrder?: string[];
+  createdAt?: string;
+}
+
+export interface TaskCustomStatus {
+  id: string;
+  databaseId: string;
+  name: string;
+  groupKey: 'todo' | 'in_progress' | 'completed'; // A fazer | Em andamento | Concluídos
+  color: string;
+  bgColor: string;
+  orderIndex: number;
+  isDefault?: boolean;
+  createdAt?: string;
+}
+
+export interface TaskCustomType {
+  id: string;
+  name: string;
+  sector?: string;
+  icon?: string;
+  color?: string;
+  orderIndex?: number;
+  createdAt?: string;
+}
+
+export type CustomPropertyType = 
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multi_select'
+  | 'files'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'location';
+
+export interface TaskPropertyDefinition {
+  id: string;
+  databaseId: string;
+  name: string;
+  type: CustomPropertyType;
+  options?: string[]; // for select / multi_select
+  orderIndex: number;
+  createdAt?: string;
+}
 
 export interface TaskComment {
   id: string;
-  authorId: string;
+  taskId?: string;
+  authorId?: string;
   authorName: string;
   authorAvatar?: string;
   text: string;
@@ -195,26 +255,38 @@ export interface TaskComment {
 
 export interface AdminTask {
   id: string;
+  databaseId?: string;
   title: string;
   description?: string;
-  content?: string; // Notion-style document body
+  content?: string; // Bloco de Nota Inteligente - Document body
   icon?: string;
   coverUrl?: string;
-  dueDate: string; // YYYY-MM-DD
+  dueDate?: string; // YYYY-MM-DD (Opcional - data crua)
   dueTime?: string; // HH:mm
+  endDate?: string; // YYYY-MM-DD (Data de término)
+  endTime?: string; // HH:mm
   status: TaskStatus;
+  customStatusId?: string;
   priority: TaskPriority;
   type: TaskType;
+  customType?: string;
   createdById: string;
   createdByName: string;
   assignedToIds: string[]; // multi-collaborator assignment
-  leadId?: string; // CRM Lead connection
+  leadId?: string; // CRM Lead direct connection
   leadName?: string;
+  clientId?: string; // Post-sale client direct connection
+  clientName?: string;
   debutanteId?: string; // Debutante connection
   debutanteName?: string;
   venueId?: string;
+  databaseSector?: string;
+  isFollowUp?: boolean;
+  customProperties?: Record<string, any>;
   comments?: TaskComment[];
   mandatoryFeedback?: string;
+  observations?: string; // Anotações / Observações da tarefa no Bloco de Notas Inteligente
+  resolution?: string; // Resultado / Resolução da tarefa (desfecho da ação)
   createdAt: string;
   completedAt?: string;
 }
@@ -278,12 +350,15 @@ export interface FunnelStageTrigger {
   targetFunnelId?: string;
   targetRoleId?: string;
   description?: string;
+  whatsappTemplate?: string;
 }
 
 export interface FunnelStageConfig {
   id: string;
   name: string;
   color?: string;
+  icon?: string;      // Ícone representativo da etapa (ex: 'calendar', 'phone', 'clock', etc.)
+  isMeetingStage?: boolean; // Etapa de Agendamento / Reunião (habilita atribuição e atuação de Closer)
   isFixed?: boolean;  // 'new_lead' (inicial), 'deal_closed' (ganho) e 'lost' (perdido) são fixos
   isWon?: boolean;    // Estágio de Sucesso/Ganho
   isLoss?: boolean;   // Estágio de Perda
@@ -292,13 +367,15 @@ export interface FunnelStageConfig {
   triggers?: FunnelStageTrigger[]; // Gatilhos de automação da etapa
 }
 
-export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select';
+export type FunnelCustomFieldSection = 'commercial' | 'contact' | 'event';
+export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select' | 'multi_select';
 
 export interface FunnelCustomField {
   id: string;
   label: string;
   type: FunnelFieldType;
-  options?: string[]; // Para campos tipo 'select'
+  section?: FunnelCustomFieldSection; // 'commercial' (Dados Comerciais), 'contact' (Aniversariante & Contatos), 'event' (Dados do Evento)
+  options?: string[]; // Para campos tipo 'select' ou 'multi_select'
   required?: boolean;
   placeholder?: string;
   order?: number;
@@ -315,6 +392,13 @@ export const ICP_SITUATION_CONFIG: Record<MqlOptionSituation, { label: string; p
   bad: { label: 'Ruim', points: 0, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.35)', icon: '🔴' },
 };
 
+export interface FunnelDuplicateRuleConfig {
+  matchPhone: boolean;
+  matchEmail: boolean;
+  matchName: boolean;
+  action: 'keep_recent' | 'keep_both' | 'keep_oldest_update';
+}
+
 export interface MqlOption {
   id: string;
   label: string;
@@ -324,7 +408,11 @@ export interface MqlOption {
 
 export interface MqlQuestion {
   id: string;
-  venueId: string;
+  venueId?: string;
+  venueIds?: string[]; // IDs de múltiplas casas de festa vinculadas (legado)
+  funnelId?: string; // ID do funil vinculado
+  funnelIds?: string[]; // IDs dos funis vinculados a este perfil de qualificação
+  profileName?: string; // Nome do perfil ICP (ex: "Qualificação Comercial Padrão")
   title: string;
   description?: string;
   options: MqlOption[];
@@ -340,6 +428,7 @@ export interface Lead {
   debutanteName: string;
   debutanteSlug: string;
   venueId: string;
+  venueName?: string;    // Nome histórico da Casa de Festas de origem (preservado mesmo se excluída)
   funnelId?: string;     // Funil comercial ao qual o lead pertence
   sourceId?: string;     // ID da Origem vinculada (Módulo de Origens)
   sourceName?: string;   // Nome amigável da Origem (ex: "WhatsApp Principal", "Formulário Site")
@@ -406,11 +495,126 @@ export interface Lead {
   tasks: LeadTask[];
 
   partyDate?: string;   // Data prevista para a festa de 15 anos do lead
+  funnelEnteredAt?: string; // Data exata em que o lead entrou no funil
   secondaryFunnelIds?: string[]; // IDs dos funis secundários onde o lead também é exibido simultaneamente
   activities: LeadActivity[];
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Entidade Cliente & Pós-Venda (F5 System) ──────────────────────────────────
+export interface ClientDocument {
+  id: string;
+  title: string;
+  name?: string;
+  type: 'contract' | 'amendment' | 'receipt' | 'id_document' | 'other';
+  fileUrl: string;
+  url?: string;
+  uploadedAt: string;
+  fileSize?: string;
+  sizeBytes?: number;
+}
+
+export interface ClientActivity {
+  id: string;
+  clientId?: string;
+  timestamp?: string;
+  type: 'status_change' | 'note' | 'document_uploaded' | 'meeting' | 'debutante_linked' | 'contact' | 'creation' | 'assignment' | 'task_created' | 'task_completed';
+  title?: string;
+  text?: string;
+  description: string;
+  authorName?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export type ClientStage = 
+  | 'onboarding'       // Boas-vindas & Onboarding
+  | 'planning'         // Planejamento & Cronograma
+  | 'suppliers'        // Definição de Fornecedores / Degustação
+  | 'final_alignment'  // Alinhamento Final (Reta Final)
+  | 'party_day'        // Semana da Festa / Dia do Evento
+  | 'completed'        // Pós-Festa Realizada
+  | 'archived';        // Arquivado
+
+export interface Client {
+  id: string;
+  code: string;                          // ex: 'CLI-8W3K9P'
+  name: string;                          // Nome da Aniversariante / Homenageada (ex: Fernanda)
+  honoreeName?: string;                  // Nome da Aniversariante (compatibilidade)
+  honoreeBirthDate?: string;
+  honoreeAge?: number;
+
+  payerName: string;                     // Nome do Decisor/Contratante (ex: Roberto Carlos - Pai)
+  payerRelationship?: 'father' | 'mother' | 'guardian' | 'self' | 'other';
+  payerRole?: string;
+  payerCpf?: string;
+  payerPhone: string;
+  payerEmail?: string;
+  payerAddress?: string;
+  payerNeighborhood?: string;
+  payerCity?: string;
+
+  birthdayPersonName: string;            // Nome da Aniversariante
+  birthdayPersonAge?: number;            // Idade que vai fazer (ex: 15)
+  birthdayPersonBirthdate?: string;
+
+  eventType: string;                     // '15_anos' | '15 Anos' | 'casamento' | 'infantil' | 'corporativo' | 'outro'
+  eventDate: string;                     // Data da festa (YYYY-MM-DD)
+  partyDate?: string;
+  eventTime?: string;                    // Horário (ex: 19:00 às 00:00)
+  guestCount: number;                    // Quantidade de convidados
+  estimatedGuests?: number;
+  venueId: string;                       // Casa de festas contratada
+  venueName: string;
+
+  packageSold: string;                   // Pacote fechado (ex: Pacote Imperial Ouro)
+  dealValue: number;                     // Valor total do contrato (R$)
+  contractDate: string;                  // Data de fechamento do contrato
+  contractStatus?: 'aguardando_sinal' | 'sinal_pago' | 'contrato_enviado' | 'contrato_assinado'; // Status contratual no Pós-Venda
+  contractSignedAt?: string | null;      // Data em que o contrato foi assinado (definida pelo Pós-Venda)
+  signalPaid?: boolean;                  // Se o sinal da entrada foi pago
+  signalValue?: number;                  // Valor do sinal pago
+  signalPaidAt?: string | null;          // Data do pagamento do sinal
+  paymentTerms?: string;                 // Condições de pagamento (Entrada, parcelas, etc.)
+  paymentStatus?: 'up_to_date' | 'pending' | 'overdue' | 'paid_in_full';
+
+  stage: ClientStage;                    // Etapa no Funil de Pós-Venda
+  contacts?: LeadContact[];              // Subcontatos e decisores vinculados
+  assignedTo?: string;
+  assignedToId?: string;
+  assignedSuccessManagerId?: string;     // Responsável de Pós-Venda
+  assignedSuccessManagerName?: string;
+
+  debutanteId?: string | null;           // ID da conta do App de Convidados (/app/:slug)
+  debutanteSlug?: string | null;         // Slug da Debutante no App
+
+  commercialLeadId?: string;             // ID do lead comercial original (duplicado)
+  commercialLeadCode?: string;           // Código do lead comercial original (ex: LEAD-7K9F2A)
+  originalLeadId?: string;
+  originalLeadCode?: string;
+  commercialHistory?: {
+    origin?: string;
+    source?: string;
+    closedBy?: string;
+    sdrName?: string;
+    closerName?: string;
+    closedAt?: string;
+    convertedAt?: string;
+    originalNotes?: string;
+    closerReport?: string;
+    notesSummary?: string[];
+  };
+
+  notes?: string;
+  documents?: ClientDocument[];
+  activities: ClientActivity[];
+  tags?: string[];
+  funnelEnteredAt?: string; // Data de entrada do cliente no funil de pós-venda
+  createdAt: string;
+  updatedAt: string;
+}
+
 
 export interface CommercialFunnel {
   id: string;
@@ -425,7 +629,8 @@ export interface CommercialFunnel {
   isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda
   isEntryStageActive?: boolean; // Etapa de leads de entrada ativada (estilo Como CRM)
   detectDuplicates?: boolean; // Detectar leads duplicados
-  duplicateRules?: string; // Regras de duplicidade
+  duplicateRules?: string; // Regras de duplicidade (legado)
+  duplicateRuleConfig?: FunnelDuplicateRuleConfig; // Configurações detalhadas de regras de duplicidade
   phoneWidgetEnabled?: boolean;
   badge?: string;
   badgeColor?: string;
@@ -435,6 +640,9 @@ export interface CommercialFunnel {
   stagesCount?: number;
   stages?: FunnelStageConfig[]; // Etapas customizadas do funil
   customFields?: FunnelCustomField[]; // Campos extras personalizados para os leads deste funil
+  packageOptions?: string[]; // Lista de pacotes de venda deste funil
+  paymentOptions?: string[]; // Lista de condições/formatos de pagamento deste funil
+  predefinedTags?: string[]; // Tags pré-configuradas e recomendadas para leads deste funil
   isPrimary?: boolean;
   isDemo?: boolean;
   createdAt?: string;
@@ -478,12 +686,23 @@ export interface JourneyTemplate {
   createdAt: string;
 }
 
+export type EventType = 
+  | 'debutante_15' 
+  | 'birthday_kids' 
+  | 'birthday_adult' 
+  | 'baby_shower' 
+  | 'wedding_anniversary' 
+  | 'graduation' 
+  | 'corporate' 
+  | 'other';
+
 export interface DebutanteAccount {
   id: string;
   venueId: string;
   name: string;
   slug: string; // ex: 'maria-eduarda-2027' -> link exclusivo ?debutante=maria-eduarda-2027
   status?: 'active' | 'inactive'; // Status ativo ou inativo
+  eventType?: EventType; // Tipo do evento (15 Anos, Infantil, Adulto, etc.)
   partyDate: string; // YYYY-MM-DD
   partyDaysLeft: number;
   avatarUrl: string;
@@ -491,6 +710,19 @@ export interface DebutanteAccount {
   email?: string;
   motherName?: string;
   fatherName?: string;
+  contractValue?: number; // Valor fechado do contrato
+  packageSold?: string; // Pacote ou descrição do serviço contratado
+  paymentTerms?: string; // Condição de pagamento (ex: 'Parcelado', 'À Vista', 'Entrada + Parcelas')
+  contractSigned?: boolean; // Contrato assinado (Sim / Não)
+  tastingStatus?: 'not_scheduled' | 'scheduled' | 'completed'; // Status de degustação
+  visitStatus?: 'not_scheduled' | 'scheduled' | 'completed'; // Status de visitação/ensaio
+  neighborhood?: string; // Bairro
+  address?: string; // Endereço completo
+  postSaleStage?: string; // Estágio no funil de pós-venda (ex: 'contract_signed', 'tasting', 'decoration', 'technical_visit', 'completed')
+  leadId?: string; // ID do lead comercial que gerou este cliente
+  tasks?: LeadTask[];
+  activities?: LeadActivity[];
+  customFieldValues?: Record<string, any>;
 
   // Configuração de Módulos
   hasJourneyEnabled: boolean; // Se true, tem Jornada, Indicações, Benefícios e botão Indicar Amiga. Se false, apenas Convidados e Compromissos.
@@ -525,6 +757,16 @@ export interface DebutanteAccount {
 
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PostSaleStageConfig {
+  id: string;
+  name: string;
+  color?: string;
+  isFixed?: boolean;
+  isCompleted?: boolean;
+  isCancelled?: boolean;
+  order?: number;
 }
 
 export interface AdminAppState {
@@ -582,3 +824,5 @@ export interface SupportTicket {
   updatedAt: string;
   messages?: SupportTicketMessage[];
 }
+
+

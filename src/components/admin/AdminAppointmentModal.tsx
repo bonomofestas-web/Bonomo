@@ -44,7 +44,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
     appointmentToEdit?.debutanteId || presetDebutanteId || debutantes[0]?.id || ''
   );
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<AppointmentCategory>('Buffet & Degustação');
+  const [category, setCategory] = useState<AppointmentCategory | string>('Buffet & Degustação');
   const [date, setDate] = useState('2026-09-15');
   const [time, setTime] = useState('19:00');
   const [location, setLocation] = useState('Espaço Rio Lounge - Salão Nobre');

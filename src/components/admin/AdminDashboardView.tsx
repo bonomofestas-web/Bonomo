@@ -475,23 +475,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setSelectedVenueForGoals(activeVenueObj || venues[0] || null)}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '8px',
-              padding: '5px 10px',
-              color: 'var(--adm-accent)',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Ajustar Objetivos
-          </button>
         </div>
 
         {/* 4 Cards de Metas */}

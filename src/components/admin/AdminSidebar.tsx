@@ -1,26 +1,31 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  LogOut, CheckSquare, Crown,
-  ChevronRight, ChevronLeft, Settings,
+  CheckSquare, Home,
+  ChevronRight, ChevronLeft,
   ChevronDown, Globe,
   Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
   Trophy, Radio, PhoneCall, MessageSquare, Compass,
   ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw
+  Eye, RotateCcw, Gift, Calendar
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
-import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION, type FeatureFlagId } from '../../types/admin';
 import type { Venue } from '../../types/admin';
 
 export type AdminTabType = 
   | 'home'
+  | 'tasks'
+  | 'team-calendar'
   | 'dashboard' 
   | 'crm' 
   | 'followups'
   | 'whatsapp'
+  | 'post-sale-crm'
+  | 'vip-journey'
+  | 'post-sale-appointments'
+  | 'post-sale-visits-tastings'
   | 'team'
   | 'sources'
   | 'mql'
@@ -56,6 +61,7 @@ const ROLE_LABELS: Record<string, string> = {
   crm: 'Comercial',
   sdr: 'SDR',
   closer: 'Closer',
+  pos_venda: 'Pós-Venda',
 };
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({
@@ -69,7 +75,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 }) => {
   const { 
     currentUser, 
-    logout, 
     venues, 
     activeVenueId, 
     setActiveVenueId,
@@ -102,50 +107,55 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Map each tab to its controlling feature flag (if applicable)
   const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
-    home: 'home',
-    dashboard: 'dashboard',
-    whatsapp: 'whatsapp',
-    crm: 'funnels',
-    debutantes: 'debutantes',
-    'venue-goals': 'venue_goals',
-    sources: 'sources',
-    mql: 'icp',
     'master-dashboard': 'master_dashboard',
-    collaborators: 'collaborators',
-    venues: 'venues',
   };
 
   const devItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={17} />, roles: ['dev'] },
-    { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={17} />, roles: ['dev'] },
-    { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={17} />, roles: ['dev'] },
-    { id: 'dev-support', label: 'Suporte', icon: <Headset size={17} />, roles: ['dev'] },
+    { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={15} />, roles: ['dev'] },
+    { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={15} />, roles: ['dev'] },
+    { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={15} />, roles: ['dev'] },
+    { id: 'dev-support', label: 'Suporte', icon: <Headset size={15} />, roles: ['dev'] },
   ];
 
-  // Grouped Navigation Items by Sectors (Audios 9 & 10)
+  // 1. Workspace
   const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'home', label: 'Início', icon: <CheckSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'team', label: 'Equipe', icon: <Users size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'home', label: 'Início', icon: <Home size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'team', label: 'Equipe', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
+// WhatsApp Official Brand SVG Icon
+const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 15, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ flexShrink: 0 }}>
+    <path d="M17.472 14.382c-.301-.15-1.78-.878-2.056-.978-.276-.1-.477-.15-.678.15-.2.301-.778.978-.954 1.179-.176.2-.351.226-.652.075-1.781-.892-2.946-1.597-4.108-3.593-.306-.527.306-.489.876-1.629.096-.192.048-.36-.024-.51-.072-.15-.678-1.636-.93-2.242-.244-.588-.493-.509-.678-.518-.176-.008-.377-.01-.578-.01s-.527.075-.803.376c-.276.301-1.055 1.03-1.055 2.511s1.08 2.913 1.231 3.114c.151.2 2.126 3.246 5.15 4.553.719.311 1.28.497 1.718.636.723.23 1.381.198 1.901.12.58-.087 1.78-.728 2.032-1.431.252-.703.252-1.305.176-1.431-.076-.126-.276-.201-.577-.351z"/>
+    <path d="M12 2C6.477 2 2 6.477 2 12c0 1.92.545 3.715 1.488 5.237L2.05 21.95l4.857-1.39A9.957 9.957 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18.2c-1.634 0-3.175-.483-4.472-1.314l-.321-.205-2.887.826.837-2.822-.218-.337A8.17 8.17 0 0 1 3.8 12c0-4.522 3.678-8.2 8.2-8.2 4.522 0 8.2 3.678 8.2 8.2 0 4.522-3.678 8.2-8.2 8.2z"/>
+  </svg>
+);
+
+  // 2. Comercial: Dashboard, WhatsApp, Funil, Follow-up
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'crm', label: 'Funis de Vendas', icon: <Target size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'followups', label: 'Follow-ups', icon: <MessageSquare size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'whatsapp', label: 'WhatsApp', icon: <PhoneCall size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'dashboard', label: 'Dashboard Geral', icon: <LayoutDashboard size={17} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'venue-goals', label: 'Metas', icon: <Star size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
-    { id: 'sources', label: 'Origens', icon: <Compass size={17} />, roles: ['dev', 'master', 'admin', 'crm'], alertBadge: hasUnconfiguredSources },
-    { id: 'mql', label: 'ICP / Qualificação', icon: <IcpTargetUserIcon size={17} />, roles: ['dev', 'master', 'admin', 'crm'] },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
   ];
 
+  // 3. Pós-Venda: Clientes, Aplicativo (com Jornada VIP Integrada), Visitas & Degustação, Compromissos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'debutantes', label: 'Aniversariantes', icon: <Sparkles size={17} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-crm', label: 'Clientes', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
+    { id: 'debutantes', label: 'Aplicativo', icon: <Gift size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-visits-tastings', label: 'Visitas & Degustação', icon: <Calendar size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda', 'crm', 'sdr', 'closer'] },
+    { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
   ];
 
-  const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'master-dashboard', label: 'Dashboard Master', icon: <Crown size={17} />, roles: ['dev', 'master'] },
-    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={17} />, roles: ['dev', 'master'] },
-    { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={17} />, roles: ['dev', 'master'] },
+  // 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa
+  const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
+    { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['dev', 'master', 'admin'] },
+    { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['dev', 'master', 'admin'], alertBadge: hasUnconfiguredSources },
+    { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['dev', 'master', 'admin'] },
+    { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['dev', 'master', 'admin'] },
+    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={15} />, roles: ['dev', 'master', 'admin'] },
+    { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={15} />, roles: ['dev', 'master', 'admin'] },
   ];
 
   const allowedVenues = useMemo(() => {
@@ -285,7 +295,23 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       return null;
     }
 
+    // Check Role & Sector Access for this item
+    const itemRoles = (item as any).roles as string[] | undefined;
+    if (itemRoles && userRole !== 'dev' && userRole !== 'master') {
+      const userSectors = currentUser?.sectors;
+      const hasRole = itemRoles.includes(userRole);
+      const hasSectorMatch = userSectors && (
+        (userSectors.includes('comercial') && (itemRoles.includes('crm') || itemRoles.includes('sdr') || itemRoles.includes('closer') || item.id === 'post-sale-visits-tastings')) ||
+        (userSectors.includes('pos_venda') && itemRoles.includes('pos_venda')) ||
+        (userSectors.includes('gerencia') && (itemRoles.includes('admin') || itemRoles.includes('master')))
+      );
+      if (!hasRole && !hasSectorMatch) {
+        return null;
+      }
+    }
+
     const isComingSoon = featureStatus === 'coming_soon' && userRole !== 'dev';
+    const isDev = item.id.startsWith('dev-');
 
     if (isCollapsed && !isMobileOverlay) {
       return (
@@ -295,29 +321,34 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           onClick={() => handleTabClick(item.id, null)}
           title={isComingSoon ? `${item.label} (Em Breve)` : item.label}
           style={{
-            width: '44px',
-            height: '44px',
+            width: '38px',
+            height: '38px',
             margin: '0 auto',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '12px',
-            background: isActive ? 'rgba(20, 169, 215, 0.18)' : 'transparent',
-            border: isActive ? '1px solid #14A9D7' : '1px solid transparent',
-            color: isActive ? '#14A9D7' : '#8096A8',
+            borderRadius: '10px',
+            background: isDev
+              ? (isActive ? 'rgba(20, 169, 215, 0.35)' : 'rgba(20, 169, 215, 0.12)')
+              : (isActive ? 'rgba(20, 169, 215, 0.18)' : 'transparent'),
+            border: isDev
+              ? (isActive ? '1.5px solid #38BDF8' : '1px solid rgba(20, 169, 215, 0.3)')
+              : (isActive ? '1px solid #14A9D7' : '1px solid transparent'),
+            color: isDev ? (isActive ? '#38BDF8' : '#7DD3FC') : (isActive ? '#14A9D7' : '#8096A8'),
             cursor: 'pointer',
             transition: 'all 0.15s ease',
             position: 'relative',
+            boxShadow: isDev && isActive ? '0 0 10px rgba(56, 189, 248, 0.4)' : 'none',
           }}
         >
           {item.icon}
           {isComingSoon && (
             <span style={{
               position: 'absolute',
-              top: '4px',
-              right: '4px',
-              width: '8px',
-              height: '8px',
+              top: '3px',
+              right: '3px',
+              width: '6px',
+              height: '6px',
               borderRadius: '50%',
               background: '#14A9D7',
               boxShadow: '0 0 6px rgba(20, 169, 215, 0.8)',
@@ -326,14 +357,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {isActive && (
             <span style={{
               position: 'absolute',
-              right: '-6px',
+              right: '-5px',
               top: '50%',
               transform: 'translateY(-50%)',
-              width: '4px',
-              height: '16px',
+              width: '3px',
+              height: '14px',
               borderRadius: '2px',
-              background: '#14A9D7',
-              boxShadow: '0 0 8px rgba(20, 169, 215, 0.8)',
+              background: isDev ? '#38BDF8' : '#14A9D7',
+              boxShadow: isDev ? '0 0 10px rgba(56, 189, 248, 0.9)' : '0 0 8px rgba(20, 169, 215, 0.8)',
             }} />
           )}
         </button>
@@ -349,35 +380,42 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          padding: isSubItem ? '8px 10px 8px 16px' : '9px 12px',
-          borderRadius: '10px',
-          background: isActive ? 'rgba(20, 169, 215, 0.14)' : 'transparent',
-          border: isActive ? '1px solid #14A9D7' : '1px solid transparent',
-          color: isActive ? '#14A9D7' : '#FFFFFF',
-          fontWeight: isActive ? 700 : 500,
-          fontSize: isSubItem ? '0.78rem' : '0.82rem',
+          gap: '8px',
+          padding: isSubItem ? '5px 8px 5px 12px' : '6px 8px',
+          borderRadius: '8px',
+          background: isDev 
+            ? (isActive ? 'rgba(20, 169, 215, 0.30)' : 'rgba(20, 169, 215, 0.08)')
+            : (isActive ? 'rgba(20, 169, 215, 0.14)' : 'transparent'),
+          border: isDev
+            ? (isActive ? '1.5px solid #38BDF8' : '1px solid rgba(20, 169, 215, 0.25)')
+            : (isActive ? '1px solid #14A9D7' : '1px solid transparent'),
+          color: isDev
+            ? (isActive ? '#38BDF8' : '#E0F2FE')
+            : (isActive ? '#14A9D7' : '#FFFFFF'),
+          fontWeight: (isDev || isActive) ? 700 : 500,
+          fontSize: isSubItem ? '0.70rem' : '0.75rem',
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'all 0.15s ease',
+          boxShadow: isDev && isActive ? '0 0 12px rgba(56, 189, 248, 0.35)' : 'none',
         }}
       >
-        <span style={{ color: isActive ? '#14A9D7' : '#8096A8', display: 'flex' }}>
+        <span style={{ color: isDev ? '#38BDF8' : (isActive ? '#14A9D7' : '#8096A8'), display: 'flex', flexShrink: 0 }}>
           {item.icon}
         </span>
-        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>{item.label}</span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
           {isComingSoon && (
             <span style={{
-              fontSize: '0.62rem',
+              fontSize: '0.48rem',
               fontWeight: 800,
-              padding: '2px 6px',
-              borderRadius: '4px',
-              background: 'rgba(20, 169, 215, 0.2)',
+              padding: '1px 4px',
+              borderRadius: '3px',
+              background: 'rgba(20, 169, 215, 0.18)',
               color: '#14A9D7',
-              border: '1px solid rgba(20, 169, 215, 0.4)',
+              border: '1px solid rgba(20, 169, 215, 0.35)',
               textTransform: 'uppercase',
-              letterSpacing: '0.3px',
+              letterSpacing: '0.2px',
               whiteSpace: 'nowrap',
               flexShrink: 0,
             }}>
@@ -393,13 +431,14 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 justifyContent: 'center',
                 color: '#EF4444',
                 animation: 'pulse 1.5s infinite ease-in-out',
+                flexShrink: 0,
               }}
             >
-              <AlertTriangle size={14} />
+              <AlertTriangle size={13} />
             </span>
           )}
         </span>
-        {isActive && <ChevronRight size={13} color="#14A9D7" />}
+        {isActive && <ChevronRight size={12} color="#14A9D7" style={{ flexShrink: 0 }} />}
       </button>
     );
   };
@@ -407,8 +446,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const sidebarWidth = isMobileOverlay 
     ? '100vw' 
     : isCollapsed 
-    ? '68px' 
-    : '254px';
+    ? '58px' 
+    : '208px';
 
   return (
     <aside style={{
@@ -426,10 +465,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       right: isMobileOverlay ? 0 : undefined,
       bottom: isMobileOverlay ? 0 : undefined,
       padding: isMobileOverlay 
-        ? '20px 16px 30px 16px' 
+        ? '20px 14px 30px 14px' 
         : isCollapsed 
-        ? '16px 10px' 
-        : '18px 12px',
+        ? '14px 6px' 
+        : '14px 8px',
       boxSizing: 'border-box',
       overflowY: 'auto',
       overflowX: 'hidden',
@@ -443,9 +482,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: isCollapsed && !isMobileOverlay ? 'center' : 'space-between',
-        paddingBottom: '14px',
+        paddingBottom: '10px',
         borderBottom: '1px solid rgba(20, 169, 215, 0.2)',
-        marginBottom: '14px',
+        marginBottom: '10px',
         position: 'relative',
       }}>
         {isCollapsed && !isMobileOverlay ? (
@@ -453,7 +492,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '10px',
+            gap: '8px',
             width: '100%',
           }}>
             {/* F5 Official Símbolo/Mark - Limpo, sem caixa nem neon */}
@@ -461,8 +500,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               title="F5 System"
               onClick={onToggleCollapse}
               style={{
-                width: '38px',
-                height: '38px',
+                width: '32px',
+                height: '32px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -473,7 +512,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <img
                 src="/f5_mark.png"
                 alt="F5"
-                style={{ width: '34px', height: '34px', objectFit: 'contain' }}
+                style={{ width: '28px', height: '28px', objectFit: 'contain' }}
               />
             </div>
 
@@ -483,9 +522,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               onClick={onToggleCollapse}
               title="Expandir Menu Lateral"
               style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(20, 169, 215, 0.3)',
                 color: '#14A9D7',
@@ -504,7 +543,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={15} />
             </button>
           </div>
         ) : (
@@ -515,9 +554,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
-              minHeight: '38px',
+              minHeight: '30px',
             }}>
-            {/* Centered Logo in the Middle (Audio 1) */}
+            {/* Centered Logo in the Middle */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -528,9 +567,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 src="/f5_logo.png"
                 alt="F5 System"
                 style={{
-                  height: '34px',
+                  height: '24px',
                   width: 'auto',
-                  maxWidth: '145px',
+                  maxWidth: '110px',
                   objectFit: 'contain',
                   display: 'block',
                   margin: '0 auto',
@@ -549,9 +588,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   right: 0,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '8px',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '6px',
                   background: 'rgba(255, 255, 255, 0.06)',
                   border: '1px solid rgba(20, 169, 215, 0.25)',
                   color: '#14A9D7',
@@ -571,7 +610,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
                 }}
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={14} />
               </button>
             )}
           </div>
@@ -655,7 +694,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
       {!currentUser?.isFirstAccess && (userRole === 'master' || allowedVenues.length > 1) && (
-        <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '14px' }}>
+        <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '10px' }}>
           {isCollapsed && !isMobileOverlay ? (
             <button
               type="button"
@@ -665,12 +704,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               }}
               title={activeVenue?.name || 'Todas as Casas (Rede Geral) - Clique para abrir configurações'}
               style={{
-                width: '44px',
-                height: '44px',
+                width: '38px',
+                height: '38px',
                 margin: '0 auto',
                 background: '#141118',
                 border: '1px solid rgba(20, 169, 215, 0.35)',
-                borderRadius: '12px',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -686,7 +725,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              {activeVenue ? renderVenueIconBadge(activeVenue, 36) : <Globe size={20} color="#14A9D7" />}
+              {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#14A9D7" />}
             </button>
           ) : (
             <button
@@ -696,25 +735,25 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 width: '100%',
                 background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.14)' : '#141118',
                 border: `1px solid ${isVenueDropdownOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)'}`,
-                borderRadius: '12px',
-                padding: '8px 10px',
+                borderRadius: '10px',
+                padding: '6px 8px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '8px',
+                gap: '6px',
                 cursor: 'pointer',
                 textAlign: 'left',
                 transition: 'all 0.2s ease',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                {renderVenueIconBadge(activeVenue, 28)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                {renderVenueIconBadge(activeVenue, 24)}
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '0.58rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
+                  <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
                     Unidade
                   </div>
                   <div style={{
-                    fontSize: '0.76rem',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
                     color: '#FFFFFF',
                     whiteSpace: 'nowrap',
@@ -726,7 +765,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 </div>
               </div>
               <ChevronDown 
-                size={13} 
+                size={12} 
                 color="#D4AF37" 
                 style={{ 
                   transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -830,6 +869,52 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           flexDirection: 'column',
           gap: '12px',
         }}>
+          {userRole === 'dev' && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%)',
+              border: '1.5px solid rgba(56, 189, 248, 0.45)',
+              borderRadius: '12px',
+              padding: isCollapsed ? '6px 2px' : '8px 6px',
+              boxShadow: '0 4px 18px rgba(14, 165, 233, 0.15)',
+            }}>
+              {!isCollapsed && (
+                <div style={{
+                  fontSize: '0.58rem',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  color: '#38BDF8',
+                  letterSpacing: '0.8px',
+                  padding: '0 6px 6px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+                  marginBottom: '6px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Sliders size={12} color="#38BDF8" />
+                    <span>Desenvolvedor & Suporte</span>
+                  </div>
+                  <span style={{
+                    fontSize: '0.48rem',
+                    background: 'rgba(56, 189, 248, 0.25)',
+                    color: '#38BDF8',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    fontWeight: 900,
+                    border: '1px solid rgba(56, 189, 248, 0.45)',
+                    boxShadow: '0 0 8px rgba(56, 189, 248, 0.3)',
+                  }}>
+                    ROOT
+                  </span>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {devItems.map(item => renderNavButton(item))}
+              </div>
+            </div>
+          )}
+
           <div style={{
             background: 'rgba(212, 175, 55, 0.12)',
             border: '1px solid rgba(212, 175, 55, 0.35)',
@@ -857,19 +942,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               icon: <Building2 size={17} />,
             })}
           </div>
-
-          {userRole === 'dev' && (
-            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '10px', marginTop: '6px' }}>
-              {!isCollapsed && (
-                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#14A9D7', padding: '0 8px 6px 8px' }}>
-                  Desenvolvedor
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                {devItems.map(item => renderNavButton(item))}
-              </div>
-            </div>
-          )}
         </div>
       ) : currentUser?.isFirstAccess ? (
         <div style={{
@@ -906,24 +978,72 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: isCollapsed ? '10px' : '14px',
+          gap: isCollapsed ? '8px' : '10px',
           flex: 1,
         }}>
+          {/* 0. Exclusive Developer Group: Destaque no Topo com Estilo Tech-Blue */}
+          {userRole === 'dev' && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%)',
+              border: '1.5px solid rgba(56, 189, 248, 0.45)',
+              borderRadius: '12px',
+              padding: isCollapsed ? '6px 2px' : '8px 6px',
+              marginBottom: '4px',
+              boxShadow: '0 4px 18px rgba(14, 165, 233, 0.15)',
+            }}>
+              {!isCollapsed && (
+                <div style={{
+                  fontSize: '0.58rem',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  color: '#38BDF8',
+                  letterSpacing: '0.8px',
+                  padding: '0 6px 6px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+                  marginBottom: '6px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Sliders size={12} color="#38BDF8" />
+                    <span>Desenvolvedor & Suporte</span>
+                  </div>
+                  <span style={{
+                    fontSize: '0.48rem',
+                    background: 'rgba(56, 189, 248, 0.25)',
+                    color: '#38BDF8',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    fontWeight: 900,
+                    border: '1px solid rgba(56, 189, 248, 0.45)',
+                    boxShadow: '0 0 8px rgba(56, 189, 248, 0.3)',
+                  }}>
+                    ROOT
+                  </span>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {devItems.map(item => renderNavButton(item))}
+              </div>
+            </div>
+          )}
+
           {/* 1. Setor Workspace: Início & Equipe */}
           <div>
             {!isCollapsed && (
               <div style={{
-                fontSize: '0.62rem',
+                fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
                 color: '#9E988D',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
+                letterSpacing: '0.6px',
+                padding: '0 6px 3px 6px',
               }}>
                 Workspace
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {workspaceItems.map(item => renderNavButton(item))}
             </div>
           </div>
@@ -932,17 +1052,17 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <div>
             {!isCollapsed && (
               <div style={{
-                fontSize: '0.62rem',
+                fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
                 color: '#14A9D7',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
+                letterSpacing: '0.6px',
+                padding: '0 6px 3px 6px',
               }}>
                 Comercial
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {commercialItems.map(item => {
                 const btn = renderNavButton(item);
                 if (item.id === 'crm') {
@@ -951,7 +1071,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       {btn}
                       {/* Pinned Funnels List directly below Funis de Vendas */}
                       {!isCollapsed && visibleFunnels.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', marginTop: '2px', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', paddingLeft: '10px', marginTop: '1px', marginBottom: '3px' }}>
                           {visibleFunnels.map(f => {
                             const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
                             return (
@@ -963,20 +1083,20 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                                   width: '100%',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '8px',
-                                  padding: '5px 10px 5px 10px',
+                                  gap: '6px',
+                                  padding: '4px 6px',
                                   borderRadius: '6px',
                                   background: isFunnelActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
                                   border: isFunnelActive ? '1px solid #D4AF37' : '1px solid transparent',
                                   color: isFunnelActive ? '#D4AF37' : 'rgba(255, 255, 255, 0.75)',
-                                  fontSize: '0.74rem',
+                                  fontSize: '0.68rem',
                                   fontWeight: isFunnelActive ? 700 : 400,
                                   cursor: 'pointer',
                                   textAlign: 'left',
                                   transition: 'all 0.15s ease',
                                 }}
                               >
-                                <span>{renderSidebarFunnelIcon(f.icon, 12, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
+                                <span>{renderSidebarFunnelIcon(f.icon, 11, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
                                 <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {f.name}
                                 </span>
@@ -997,269 +1117,140 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           <div>
             {!isCollapsed && (
               <div style={{
-                fontSize: '0.62rem',
+                fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
                 color: '#D4AF37',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
+                letterSpacing: '0.6px',
+                padding: '0 6px 3px 6px',
               }}>
                 Pós-Venda
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {postSaleItems.map(item => renderNavButton(item))}
             </div>
           </div>
 
-          {/* 4. Setor Financeiro: Preparado */}
+          {/* 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa */}
+          {(userRole === 'dev' || userRole === 'master' || userRole === 'admin') && (
+            <div>
+              {!isCollapsed && (
+                <div style={{
+                  fontSize: '0.56rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  color: '#8096A8',
+                  letterSpacing: '0.6px',
+                  padding: '0 6px 3px 6px',
+                }}>
+                  Gerência
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {masterItems.map(item => renderNavButton(item))}
+
+                {/* Modo de Visualização do Colaborador (visível apenas se houver colaboradores cadastrados) */}
+                {!isCollapsed && impersonatableCollaborators.length > 0 && (
+                  <div style={{
+                    marginTop: '6px',
+                    padding: '6px 8px',
+                    background: 'rgba(20, 169, 215, 0.08)',
+                    border: '1px solid rgba(20, 169, 215, 0.25)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.60rem',
+                      fontWeight: 800,
+                      color: '#14A9D7',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      <Eye size={11} />
+                      <span>Modo de Visualização</span>
+                    </div>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        if (!selectedId) return;
+                        const targetCollab = collaborators.find(c => c.id === selectedId);
+                        if (targetCollab) {
+                          startImpersonation(targetCollab);
+                        }
+                      }}
+                      style={{
+                        background: '#0D1522',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        borderRadius: '6px',
+                        padding: '4px 6px',
+                        color: '#FFFFFF',
+                        fontSize: '0.68rem',
+                        outline: 'none',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        width: '100%',
+                      }}
+                    >
+                      <option value="" disabled style={{ background: '#0D1522' }}>
+                        Visualizar como colaborador...
+                      </option>
+                      {impersonatableCollaborators.map(c => (
+                        <option key={c.id} value={c.id} style={{ background: '#0D1522' }}>
+                          {c.name} ({ROLE_LABELS[c.role] || c.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 5. Setor Financeiro: Preparado */}
           {!isCollapsed && (
             <div>
               <div style={{
-                fontSize: '0.62rem',
+                fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
                 color: '#8096A8',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
+                letterSpacing: '0.6px',
+                padding: '0 6px 3px 6px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
               }}>
                 <span>Financeiro</span>
-                <span style={{ fontSize: '0.55rem', background: 'rgba(148, 163, 184, 0.15)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>
+                <span style={{ fontSize: '0.48rem', background: 'rgba(148, 163, 184, 0.12)', color: 'var(--adm-text-muted)', padding: '1px 4px', borderRadius: '3px' }}>
                   Em Breve
                 </span>
               </div>
             </div>
           )}
 
-        {/* 3. Master Administration: Dashboard Master, Colaboradores, Casas de Festa */}
-        {(userRole === 'dev' || userRole === 'master') && (
-          <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#8096A8',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
-              }}>
-                Administração
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {masterItems.map(item => renderNavButton(item))}
-
-              {/* Modo de Visualização do Colaborador (visível apenas se houver colaboradores cadastrados) */}
-              {!isCollapsed && impersonatableCollaborators.length > 0 && (
-                <div style={{
-                  marginTop: '8px',
-                  padding: '8px 10px',
-                  background: 'rgba(20, 169, 215, 0.08)',
-                  border: '1px solid rgba(20, 169, 215, 0.25)',
-                  borderRadius: '10px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '0.65rem',
-                    fontWeight: 800,
-                    color: '#14A9D7',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                  }}>
-                    <Eye size={12} />
-                    <span>Modo de Visualização</span>
-                  </div>
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      if (!selectedId) return;
-                      const targetCollab = collaborators.find(c => c.id === selectedId);
-                      if (targetCollab) {
-                        startImpersonation(targetCollab);
-                      }
-                    }}
-                    style={{
-                      background: '#0D1522',
-                      border: '1px solid rgba(20, 169, 215, 0.35)',
-                      borderRadius: '8px',
-                      padding: '6px 8px',
-                      color: '#FFFFFF',
-                      fontSize: '0.72rem',
-                      outline: 'none',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      width: '100%',
-                    }}
-                  >
-                    <option value="" disabled style={{ background: '#0D1522' }}>
-                      Visualizar como colaborador...
-                    </option>
-                    {impersonatableCollaborators.map(c => (
-                      <option key={c.id} value={c.id} style={{ background: '#0D1522' }}>
-                        {c.name} ({ROLE_LABELS[c.role] || c.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 4. Exclusive Developer Group: Feature Flags Panel */}
-        {userRole === 'dev' && (
-          <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#14A9D7',
-                letterSpacing: '0.8px',
-                padding: '0 8px 6px 8px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}>
-                <span>Desenvolvedor</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {devItems.map(item => renderNavButton(item))}
-            </div>
-          </div>
-        )}
         </div>
       )}
 
-      {/* Bottom Actions: User Info Card */}
+      {/* Sidebar Footer: Versão do Sistema */}
       <div style={{
         borderTop: '1px solid rgba(212, 175, 55, 0.15)',
-        paddingTop: '10px',
-        marginTop: '10px',
+        paddingTop: '6px',
+        marginTop: 'auto',
+        textAlign: 'center',
+        fontSize: '0.52rem',
+        color: 'rgba(212, 175, 55, 0.65)',
+        fontFamily: "'Cinzel', serif",
+        letterSpacing: '0.6px',
+        fontWeight: 700,
       }}>
-        {isCollapsed ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <img
-              src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
-              alt="User"
-              onClick={() => handleTabClick('settings')}
-              title={`${currentUser?.name || 'Administrador'} (${ROLE_LABELS[userRole] || userRole})`}
-              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1.5px solid #D4AF37', objectFit: 'cover', cursor: 'pointer' }}
-            />
-            <button
-              onClick={logout}
-              title="Sair do Sistema"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#9E988D',
-                cursor: 'pointer',
-                padding: '6px',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <LogOut size={15} />
-            </button>
-          </div>
-        ) : (
-          <>
-            <div style={{
-              background: '#141118',
-              border: '1px solid rgba(212, 175, 55, 0.25)',
-              borderRadius: '12px',
-              padding: '8px 10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}>
-              <div 
-                onClick={() => handleTabClick('settings')}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1, minWidth: 0 }}
-                title="Configurações de Perfil e Tema"
-              >
-                <img
-                  src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
-                  alt="User"
-                  style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid #D4AF37', objectFit: 'cover', flexShrink: 0 }}
-                />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {currentUser?.name || 'Administrador'}
-                  </div>
-                  <div style={{ fontSize: '0.6rem', color: '#9E988D', textTransform: 'uppercase', fontWeight: 600 }}>
-                    {ROLE_LABELS[userRole] || userRole}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-                <button
-                  onClick={() => handleTabClick('settings')}
-                  title="Configurações & Tema"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: activeTab === 'settings' ? '#D4AF37' : '#9E988D',
-                    cursor: 'pointer',
-                    padding: '5px',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#FFFFFF')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = activeTab === 'settings' ? '#D4AF37' : '#9E988D')}
-                >
-                  <Settings size={14} />
-                </button>
-
-                <button
-                  onClick={logout}
-                  title="Sair do Sistema"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#9E988D',
-                    cursor: 'pointer',
-                    padding: '5px',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#9E988D')}
-                >
-                  <LogOut size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* System Version Footer */}
-            <div style={{
-              textAlign: 'center',
-              paddingTop: '6px',
-              fontSize: '0.62rem',
-              color: 'rgba(212, 175, 55, 0.75)',
-              fontFamily: "'Cinzel', serif",
-              letterSpacing: '0.8px',
-              fontWeight: 700,
-            }}>
-              Versão {APP_VERSION}
-            </div>
-          </>
-        )}
+        {isCollapsed ? `v${APP_VERSION}` : `Versão ${APP_VERSION}`}
       </div>
     </aside>
   );

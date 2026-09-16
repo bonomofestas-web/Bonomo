@@ -64,6 +64,7 @@ export interface VenueProfile {
   name: string;
   tagline: string;
   logoUrl?: string;
+  bannerImageUrl?: string;
   ballroomImageUrl: string;
   description: string;
   experienceText: string;
@@ -196,10 +197,12 @@ export interface Guest {
   isRemoved?: boolean; // Se true, foi movido para a aba 'Removidos' sem exclusão do banco
 }
 
+export type AppointmentTargetType = 'lead' | 'client' | 'team';
+
 export interface Appointment {
   id: string;
   title: string;
-  category: AppointmentCategory;
+  category: AppointmentCategory | string;
   date: string;
   time: string;
   location: string;
@@ -211,6 +214,12 @@ export interface Appointment {
   responsibleRole?: string;
   responsiblePhone?: string;
   venueId?: string;
+  targetType?: AppointmentTargetType;
+  leadId?: string;
+  leadName?: string;
+  debutanteId?: string;
+  debutanteName?: string;
+  guestsCount?: number;
 }
 
 export interface Benefit {

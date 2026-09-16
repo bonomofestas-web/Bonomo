@@ -79,7 +79,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
 
       setName('');
       setVenueId(defaultVenue);
-      setType('whatsapp_api');
+      setType('form');
       setFunnelId(availableFunnels[0]?.id || 'comercial');
       setWhatsappInstanceId('');
       setSlug('');
@@ -97,11 +97,10 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
     setErrorMsg('');
   }, [sourceToEdit, isOpen, activeVenueId, venues, funnels]);
 
-  // Filter funnels by the selected venue
+  // All account funnels available for routing
   const scopedFunnels = useMemo(() => {
-    if (!venueId) return funnels;
-    return funnels.filter(f => f.venueId === venueId || f.venueId === 'all');
-  }, [funnels, venueId]);
+    return funnels;
+  }, [funnels]);
 
   // Auto-generate slug when typing name for forms
   const handleNameChange = (val: string) => {
@@ -324,41 +323,70 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           )}
 
-          {/* 1. Tipo de Origem (3 Opções Principais) */}
+          {/* 1. Tipo de Origem */}
           <div>
             <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
               Tipo de Origem
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-              {[
-                { id: 'whatsapp_api', label: 'WhatsApp API', icon: <PhoneCall size={16} />, desc: 'Número, sub-origens & palavras-chave' },
-                { id: 'form', label: 'Formulário Público', icon: <FileText size={16} />, desc: 'Landing page ou Embed externa' },
-                { id: 'referral', label: 'Indicação no App', icon: <Gift size={16} />, desc: 'Indicações de Debutantes' },
-              ].map(t => (
-                <div
-                  key={t.id}
-                  onClick={() => setType(t.id as SourceType)}
-                  style={{
-                    padding: '14px 12px',
-                    borderRadius: '14px',
-                    border: type === t.id ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                    background: type === t.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === t.id ? 'var(--adm-accent)' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.82rem' }}>
-                    {t.icon}
-                    <span>{t.label}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* Formulário Público (Ativo) */}
+              <div
+                onClick={() => setType('form')}
+                style={{
+                  padding: '16px 14px',
+                  borderRadius: '14px',
+                  border: type === 'form' ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                  background: type === 'form' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'form' ? 'var(--adm-accent)' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
+                    <FileText size={18} />
+                    <span>Formulário Público</span>
                   </div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
-                    {t.desc}
-                  </div>
+                  <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                    Ativo
+                  </span>
                 </div>
-              ))}
+                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
+                  Página de captura pública ou link compartilhável para orçamentos e leads externos.
+                </div>
+              </div>
+
+              {/* WhatsApp API (Em breve) */}
+              <div
+                style={{
+                  padding: '16px 14px',
+                  borderRadius: '14px',
+                  border: '1px dashed var(--adm-border)',
+                  background: 'var(--adm-bg-input)',
+                  opacity: 0.6,
+                  cursor: 'not-allowed',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  position: 'relative',
+                }}
+                title="Integração oficial WhatsApp API em desenvolvimento"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--adm-text-muted)', fontWeight: 800, fontSize: '0.86rem' }}>
+                    <PhoneCall size={18} />
+                    <span>WhatsApp API</span>
+                  </div>
+                  <span style={{ fontSize: '0.64rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(234, 179, 8, 0.12)', color: '#EAB308', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
+                    Em breve
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
+                  Conexão direta com número comercial, palavras-chave e sub-origens por campanha.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -398,6 +426,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem', borderColor: 'var(--adm-accent)' }}
                 required
               >
+                <option value="" disabled>-- Selecione o Funil de Destino --</option>
                 {scopedFunnels.map(f => (
                   <option key={f.id} value={f.id}>{f.name}</option>
                 ))}

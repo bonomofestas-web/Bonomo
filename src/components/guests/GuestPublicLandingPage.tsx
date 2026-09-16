@@ -31,9 +31,9 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
   // Dynamic Venue Details from active theme/venue
   const venueObj = currentTheme as any;
   const venueName = venueObj.name || 'Casa de Festas';
-  const venueLogo = venueObj.logoUrl || '/logo_riio_lounge.png';
+  const venueLogo = venueObj.logoUrl || null;
   const venueAddress = venueObj.address || '';
-  const venuePhoto = venueObj.photoUrl || venueObj.venueBallroomUrl || "/venue_ballroom.jpg";
+  const venuePhoto = venueObj.photoUrl || venueObj.venueBallroomUrl || null;
   const venueTagline = venueObj.tagline || "Mais do que uma casa de festas, uma experiência inesquecível.";
   const venueDescription = venueObj.description || "Transformamos celebrações em momentos inesquecíveis, unindo estrutura impecável, atendimento personalizado e alta gastronomia.";
   
@@ -133,18 +133,33 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
             Convite Oficial
           </div>
 
-          {/* Logo Dinâmica da Casa de Festa */}
-          <img 
-            src={venueLogo} 
-            alt={venueName} 
-            style={{ 
-              maxWidth: '180px',
-              height: '84px', 
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 0 14px rgba(212, 175, 55, 0.55))',
-              marginBottom: '6px' 
-            }} 
-          />
+          {/* Logo Dinâmica da Casa de Festa ou Tipografia Nobre */}
+          {venueLogo ? (
+            <img 
+              src={venueLogo} 
+              alt={venueName} 
+              style={{ 
+                maxWidth: '180px',
+                height: '84px', 
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 0 14px rgba(212, 175, 55, 0.55))',
+                marginBottom: '6px' 
+              }} 
+            />
+          ) : (
+            <div style={{
+              fontFamily: "'Cinzel', 'Playfair Display', serif",
+              fontSize: '1.4rem',
+              fontWeight: 800,
+              letterSpacing: '3px',
+              color: '#D4AF37',
+              textTransform: 'uppercase',
+              marginBottom: '6px',
+              textShadow: '0 0 20px rgba(212, 175, 55, 0.4)',
+            }}>
+              {venueName}
+            </div>
+          )}
         </div>
 
         {/* ── 2. BLOCO DA ANIVERSARIANTE (CHAMADA ÚNICA SEM REPETIÇÃO DO NOME) ── */}
@@ -795,31 +810,33 @@ export const GuestPublicLandingPage: React.FC<GuestPublicLandingPageProps> = ({ 
             }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                gridTemplateColumns: venuePhoto ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr',
                 gap: '32px',
                 alignItems: 'center',
                 marginBottom: '32px',
               }}>
                 {/* Foto do Espaço */}
-                <div style={{
-                  borderRadius: '20px',
-                  overflow: 'hidden',
-                  border: '1px solid rgba(212, 175, 55, 0.35)',
-                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7)',
-                  position: 'relative',
-                  maxHeight: '340px',
-                }}>
-                  <img
-                    src={venuePhoto}
-                    alt={venueName}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      display: 'block',
-                    }}
-                  />
-                </div>
+                {venuePhoto && (
+                  <div style={{
+                    borderRadius: '20px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(212, 175, 55, 0.35)',
+                    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7)',
+                    position: 'relative',
+                    maxHeight: '340px',
+                  }}>
+                    <img
+                      src={venuePhoto}
+                      alt={venueName}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Descrição da Casa de Festa */}
                 <div>

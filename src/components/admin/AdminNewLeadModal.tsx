@@ -142,14 +142,20 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     return sources.filter(s => s.venueId === venueId && s.status === 'active');
   }, [sources, venueId]);
 
-  // Colaboradores SDR e Closer
-  const sdrCollaborators = useMemo(() => {
-    return collaborators.filter(c => c.role === 'sdr' || c.role === 'admin' || c.role === 'master');
+  // Colaboradores SDR e Closer com acesso comercial
+  const commercialCollaborators = useMemo(() => {
+    return collaborators.filter(c => {
+      if (!c.active) return false;
+      if (c.role === 'master' || c.role === 'dev') return true;
+      if (c.sectors && c.sectors.length > 0) {
+        return c.sectors.includes('comercial');
+      }
+      return ['comercial', 'sdr', 'closer', 'crm'].includes(c.role || '');
+    });
   }, [collaborators]);
 
-  const closerCollaborators = useMemo(() => {
-    return collaborators.filter(c => c.role === 'closer' || c.role === 'admin' || c.role === 'master');
-  }, [collaborators]);
+  const sdrCollaborators = commercialCollaborators;
+  const closerCollaborators = commercialCollaborators;
 
   if (!isOpen) return null;
 

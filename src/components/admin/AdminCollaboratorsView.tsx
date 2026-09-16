@@ -3,20 +3,22 @@ import {
   Building2, 
   Mail, Phone, Edit3, Trash2, 
   UserPlus, Shield, ShieldCheck, Plus,
-  CheckCircle2, Clock, Check,
-  UserX, AlertTriangle, CheckSquare, Target, X
+  CheckCircle2, Clock, Check, ArrowLeft,
+  UserX, AlertTriangle, CheckSquare, Target, X,
+  Power
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminCollaboratorModal } from './AdminCollaboratorModal';
+import { ImageUploadField } from './ImageUploadField';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
-import { formatPhone } from '../../utils/phoneFormatter';
-import type { Collaborator } from '../../types/admin';
+import { formatPhone, maskPhoneInput } from '../../utils/phoneFormatter';
+import type { Collaborator, AdminRole } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
   const { 
     collaborators, 
     venues, 
     deleteCollaborator, 
+    addCollaborator,
     updateCollaborator,
     switchUserRoleDemo,
     currentUser,
@@ -25,11 +27,22 @@ export const AdminCollaboratorsView: React.FC = () => {
     sendCollaboratorInvite,
   } = useAdminState();
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
   const [collabToDelete, setCollabToDelete] = useState<Collaborator | null>(null);
   const [sendingInviteEmail, setSendingInviteEmail] = useState<string | null>(null);
   const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
+
+  // Estados do Formulário em Área de Conteúdo
+  const [formName, setFormName] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formCustomJobTitle, setFormCustomJobTitle] = useState('');
+  const [formPassword, setFormPassword] = useState('123456');
+  const [formSectors, setFormSectors] = useState<('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]>(['comercial']);
+  const [formSelectedVenueIds, setFormSelectedVenueIds] = useState<string[]>([]);
+  const [formAvatarUrl, setFormAvatarUrl] = useState('');
+  const [formActive, setFormActive] = useState(true);
 
   // Estados do Modal de Revinculação / Transferência
   const [reassignMode, setReassignMode] = useState<'transfer' | 'open'>('transfer');
@@ -102,12 +115,85 @@ export const AdminCollaboratorsView: React.FC = () => {
 
   const handleOpenCreate = () => {
     setCollaboratorToEdit(null);
-    setIsModalOpen(true);
+    setFormName('');
+    setFormEmail('');
+    setFormPhone('');
+    setFormCustomJobTitle('');
+    setFormPassword('123456');
+    setFormSectors(['comercial']);
+    setFormSelectedVenueIds(venues.map(v => v.id));
+    setFormAvatarUrl('');
+    setFormActive(true);
+    setIsFormOpen(true);
   };
 
   const handleOpenEdit = (collab: Collaborator) => {
     setCollaboratorToEdit(collab);
-    setIsModalOpen(true);
+    setFormName(collab.name || '');
+    setFormEmail(collab.email || '');
+    setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
+    setFormCustomJobTitle(collab.customJobTitle || '');
+    setFormPassword(collab.password || '••••••••');
+    const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = collab.sectors && collab.sectors.length > 0
+      ? collab.sectors
+      : collab.role === 'pos_venda' ? ['pos_venda']
+      : collab.role === 'admin' || collab.role === 'master' ? ['gerencia', 'comercial', 'pos_venda']
+      : ['comercial'];
+    setFormSectors(existingSectors);
+    const vIds = collab.venueIds && collab.venueIds.length > 0 ? collab.venueIds : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : venues.map(v => v.id));
+    setFormSelectedVenueIds(vIds);
+    setFormAvatarUrl(collab.avatarUrl || '');
+    setFormActive(collab.active ?? true);
+    setIsFormOpen(true);
+  };
+
+  const handleSaveCollaborator = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!formName.trim() || !formEmail.trim()) {
+      alert('Preencha ao menos o nome e e-mail do colaborador.');
+      return;
+    }
+
+    const primaryVenueId = formSelectedVenueIds.length === 1 ? formSelectedVenueIds[0] : 'all';
+
+    // Computa a role base para compatibilidade
+    let computedRole: AdminRole = 'crm';
+    if (formSectors.includes('gerencia')) {
+      computedRole = collaboratorToEdit?.role === 'master' ? 'master' : 'admin';
+    } else if (formSectors.includes('pos_venda') && !formSectors.includes('comercial')) {
+      computedRole = 'pos_venda';
+    } else if (formSectors.includes('comercial')) {
+      computedRole = collaboratorToEdit?.role === 'closer' ? 'closer' : collaboratorToEdit?.role === 'sdr' ? 'sdr' : 'crm';
+    }
+
+    const payload = {
+      name: formName.trim(),
+      email: formEmail.trim().toLowerCase(),
+      phone: formPhone.trim() || undefined,
+      customJobTitle: formCustomJobTitle.trim() || undefined,
+      sectors: formSectors,
+      role: computedRole,
+      department: formSectors[0] || 'comercial',
+      venueId: computedRole === 'master' ? 'all' : primaryVenueId,
+      venueIds: computedRole === 'master' ? venues.map(v => v.id) : formSelectedVenueIds,
+      avatarUrl: formAvatarUrl.trim() || undefined,
+      active: formActive,
+    };
+
+    if (collaboratorToEdit) {
+      updateCollaborator(collaboratorToEdit.id, {
+        ...payload,
+        password: formPassword !== '••••••••' ? formPassword : collaboratorToEdit.password,
+      });
+    } else {
+      addCollaborator({
+        ...payload,
+        password: formPassword,
+        isFirstAccess: true,
+      });
+    }
+
+    setIsFormOpen(false);
   };
 
   const handleOpenDelete = (collab: Collaborator) => {
@@ -171,6 +257,496 @@ export const AdminCollaboratorsView: React.FC = () => {
         };
     }
   };
+
+  if (isFormOpen) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '24px',
+        padding: '24px 32px 60px 32px',
+        width: '100%',
+        boxSizing: 'border-box',
+        animation: 'fadeIn 0.25s ease-out',
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}>
+        {/* Header with Back and Save actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              style={{
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                padding: '8px 14px',
+                color: 'var(--adm-text-title)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.80rem',
+                fontWeight: 700,
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
+            >
+              <ArrowLeft size={16} />
+              <span>Voltar</span>
+            </button>
+            <div>
+              <h1 style={{
+                fontSize: '1.45rem',
+                fontWeight: 800,
+                color: 'var(--adm-text-title)',
+                letterSpacing: '-0.4px',
+                margin: 0,
+              }}>
+                {collaboratorToEdit ? `Editar Colaborador: ${collaboratorToEdit.name}` : 'Cadastrar Novo Colaborador'}
+              </h1>
+              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+                Configure os dados, cargo executivo e o nível de acesso por setores no F5 System.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--adm-border)',
+                color: 'var(--adm-text-muted)',
+                borderRadius: '12px',
+                padding: '9px 18px',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveCollaborator()}
+              className="adm-btn-primary"
+              style={{
+                borderRadius: '12px',
+                padding: '9px 22px',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Check size={16} />
+              <span>{collaboratorToEdit ? 'Salvar Alterações' : 'Criar Colaborador'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2-Column Responsive Layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+          {/* Card 1: Identificação & Cargo */}
+          <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
+              <UserPlus size={18} color="var(--adm-accent)" />
+              <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                1. Dados de Identificação & Cargo
+              </h2>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
+                Nome Completo *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Ex: Amanda Silveira"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.86rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
+                E-mail Corporativo *
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="amanda@bonomofestas.com.br"
+                value={formEmail}
+                onChange={(e) => setFormEmail(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.86rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
+                  WhatsApp / Telefone
+                </label>
+                <input
+                  type="text"
+                  placeholder="(21) 99999-9999"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(maskPhoneInput(e.target.value))}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.86rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
+                  Senha Provisória
+                </label>
+                <input
+                  type="text"
+                  placeholder="123456"
+                  value={formPassword}
+                  onChange={(e) => setFormPassword(e.target.value)}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.86rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Cargo do Colaborador (Texto Livre) */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
+                Cargo do Colaborador
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Consultor Comercial, Coordenador de Pós-Venda, Líder de Atendimento..."
+                value={formCustomJobTitle}
+                onChange={(e) => setFormCustomJobTitle(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.86rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+              <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', display: 'block', marginTop: '4px' }}>
+                Este cargo será exibido nas fichas de atendimento, tarefas e identificação da equipe.
+              </span>
+            </div>
+
+            {/* Foto de Perfil */}
+            <div>
+              <ImageUploadField
+                label="Foto de Perfil / Avatar (Opcional)"
+                value={formAvatarUrl}
+                onChange={setFormAvatarUrl}
+                folder="avatars"
+              />
+            </div>
+          </div>
+
+          {/* Card 2: Nível de Acesso por Setores & Casas de Festa */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Setores */}
+            <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
+                <ShieldCheck size={18} color="var(--adm-accent)" />
+                <div>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                    2. Nível de Acesso por Setores
+                  </h2>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                    Selecione um ou mais setores. O colaborador terá liberdade de atuação em todos os blocos marcados.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* 1. Setor Comercial */}
+                <div
+                  onClick={() => {
+                    const isSelected = formSectors.includes('comercial');
+                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'comercial') : [...formSectors, 'comercial']);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: formSectors.includes('comercial') ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                    background: formSectors.includes('comercial') ? 'rgba(16, 185, 129, 0.08)' : 'var(--adm-bg-input)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formSectors.includes('comercial')}
+                    onChange={() => {}}
+                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#10B981' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('comercial') ? '#10B981' : 'var(--adm-text-title)' }}>
+                        Setor Comercial
+                      </span>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.18)', color: '#10B981', padding: '1px 6px', borderRadius: '4px' }}>
+                        + Visitas & Degustação
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                      Acesso aos Funis de Vendas, Leads, Oportunidades, WhatsApp e Follow-up. Recebe automaticamente permissão para gerenciar a agenda de <strong>Visitas & Degustação</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Setor de Pós-Venda */}
+                <div
+                  onClick={() => {
+                    const isSelected = formSectors.includes('pos_venda');
+                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'pos_venda') : [...formSectors, 'pos_venda']);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: formSectors.includes('pos_venda') ? '1.5px solid #06B6D4' : '1px solid var(--adm-border)',
+                    background: formSectors.includes('pos_venda') ? 'rgba(6, 182, 212, 0.08)' : 'var(--adm-bg-input)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formSectors.includes('pos_venda')}
+                    onChange={() => {}}
+                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#06B6D4' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('pos_venda') ? '#06B6D4' : 'var(--adm-text-title)' }}>
+                      Setor de Pós-Venda
+                    </span>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                      Acesso aos Clientes fechados, gestão de Aniversariantes & Aplicativo, Jornada VIP de indicações, Compromissos e Visitas & Degustação.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Setor de Gerência */}
+                <div
+                  onClick={() => {
+                    const isSelected = formSectors.includes('gerencia');
+                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'gerencia') : [...formSectors, 'gerencia']);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: formSectors.includes('gerencia') ? '1.5px solid #3B82F6' : '1px solid var(--adm-border)',
+                    background: formSectors.includes('gerencia') ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-input)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formSectors.includes('gerencia')}
+                    onChange={() => {}}
+                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#3B82F6' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('gerencia') ? '#3B82F6' : 'var(--adm-text-title)' }}>
+                      Setor de Gerência
+                    </span>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                      Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Setor Financeiro (Em Breve) */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px dashed var(--adm-border)',
+                    background: 'var(--adm-bg-card)',
+                    opacity: 0.6,
+                    cursor: 'not-allowed',
+                  }}
+                >
+                  <input type="checkbox" disabled checked={false} style={{ marginTop: '3px' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                        Setor Financeiro
+                      </span>
+                      <span style={{ fontSize: '0.60rem', fontWeight: 800, background: 'rgba(255, 255, 255, 0.08)', color: 'var(--adm-text-muted)', padding: '1px 5px', borderRadius: '4px' }}>
+                        Em Breve
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
+                      Módulo de conciliação bancária, fluxo de caixa, comissões de fechamento e emissão de cobranças.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Casas de Festas Vinculadas */}
+            <div className="saas-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Building2 size={18} color="var(--adm-accent)" />
+                  <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                    3. Casas de Festas Vinculadas
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (formSelectedVenueIds.length === venues.length) {
+                      setFormSelectedVenueIds([]);
+                    } else {
+                      setFormSelectedVenueIds(venues.map(v => v.id));
+                    }
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--adm-accent)',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {formSelectedVenueIds.length === venues.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
+                {venues.map(venue => {
+                  const isChecked = formSelectedVenueIds.includes(venue.id);
+                  return (
+                    <div
+                      key={venue.id}
+                      onClick={() => {
+                        setFormSelectedVenueIds(prev => 
+                          isChecked ? prev.filter(id => id !== venue.id) : [...prev, venue.id]
+                        );
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        border: isChecked ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                        background: isChecked ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {}}
+                        style={{ cursor: 'pointer', accentColor: 'var(--adm-accent)' }}
+                      />
+                      <span style={{ fontSize: '0.80rem', fontWeight: isChecked ? 800 : 500, color: 'var(--adm-text-title)' }}>
+                        {venue.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Status Ativo */}
+            <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Acesso Ativo no Sistema
+                </span>
+                <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+                  Quando ativo, o colaborador pode efetuar login e receber atribuições.
+                </p>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={formActive}
+                  onChange={(e) => setFormActive(e.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: '#10B981', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.80rem', fontWeight: 700, color: formActive ? '#10B981' : '#EF4444' }}>
+                  {formActive ? 'Ativo' : 'Inativo'}
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -382,6 +958,10 @@ export const AdminCollaboratorsView: React.FC = () => {
           const badge = getRoleBadge(collab.role);
           const venue = venues.find(v => v.id === collab.venueId);
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
+          const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
+          const isMasterRole = collab.role === 'master';
+          const isOtherAdminWhenManager = currentUser?.role === 'admin' && (collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev');
+          const canToggle = !isSelf && !isMasterRole && !isOtherAdminWhenManager;
 
           return (
             <div
@@ -391,6 +971,9 @@ export const AdminCollaboratorsView: React.FC = () => {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
+                opacity: collab.active ? 1 : 0.65,
+                filter: collab.active ? 'none' : 'grayscale(100%)',
+                transition: 'all 0.25s ease',
               }}
             >
               {/* Profile Row */}
@@ -404,7 +987,9 @@ export const AdminCollaboratorsView: React.FC = () => {
                       height: '46px',
                       borderRadius: '50%',
                       objectFit: 'cover',
-                      border: '1.5px solid var(--adm-accent)',
+                      border: `1.5px solid ${collab.active ? 'var(--adm-accent)' : 'rgba(100, 116, 139, 0.4)'}`,
+                      filter: collab.active ? 'none' : 'grayscale(100%)',
+                      transition: 'all 0.2s ease',
                     }}
                   />
                   <div>
@@ -462,35 +1047,37 @@ export const AdminCollaboratorsView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Modern Toggle Switch On/Off */}
-                <button
-                  type="button"
-                  onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
-                  title={collab.active ? 'Conta Ativa • Clique para suspender o acesso deste colaborador' : 'Conta Desligada • Clique para habilitar o acesso'}
-                  style={{
-                    width: '44px',
-                    height: '24px',
-                    borderRadius: '14px',
-                    background: collab.active ? '#10B981' : 'rgba(100, 116, 139, 0.4)',
-                    border: `1px solid ${collab.active ? '#059669' : 'rgba(255, 255, 255, 0.15)'}`,
-                    padding: '2px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: collab.active ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none',
-                  }}
-                >
-                  <div style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    background: '#FFFFFF',
-                    transform: collab.active ? 'translateX(20px)' : 'translateX(1px)',
-                    transition: 'transform 0.2s ease',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                  }} />
-                </button>
+                {/* Botão de Power Liga/Desliga — Exibido APENAS quando o usuário tem permissão para gerenciar este perfil */}
+                {canToggle && (
+                  <button
+                    type="button"
+                    onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
+                    title={collab.active ? 'Colaborador Ativo • Clique para desativar' : 'Colaborador Desativado • Clique para reativar'}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '10px',
+                      background: collab.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                      border: `1.5px solid ${collab.active ? 'rgba(16, 185, 129, 0.5)' : 'rgba(100, 116, 139, 0.35)'}`,
+                      color: collab.active ? '#10B981' : '#64748B',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: collab.active ? '0 0 12px rgba(16, 185, 129, 0.3)' : 'none',
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.transform = 'scale(1.08)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <Power size={18} />
+                  </button>
+                )}
               </div>
 
               {/* Status de Ativação / Primeiro Acesso */}
@@ -726,12 +1313,6 @@ export const AdminCollaboratorsView: React.FC = () => {
         })}
         </div>
       )}
-
-      <AdminCollaboratorModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        collaboratorToEdit={collaboratorToEdit}
-      />
 
       {/* ── MODAL DE REVINCULAÇÃO & EXCLUSÃO DE COLABORADOR ───────────────────── */}
       {collabToDelete && (

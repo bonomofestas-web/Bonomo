@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
 import { AdminDashboardView } from './AdminDashboardView';
@@ -13,13 +14,12 @@ import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
 import { AdminLoginView } from './AdminLoginView';
 import { AdminVenueModal } from './AdminVenueModal';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
-import { AdminSettingsModal } from './AdminSettingsModal';
 import { AdminVenueGoalsView } from './AdminVenueGoalsView';
 import { AdminMasterDashboardView } from './AdminMasterDashboardView';
 import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminTeamView } from './AdminTeamView';
-import { AdminFollowUpsView } from './AdminFollowUpsView';
+import { AdminTasksWorkspaceView } from './AdminTasksWorkspaceView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
@@ -32,8 +32,10 @@ import { AdminSupportWidget } from './AdminSupportWidget';
 import { AdminLoadingSplash } from './AdminLoadingSplash';
 import { AdminErrorBoundary } from './AdminErrorBoundary';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
-import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown } from 'lucide-react';
-import type { FeatureFlagId, Venue, DebutanteAccount, Lead, Collaborator, AdminTask, SystemAnnouncement } from '../../types/admin';
+import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
+import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
+import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut } from 'lucide-react';
+import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
@@ -49,17 +51,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
-  home: 'home',
-  dashboard: 'dashboard',
-  whatsapp: 'whatsapp',
-  crm: 'funnels',
-  debutantes: 'debutantes',
-  'venue-goals': 'venue_goals',
-  sources: 'sources',
-  mql: 'icp',
   'master-dashboard': 'master_dashboard',
-  collaborators: 'collaborators',
-  venues: 'venues',
 };
 
 
@@ -70,6 +62,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 }) => {
   const { 
     currentUser, 
+    logout,
     impersonatingMaster,
     stopImpersonation,
     theme, 
@@ -100,9 +93,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close popovers on click outside
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+      if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(e.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => document.removeEventListener('mousedown', handleDocumentClick);
+  }, []);
+
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSearchHovered, setIsSearchHovered] = useState(false);
 
   // Support notifications state (Audio 1 & 2: badge quando suporte responde)
   const [lastSupportReadAt, setLastSupportReadAt] = useState<number>(() => {
@@ -149,7 +161,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Fast creation and settings modals
   const [isNewVenueModalOpen, setIsNewVenueModalOpen] = useState(false);
   const [isNewDebutanteModalOpen, setIsNewDebutanteModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   // CRM workspace: open lead directly from task click
   const [crmOpenLeadId, setCrmOpenLeadId] = useState<string | undefined>(undefined);
 
@@ -186,6 +197,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
     const menuTabsInOrder: AdminTabType[] = [
       'home',
+      'tasks',
       'dashboard',
       'crm',
       'whatsapp',
@@ -232,6 +244,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
     }
   }, [isInitialSyncComplete, activeTab, currentUser?.role, getFeatureStatus, getFirstAvailableTab]);
+
+  // Listener para troca de aba disparada por componentes filhos
+  useEffect(() => {
+    const handleSwitchTab = (e: any) => {
+      if (e.detail?.tab) {
+        setActiveTab(e.detail.tab);
+        try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch {}
+      }
+    };
+    window.addEventListener('admin_switch_tab', handleSwitchTab);
+    return () => window.removeEventListener('admin_switch_tab', handleSwitchTab);
+  }, []);
 
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
@@ -359,6 +383,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onNavigateTab={(tab) => handleSelectTab(tab)}
           />
         );
+      case 'tasks':
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
+      case 'team-calendar':
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
       case 'dashboard':
         return (
           <AdminDashboardView
@@ -378,9 +406,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'followups':
-        return <AdminFollowUpsView onOpenLead={handleOpenLeadFromTask} />;
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="followup" />;
       case 'whatsapp':
         return <AdminWhatsAppWorkspaceView />;
+      case 'post-sale-crm':
+        return <AdminPostSaleKanbanView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+      case 'vip-journey':
+        return <AdminVipJourneyUnifiedView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+      case 'post-sale-appointments':
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="appointments" />;
+      case 'post-sale-visits-tastings':
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="visits_tastings" />;
       case 'team':
         return <AdminTeamView />;
       case 'sources':
@@ -488,7 +524,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             handleSelectTab(tab, funnelId);
             setIsMobileSidebarOpen(false);
           }}
-          onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenSettings={() => handleSelectTab('settings')}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
         />
@@ -505,7 +541,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           }}
           onOpenSettings={() => {
             setIsMobileSidebarOpen(false);
-            setIsSettingsModalOpen(true);
+            handleSelectTab('settings');
           }}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           isMobileOverlay={true}
@@ -572,26 +608,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
                 category = 'Inicialização';
                 title = 'Registrar Primeira Casa de Festas';
-              } else if (activeTab === 'dashboard') { category = 'Visão Geral'; title = 'Dashboard & Métricas'; }
-              else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial & Leads'; }
-              else if (activeTab === 'followups') { category = 'Comercial'; title = 'Agenda de Follow-ups'; }
-              else if (activeTab === 'whatsapp') { category = 'Comunicação'; title = 'WhatsApp Workspace'; }
-              else if (activeTab === 'team') { category = 'Equipe'; title = 'Equipe do Workspace & Organograma'; }
-              else if (activeTab === 'sources') { category = 'Gestão da Casa'; title = 'Origens & Rastreamento'; }
-              else if (activeTab === 'mql') { category = 'Inteligência'; title = 'ICP'; }
-              else if (activeTab === 'venue-goals') { category = 'Gestão da Casa'; title = 'Metas Comerciais da Casa'; }
-              else if (activeTab === 'venues') { category = 'Unidades'; title = 'Casas de Festa & Espaços'; }
-              else if (activeTab === 'debutantes') { category = 'Debutantes'; title = 'Central de Aniversariantes • 15 Anos'; }
-              else if (activeTab === 'master-dashboard') { category = 'Master'; title = 'Dashboard Executivo Master'; }
-              else if (activeTab === 'benefits') { category = 'Catálogo'; title = 'Catálogo de Benefícios & Recompensas'; }
-              else if (activeTab === 'collaborators') { category = 'Gestão'; title = 'Equipe Comercial & Permissões'; }
-              else if (activeTab === 'templates') { category = 'Jornadas'; title = 'Configurações de Jornadas VIP'; }
-              else if (activeTab === 'appointments') { category = 'Agenda'; title = 'Agenda & Visitas / Degustações'; }
-              else if (activeTab === 'settings') { category = 'Sistema'; title = 'Configurações Gerais'; }
-              else if (activeTab === 'dev-features') { category = 'Desenvolvedor'; title = 'Feature Flags & Controle de Módulos'; }
-              else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários (Masters & Equipe)'; }
-              else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais do App'; }
-              else if (activeTab === 'dev-support') { category = 'Desenvolvedor'; title = 'Painel de Suporte & Central de Bugs'; }
+              } else if (activeTab === 'tasks') { category = 'Workspace'; title = 'Tarefas'; }
+              else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
+              else if (activeTab === 'team') { category = 'Workspace'; title = 'Equipe'; }
+              else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
+              else if (activeTab === 'whatsapp') { category = 'Comercial'; title = 'WhatsApp'; }
+              else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
+              else if (activeTab === 'followups') { category = 'Comercial'; title = 'Follow-up'; }
+              else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Clientes'; }
+              else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'Aniversariantes'; }
+              else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
+              else if (activeTab === 'post-sale-visits-tastings') { category = 'Pós-Venda'; title = 'Visitas & Degustação'; }
+              else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
+              else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
+              else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }
+              else if (activeTab === 'venues') { category = 'Gerência'; title = 'Casas de Festa'; }
+              else if (activeTab === 'venue-goals') { category = 'Gerência'; title = 'Metas'; }
+              else if (activeTab === 'sources') { category = 'Gerência'; title = 'Origens'; }
+              else if (activeTab === 'mql') { category = 'Gerência'; title = 'Qualificação'; }
+              else if (activeTab === 'benefits') { category = 'Pós-Venda'; title = 'Catálogo de Prêmios'; }
+              else if (activeTab === 'templates') { category = 'Pós-Venda'; title = 'Jornadas VIP'; }
+              else if (activeTab === 'settings') { category = 'Configurações'; title = 'Conta & Preferências'; }
+              else if (activeTab === 'dev-features') { category = 'Desenvolvedor'; title = 'Feature Flags'; }
+              else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários'; }
+              else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais'; }
+              else if (activeTab === 'dev-support') { category = 'Desenvolvedor'; title = 'Central de Suporte'; }
 
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
@@ -662,14 +703,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             )}
 
             {/* Expandable Search Capsule (Audio 3: Centralização milimétrica da lupa) */}
-            <div className="admin-header-search" style={{ position: 'relative' }}>
+            <div
+              className="admin-header-search"
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setIsSearchHovered(true)}
+              onMouseLeave={() => setIsSearchHovered(false)}
+            >
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: isSearchFocused || globalSearch ? 'flex-start' : 'center',
                 gap: '8px',
                 background: isSearchFocused || globalSearch ? '#141118' : 'rgba(255, 255, 255, 0.06)',
-                border: `1px solid ${isSearchFocused || globalSearch ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)'}`,
+                border: `1px solid ${isSearchFocused || globalSearch || isSearchHovered ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)'}`,
                 borderRadius: '50px',
                 padding: isSearchFocused || globalSearch ? '5px 12px' : '0',
                 width: isSearchFocused || globalSearch ? '280px' : '36px',
@@ -681,7 +727,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => setIsSearchFocused(true)}
               >
                 <span style={{
-                  color: isSearchFocused || globalSearch ? '#14A9D7' : '#FFFFFF',
+                  color: isSearchFocused || globalSearch || isSearchHovered ? '#14A9D7' : '#FFFFFF',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -691,6 +737,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   flexShrink: 0,
                   margin: 0,
                   padding: 0,
+                  transition: 'color 0.2s ease',
                 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
                     <circle cx="11" cy="11" r="8"></circle>
@@ -986,10 +1033,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </button>
 
             {/* 1. Notification Bell & Dropdown */}
-            <div style={{ position: 'relative' }}>
+            <div ref={notificationsMenuRef} style={{ position: 'relative' }}>
               <button
                 type="button"
-                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                onClick={() => {
+                  setIsNotificationsOpen(!isNotificationsOpen);
+                  setIsProfileMenuOpen(false);
+                }}
                 style={{
                   width: '38px',
                   height: '38px',
@@ -1003,6 +1053,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   cursor: 'pointer',
                   position: 'relative',
                   transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#D4AF37';
+                  e.currentTarget.style.borderColor = '#D4AF37';
+                  e.currentTarget.style.background = 'rgba(212, 175, 55, 0.14)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = isNotificationsOpen ? '#D4AF37' : '#9E988D';
+                  e.currentTarget.style.borderColor = isNotificationsOpen ? '#D4AF37' : 'rgba(212, 175, 55, 0.25)';
+                  e.currentTarget.style.background = isNotificationsOpen ? 'rgba(212, 175, 55, 0.18)' : '#141118';
                 }}
                 title="Notificações"
               >
@@ -1081,6 +1141,34 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       </div>
                     ))}
 
+                    {/* Alerta de Suporte Respondido (Audio 1 & 2) */}
+                    {unreadSupportCount > 0 && (
+                      <div
+                        onClick={() => {
+                          setIsNotificationsOpen(false);
+                          handleToggleSupport();
+                        }}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '10px',
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#EF4444', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Headset size={12} color="#EF4444" />
+                          <span>{currentUser?.role === 'dev' ? 'Novos Chamados de Suporte' : 'Nova Resposta no Suporte'}</span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)' }}>
+                          Você possui {unreadSupportCount} mensagem(ns) não lida(s) no Suporte Técnico.
+                        </div>
+                      </div>
+                    )}
+
                     {totalNotificationsCount === 0 && userAnnouncements.length === 0 ? (
                       <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                         <Sparkles size={14} color="#10B981" /> Nenhuma pendência ou comunicado no momento!
@@ -1152,19 +1240,208 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 2. User Profile Trigger & Popover Dropdown */}
+            <div ref={profileMenuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfileMenuOpen(!isProfileMenuOpen);
+                  setIsNotificationsOpen(false);
+                }}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: isProfileMenuOpen ? 'rgba(20, 169, 215, 0.18)' : '#141118',
+                  border: `1px solid ${isProfileMenuOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
+                  padding: 0,
+                  overflow: 'hidden',
+                  boxShadow: isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#14A9D7';
+                  e.currentTarget.style.boxShadow = '0 0 10px rgba(20, 169, 215, 0.35)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = isProfileMenuOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)';
+                  e.currentTarget.style.boxShadow = isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none';
+                }}
+                title={`${currentUser?.name || 'Administrador'} (${ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role})`}
+              >
+                <img
+                  src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
+                  alt="Perfil"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </button>
+
+              {/* Profile Popover Dropdown */}
+              {isProfileMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  width: '220px',
+                  background: '#141118',
+                  border: '1px solid rgba(20, 169, 215, 0.25)',
+                  borderRadius: '14px',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.75), 0 0 20px rgba(20, 169, 215, 0.1)',
+                  padding: '10px',
+                  zIndex: 9999,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  animation: 'fadeIn 0.15s ease-out',
+                }}>
+                  {/* User Header Summary (aligned vertically, without duplicate photo) */}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    padding: '2px 4px 8px 4px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}>
+                    <div style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      color: '#FFFFFF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      lineHeight: 1.2,
+                    }}>
+                      {currentUser?.name || 'Administrador'}
+                    </div>
+                    <div style={{
+                      fontSize: '0.68rem',
+                      color: '#8096A8',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      lineHeight: 1.2,
+                    }}>
+                      {currentUser?.email}
+                    </div>
+                    <div style={{ marginTop: '2px' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        fontSize: '0.52rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(212, 175, 55, 0.15)',
+                        color: '#D4AF37',
+                        border: '1px solid rgba(212, 175, 55, 0.3)',
+                        letterSpacing: '0.4px',
+                      }}>
+                        {ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Menu Actions */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileMenuOpen(false);
+                        handleSelectTab('settings');
+                      }}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '7px 8px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        color: '#FFFFFF',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)';
+                        e.currentTarget.style.color = '#14A9D7';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }}
+                    >
+                      <Settings size={15} color="#14A9D7" />
+                      <span>Configurações & Tema</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileMenuOpen(false);
+                        logout();
+                      }}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '7px 8px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        color: '#EF4444',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                      }}
+                    >
+                      <LogOut size={15} color="#EF4444" />
+                      <span>Sair do Sistema</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {/* Content Area */}
-        <div style={{
-          flex: 1,
-          overflowY: (activeTab === 'whatsapp' || activeTab === 'crm') ? 'hidden' : 'auto',
-          overflowX: 'hidden',
-          background: 'var(--adm-bg-app)',
-          height: 'calc(100vh - 64px)',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
+        {/* Área de Conteúdo (Content Area) */}
+        <div
+          className="f5-content-area"
+          data-area="area-de-conteudo"
+          style={{
+            flex: 1,
+            overflowY: (activeTab === 'whatsapp' || activeTab === 'crm') ? 'hidden' : 'auto',
+            overflowX: 'hidden',
+            background: 'var(--adm-bg-app)',
+            height: 'calc(100vh - 64px)',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+          }}
+        >
           <AdminErrorBoundary fallbackTab="home" onResetTab={() => setActiveTab('home')}>
             {renderContent()}
           </AdminErrorBoundary>
@@ -1180,11 +1457,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       <AdminDebutanteModal
         isOpen={isNewDebutanteModalOpen}
         onClose={() => setIsNewDebutanteModalOpen(false)}
-      />
-
-      <AdminSettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
       />
 
       <AdminSupportWidget

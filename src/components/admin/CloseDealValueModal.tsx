@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, DollarSign, Package, Calendar } from 'lucide-react';
+import { X, CheckCircle2, DollarSign, Package, FileText } from 'lucide-react';
+import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead } from '../../types/admin';
 
 interface CloseDealValueModalProps {
   isOpen: boolean;
   onClose: () => void;
   lead: Lead | null;
-  onConfirmSale: (leadId: string, dealValue: number, packageSold: string, contractDate: string) => void;
+  onConfirmSale: (leadId: string, dealValue: number, packageSold: string, closerNotes: string) => void;
 }
 
 export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
@@ -15,10 +16,29 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   lead,
   onConfirmSale,
 }) => {
-  const [dealValueStr, setDealValueStr] = useState('28500');
-  const [packageSold, setPackageSold] = useState('Pacote Ouro Real 200 Convidados + Pista de LED');
-  const [contractDate, setContractDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { currentUser } = useAdminState();
+  const [dealValueStr, setDealValueStr] = useState(() => {
+    if (!lead) return '';
+    const val = lead.dealValue || lead.estimatedBudget || 0;
+    return val > 0 ? String(val) : '';
+  });
+  const [packageSold, setPackageSold] = useState(() => {
+    if (!lead) return '';
+    return lead.packageSold || lead.interestService || '';
+  });
+  const [closerNotes, setCloserNotes] = useState('');
   const [error, setError] = useState('');
+
+  // Sync state when lead changes
+  React.useEffect(() => {
+    if (lead) {
+      const val = lead.dealValue || lead.estimatedBudget || 0;
+      setDealValueStr(val > 0 ? String(val) : '');
+      setPackageSold(lead.packageSold || lead.interestService || '');
+      setCloserNotes('');
+      setError('');
+    }
+  }, [lead?.id]);
 
   if (!isOpen || !lead) return null;
 
@@ -35,7 +55,12 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       return;
     }
 
-    onConfirmSale(lead.id, valueNum, packageSold.trim(), contractDate);
+    if (!closerNotes.trim()) {
+      setError('Por favor, preencha o Relatório do Closer (passagem de bastão para o Pós-Venda).');
+      return;
+    }
+
+    onConfirmSale(lead.id, valueNum, packageSold.trim(), closerNotes.trim());
     onClose();
   };
 
@@ -49,7 +74,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     fontSize: '0.84rem',
     outline: 'none',
     boxSizing: 'border-box',
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    fontFamily: "'Inter', sans-serif",
   };
 
   const labelStyle: React.CSSProperties = {
@@ -60,46 +85,53 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     marginBottom: '6px',
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    fontFamily: "'Inter', sans-serif",
   };
+
+  const primaryDecisor = (lead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (lead.contacts || [])[0];
 
   return (
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(0, 0, 0, 0.8)',
+      background: 'rgba(0, 0, 0, 0.85)',
       backdropFilter: 'blur(8px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000,
+      zIndex: 9999,
       padding: '20px',
       animation: 'fadeIn 0.2s ease-out',
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontFamily: "'Inter', sans-serif",
     }}>
       <div style={{
         background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
+        border: '1.5px solid var(--adm-accent)',
         borderRadius: '20px',
-        maxWidth: '520px',
+        maxWidth: '560px',
         width: '100%',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+        boxShadow: '0 24px 64px rgba(20, 169, 215, 0.25)',
         overflow: 'hidden',
+        maxHeight: '92vh',
+        display: 'flex',
+        flexDirection: 'column',
       }}>
         {/* Header */}
         <div style={{
-          padding: '20px 24px',
+          padding: '18px 24px',
           borderBottom: '1px solid var(--adm-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          background: 'rgba(20, 169, 215, 0.08)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'var(--adm-accent-bg)',
+              width: '38px',
+              height: '38px',
+              borderRadius: '12px',
+              background: 'rgba(20, 169, 215, 0.18)',
+              border: '1px solid var(--adm-accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -109,20 +141,21 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
             </div>
             <div>
               <h2 style={{
-                fontSize: '1.25rem',
+                fontSize: '1.15rem',
                 fontWeight: 800,
                 color: 'var(--adm-text-title)',
                 margin: 0,
                 letterSpacing: '-0.3px',
               }}>
-                Registrar Venda Fechada
+                Fechamento de Venda & Passagem de Bastão
               </h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Lead: <strong style={{ color: 'var(--adm-text-title)' }}>{lead.name}</strong> • Indicada por {lead.debutanteName}
+              <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+                Aniversariante: <strong style={{ color: 'var(--adm-text-title)' }}>{lead.name}</strong> • Decisor: <strong style={{ color: 'var(--adm-accent)' }}>{primaryDecisor?.name || 'Decisor'}</strong>
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: 'var(--adm-bg-elevated)',
@@ -142,7 +175,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
           {error && (
             <div style={{
               background: 'var(--adm-red-bg)',
@@ -174,19 +207,16 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                   setDealValueStr(e.target.value);
                   setError('');
                 }}
-                placeholder="28.500"
+                placeholder="Ex: 28500"
                 style={{
                   ...inputStyle,
                   paddingLeft: '44px',
-                  fontSize: '1.1rem',
+                  fontSize: '1.05rem',
                   fontWeight: 800,
                   color: 'var(--adm-accent)',
                 }}
               />
             </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '4px', display: 'block' }}>
-              Este valor será creditado no faturamento e pontuará a debutante indicadora.
-            </span>
           </div>
 
           {/* Pacote / Descrição */}
@@ -195,7 +225,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               Pacote / Serviços Contratados *
             </label>
             <div style={{ position: 'relative' }}>
-              <Package size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+              <Package size={15} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
               <input
                 type="text"
                 required
@@ -207,50 +237,62 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 placeholder="Ex: Pacote Ouro Real 200 Convidados"
                 style={{
                   ...inputStyle,
-                  paddingLeft: '38px',
+                  paddingLeft: '36px',
                 }}
               />
             </div>
           </div>
 
-          {/* Data do Fechamento */}
+          {/* Relatório do Closer (Passagem de Bastão) */}
           <div>
-            <label style={labelStyle}>
-              Data da Assinatura do Contrato *
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Calendar size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-              <input
-                type="date"
-                required
-                value={contractDate}
-                onChange={(e) => setContractDate(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  paddingLeft: '38px',
-                }}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FileText size={13} color="var(--adm-accent)" />
+                <span>Relatório do Closer / Passagem de Bastão *</span>
+              </label>
+              <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 700 }}>
+                Fechador: {currentUser?.name}
+              </span>
             </div>
+            <textarea
+              required
+              rows={3}
+              value={closerNotes}
+              onChange={(e) => {
+                setCloserNotes(e.target.value);
+                setError('');
+              }}
+              placeholder="Descreva como foi o fechamento, o que foi combinado com a família, particularidades do evento, cortesias acordadas, etc..."
+              style={{
+                ...inputStyle,
+                resize: 'vertical',
+                minHeight: '80px',
+                lineHeight: 1.4,
+              }}
+            />
+            <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '3px', display: 'block' }}>
+              Este texto será gravado como o primeiro item do histórico do cliente no Pós-Venda com sua identificação.
+            </span>
           </div>
 
-          {/* Impacto da Venda */}
+          {/* Banner de Confirmação */}
           <div style={{
-            background: 'var(--adm-accent-bg)',
-            border: '1px solid var(--adm-accent)',
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
             borderRadius: '12px',
-            padding: '12px 16px',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
+            gap: '10px',
           }}>
-            <CheckCircle2 size={24} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', lineHeight: 1.4 }}>
-              Ao confirmar, a etapa do lead mudará para <strong>Contrato Fechado</strong> e a comissão / pontuação da debutante <strong>{lead.debutanteName}</strong> será validada.
+            <CheckCircle2 size={20} color="#10B981" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '0.74rem', color: '#10B981', lineHeight: 1.4 }}>
+              Ao confirmar, o lead se torna <strong>Ganho</strong> e é criado automaticamente como <strong>Cliente no Pós-Venda</strong>.
             </div>
           </div>
 
           {/* Footer Buttons */}
-          <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
             <button
               type="button"
               onClick={onClose}
@@ -275,9 +317,10 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 borderRadius: '12px',
                 fontWeight: 800,
                 fontSize: '0.86rem',
+                background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
               }}
             >
-              Confirmar Fechamento de Venda
+              Concretizar Venda e Criar Cliente
             </button>
           </div>
         </form>

@@ -29,6 +29,9 @@ export const collaboratorService = {
         activatedAt: row.activated_at || undefined,
         lastLoginAt: row.last_login_at || undefined,
         password: row.password,
+        customJobTitle: row.custom_job_title || row.job_title || undefined,
+        department: row.department || undefined,
+        sectors: row.sectors || (row.department ? [row.department] : undefined),
         masterId: row.master_id || undefined,
         theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
@@ -48,6 +51,9 @@ export const collaboratorService = {
       if (collab.name !== undefined) payload.name = collab.name;
       if (collab.email !== undefined) payload.email = collab.email.trim().toLowerCase();
       if (collab.role !== undefined) payload.role = collab.role;
+      if (collab.customJobTitle !== undefined) payload.custom_job_title = collab.customJobTitle;
+      if (collab.department !== undefined) payload.department = collab.department;
+      if (collab.sectors !== undefined) payload.sectors = collab.sectors;
       if (collab.venueId !== undefined) payload.venue_id = collab.venueId === 'all' ? null : collab.venueId;
       if (collab.venueIds !== undefined) payload.venue_ids = collab.venueIds;
       if (collab.avatarUrl !== undefined) payload.avatar_url = collab.avatarUrl;

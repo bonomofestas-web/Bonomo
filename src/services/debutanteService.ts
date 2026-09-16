@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { DebutanteAccount, AdminTask } from '../types/admin';
+import type { DebutanteAccount } from '../types/admin';
 import type { Referral, Guest, Appointment } from '../types/index';
 
 export const debutanteService = {
@@ -422,21 +422,6 @@ export const debutanteService = {
   },
 
   async upsert(deb: Partial<DebutanteAccount> & { id: string }): Promise<boolean> {
-    // 1. Try Serverless Backend API (bypasses RLS restrictions)
-    try {
-      const res = await fetch('/api/save-debutante', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deb),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.success) return true;
-      }
-    } catch {
-      // Fall through to direct Supabase client
-    }
-
     if (!isSupabaseConfigured) return false;
     try {
       const isUuidPattern = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
@@ -444,11 +429,12 @@ export const debutanteService = {
       
       const payload: any = {};
       if (deb.venueId !== undefined) {
-        payload.venue_id = isUuidPattern(deb.venueId) ? deb.venueId : 'a1111111-1111-1111-1111-111111111111';
+        payload.venue_id = isUuidPattern(deb.venueId) ? deb.venueId : deb.venueId;
       }
       if (deb.journeyTemplateId !== undefined) {
         payload.journey_template_id = isUuidPattern(deb.journeyTemplateId) ? deb.journeyTemplateId : null;
       }
+      payload.status = deb.status || 'active';
       if (deb.name !== undefined) payload.name = deb.name;
       if (deb.slug !== undefined) payload.slug = deb.slug;
       if (deb.partyDate !== undefined) payload.party_date = deb.partyDate;
@@ -605,89 +591,4 @@ export const debutanteService = {
   }
 };
 
-export const taskService = {
-  async getAll(): Promise<AdminTask[]> {
-    if (!isSupabaseConfigured) return [];
-    try {
-      const { data, error } = await supabase
-        .from('admin_tasks')
-        .select('*')
-        .order('due_date', { ascending: true });
-
-      if (error) {
-        console.error('Erro ao buscar tarefas:', error);
-        return [];
-      }
-
-      return (data || []).map(row => ({
-        id: row.id,
-        leadId: row.lead_id,
-        debutanteId: row.debutante_id,
-        venueId: row.venue_id,
-        title: row.title,
-        description: row.description,
-        dueDate: row.due_date,
-        dueTime: row.due_time || '14:00',
-        status: row.status || 'todo',
-        priority: row.priority || 'medium',
-        type: row.type || 'general',
-        createdById: row.created_by_id,
-        createdByName: row.created_by_name || 'Sistema',
-        assignedToIds: row.assigned_to_ids || [],
-        createdAt: row.created_at || new Date().toISOString(),
-        completedAt: row.completed_at,
-      }));
-    } catch (err) {
-      console.error('Falha em taskService.getAll:', err);
-      return [];
-    }
-  },
-
-  async upsert(task: Partial<AdminTask> & { id: string }): Promise<boolean> {
-    if (!isSupabaseConfigured) return false;
-    try {
-      const payload: any = {
-        id: task.id,
-        lead_id: task.leadId || null,
-        debutante_id: task.debutanteId || null,
-        venue_id: task.venueId || null,
-        title: task.title,
-        description: task.description,
-        due_date: task.dueDate,
-        due_time: task.dueTime,
-        status: task.status,
-        priority: task.priority,
-        type: task.type,
-        created_by_id: task.createdById || null,
-        created_by_name: task.createdByName,
-        assigned_to_ids: task.assignedToIds || [],
-        completed_at: task.completedAt || null,
-      };
-
-      const { error } = await supabase.from('admin_tasks').upsert(payload);
-      if (error) {
-        console.error('Erro ao salvar tarefa no Supabase:', error);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      console.error('Falha em taskService.upsert:', err);
-      return false;
-    }
-  },
-
-  async delete(id: string): Promise<boolean> {
-    if (!isSupabaseConfigured) return false;
-    try {
-      const { error } = await supabase.from('admin_tasks').delete().eq('id', id);
-      if (error) {
-        console.error('Erro ao deletar tarefa:', error);
-        return false;
-      }
-      return true;
-    } catch (err) {
-      console.error('Falha em taskService.delete:', err);
-      return false;
-    }
-  }
-};
+export { taskService } from './taskService';

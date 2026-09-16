@@ -25,3 +25,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Database backups (contains real production user data)
+supabase/backups/
+!supabase/backups/.gitkeep

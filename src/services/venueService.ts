@@ -21,10 +21,14 @@ export const venueService = {
         name: row.name,
         tagline: row.tagline || '',
         logoUrl: row.logo_url || undefined,
+        bannerImageUrl: row.banner_image_url || row.ballroom_image_url || '',
         ballroomImageUrl: row.ballroom_image_url || '',
         description: row.description || '',
         experienceText: row.experience_text || '',
         address: row.address || '',
+        phone: row.phone || '',
+        whatsappNumber: row.whatsapp_number || row.phone || '',
+        email: row.email || '',
         yearsInBusiness: row.years_in_business || 0,
         eventsCompleted: row.events_completed || 0,
         guestsDelighted: row.guests_delighted || 0,
@@ -42,6 +46,7 @@ export const venueService = {
         leadDistributionMode: row.lead_distribution_mode || 'queue',
         leadDistributionSdrIds: row.lead_distribution_sdr_ids || [],
         roundRobinNextIndex: row.round_robin_next_index || 0,
+        active: row.active ?? row.is_active ?? true,
         createdAt: row.created_at || new Date().toISOString(),
       }));
     } catch (err) {
@@ -67,10 +72,14 @@ export const venueService = {
         name: data.name,
         tagline: data.tagline || '',
         logoUrl: data.logo_url || undefined,
+        bannerImageUrl: data.banner_image_url || data.ballroom_image_url || '',
         ballroomImageUrl: data.ballroom_image_url || '',
         description: data.description || '',
         experienceText: data.experience_text || '',
         address: data.address || '',
+        phone: data.phone || '',
+        whatsappNumber: data.whatsapp_number || data.phone || '',
+        email: data.email || '',
         yearsInBusiness: data.years_in_business || 0,
         eventsCompleted: data.events_completed || 0,
         guestsDelighted: data.guests_delighted || 0,
@@ -88,6 +97,7 @@ export const venueService = {
         leadDistributionMode: data.lead_distribution_mode || 'queue',
         leadDistributionSdrIds: data.lead_distribution_sdr_ids || [],
         roundRobinNextIndex: data.round_robin_next_index || 0,
+        active: data.active ?? data.is_active ?? true,
         createdAt: data.created_at || new Date().toISOString(),
       };
     } catch (err) {
@@ -105,10 +115,14 @@ export const venueService = {
       if (venue.name !== undefined) payload.name = venue.name;
       if (venue.tagline !== undefined) payload.tagline = venue.tagline;
       if (venue.logoUrl !== undefined) payload.logo_url = venue.logoUrl;
+      if (venue.bannerImageUrl !== undefined) payload.banner_image_url = venue.bannerImageUrl;
       if (venue.ballroomImageUrl !== undefined) payload.ballroom_image_url = venue.ballroomImageUrl;
       if (venue.description !== undefined) payload.description = venue.description;
       if (venue.experienceText !== undefined) payload.experience_text = venue.experienceText;
       if (venue.address !== undefined) payload.address = venue.address;
+      if (venue.phone !== undefined) payload.phone = venue.phone;
+      if (venue.whatsappNumber !== undefined) payload.whatsapp_number = venue.whatsappNumber;
+      if (venue.email !== undefined) payload.email = venue.email;
       if (venue.yearsInBusiness !== undefined) payload.years_in_business = venue.yearsInBusiness;
       if (venue.eventsCompleted !== undefined) payload.events_completed = venue.eventsCompleted;
       if (venue.guestsDelighted !== undefined) payload.guests_delighted = venue.guestsDelighted;
@@ -126,6 +140,7 @@ export const venueService = {
       if (venue.leadDistributionMode !== undefined) payload.lead_distribution_mode = venue.leadDistributionMode;
       if (venue.leadDistributionSdrIds !== undefined) payload.lead_distribution_sdr_ids = venue.leadDistributionSdrIds;
       if (venue.roundRobinNextIndex !== undefined) payload.round_robin_next_index = venue.roundRobinNextIndex;
+      if (venue.active !== undefined) payload.active = venue.active;
       if (venue.masterId !== undefined) payload.master_id = venue.masterId;
 
       if (isUuid) {

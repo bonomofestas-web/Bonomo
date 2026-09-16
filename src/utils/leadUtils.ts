@@ -16,3 +16,18 @@ export const generateLeadCode = (): string => {
   }
   return `LEAD-${randomPart}`;
 };
+
+/**
+ * Gera o Código Único Oficial do Cliente no formato 'CLI-XXXXXX'
+ * Exemplo: CLI-8W3K9P
+ */
+export const generateClientCode = (): string => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let randomPart = '';
+  for (let i = 0; i < 6; i++) {
+    const randomIndex = Math.floor(Math.random() * alphabet.length);
+    randomPart += alphabet[randomIndex];
+  }
+  return `CLI-${randomPart}`;
+};
+

@@ -99,7 +99,7 @@ export const sourceService = {
   /**
    * Salva ou atualiza uma origem no Supabase
    */
-  async upsert(source: Partial<Source> & { name: string; venueId: string; funnelId: string; type: Source['type'] }): Promise<Source | null> {
+  async upsert(source: Partial<Source> & { name: string; venueId: string; funnelId?: string; type: Source['type'] }): Promise<Source | null> {
     if (!isSupabaseConfigured) return null;
     try {
       const sourceId = source.id && isUuid(source.id) ? source.id : generateUuid();
@@ -109,7 +109,7 @@ export const sourceService = {
         venue_id: source.venueId,
         name: source.name,
         type: source.type,
-        funnel_id: source.funnelId,
+        funnel_id: (source.funnelId && isUuid(source.funnelId)) ? source.funnelId : null,
         whatsapp_instance_id: source.whatsappInstanceId || null,
         status: source.status || 'active',
         slug: source.slug ? source.slug.trim().toLowerCase() : null,
@@ -133,7 +133,7 @@ export const sourceService = {
         venueId: data.venue_id,
         name: data.name,
         type: data.type,
-        funnelId: data.funnel_id,
+        funnelId: data.funnel_id || '',
         whatsappInstanceId: data.whatsapp_instance_id || undefined,
         status: data.status,
         slug: data.slug,
@@ -221,26 +221,28 @@ export const sourceService = {
   },
 
   /**
-   * Garante que cada casa de festa tenha sua Origem de Indicação nativa sincronizada
+   * Garante que cada casa de festa tenha sua Origem de Indicação nativa sincronizada.
+   * Regra de negócio:
+   * - Se houver exatamente 1 funil comercial na conta: vincula automaticamente.
+   * - Se houver mais de 1 funil comercial: funnelId fica vazio/pendente para o gestor definir.
    */
   async ensureDefaultReferralSources(venues: Venue[], funnels: CommercialFunnel[]): Promise<void> {
     if (!isSupabaseConfigured || venues.length === 0) return;
     try {
       const existingSources = await this.getAll();
+      const hasExactlyOneFunnel = funnels.length === 1 && isUuid(funnels[0].id);
+      const autoFunnelId = hasExactlyOneFunnel ? funnels[0].id : '';
 
       for (const venue of venues) {
-        const hasReferral = existingSources.some(s => s.venueId === venue.id && s.type === 'referral');
-        if (!hasReferral) {
-          // Achar o primeiro funil daquela casa ou o funil geral
-          const venueFunnel = funnels.find(f => f.venueId === venue.id) || funnels[0];
-          const funnelId = venueFunnel?.id || 'indicacao';
+        const referralSource = existingSources.find(s => s.venueId === venue.id && s.type === 'referral');
 
+        if (!referralSource) {
           await this.upsert({
             id: generateUuid(),
             venueId: venue.id,
             name: `Indicações • ${venue.name}`,
             type: 'referral',
-            funnelId: funnelId,
+            funnelId: autoFunnelId,
             status: 'active',
             configuration: {
               systemManaged: true,

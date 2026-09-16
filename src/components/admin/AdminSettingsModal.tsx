@@ -218,10 +218,13 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setSelectedTheme('dark')}
+                onClick={() => {
+                  setSelectedTheme('dark');
+                  setTheme('dark');
+                }}
                 style={{
-                  background: selectedTheme === 'dark' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                  border: selectedTheme === 'dark' ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                  background: '#0D0B12',
+                  border: selectedTheme === 'dark' ? '2px solid #D4AF37' : '1px solid rgba(255, 255, 255, 0.16)',
                   borderRadius: '12px',
                   padding: '12px',
                   cursor: 'pointer',
@@ -229,21 +232,25 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   alignItems: 'center',
                   gap: '10px',
                   transition: 'all 0.15s ease',
+                  boxShadow: selectedTheme === 'dark' ? '0 0 12px rgba(212, 175, 55, 0.3)' : 'none',
                 }}
               >
-                <Moon size={18} color="var(--adm-accent)" />
+                <Moon size={18} color="#D4AF37" />
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Modo Dark (SaaS)</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Padrão escuro sofisticado</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#FFFFFF' }}>Modo Escuro</div>
+                  <div style={{ fontSize: '0.68rem', color: '#9E988D' }}>Preto ônix e dourado</div>
                 </div>
               </button>
 
               <button
                 type="button"
-                onClick={() => setSelectedTheme('light')}
+                onClick={() => {
+                  setSelectedTheme('light');
+                  setTheme('light');
+                }}
                 style={{
-                  background: selectedTheme === 'light' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                  border: selectedTheme === 'light' ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                  background: '#FFFFFF',
+                  border: selectedTheme === 'light' ? '2px solid #D4AF37' : '1px solid rgba(0, 0, 0, 0.16)',
                   borderRadius: '12px',
                   padding: '12px',
                   cursor: 'pointer',
@@ -251,12 +258,13 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   alignItems: 'center',
                   gap: '10px',
                   transition: 'all 0.15s ease',
+                  boxShadow: selectedTheme === 'light' ? '0 0 12px rgba(212, 175, 55, 0.3)' : 'none',
                 }}
               >
                 <Sun size={18} color="#F59E0B" />
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>Modo Light</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Interface clara</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>Modo Claro</div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748B' }}>Interface clara e limpa</div>
                 </div>
               </button>
             </div>

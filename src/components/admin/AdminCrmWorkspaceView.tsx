@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Send, MessageSquare, Sparkles, 
   ChevronRight, CheckCircle2, Lock,
-  FileText
+  FileText, Plus, CheckSquare, Clock, Trash2, Edit3
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import { AdminTaskModal } from './AdminTaskModal';
+import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { Lead, CrmStage } from '../../types/admin';
+import type { Lead, CrmStage, AdminTask } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
   initialLeadId?: string;
@@ -23,7 +23,9 @@ const formatDateTime = (iso: string) => {
   try {
     const d = new Date(iso);
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch { return iso; }
+  } catch {
+    return 'Data inválida';
+  }
 };
 
 const formatTimeOnly = (iso: string) => {
@@ -40,10 +42,10 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   searchQuery = '',
 }) => {
   const { 
-    leads, collaborators, currentUser, activeVenueId,
+    leads, venues, collaborators, currentUser, activeVenueId,
     updateLeadStage, closeLeadSaleWithValue, addLeadNote,
     assignLeadSdr,
-    deleteLeadTask, completeLeadTask
+    tasks, toggleTaskStatus, updateTask, deleteTask
   } = useAdminState();
 
   // ── Column 1 filter tabs ──────────────────────────────────────────────────
@@ -58,9 +60,10 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const [noteText, setNoteText] = useState('');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
-  // ── Task creation state ────────────────────────────────────────────────────
+  // ── Task detail modal state ────────────────────────────────────────────────
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<{ leadId: string; taskId: string; title: string } | null>(null);
+  const [editingTask, setEditingTask] = useState<AdminTask | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
 
   useEffect(() => {
     if (initialLeadId) {
@@ -125,8 +128,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     }
   };
 
-  const handleConfirmSale = (leadId: string, dealValue: number, packageSold: string, contractDate: string) => {
-    closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate);
+  const handleConfirmSale = (leadId: string, dealValue: number, packageSold: string, contractDate: string, closerNotes?: string) => {
+    closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate, closerNotes);
   };
 
   const handleSendInternalNote = (e: React.FormEvent) => {
@@ -136,7 +139,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     setNoteText('');
   };
 
-  const leadTasks = (currentLead?.tasks || []).filter(t => t.status !== 'completed');
+  const leadTasks = useMemo(() => {
+    if (!currentLead) return [];
+    return tasks.filter(t => t.leadId === currentLead.id || t.customProperties?.leadId === currentLead.id || (t as any).commercialLeadId === currentLead.id);
+  }, [tasks, currentLead?.id]);
+
   const leadActivities = currentLead?.activities || [];
 
   return (
@@ -345,9 +352,24 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Middle Row: Debutante Indicadora */}
-                  <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    👑 <strong style={{ color: 'var(--adm-accent)' }}>{lead.debutanteName}</strong>
+                  {/* Middle Row: Debutante Indicadora & Unidade */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      👑 <strong style={{ color: 'var(--adm-accent)' }}>{lead.debutanteName}</strong>
+                    </div>
+                    {(lead.venueName || lead.venueId) && (
+                      <span style={{
+                        fontSize: '0.62rem',
+                        color: 'rgba(255, 255, 255, 0.5)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                        {lead.venueName || venues.find(v => v.id === lead.venueId)?.name || 'Unidade'}
+                      </span>
+                    )}
                   </div>
 
                   {/* Bottom Row: Última mensagem / nota preview */}
@@ -648,12 +670,18 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               {activeTabCol3 === 'tasks' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Tarefas do Lead ({leadTasks.length})
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckSquare size={16} color="var(--adm-accent)" />
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Tarefas & Follow-ups ({leadTasks.length})
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setIsTaskModalOpen(true)}
+                      onClick={() => {
+                        setEditingTask(null);
+                        setIsTaskModalOpen(true);
+                      }}
                       style={{
                         background: 'var(--adm-accent)',
                         color: '#000',
@@ -663,68 +691,153 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                         fontSize: '0.72rem',
                         fontWeight: 800,
                         cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
-                      + Nova Tarefa
+                      <Plus size={12} />
+                      <span>Nova Tarefa</span>
                     </button>
                   </div>
 
                   {leadTasks.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '24px', color: 'var(--adm-text-muted)', fontSize: '0.78rem', border: '1px dashed var(--adm-border)', borderRadius: '10px' }}>
-                      Nenhuma tarefa pendente para este lead.
+                      Nenhuma tarefa ou follow-up cadastrado para este lead.
                     </div>
                   ) : (
-                    leadTasks.map(t => (
-                      <div
-                        key={t.id}
-                        style={{
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '8px',
-                          padding: '10px 12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <button
-                            type="button"
-                            onClick={() => completeLeadTask(currentLead.id, t.id)}
-                            style={{
-                              background: t.status === 'completed' ? '#10B981' : 'transparent',
-                              border: `1.5px solid ${t.status === 'completed' ? '#10B981' : 'var(--adm-border)'}`,
-                              borderRadius: '4px',
-                              width: '18px',
-                              height: '18px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {t.status === 'completed' && <CheckCircle2 size={12} color="#FFF" />}
-                          </button>
-                          <div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--adm-text-title)', textDecoration: t.status === 'completed' ? 'line-through' : 'none' }}>
-                              {t.description}
+                    leadTasks.map(t => {
+                      const isCompleted = t.status === 'completed';
+                      return (
+                        <div
+                          key={t.id}
+                          style={{
+                            background: 'var(--adm-bg-card)',
+                            border: `1px solid ${isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--adm-border)'}`,
+                            borderRadius: '10px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleTaskStatus(t.id)}
+                                title={isCompleted ? 'Marcar como pendente' : 'Marcar como concluída'}
+                                style={{
+                                  background: isCompleted ? '#10B981' : 'transparent',
+                                  border: `1.5px solid ${isCompleted ? '#10B981' : 'var(--adm-border)'}`,
+                                  borderRadius: '5px',
+                                  width: '20px',
+                                  height: '20px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                {isCompleted && <CheckCircle2 size={13} color="#FFF" />}
+                              </button>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                  fontSize: '0.82rem',
+                                  fontWeight: 700,
+                                  color: isCompleted ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                                  textDecoration: isCompleted ? 'line-through' : 'none',
+                                  wordBreak: 'break-word',
+                                }}>
+                                  {t.title || t.description || t.content || 'Tarefa sem título'}
+                                </div>
+                                {(t.dueDate || t.customType || t.type) && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                    {t.dueDate && (
+                                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                        <Clock size={10} />
+                                        {t.dueDate} {t.dueTime ? `às ${t.dueTime}` : ''}
+                                      </span>
+                                    )}
+                                    <span style={{
+                                      fontSize: '0.62rem',
+                                      fontWeight: 700,
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: isCompleted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(20, 169, 215, 0.12)',
+                                      color: isCompleted ? '#10B981' : 'var(--adm-accent)',
+                                    }}>
+                                      {t.customType || (t.type === 'followup' ? 'Follow-up' : 'Tarefa')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                              Vencimento: {t.dueDate} {t.dueTime ? `às ${t.dueTime}` : ''}
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTask(t);
+                                  setIsTaskModalOpen(true);
+                                }}
+                                title="Editar detalhes completos da tarefa"
+                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '4px' }}
+                              >
+                                <Edit3 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTaskToDelete(t)}
+                                title="Excluir tarefa"
+                                style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </div>
                           </div>
-                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setTaskToDelete({ leadId: currentLead.id, taskId: t.id, title: t.description })}
-                          style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '2px' }}
-                        >
-                          <span style={{ fontSize: '0.72rem' }}>Excluir</span>
-                        </button>
-                      </div>
-                    ))
+                          {/* Campo de Resolução / Resultado Inline (auto-save on blur) */}
+                          <div style={{ marginTop: '2px' }}>
+                            <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '2px' }}>
+                              Resultado / Resolução:
+                            </div>
+                            <input
+                              type="text"
+                              defaultValue={t.resolution || t.customProperties?.resolution || ''}
+                              placeholder="Digite o resultado/conclusão desta tarefa..."
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val !== (t.resolution || t.customProperties?.resolution || '')) {
+                                  updateTask(t.id, {
+                                    resolution: val,
+                                    customProperties: {
+                                      ...(t.customProperties || {}),
+                                      resolution: val,
+                                    }
+                                  });
+                                }
+                              }}
+                              style={{
+                                width: '100%',
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '6px',
+                                padding: '5px 8px',
+                                fontSize: '0.74rem',
+                                color: 'var(--adm-text-title)',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -786,19 +899,23 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
           isOpen={isCloseDealModalOpen}
           lead={currentLead}
           onClose={() => setIsCloseDealModalOpen(false)}
-          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, contractDate: string) => {
-            handleConfirmSale(leadId, dealValue, packageSold, contractDate);
+          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, contractDate: string, closerNotes?: string) => {
+            handleConfirmSale(leadId, dealValue, packageSold, contractDate, closerNotes);
             setIsCloseDealModalOpen(false);
           }}
         />
       )}
 
-      {/* Modal Nova Tarefa */}
+      {/* Modal Nova / Editar Tarefa com AdminTaskDetailModal */}
       {isTaskModalOpen && currentLead && (
-        <AdminTaskModal
+        <AdminTaskDetailModal
           isOpen={isTaskModalOpen}
-          onClose={() => setIsTaskModalOpen(false)}
-          presetLeadId={currentLead.id}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            setEditingTask(null);
+          }}
+          task={editingTask}
+          initialLeadId={currentLead.id}
         />
       )}
 
@@ -807,11 +924,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
         <AdminConfirmModal
           isOpen={true}
           title="Excluir Tarefa"
-          message={`Tem certeza que deseja excluir a tarefa "${taskToDelete.title}"?`}
+          message={`Tem certeza que deseja excluir a tarefa "${taskToDelete.title || taskToDelete.description || 'Selecionada'}"?`}
           confirmText="Sim, Excluir"
           danger={true}
           onConfirm={() => {
-            deleteLeadTask(taskToDelete.leadId, taskToDelete.taskId);
+            deleteTask(taskToDelete.id);
             setTaskToDelete(null);
           }}
           onClose={() => setTaskToDelete(null)}

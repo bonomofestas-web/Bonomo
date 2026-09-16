@@ -93,9 +93,37 @@ export class AdminErrorBoundary extends Component<Props, State> {
               Instabilidade temporária no módulo
             </h3>
 
-            <p style={{ fontSize: '0.8rem', color: '#94A3B8', margin: '0 0 24px 0', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '0.8rem', color: '#94A3B8', margin: '0 0 16px 0', lineHeight: 1.5 }}>
               O sistema protegeu sua sessão para evitar tela preta. Clique abaixo para retornar à página inicial com segurança.
             </p>
+
+            {this.state.error && (
+              <div style={{
+                width: '100%',
+                maxHeight: '140px',
+                overflowY: 'auto',
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                borderRadius: '8px',
+                padding: '10px',
+                marginBottom: '20px',
+                fontSize: '0.72rem',
+                color: '#EF4444',
+                textAlign: 'left',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}>
+                <strong>Erro capturado:</strong>
+                <br />
+                {this.state.error.message || String(this.state.error)}
+                {this.state.error.stack && (
+                  <div style={{ marginTop: '6px', opacity: 0.75, fontSize: '0.66rem' }}>
+                    {this.state.error.stack.split('\n').slice(0, 5).join('\n')}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
               <button

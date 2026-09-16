@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Calendar, Phone, Mail, Sparkles, Building2, Users, Trash2, Loader2 } from 'lucide-react';
+import { 
+  X, User, Calendar, Phone, Mail, Building2, 
+  Users, Trash2, Loader2, PartyPopper, DollarSign, Crown
+} from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import type { DebutanteAccount } from '../../types/admin';
-
+import type { DebutanteAccount, EventType } from '../../types/admin';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 
 interface AdminDebutanteModalProps {
@@ -14,19 +16,51 @@ interface AdminDebutanteModalProps {
   debutanteToEdit?: DebutanteAccount | null;
 }
 
+const EVENT_TYPES: { id: EventType; label: string; icon: string }[] = [
+  { id: 'debutante_15', label: '15 Anos / Debutante', icon: '👑' },
+  { id: 'birthday_kids', label: 'Aniversário Infantil', icon: '🎈' },
+  { id: 'birthday_adult', label: 'Aniversário Adulto', icon: '🎉' },
+  { id: 'baby_shower', label: 'Chá de Bebê / Revelação', icon: '🍼' },
+  { id: 'wedding_anniversary', label: 'Bodas / Casamento', icon: '💍' },
+  { id: 'graduation', label: 'Formatura', icon: '🎓' },
+  { id: 'corporate', label: 'Corporativo', icon: '🏢' },
+  { id: 'other', label: 'Outro Evento', icon: '✨' },
+];
+
 export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
   isOpen,
   onClose,
   debutanteToEdit,
 }) => {
-  const { venues, templates, addDebutanteAccount, updateDebutanteAccount, deleteDebutanteAccount, currentUser } = useAdminState();
+  const { 
+    venues, 
+    templates, 
+    clients,
+    linkClientDebutante,
+    addDebutanteAccount, 
+    updateDebutanteAccount, 
+    deleteDebutanteAccount, 
+    currentUser, 
+    activeVenueId 
+  } = useAdminState();
+
   const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
 
-  const [venueId, setVenueId] = useState(venues[0]?.id || 'rio_lounge');
+  const getEffectiveInitialVenueId = () => {
+    if (activeVenueId && activeVenueId !== 'all' && venues.some(v => v.id === activeVenueId)) {
+      return activeVenueId;
+    }
+    return venues[0]?.id || '';
+  };
+
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [venueId, setVenueId] = useState(getEffectiveInitialVenueId);
+  const [eventType, setEventType] = useState<EventType>('debutante_15');
   const [name, setName] = useState('');
   const [partyDate, setPartyDate] = useState('2027-04-18');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [contractValue, setContractValue] = useState<number | ''>('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [isPhotoUploading, setIsPhotoUploading] = useState(false);
   const [baseGuestLimit, setBaseGuestLimit] = useState(250);
@@ -36,27 +70,49 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
 
   useEffect(() => {
     if (debutanteToEdit) {
+      const linked = clients.find(c => c.debutanteId === debutanteToEdit.id);
+      setSelectedClientId(linked ? linked.id : '');
       setVenueId(debutanteToEdit.venueId);
+      setEventType(debutanteToEdit.eventType || 'debutante_15');
       setName(debutanteToEdit.name);
       setPartyDate(debutanteToEdit.partyDate);
       setPhone(formatPhone(debutanteToEdit.phone));
       setEmail(debutanteToEdit.email || '');
+      setContractValue(debutanteToEdit.contractValue || '');
       setAvatarUrl(debutanteToEdit.avatarUrl);
-      setBaseGuestLimit(debutanteToEdit.baseGuestLimit);
+      setBaseGuestLimit(debutanteToEdit.baseGuestLimit || 250);
       setHasJourneyEnabled(debutanteToEdit.hasJourneyEnabled);
       setJourneyTemplateChoice(debutanteToEdit.isJourneyPending ? 'pending' : (debutanteToEdit.journeyTemplateId || (templates[0]?.id || 'pending')));
     } else {
-      setVenueId(venues[0]?.id || 'rio_lounge');
+      setSelectedClientId('');
+      setVenueId(getEffectiveInitialVenueId());
+      setEventType('debutante_15');
       setName('');
       setPartyDate('2027-04-18');
       setPhone('');
       setEmail('');
+      setContractValue('');
       setAvatarUrl('');
       setBaseGuestLimit(250);
       setHasJourneyEnabled(true);
       setJourneyTemplateChoice(templates.length > 0 ? templates[0].id : 'pending');
     }
-  }, [debutanteToEdit, isOpen, venues, templates]);
+  }, [debutanteToEdit, isOpen, venues, templates, activeVenueId, clients]);
+
+  const handleSelectClient = (cId: string) => {
+    setSelectedClientId(cId);
+    if (!cId) return;
+    const c = clients.find(item => item.id === cId);
+    if (c) {
+      setName(c.birthdayPersonName || c.name);
+      if (c.eventDate) setPartyDate(c.eventDate);
+      if (c.payerPhone) setPhone(formatPhone(c.payerPhone));
+      if (c.payerEmail) setEmail(c.payerEmail);
+      if (c.dealValue) setContractValue(c.dealValue);
+      if (c.venueId) setVenueId(c.venueId);
+      if (c.guestCount) setBaseGuestLimit(c.guestCount);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -65,38 +121,40 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
     if (!name.trim()) return;
 
     const finalAvatar = avatarUrl.trim() || createMonogramAvatar(name.trim());
-    const isPending = hasJourneyEnabled && (journeyTemplateChoice === 'pending' || !journeyTemplateChoice);
-    const selectedTemplate = (!isPending && hasJourneyEnabled) ? templates.find(t => t.id === journeyTemplateChoice) : null;
+    const is15Years = eventType === 'debutante_15';
+    const effectiveJourneyEnabled = is15Years && hasJourneyEnabled;
+    const isPending = effectiveJourneyEnabled && (journeyTemplateChoice === 'pending' || !journeyTemplateChoice);
+    const selectedTemplate = (!isPending && effectiveJourneyEnabled) ? templates.find(t => t.id === journeyTemplateChoice) : null;
+
+    const payload: Partial<DebutanteAccount> = {
+      venueId,
+      eventType,
+      name: name.trim(),
+      partyDate,
+      phone: phone.trim(),
+      email: email.trim() || undefined,
+      contractValue: contractValue ? Number(contractValue) : undefined,
+      avatarUrl: finalAvatar,
+      baseGuestLimit: Number(baseGuestLimit),
+      hasJourneyEnabled: effectiveJourneyEnabled,
+      isJourneyPending: isPending,
+      journeyTemplateId: isPending ? 'pending' : selectedTemplate?.id,
+      ...(selectedTemplate && effectiveJourneyEnabled ? {
+        milestones: selectedTemplate.milestones || [],
+        vipRewards: selectedTemplate.vipRewards || [],
+      } : (isPending ? { milestones: [], vipRewards: [] } : {})),
+    };
 
     if (debutanteToEdit) {
-      updateDebutanteAccount(debutanteToEdit.id, {
-        venueId,
-        name: name.trim(),
-        partyDate,
-        phone: phone.trim(),
-        email: email.trim() || undefined,
-        avatarUrl: finalAvatar,
-        baseGuestLimit: Number(baseGuestLimit),
-        hasJourneyEnabled,
-        isJourneyPending: isPending,
-        journeyTemplateId: selectedTemplate?.id,
-        ...(selectedTemplate ? {
-          milestones: selectedTemplate.milestones || [],
-          vipRewards: selectedTemplate.vipRewards || [],
-        } : (isPending ? { milestones: [], vipRewards: [] } : {})),
-      });
+      updateDebutanteAccount(debutanteToEdit.id, payload);
+      if (selectedClientId) {
+        linkClientDebutante(selectedClientId, debutanteToEdit.id);
+      }
     } else {
-      addDebutanteAccount({
-        venueId,
-        name: name.trim(),
-        partyDate,
-        phone: phone.trim(),
-        email: email.trim() || undefined,
-        avatarUrl: finalAvatar,
-        baseGuestLimit: Number(baseGuestLimit),
-        hasJourneyEnabled,
-        journeyTemplateId: isPending ? 'pending' : selectedTemplate?.id,
-      });
+      const created = addDebutanteAccount(payload as any);
+      if (selectedClientId && created?.id) {
+        linkClientDebutante(selectedClientId, created.id);
+      }
     }
 
     onClose();
@@ -138,13 +196,13 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
       zIndex: 1100,
       padding: '20px',
       animation: 'fadeIn 0.2s ease-out',
-      fontFamily: "'Poppins', sans-serif",
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
       <div className="admin-modal-content" style={{
         background: 'var(--adm-bg-card)',
         border: '1px solid var(--adm-border)',
-        borderRadius: '20px',
-        maxWidth: '560px',
+        borderRadius: '24px',
+        maxWidth: '620px',
         width: '100%',
         maxHeight: '90vh',
         overflowY: 'auto',
@@ -178,30 +236,32 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
           <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
+            width: '38px',
+            height: '38px',
+            borderRadius: '12px',
             background: 'var(--adm-accent-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'var(--adm-accent)',
           }}>
-            <User size={20} />
+            <PartyPopper size={20} />
           </div>
-          <h2 style={{
-            fontSize: '1.25rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-title)',
-            margin: 0,
-            letterSpacing: '-0.3px',
-          }}>
-            {debutanteToEdit ? 'Editar Aniversariante' : 'Nova Aniversariante'}
-          </h2>
+          <div>
+            <h2 style={{
+              fontSize: '1.25rem',
+              fontWeight: 800,
+              color: 'var(--adm-text-title)',
+              margin: 0,
+              letterSpacing: '-0.3px',
+            }}>
+              {debutanteToEdit ? 'Editar Aniversariante / Evento' : 'Novo Aniversariante / Evento'}
+            </h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+              Cadastre as informações da festa e defina os módulos do aniversariante
+            </p>
+          </div>
         </div>
-        <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', marginBottom: '20px' }}>
-          Cadastre os dados, selecione os módulos e gere o link exclusivo da debutante.
-        </p>
 
         {venues.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '24px 12px' }}>
@@ -210,7 +270,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               Nenhuma Casa de Festa Cadastrada
             </h3>
             <p style={{ fontSize: '0.84rem', color: 'var(--adm-text-muted)', maxWidth: '380px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
-              Para cadastrar uma aniversariante, é obrigatório vincular a uma Casa de Festas. Por favor, cadastre uma unidade primeiro no menu <strong>Casas de Festa</strong>.
+              Para cadastrar um evento, é obrigatório vincular a uma Casa de Festas.
             </p>
             <button
               type="button"
@@ -222,7 +282,82 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '18px' }}>
+            
+            {/* Vínculo Opcional com Cliente do Pós-Venda */}
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: '10px',
+              backgroundColor: 'var(--adm-surface, #f9fafb)',
+              border: '1px solid var(--adm-border, #e5e7eb)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔗</span> Vincular a Cliente de Pós-Venda (Opcional)
+              </label>
+              <select
+                value={selectedClientId}
+                onChange={(e) => handleSelectClient(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  fontSize: '0.82rem',
+                  padding: '8px 10px',
+                }}
+              >
+                <option value="">-- Criar conta avulsa / sem vínculo --</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.birthdayPersonName || c.name} ({c.code}) - Festa: {new Date(c.eventDate).toLocaleDateString('pt-BR')} ({c.venueName})
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                Selecione um cliente para preencher os dados automaticamente ou deixe em branco para criar conta avulsa.
+              </span>
+            </div>
+
+            {/* 1. SELETOR DE CATEGORIA DE EVENTO */}
+            <div>
+              <label style={labelStyle}>
+                Tipo de Evento *
+              </label>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                gap: '8px',
+              }}>
+                {EVENT_TYPES.map(cat => {
+                  const isSelected = eventType === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setEventType(cat.id)}
+                      style={{
+                        background: isSelected ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
+                        color: isSelected ? '#000000' : 'var(--adm-text-title)',
+                        border: `1.5px solid ${isSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                        borderRadius: '12px',
+                        padding: '8px 10px',
+                        fontSize: '0.74rem',
+                        fontWeight: isSelected ? 800 : 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ fontSize: '1rem' }}>{cat.icon}</span>
+                      <span style={{ textAlign: 'left', lineHeight: 1.2 }}>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Casa de Festas */}
             <div>
               <label style={labelStyle}>
@@ -247,17 +382,17 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               </div>
             </div>
 
-            {/* Nome Completo */}
+            {/* Nome Completo do Aniversariante / Anfitrião */}
             <div>
               <label style={labelStyle}>
-                Nome da Debutante / Aniversariante *
+                Nome do Aniversariante / Cliente *
               </label>
               <div style={{ position: 'relative' }}>
                 <User size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Maria Eduarda Meireles"
+                  placeholder={eventType === 'debutante_15' ? 'Ex: Maria Eduarda Meireles' : 'Ex: Lucas Gabriel (5 Anos)'}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   style={{
@@ -268,11 +403,11 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               </div>
             </div>
 
-            {/* Data da Festa & Limite de Convidados */}
+            {/* Data da Festa & Capacidade de Convidados */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>
-                  Data da Festa *
+                  Data do Evento *
                 </label>
                 <div style={{ position: 'relative' }}>
                   <Calendar size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
@@ -310,7 +445,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               </div>
             </div>
 
-            {/* Telefone & E-mail */}
+            {/* Telefone, E-mail & Valor do Contrato */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>
@@ -334,15 +469,15 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
 
               <div>
                 <label style={labelStyle}>
-                  E-mail (Opcional)
+                  Valor do Contrato (R$)
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Mail size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <DollarSign size={16} color="#10B981" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                   <input
-                    type="email"
-                    placeholder="contato@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="number"
+                    placeholder="Ex: 28500"
+                    value={contractValue}
+                    onChange={(e) => setContractValue(e.target.value === '' ? '' : Number(e.target.value))}
                     style={{
                       ...inputStyle,
                       paddingLeft: '38px',
@@ -352,224 +487,187 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
               </div>
             </div>
 
-            {/* Foto de Perfil com Upload de Arquivo */}
+            {/* E-mail */}
+            <div>
+              <label style={labelStyle}>
+                E-mail de Contato (Opcional)
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <input
+                  type="email"
+                  placeholder="contato@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    paddingLeft: '38px',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Foto de Perfil */}
             <ImageUploadField
-              label="Foto de Perfil da Debutante"
+              label="Foto do Aniversariante"
               value={avatarUrl}
               onChange={(val) => setAvatarUrl(val)}
               onUploadingChange={setIsPhotoUploading}
               aspectRatio="1:1"
               previewHeight="80px"
-              placeholder="Subir foto de rosto da aniversariante"
+              placeholder="Subir foto de rosto"
             />
 
-            {/* ── MÓDULOS: ATIVAR JORNADA (CHAVE SWITCH) ── */}
-            <div style={{
-              background: hasJourneyEnabled 
-                ? 'var(--adm-accent-bg)' 
-                : 'var(--adm-bg-input)',
-              border: `1px solid ${hasJourneyEnabled ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-              borderRadius: '16px',
-              padding: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              transition: 'all 0.2s ease',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Sparkles size={18} color={hasJourneyEnabled ? 'var(--adm-accent)' : 'var(--adm-text-muted)'} />
-                <div>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                    Ativar Módulo de Jornada & Benefícios?
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                    {hasJourneyEnabled 
-                      ? 'Liberar Jornada, Indicações, Benefícios e botão "Indicar Amiga"'
-                      : 'Modo Convidados & Agenda (Apenas lista de convidados e cronograma)'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Toggle Switch */}
-              <button
-                type="button"
-                onClick={() => setHasJourneyEnabled(!hasJourneyEnabled)}
-                style={{
-                  background: hasJourneyEnabled ? 'var(--adm-accent)' : 'var(--adm-bg-elevated)',
-                  border: `1px solid ${hasJourneyEnabled ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                  borderRadius: '20px',
-                  padding: '6px 14px',
-                  color: hasJourneyEnabled ? '#FFF' : 'var(--adm-text-muted)',
-                  fontSize: '0.76rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  minWidth: '70px',
-                }}
-              >
-                {hasJourneyEnabled ? 'ATIVADO' : 'DESATIVADO'}
-              </button>
-            </div>
-
-            {/* ── VINCULAR JORNADA / DEIXAR PENDENTE ── */}
-            {hasJourneyEnabled && (
+            {/* ── 2. CONDICIONAL: JORNADA VIP (EXIBIDA SOMENTE PARA 15 ANOS) ── */}
+            {eventType === 'debutante_15' && (
               <div style={{
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
+                background: hasJourneyEnabled ? 'rgba(212,175,55,0.08)' : 'var(--adm-bg-input)',
+                border: `1.5px solid ${hasJourneyEnabled ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                 borderRadius: '16px',
                 padding: '16px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px',
-                animation: 'fadeIn 0.15s ease-out',
+                transition: 'all 0.2s ease',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ ...labelStyle, margin: 0, fontWeight: 800 }}>
-                    Vinculação da Jornada do Usuário *
-                  </label>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                    Escolha um modelo ou deixe pendente
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {/* Opção 1: Pendente */}
-                  <div
-                    onClick={() => setJourneyTemplateChoice('pending')}
-                    style={{
-                      background: journeyTemplateChoice === 'pending' ? 'rgba(234, 179, 8, 0.12)' : 'var(--adm-bg-card)',
-                      border: `1.5px solid ${journeyTemplateChoice === 'pending' ? '#EAB308' : 'var(--adm-border)'}`,
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="journeyChoice"
-                      checked={journeyTemplateChoice === 'pending'}
-                      onChange={() => setJourneyTemplateChoice('pending')}
-                      style={{ accentColor: '#EAB308', cursor: 'pointer' }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: journeyTemplateChoice === 'pending' ? '#EAB308' : 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>⏳ Deixar Pendente de Vinculação</span>
-                        <span style={{ fontSize: '0.62rem', background: 'rgba(234, 179, 8, 0.2)', color: '#EAB308', padding: '1px 6px', borderRadius: '6px' }}>SEM VÍDEO</span>
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                        A debutante acessará apenas Convidados e Agenda. O vídeo de abertura NÃO será exibido até que a jornada seja vinculada.
-                      </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Crown size={20} color="var(--adm-accent)" />
+                    <div>
+                      <h4 style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                        Habilitar Jornada VIP (15 Anos)
+                      </h4>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+                        Permite indicar amigas, acumular pontos e desbloquear prêmios
+                      </p>
                     </div>
                   </div>
 
-                  {/* Opções de Templates Existentes */}
-                  {templates.map(tmpl => {
-                    const isSelected = journeyTemplateChoice === tmpl.id;
-                    return (
-                      <div
-                        key={tmpl.id}
-                        onClick={() => setJourneyTemplateChoice(tmpl.id)}
-                        style={{
-                          background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                          border: `1.5px solid ${isSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                          borderRadius: '12px',
-                          padding: '12px 14px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="journeyChoice"
-                          checked={isSelected}
-                          onChange={() => setJourneyTemplateChoice(tmpl.id)}
-                          style={{ accentColor: 'var(--adm-accent)', cursor: 'pointer' }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)' }}>
-                            ✨ Vincular Modelo: {tmpl.name}
-                          </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                            {tmpl.milestones?.length || 0} Metas/Benefícios configurados • {tmpl.vipRewards?.length || 0} Presentes VIP
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <button
+                    type="button"
+                    onClick={() => setHasJourneyEnabled(!hasJourneyEnabled)}
+                    style={{
+                      width: '44px',
+                      height: '24px',
+                      borderRadius: '14px',
+                      background: hasJourneyEnabled ? '#10B981' : 'rgba(100, 116, 139, 0.4)',
+                      border: `1px solid ${hasJourneyEnabled ? '#059669' : 'rgba(255, 255, 255, 0.15)'}`,
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: hasJourneyEnabled ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none',
+                    }}
+                  >
+                    <div style={{
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      background: '#FFFFFF',
+                      transform: hasJourneyEnabled ? 'translateX(20px)' : 'translateX(1px)',
+                      transition: 'transform 0.2s ease',
+                    }} />
+                  </button>
                 </div>
+
+                {hasJourneyEnabled && (
+                  <div style={{ borderTop: '1px dashed var(--adm-border)', paddingTop: '10px' }}>
+                    <label style={labelStyle}>
+                      Modelo de Jornada Aplicado
+                    </label>
+                    <select
+                      value={journeyTemplateChoice}
+                      onChange={(e) => setJourneyTemplateChoice(e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        background: 'var(--adm-bg-card)',
+                      }}
+                    >
+                      <option value="pending">⏳ Definir Depois (Jornada Pendente)</option>
+                      {templates.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Botões de Ação */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginTop: '10px' }}>
-              {debutanteToEdit && canManage && (
+            {/* Actions */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: '12px',
+              borderTop: '1px solid var(--adm-border)',
+              paddingTop: '16px',
+            }}>
+              {debutanteToEdit && canManage ? (
                 <button
                   type="button"
                   onClick={() => setIsConfirmDeleteOpen(true)}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    background: 'rgba(239, 68, 68, 0.12)',
                     color: '#EF4444',
-                    borderRadius: '12px',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '10px',
                     padding: '10px 14px',
+                    fontSize: '0.78rem',
                     fontWeight: 800,
-                    fontSize: '0.82rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
                   }}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={14} />
                   <span>Excluir</span>
                 </button>
-              )}
+              ) : <div />}
 
-              <div style={{ display: 'flex', gap: '10px', flex: 1, justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="adm-btn-secondary"
                   style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    borderRadius: '10px',
                     padding: '10px 18px',
-                    borderRadius: '12px',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
-                    fontSize: '0.84rem',
+                    cursor: 'pointer',
                   }}
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={isPhotoUploading}
-                  className="adm-btn-primary"
                   style={{
+                    background: 'var(--adm-accent)',
+                    color: '#000000',
+                    border: 'none',
+                    borderRadius: '10px',
                     padding: '10px 22px',
-                    borderRadius: '12px',
+                    fontSize: '0.84rem',
                     fontWeight: 800,
-                    fontSize: '0.86rem',
-                    opacity: isPhotoUploading ? 0.7 : 1,
-                    cursor: isPhotoUploading ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '6px',
+                    boxShadow: '0 4px 14px rgba(212,175,55,0.3)',
                   }}
                 >
                   {isPhotoUploading ? (
                     <>
-                      <Loader2 size={16} className="adm-spin" />
-                      <span>Enviando foto para a nuvem...</span>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Salvando Foto...</span>
                     </>
                   ) : (
-                    debutanteToEdit ? 'Salvar Alterações' : 'Cadastrar & Gerar Link'
+                    <span>{debutanteToEdit ? 'Salvar Alterações' : 'Criar Evento'}</span>
                   )}
                 </button>
               </div>
@@ -578,20 +676,21 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
         )}
       </div>
 
-      {debutanteToEdit && (
-        <AdminConfirmModal
-          isOpen={isConfirmDeleteOpen}
-          onClose={() => setIsConfirmDeleteOpen(false)}
-          onConfirm={() => {
+      {/* Modal de Confirmação de Exclusão */}
+      <AdminConfirmModal
+        isOpen={isConfirmDeleteOpen}
+        title="Excluir Aniversariante"
+        message={`Deseja realmente excluir o cadastro de ${name}? Todos os convidados e dados vinculados serão excluídos permanentemente.`}
+        confirmText="Sim, Excluir"
+        danger={true}
+        onConfirm={() => {
+          if (debutanteToEdit) {
             deleteDebutanteAccount(debutanteToEdit.id);
-            setIsConfirmDeleteOpen(false);
             onClose();
-          }}
-          title="Excluir Conta da Debutante"
-          itemName={debutanteToEdit.name}
-          message={`Tem certeza que deseja excluir "${debutanteToEdit.name}"? A jornada e a lista de convidados serão removidas. As indicações e leads gerados no CRM continuarão preservados com o histórico de indicação intacto.`}
-        />
-      )}
+          }
+        }}
+        onClose={() => setIsConfirmDeleteOpen(false)}
+      />
     </div>
   );
 };

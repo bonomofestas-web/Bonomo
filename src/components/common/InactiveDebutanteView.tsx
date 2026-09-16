@@ -11,8 +11,8 @@ export const InactiveDebutanteView: React.FC<InactiveDebutanteViewProps> = ({
   venue,
   reason = 'inactive',
 }) => {
-  const venueName = venue?.name || 'Bonomo Festas';
-  const logoUrl = venue?.logoUrl || '/logo_riio_lounge.png';
+  const venueName = venue?.name || 'Casa de Festas';
+  const logoUrl = venue?.logoUrl || null;
 
   const title = reason === 'expired' 
     ? 'Evento Realizado & Jornada Encerrada' 
@@ -48,18 +48,32 @@ export const InactiveDebutanteView: React.FC<InactiveDebutanteViewProps> = ({
         alignItems: 'center',
         gap: '20px',
       }}>
-        {/* Venue Logo */}
+        {/* Venue Logo or Typography */}
         <div style={{ marginBottom: '4px' }}>
-          <img
-            src={logoUrl}
-            alt={venueName}
-            style={{
-              height: '70px',
-              maxWidth: '180px',
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 0 16px rgba(212, 175, 55, 0.45))',
-            }}
-          />
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={venueName}
+              style={{
+                height: '70px',
+                maxWidth: '180px',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 0 16px rgba(212, 175, 55, 0.45))',
+              }}
+            />
+          ) : (
+            <div style={{
+              fontFamily: "'Cinzel', 'Playfair Display', serif",
+              fontSize: '1.3rem',
+              fontWeight: 800,
+              letterSpacing: '2px',
+              color: '#D4AF37',
+              textTransform: 'uppercase',
+              textShadow: '0 0 16px rgba(212, 175, 55, 0.5)',
+            }}>
+              {venueName}
+            </div>
+          )}
         </div>
 
         {/* Icon Badge */}

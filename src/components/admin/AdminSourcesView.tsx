@@ -3,7 +3,7 @@ import {
   Compass, Plus, FileText, PhoneCall, Gift,
   Copy, Check, Code, Edit3, Trash2,
   CheckCircle2, XCircle, Search, Building2,
-  Target, Zap, Tag, Crown
+  Target, Zap, Tag, Crown, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSourceModal } from './AdminSourceModal';
@@ -119,6 +119,13 @@ export const AdminSourcesView: React.FC = () => {
       fontFamily: "'Plus Jakarta Sans', sans-serif",
       boxSizing: 'border-box',
     }}>
+      <style>{`
+        @keyframes pulsePendingAlert {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+          50% { transform: scale(1.03); box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+      `}</style>
       
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
@@ -374,20 +381,48 @@ export const AdminSourcesView: React.FC = () => {
 
                       {/* Funil de Destino */}
                       <td style={{ padding: '14px 18px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 8px',
-                          borderRadius: '8px',
-                          background: 'rgba(212, 175, 55, 0.1)',
-                          border: '1px solid rgba(212, 175, 55, 0.25)',
-                          color: 'var(--adm-accent)',
-                          fontWeight: 600,
-                          fontSize: '0.72rem',
-                        }}>
-                          <Target size={12} color="var(--adm-accent)" /> {funnel?.name || source.funnelId}
-                        </span>
+                        {source.funnelId && funnel ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '3px 8px',
+                            borderRadius: '8px',
+                            background: 'rgba(212, 175, 55, 0.1)',
+                            border: '1px solid rgba(212, 175, 55, 0.25)',
+                            color: 'var(--adm-accent)',
+                            fontWeight: 600,
+                            fontSize: '0.72rem',
+                          }}>
+                            <Target size={12} color="var(--adm-accent)" /> {funnel.name}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSourceToEdit(source);
+                              setIsModalOpen(true);
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '5px 10px',
+                              borderRadius: '8px',
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              border: '1px solid #EF4444',
+                              color: '#EF4444',
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              animation: 'pulsePendingAlert 2s infinite ease-in-out',
+                            }}
+                            title="Clique para vincular esta origem a um funil comercial"
+                          >
+                            <AlertTriangle size={13} color="#EF4444" />
+                            <span>⚠️ Funil Pendente (Clique para vincular)</span>
+                          </button>
+                        )}
                       </td>
 
                       {/* Configuração & Sub-origens */}

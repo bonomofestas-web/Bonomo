@@ -2,19 +2,22 @@ import React, { useState, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Plus, Edit3, Trash2, Search, 
   Building2, UserCheck, ChevronLeft, ChevronRight, List,
-  Sparkles, UtensilsCrossed, FileText, Camera
+  Sparkles, UtensilsCrossed, FileText, Camera, CheckSquare
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminAppointmentModal } from './AdminAppointmentModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import type { Appointment } from '../../types';
+import type { AdminTask } from '../../types/admin';
 
 export const AdminAppointmentsView: React.FC = () => {
   const { 
     debutantes, 
     venues, 
     activeVenueId, 
+    tasks,
     deleteAppointmentForDebutante 
   } = useAdminState();
 
@@ -25,6 +28,10 @@ export const AdminAppointmentsView: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
+  // Task Detail Modal State
+  const [selectedTaskForModal, setSelectedTaskForModal] = useState<AdminTask | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [presetDate, setPresetDate] = useState<string | undefined>(undefined);
@@ -34,6 +41,7 @@ export const AdminAppointmentsView: React.FC = () => {
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const [filterState, setFilterState] = useState<FilterState>({
     period: 'all',
@@ -89,7 +97,6 @@ export const AdminAppointmentsView: React.FC = () => {
 
       // 6. Temporal / Period Filter (for List mode)
       if (viewMode === 'list' && filterState.period !== 'all') {
-        const todayStr = new Date().toISOString().split('T')[0];
         const appDate = app.date;
         const today = new Date();
         const targetDate = new Date(appDate + 'T12:00:00');
@@ -108,7 +115,26 @@ export const AdminAppointmentsView: React.FC = () => {
 
       return true;
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [allAppointments, activeVenueId, filterState, categoryFilter, searchQuery, viewMode]);
+  }, [allAppointments, activeVenueId, filterState, categoryFilter, searchQuery, viewMode, todayStr]);
+
+  // Tasks with due dates for calendar integration (Audio 2)
+  const scheduledTasks = useMemo(() => {
+    return tasks.filter(t => {
+      if (!t.dueDate || !t.dueDate.trim()) return false;
+      const venueTarget = filterState.venueId !== 'all' ? filterState.venueId : activeVenueId;
+      if (venueTarget && t.venueId && t.venueId !== 'all' && t.venueId !== venueTarget) return false;
+      if (filterState.collaboratorId !== 'all') {
+        if (!t.assignedToIds || !t.assignedToIds.includes(filterState.collaboratorId)) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = (t.title || '').toLowerCase().includes(q);
+        const matchDesc = (t.description || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchDesc) return false;
+      }
+      return true;
+    });
+  }, [tasks, filterState.venueId, filterState.collaboratorId, activeVenueId, searchQuery]);
 
   // Calendar calculations
   const year = currentDate.getFullYear();
@@ -130,8 +156,6 @@ export const AdminAppointmentsView: React.FC = () => {
   const daysInPrevMonth = useMemo(() => {
     return new Date(year, month, 0).getDate();
   }, [year, month]);
-
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -307,6 +331,7 @@ export const AdminAppointmentsView: React.FC = () => {
             }}
           />
         </div>
+
 
         {/* Category Quick Filter Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -499,8 +524,10 @@ export const AdminAppointmentsView: React.FC = () => {
               const isToday = dateStr === todayStr;
               const isHovered = hoveredDate === dateStr;
 
-              // Filter appointments for this day
+              // Filter appointments & tasks for this day
               const dayAppointments = displayedAppointments.filter(a => a.date === dateStr);
+              const dayTasks = scheduledTasks.filter(t => t.dueDate === dateStr);
+              const totalItems = dayAppointments.length + dayTasks.length;
 
               return (
                 <div
@@ -568,8 +595,9 @@ export const AdminAppointmentsView: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Day Appointments List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', maxHeight: '100px' }}>
+                  {/* Day Items List (Appointments + Tasks) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', maxHeight: '105px' }}>
+                    {/* Appointments */}
                     {dayAppointments.slice(0, 3).map(app => {
                       const badge = getCategoryBadgeStyle(app.category);
                       return (
@@ -615,9 +643,57 @@ export const AdminAppointmentsView: React.FC = () => {
                       );
                     })}
 
-                    {dayAppointments.length > 3 && (
+                    {/* Tasks with Due Date (Audio 2: automatically appear on agenda) */}
+                    {dayTasks.map(t => (
+                      <div
+                        key={`task_${t.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTaskForModal(t);
+                          setIsTaskModalOpen(true);
+                        }}
+                        title={`Tarefa: ${t.title}${t.dueTime ? ` às ${t.dueTime}` : ''}`}
+                        style={{
+                          background: 'rgba(20, 169, 215, 0.12)',
+                          border: '1px solid rgba(20, 169, 215, 0.35)',
+                          color: '#14A9D7',
+                          borderRadius: '6px',
+                          padding: '3px 6px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '4px',
+                          transition: 'all 0.12s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.filter = 'brightness(1.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.filter = 'none';
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
+                          <CheckSquare size={10} style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px' }}>
+                            {t.title}
+                          </span>
+                        </div>
+                        {t.dueTime && (
+                          <span style={{ fontSize: '0.62rem', opacity: 0.85, flexShrink: 0 }}>
+                            {t.dueTime}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+
+                    {totalItems > 3 && (
                       <div style={{ fontSize: '0.62rem', color: 'var(--adm-accent)', fontWeight: 800, textAlign: 'center', padding: '1px 0' }}>
-                        +{dayAppointments.length - 3} mais
+                        +{totalItems - 3} mais
                       </div>
                     )}
                   </div>
@@ -843,6 +919,18 @@ export const AdminAppointmentsView: React.FC = () => {
         title="Remover Compromisso"
         itemName={appointmentToDelete?.title}
         message={appointmentToDelete ? `Tem certeza que deseja remover o compromisso "${appointmentToDelete.title}"?` : undefined}
+      />
+
+      {/* Task Detail Modal for tasks clicked in calendar (Audio 2) */}
+      <AdminTaskDetailModal
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setSelectedTaskForModal(null);
+        }}
+        task={selectedTaskForModal}
+        workspaceContext="appointments"
+        initialDatabaseId="db_appointments"
       />
     </div>
   );

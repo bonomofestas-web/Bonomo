@@ -5,7 +5,6 @@ export const mockThemes: VenueTheme[] = [
     id: 'rio_lounge',
     name: 'Espaço Rio Lounge',
     tagline: 'Onde momentos exclusivos se transformam em memórias inesquecíveis',
-    logoUrl: '/logo_riio_lounge.png',
     primaryColor: '#FF4D8D', // Radiant Pink Accent
     secondaryColor: '#E8B4B8', // Soft Rose Gold
     accentColor: '#F59E0B', // Champagne Gold

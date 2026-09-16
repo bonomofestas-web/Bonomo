@@ -3,7 +3,7 @@ import type {
   AdminUser, 
   Collaborator,
   Venue, 
-  DebutanteAccount, 
+  DebutanteAccount,
   Lead,
   CrmStage,
   LeadActivity,
@@ -24,7 +24,11 @@ import type {
   SystemAnnouncement,
   AnnouncementReadReceipt,
   SupportTicket,
-  SupportTicketStatus
+  SupportTicketStatus,
+  Client,
+  ClientStage,
+  ClientDocument,
+  ClientActivity
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -36,6 +40,7 @@ import {
   mockMilestones, 
   mockVipRewards 
 } from '../data/mockData';
+import { mockClients } from '../data/mockClients';
 import { safeLocalStorageSet } from '../utils/mediaStorage';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
@@ -49,13 +54,15 @@ import { collaboratorService, featureFlagService } from '../services/collaborato
 import { journeyTemplateService } from '../services/journeyTemplateService';
 import { mqlService } from '../services/mqlService';
 import { supportService } from '../services/supportService';
+import { clientService } from '../services/clientService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
-import { generateLeadCode } from '../utils/leadUtils';
+import { generateLeadCode, generateClientCode } from '../utils/leadUtils';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
 const STORAGE_KEY_VENUES = 'bonomo_admin_venues_v7';
 const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
+const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v7';
 const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
 const STORAGE_KEY_SOURCES = 'bonomo_admin_sources_v1';
 const STORAGE_KEY_TEMPLATES = 'bonomo_admin_templates_v7';
@@ -145,17 +152,7 @@ export const generateUuid = (): string => {
 const DEFAULT_COLLABORATORS: Collaborator[] = [];
 
 const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
-  home: 'active',
-  dashboard: 'active',
-  whatsapp: 'active',
-  icp: 'active',
-  sources: 'active',
-  debutantes: 'active',
-  venue_goals: 'active',
-  funnels: 'active',
   master_dashboard: 'active',
-  collaborators: 'active',
-  venues: 'active',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -220,10 +217,10 @@ export interface AdminContextType {
   setActiveVenueId: (id: string | null) => void;
   addVenue: (venueData: Omit<Venue, 'id' | 'createdAt'>) => string;
   updateVenue: (id: string, venueData: Partial<Venue>) => void;
-  deleteVenue: (id: string) => void;
+  deleteVenue: (id: string) => Promise<{ success: boolean; message?: string; activeDebutantesCount?: number }>;
   updateVenueDistribution: (venueId: string, mode: 'queue' | 'round_robin', sdrIds: string[]) => void;
 
-  // Debutante Management
+  // Debutante Management (App de Convidados)
   setActiveDebutanteId: (id: string | null) => void;
   addDebutanteAccount: (data: {
     venueId: string;
@@ -247,10 +244,26 @@ export interface AdminContextType {
   linkDebutanteJourney: (debutanteId: string, templateId: string) => void;
   markWelcomeVideoSeen: (slugOrId: string) => void;
 
+  // Clientes & Pós-Venda (F5 System)
+  clients: Client[];
+  allClients: Client[];
+  addClient: (clientData: Partial<Client>) => string;
+  updateClient: (id: string, updates: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
+  updateClientStage: (id: string, stage: ClientStage) => void;
+  addClientNote: (id: string, noteText: string) => void;
+  addClientDocument: (id: string, doc: Omit<ClientDocument, 'id' | 'uploadedAt'>) => void;
+  linkClientDebutante: (clientId: string, debutanteId: string | null) => void;
+
   // Funnel Management
   addFunnel: (data: Omit<CommercialFunnel, 'id' | 'createdAt'>) => string;
   updateFunnel: (id: string, data: Partial<CommercialFunnel>) => void;
   deleteFunnel: (id: string) => void;
+  deleteFunnelWithLeadMigration: (
+    funnelId: string,
+    destinationFunnelId: string,
+    stageMapping: Record<string, string>
+  ) => Promise<{ success: boolean; migratedLeadsCount: number; updatedSourcesCount: number }>;
   duplicateFunnel: (funnelId: string, targetVenueId?: string) => string;
 
   // CRM Leads — Stage & Assignment
@@ -304,7 +317,7 @@ export interface AdminContextType {
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
   closeLeadSale: (leadId: string) => void;
-  closeLeadSaleWithValue: (leadId: string, dealValue: number, packageSold: string, contractDate?: string) => void;
+  closeLeadSaleWithValue: (leadId: string, dealValue: number, packageSold: string, contractDate?: string, closerNotes?: string) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
   assignLead: (leadId: string, assigneeName: string) => void;
   claimLeadIfUnassigned: (leadId: string, claimantName?: string) => void;
@@ -368,6 +381,7 @@ export interface AdminContextType {
   updateMqlQuestion: (id: string, data: Partial<MqlQuestion>) => void;
   deleteMqlQuestion: (id: string) => void;
   saveLeadMqlAnswers: (leadId: string, answers: Record<string, string>, score: number, level: LeadMqlLevel) => void;
+  resetVenueLeadsMql: (venueId: string) => void;
 
   // Commercial Funnel Lead Goal
   leadGoal: import('../types/admin').LeadGoal;
@@ -430,6 +444,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return saved ? JSON.parse(saved) : DEFAULT_DEBUTANTES;
   });
 
+  const [clients, setClients] = useState<Client[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_CLIENTS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return mockClients;
+  });
+
   // Conjuntos de proteção anti-flicker para exclusões recentes
   const deletedDebutanteIdsRef = React.useRef<Set<string>>(new Set());
   const deletedLeadIdsRef = React.useRef<Set<string>>(new Set());
@@ -457,13 +482,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return [];
       }
     }
-    const savedVenues = localStorage.getItem(STORAGE_KEY_VENUES);
-    const existingVenues: Venue[] = savedVenues ? JSON.parse(savedVenues) : DEFAULT_VENUES;
-    const initialQuestions = existingVenues.flatMap(v => createDefaultMqlQuestionsForVenue(v.id));
-    if (initialQuestions.length > 0) {
-      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(initialQuestions));
-    }
-    return initialQuestions;
+    return [];
   });
 
   const [templates, setTemplates] = useState<JourneyTemplate[]>(() => {
@@ -491,12 +510,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!saved) return [];
     try {
       const parsed: CommercialFunnel[] = JSON.parse(saved);
-      // Clean out legacy mock funnels and funnels without a valid venue
       return parsed.filter(f => 
         f.id !== 'indicacao' && 
         f.id !== 'trafego' && 
-        f.id !== 'parcerias' && 
-        f.venueId !== 'all'
+        f.id !== 'parcerias'
       );
     } catch {
       return [];
@@ -832,7 +849,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources, dbMql] = await Promise.all([
+        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources, dbMql, dbClients] = await Promise.all([
           venueService.getAll(),
           funnelService.getAll(),
           leadService.getAll(),
@@ -844,11 +861,38 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           journeyTemplateService.getAll(),
           sourceService.getAll(),
           mqlService.getAll(),
+          clientService.getAll(),
         ]);
 
         if (isMounted) {
-          if (dbVenues.length > 0) setVenues(dbVenues);
-          if (dbFunnels.length > 0) setFunnels(dbFunnels);
+          let syncedFunnels = dbFunnels;
+          if (dbVenues.length > 0) {
+            setVenues(dbVenues);
+            safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(dbVenues));
+            // Garante que toda casa possua funil comercial primário cadastrado no Supabase
+            syncedFunnels = await funnelService.ensureDefaultFunnels(dbVenues, dbFunnels);
+            if (syncedFunnels.length > 0) {
+              setFunnels(syncedFunnels);
+              safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(syncedFunnels));
+            }
+            // Garante que cada casa possua origem nativa de indicação vinculada ao seu funil primário
+            await sourceService.ensureDefaultReferralSources(dbVenues, syncedFunnels);
+            const freshSources = await sourceService.getAll();
+            if (freshSources.length > 0) {
+              setSources(freshSources);
+              safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(freshSources));
+            }
+          } else {
+            if (dbFunnels.length > 0) {
+              setFunnels(dbFunnels);
+              safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(dbFunnels));
+            }
+            if (dbSources.length > 0) {
+              setSources(dbSources);
+              safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(dbSources));
+            }
+          }
+
           if (dbLeads.length > 0) {
             const enrichedLeads = dbLeads.map(l => {
               const code = l.code || generateLeadCode();
@@ -859,17 +903,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             });
             setLeads(enrichedLeads);
           }
-          if (dbSources.length > 0) setSources(dbSources);
-          if (dbMql.length > 0) {
-            setMqlQuestions(dbMql);
-          } else if (dbVenues.length > 0) {
-            mqlService.ensureDefaultQuestions(dbVenues).then(defaults => {
-              if (defaults.length > 0) setMqlQuestions(defaults);
-            });
-          }
-
-          // Ensure each venue has a default referral source
-          sourceService.ensureDefaultReferralSources(dbVenues, dbFunnels);
+          setMqlQuestions(dbMql);
+          safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(dbMql));
 
           // Database is Single Source of Truth — do NOT resurrect deleted records
           if (dbDebutantes.length >= 0) {
@@ -880,6 +915,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (Array.isArray(dbTasks)) {
             setTasks(dbTasks);
             safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(dbTasks));
+          }
+          if (Array.isArray(dbClients) && dbClients.length > 0) {
+            setClients(dbClients);
+            safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(dbClients));
           }
           if (Array.isArray(dbCollabs)) {
             setCollaborators(dbCollabs);
@@ -1158,6 +1197,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await leadService.getAll();
         if (isMounted && updated.length > 0) setLeads(updated);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, async () => {
+        const updated = await clientService.getAll();
+        if (isMounted) {
+          setClients(updated);
+          safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+        }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, async () => {
         const updated = await collaboratorService.getAll();
         if (isMounted) {
@@ -1271,11 +1317,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         Promise.all([
           leadService.getAll(),
           debutanteService.getAll(),
+          clientService.getAll(),
           supportService.getAll(),
-        ]).then(([updatedLeads, updatedDebs, updatedTickets]) => {
+        ]).then(([updatedLeads, updatedDebs, updatedClients, updatedTickets]) => {
           if (isMounted) {
             if (updatedLeads.length > 0) setLeads(updatedLeads);
             if (updatedDebs.length > 0) setDebutantes(updatedDebs);
+            if (updatedClients && updatedClients.length > 0) {
+              setClients(updatedClients);
+              safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updatedClients));
+            }
             if (updatedTickets && updatedTickets.length > 0) {
               setSupportTickets(prev => {
                 const prevStr = JSON.stringify(prev.map(t => ({ id: t.id, s: t.status, m: t.messages?.length })));
@@ -1627,71 +1678,138 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Casas de Festa do Tenant Ativo
   const scopedVenues = useMemo(() => {
     if (!currentUser) return venues;
-    // O dev só vê as casas que ele mesmo cadastrou para testes (v.masterId === currentUser.id)
-    if (currentUser.role === 'dev') {
+    // O dev e o master veem as casas pertencentes ao seu próprio tenant (conta Master)
+    if (currentUser.role === 'dev' || currentUser.role === 'master') {
       return venues.filter(v => v.masterId === currentUser.id);
-    }
-    // O master vê as casas pertencentes ao seu tenant
-    if (currentUser.role === 'master') {
-      return venues.filter(v => v.masterId === currentUser.id || (!v.masterId && !v.id.includes('dev')));
     }
     // Colaborador subordinado vê as casas do seu master atribuídas a ele
     const masterVenues = venues.filter(v => 
-      (scopedMasterId && v.masterId === scopedMasterId) || 
-      (!v.masterId && !v.id.includes('dev'))
+      (scopedMasterId && v.masterId === scopedMasterId)
     );
     if (!currentUser.venueIds || currentUser.venueIds.length === 0) return masterVenues;
     const assigned = masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
     return assigned.length > 0 ? assigned : masterVenues;
   }, [venues, scopedMasterId, currentUser]);
 
+  // Auto-ajuste de activeVenueId para o tenant atual (evita vazamento de seleção entre contas)
+  useEffect(() => {
+    if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+      const existsInScoped = scopedVenues.some(v => v.id === activeVenueId);
+      if (!existsInScoped) {
+        const fallback = scopedVenues.length > 0 ? scopedVenues[0].id : null;
+        setActiveVenueIdState(fallback);
+        if (fallback) {
+          safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, fallback);
+        } else {
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
+        }
+      }
+    }
+  }, [scopedVenues, activeVenueId]);
+
   // Colaboradores da Equipe do Tenant Ativo
   const scopedCollaborators = useMemo(() => {
     if (!currentUser) return collaborators;
+    // O dev e o master veem a equipe do seu próprio tenant
     return collaborators.filter(c => 
       c.id === currentUser.id ||
-      c.masterId === scopedMasterId ||
-      (!c.masterId && c.role !== 'dev' && c.role !== 'master' && currentUser.role === 'master')
+      (scopedMasterId && c.masterId === scopedMasterId)
     );
   }, [collaborators, scopedMasterId, currentUser]);
 
-  // Leads do Tenant Ativo
+  // Leads do Tenant Ativo (inclui leads de casas ativas e histórico preservado de casas excluídas)
   const scopedLeads = useMemo(() => {
     if (!currentUser) return leads;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return leads.filter(l => l.venueId === activeVenueId);
+    }
+    // "Todas as Unidades": exibe os leads de todas as casas do tenant
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return leads.filter(l => 
-      l.masterId === scopedMasterId || 
+      (scopedMasterId && l.masterId === scopedMasterId) || 
       (l.venueId && masterVenueIds.has(l.venueId))
     );
-  }, [leads, scopedMasterId, scopedVenues, currentUser]);
+  }, [leads, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
   // Funis do Tenant Ativo
   const scopedFunnels = useMemo(() => {
     if (!currentUser) return funnels;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return funnels.filter(f => f.venueId === activeVenueId || f.venueId === 'all');
+    }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return funnels.filter(f => f.venueId === 'all' || masterVenueIds.has(f.venueId));
-  }, [funnels, scopedVenues, currentUser]);
+  }, [funnels, scopedVenues, activeVenueId, currentUser]);
 
-  // Debutantes do Tenant Ativo (pertencem estritamente às casas do tenant)
+  // Debutantes do Tenant Ativo (pertencem estritamente à casa ativa ou às casas do tenant)
   const scopedDebutantes = useMemo(() => {
     if (!currentUser) return debutantes;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return debutantes.filter(d => d.venueId === activeVenueId);
+    }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return debutantes.filter(d => masterVenueIds.has(d.venueId));
-  }, [debutantes, scopedVenues, currentUser]);
+  }, [debutantes, scopedVenues, activeVenueId, currentUser]);
 
-  // Origens do Tenant Ativo (pertencem estritamente às casas do tenant)
+  // Clientes de Pós-Venda do Tenant Ativo
+  const scopedClients = useMemo(() => {
+    if (!currentUser) return clients;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return clients.filter(c => c.venueId === activeVenueId);
+    }
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return clients.filter(c => masterVenueIds.has(c.venueId));
+  }, [clients, scopedVenues, activeVenueId, currentUser]);
+
+  // Origens do Tenant Ativo (pertencem estritamente à casa ativa ou às casas do tenant)
   const scopedSources = useMemo(() => {
     if (!currentUser) return sources;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return sources.filter(s => s.venueId === activeVenueId);
+    }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return sources.filter(s => masterVenueIds.has(s.venueId));
-  }, [sources, scopedVenues, currentUser]);
+  }, [sources, scopedVenues, activeVenueId, currentUser]);
 
   // Perguntas ICP do Tenant Ativo
   const scopedMqlQuestions = useMemo(() => {
     if (!currentUser) return mqlQuestions;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return mqlQuestions.filter(q => q.venueId === activeVenueId || (q.venueIds && q.venueIds.includes(activeVenueId)));
+    }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return mqlQuestions.filter(q => masterVenueIds.has(q.venueId));
-  }, [mqlQuestions, scopedVenues, currentUser]);
+    return mqlQuestions.filter(q => (Boolean(q.venueId) && masterVenueIds.has(q.venueId!)) || (q.venueIds && q.venueIds.some(id => masterVenueIds.has(id))) || Boolean(q.funnelId) || (q.funnelIds && q.funnelIds.length > 0));
+  }, [mqlQuestions, scopedVenues, activeVenueId, currentUser]);
+
+  // Modelos de Jornada do Tenant Ativo (estritamente isolados por casa ativa / tenant)
+  const scopedTemplates = useMemo(() => {
+    if (!currentUser) return templates;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return templates.filter(t => t.venueId === activeVenueId);
+    }
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return templates.filter(t => Boolean(t.venueId && masterVenueIds.has(t.venueId)));
+  }, [templates, scopedVenues, activeVenueId, currentUser]);
+
+  // Catálogo de Benefícios do Tenant Ativo
+  const scopedBenefitsCatalog = useMemo(() => {
+    if (!currentUser) return benefitsCatalog;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return benefitsCatalog.filter(b => b.venueId === activeVenueId);
+    }
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return benefitsCatalog.filter(b => Boolean(b.venueId && masterVenueIds.has(b.venueId)));
+  }, [benefitsCatalog, scopedVenues, activeVenueId, currentUser]);
+
+  // Catálogo VIP do Tenant Ativo
+  const scopedVipCatalog = useMemo(() => {
+    if (!currentUser) return vipCatalog;
+    if (activeVenueId && activeVenueId !== 'all') {
+      return vipCatalog.filter(v => v.venueId === activeVenueId);
+    }
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return vipCatalog.filter(v => Boolean(v.venueId && masterVenueIds.has(v.venueId)));
+  }, [vipCatalog, scopedVenues, activeVenueId, currentUser]);
 
   // ── Developer Exclusive Methods ─────────────────────────────────────────────
   const addMasterAccount = (name: string, email: string): string => {
@@ -1960,6 +2078,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const id = generateUuid();
     const newVenue: Venue = {
       ...venueData,
+      bannerImageUrl: venueData.bannerImageUrl || venueData.ballroomImageUrl || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&auto=format&fit=crop&q=80',
       ballroomImageUrl: venueData.ballroomImageUrl || 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=1200&auto=format&fit=crop&q=80',
       id,
       masterId: venueData.masterId || scopedMasterId || currentUser?.id,
@@ -1975,44 +2094,57 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    // 1. Criar automaticamente o Funil Comercial Padrão para a nova casa de festa
-    const defaultFunnelId = generateUuid();
-    const defaultFunnel: CommercialFunnel = {
-      id: defaultFunnelId,
-      name: `Funil Comercial • ${newVenue.name}`,
-      category: 'Vendas & Atendimento',
-      description: `Funil padrão de captação e conversão da unidade ${newVenue.name}.`,
-      venueId: id,
-      allowedCollaboratorIds: [],
-      badge: `Padrão • ${newVenue.name}`,
-      badgeColor: '#D4AF37',
-      icon: 'target',
-      stagesCount: 5,
-      stages: [
-        { id: 'new_lead', name: 'Novo Lead', color: '#3B82F6', isFixed: true, order: 0 },
-        { id: 'qualificacao', name: 'Qualificação / Primeiro Contato', color: '#F59E0B', isFixed: false, order: 1 },
-        { id: 'visita_agendada', name: 'Visita / Degustação Agendada', color: '#8B5CF6', isFixed: false, order: 2 },
-        { id: 'deal_closed', name: 'Venda Fechada (Ganho)', color: '#10B981', isFixed: true, isWon: true, order: 3 },
-        { id: 'lost', name: 'Perdido / Não Realizado', color: '#EF4444', isFixed: true, isLoss: true, order: 4 },
-      ],
-      isPrimary: true,
-      isDemo: false,
-      createdAt: newVenue.createdAt,
-    };
+    // 1. Funil Comercial:
+    // Contas possuem 1 funil comercial padrão criado no onboarding.
+    // 1. Funil Padrão: Se a conta não tem funil, cria o "Funil de Atendimento" desatrelado de unidade fixa
+    let targetFunnelId = '';
+    let newlyCreatedFunnel: CommercialFunnel | null = null;
 
-    setFunnels(prev => {
-      const updated = [...prev, defaultFunnel];
-      safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
-      return updated;
-    });
+    if (funnels.length === 0) {
+      const defaultFunnelId = generateUuid();
+      newlyCreatedFunnel = {
+        id: defaultFunnelId,
+        name: 'Funil de Atendimento',
+        category: 'Vendas & Atendimento',
+        description: 'Funil padrão de captação, atendimento e conversão de leads.',
+        venueId: 'all',
+        sharedVenueIds: [],
+        allowedCollaboratorIds: [],
+        badge: 'Atendimento',
+        badgeColor: '#D4AF37',
+        icon: 'target',
+        stagesCount: 5,
+        stages: [
+          { id: 'new_lead', name: 'Novo Lead', color: '#3B82F6', isFixed: true, order: 0 },
+          { id: 'qualificacao', name: 'Qualificação / Primeiro Contato', color: '#F59E0B', isFixed: false, order: 1 },
+          { id: 'visita_agendada', name: 'Visita / Degustação Agendada', color: '#8B5CF6', isFixed: false, order: 2 },
+          { id: 'deal_closed', name: 'Venda Fechada (Ganho)', color: '#10B981', isFixed: true, isWon: true, order: 3 },
+          { id: 'lost', name: 'Perdido / Não Realizado', color: '#EF4444', isFixed: true, isLoss: true, order: 4 },
+        ],
+        isPrimary: true,
+        isDemo: false,
+        createdAt: newVenue.createdAt,
+      };
 
-    // 2. Criar automaticamente a Origem Nativa de Indicação vinculada a esse funil
+      setFunnels(prev => {
+        const updated = [...prev, newlyCreatedFunnel!];
+        safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
+        return updated;
+      });
+      targetFunnelId = defaultFunnelId;
+    } else {
+      // Sempre vincula ao funil principal (Funil de Atendimento ou primário) sem deixar pendência
+      const primaryFunnel = funnels.find(f => f.isPrimary) || funnels[0];
+      targetFunnelId = primaryFunnel.id;
+    }
+
+    // 2. Criar automaticamente a Origem Nativa de Indicação para esta unidade
     const defaultReferralSource: Source = {
       id: generateUuid(),
       venueId: id,
-      name: `Indicações das Debutantes • ${newVenue.name}`,
+      name: `Indicações • ${newVenue.name}`,
       type: 'referral',
-      funnelId: defaultFunnelId,
+      funnelId: targetFunnelId,
       status: 'active',
       configuration: {
         systemManaged: true,
@@ -2027,18 +2159,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    // 3. Criar automaticamente as Perguntas Padrão de MQL da nova casa de festa
-    const defaultMqlQuestions = createDefaultMqlQuestionsForVenue(id);
-    setMqlQuestions(prev => {
-      const updated = [...prev, ...defaultMqlQuestions];
-      safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
-      return updated;
-    });
+    // 3. MQL: Zero mock questions! O ICP inicia 100% em branco para o usuário configurar.
 
-    // Async sync with Supabase
-    venueService.upsert(newVenue);
-    funnelService.upsert(defaultFunnel);
-    sourceService.upsert(defaultReferralSource);
+    // Async sync with Supabase (garantindo sequência referencial estrita)
+    (async () => {
+      try {
+        await venueService.upsert(newVenue);
+        if (newlyCreatedFunnel) {
+          await funnelService.upsert(newlyCreatedFunnel);
+        }
+        await sourceService.upsert(defaultReferralSource);
+      } catch (err) {
+        console.error('Falha ao sincronizar nova casa, funil e origem com Supabase:', err);
+      }
+    })();
 
     return id;
   };
@@ -2092,6 +2226,34 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const resetVenueLeadsMql = (venueId: string) => {
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        if (lead.venueId === venueId) {
+          const resetLead: Lead = {
+            ...lead,
+            mqlAnswers: {},
+            mqlScore: 0,
+            mqlLevel: undefined,
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          if (isSupabaseConfigured) {
+            leadService.upsert({
+              id: lead.id,
+              mqlAnswers: {},
+              mqlScore: 0,
+              mqlLevel: null as any,
+            }).catch(err => console.error('Erro ao resetar MQL do lead:', err));
+          }
+          return resetLead;
+        }
+        return lead;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const updateVenue = (id: string, venueData: Partial<Venue>) => {
     setVenues(prev => {
       const updated = prev.map(v => v.id === id ? { ...v, ...venueData } : v);
@@ -2099,37 +2261,71 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    if (venueData.name) {
-      setFunnels(prev => {
-        const updated = prev.map(f => {
-          if (f.venueId === id && f.isPrimary) {
-            const pf = {
-              ...f,
-              name: `Funil Comercial • ${venueData.name}`,
-              badge: `Padrão • ${venueData.name}`,
-              description: `Captação automatizada através das convidadas e debutantes VIP da unidade ${venueData.name}.`,
-            };
-            funnelService.upsert(pf);
-            return pf;
-          }
-          return f;
-        });
-        safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
-        return updated;
-      });
-    }
-
+    // O funil comercial é soberano e independente do nome das casas de festa (não altera nome de funil)
     venueService.upsert({ id, ...venueData });
   };
 
-  const deleteVenue = (id: string) => {
+  const deleteVenue = async (id: string): Promise<{ success: boolean; message?: string; activeDebutantesCount?: number }> => {
+    const venue = venues.find(v => v.id === id);
+    if (!venue) {
+      return { success: false, message: 'Casa de festa não encontrada.' };
+    }
+
+    // REGRA DE SEGURANÇA 1: Não podem existir debutantes com jornadas ativas vinculadas a esta casa
+    const activeDebutantesWithJourneys = debutantes.filter(d => 
+      d.venueId === id &&
+      d.status !== 'inactive' &&
+      d.hasJourneyEnabled &&
+      (d.journeyCycle?.journeyStatus === 'active' || !d.journeyCycle)
+    );
+
+    if (activeDebutantesWithJourneys.length > 0) {
+      const count = activeDebutantesWithJourneys.length;
+      return {
+        success: false,
+        activeDebutantesCount: count,
+        message: `Esta casa de festas possui ${count} debutante(s) com jornada ativa vinculada. Não é possível excluí-la para proteger as fotos, convites e acessos das famílias.`,
+      };
+    }
+
+    // PRESERVAÇÃO COMERCIAL: Congelar nome histórico da casa em todos os leads associados a ela
+    const venueName = venue.name;
+    setLeads(prev => {
+      const updated = prev.map(l => {
+        if (l.venueId === id) {
+          return {
+            ...l,
+            venueId: '', // Desvincula para não quebrar após a remoção da casa
+            venueName: l.venueName || venueName,
+            masterId: l.masterId || venue.masterId || currentUser?.id,
+          };
+        }
+        return l;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Atualiza os leads no Supabase com o venue_name congelado antes da remoção
+    if (isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('leads')
+          .update({ venue_name: venueName })
+          .eq('venue_id', id);
+      } catch (err) {
+        console.warn('Erro ao congelar venue_name dos leads no Supabase:', err);
+      }
+    }
+
+    // Remove a unidade do estado de casas
     setVenues(prev => {
       const updated = prev.filter(v => v.id !== id);
       safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(updated));
       return updated;
     });
 
-    // Clean up funnels associated with deleted venue
+    // Remove funis associados
     setFunnels(prev => {
       const updated = prev.filter(f => f.venueId !== id);
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
@@ -2140,7 +2336,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setActiveVenueId(null);
     }
 
-    venueService.delete(id);
+    const success = await venueService.delete(id);
+    return { success };
   };
 
   const updateVenueDistribution = (venueId: string, mode: 'queue' | 'round_robin', sdrIds: string[]) => {
@@ -2224,6 +2421,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       venueId: data.venueId,
       name: data.name.trim(),
       slug,
+      status: 'active',
       partyDate: data.partyDate,
       partyDaysLeft: daysLeft,
       avatarUrl: data.avatarUrl || createMonogramAvatar(data.name.trim()),
@@ -2324,6 +2522,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteFunnel = (id: string) => {
+    // Validação de proteção: proibido excluir se houver apenas 1 funil ativo na conta
+    if (funnels.length <= 1) {
+      alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
+      return;
+    }
+
     setFunnels(prev => {
       const updated = prev.filter(f => f.id !== id);
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
@@ -2345,6 +2549,138 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     funnelService.delete(id);
+  };
+
+  const deleteFunnelWithLeadMigration = async (
+    funnelId: string,
+    destinationFunnelId: string,
+    stageMapping: Record<string, string>
+  ): Promise<{ success: boolean; migratedLeadsCount: number; updatedSourcesCount: number }> => {
+    if (funnels.length <= 1) {
+      alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
+      return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
+    }
+
+    const funnelToDelete = funnels.find(f => f.id === funnelId);
+    const destFunnel = funnels.find(f => f.id === destinationFunnelId);
+    if (!funnelToDelete || !destFunnel) {
+      return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
+    }
+
+    const deletedFunnelName = funnelToDelete.name;
+    const destFunnelName = destFunnel.name;
+
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+    const destDefaultFirstStage = destFunnel.stages?.[0]?.id || 'in_analysis';
+
+    const updatedLeadsList: Lead[] = [];
+
+    // 1. Migrate leads
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        if (lead.funnelId !== funnelId) return lead;
+
+        let targetStage: any = lead.stage;
+
+        if (lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed') {
+          targetStage = 'contract_signed';
+        } else if (lead.stage === 'lost') {
+          targetStage = 'lost';
+        } else if (lead.stage === 'new_lead') {
+          targetStage = destFunnel.isEntryStageActive ? 'new_lead' : destDefaultFirstStage;
+        } else if (stageMapping[lead.stage]) {
+          targetStage = stageMapping[lead.stage];
+        } else {
+          targetStage = destDefaultFirstStage;
+        }
+
+        const migrationActivity: LeadActivity = {
+          id: generateUuid(),
+          leadId: lead.id,
+          timestamp: now,
+          type: 'status_change',
+          title: 'Migração de Funil',
+          text: `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${targetStage}") devido à exclusão do funil de origem.`,
+          authorName: currentUser?.name || 'Sistema F5',
+          authorId: currentUser?.id || 'system_bot',
+          authorAvatarUrl: currentUser?.avatarUrl || '/logo_f5.png',
+        };
+
+        const modifiedLead: Lead = {
+          ...lead,
+          funnelId: destinationFunnelId,
+          stage: targetStage,
+          activities: [migrationActivity, ...(lead.activities || [])],
+          updatedAt: today,
+        };
+
+        updatedLeadsList.push(modifiedLead);
+        return modifiedLead;
+      });
+
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Supabase update for migrated leads
+    if (isSupabaseConfigured && updatedLeadsList.length > 0) {
+      for (const mLead of updatedLeadsList) {
+        leadService.upsert({
+          id: mLead.id,
+          funnelId: destinationFunnelId,
+          stage: mLead.stage,
+        }).catch(err => console.error('Erro ao migrar lead no Supabase:', err));
+
+        leadService.addActivity(mLead.id, {
+          leadId: mLead.id,
+          timestamp: now,
+          type: 'status_change',
+          title: 'Migração de Funil',
+          text: `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${mLead.stage}") devido à exclusão do funil de origem.`,
+          authorName: currentUser?.name || 'Sistema F5',
+          authorId: currentUser?.id,
+          authorAvatarUrl: currentUser?.avatarUrl,
+        }).catch(err => console.error('Erro ao adicionar atividade no Supabase:', err));
+      }
+    }
+
+    // 2. Re-route sources
+    let updatedSourcesCount = 0;
+    setSources(prev => {
+      const updated = prev.map(s => {
+        if (s.funnelId === funnelId) {
+          updatedSourcesCount++;
+          const rerouted = { 
+            ...s, 
+            funnelId: destinationFunnelId, 
+            updatedAt: now 
+          };
+          if (isSupabaseConfigured) {
+            sourceService.upsert(rerouted).catch(err => console.error('Erro ao re-rotear fonte:', err));
+          }
+          return rerouted;
+        }
+        return s;
+      });
+      safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+      return updated;
+    });
+
+    // 3. Delete funnel
+    setFunnels(prev => {
+      const updated = prev.filter(f => f.id !== funnelId);
+      safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
+      return updated;
+    });
+
+    await funnelService.delete(funnelId);
+
+    return {
+      success: true,
+      migratedLeadsCount: updatedLeadsList.length,
+      updatedSourcesCount,
+    };
   };
 
   const duplicateFunnel = (funnelId: string, targetVenueId?: string): string => {
@@ -2374,8 +2710,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Unconfigured Sources Warning ───────────────────────────────────────────
   const unconfiguredSources = useMemo(() => {
     const validFunnelIds = new Set(funnels.map(f => f.id));
-    return sources.filter(s => !s.funnelId || s.funnelId === '' || !validFunnelIds.has(s.funnelId));
-  }, [sources, funnels]);
+    return sources.filter(s => {
+      if (s.status === 'inactive') return false;
+      // Se estiver filtrado por casa, verifica apenas as origens dessa casa
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' && s.venueId && s.venueId !== activeVenueId) {
+        return false;
+      }
+      return !s.funnelId || s.funnelId === '' || !validFunnelIds.has(s.funnelId);
+    });
+  }, [sources, funnels, activeVenueId]);
 
   const hasUnconfiguredSources = unconfiguredSources.length > 0;
   const unconfiguredSourcesCount = unconfiguredSources.length;
@@ -2506,6 +2849,234 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return d;
     }));
+  };
+
+  // ── Clientes & Pós-Venda (F5 System) ────────────────────────────────────────
+
+  const addClient = (clientData: Partial<Client>): string => {
+    const id = clientData.id || generateUuid();
+    const code = clientData.code || generateClientCode();
+    const birthdayPersonName = clientData.birthdayPersonName?.trim() || clientData.name?.trim() || 'Nova Aniversariante';
+    const targetVenueId = clientData.venueId || activeVenueId || venues[0]?.id || '';
+    const venueObj = venues.find(v => v.id === targetVenueId);
+
+    const newClient: Client = {
+      id,
+      code,
+      name: birthdayPersonName,
+      payerName: clientData.payerName?.trim() || 'Responsável',
+      payerRelationship: clientData.payerRelationship || 'mother',
+      payerCpf: clientData.payerCpf || '',
+      payerPhone: clientData.payerPhone || '',
+      payerEmail: clientData.payerEmail || '',
+      payerAddress: clientData.payerAddress || '',
+      payerNeighborhood: clientData.payerNeighborhood || '',
+      payerCity: clientData.payerCity || '',
+      birthdayPersonName,
+      birthdayPersonAge: clientData.birthdayPersonAge || 15,
+      birthdayPersonBirthdate: clientData.birthdayPersonBirthdate || '',
+      eventType: clientData.eventType || '15_anos',
+      eventDate: clientData.eventDate || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
+      eventTime: clientData.eventTime || '20:00 às 02:00',
+      guestCount: clientData.guestCount || 150,
+      venueId: targetVenueId,
+      venueName: venueObj?.name || 'Bonomo Festas',
+      packageSold: clientData.packageSold || 'Pacote Completo',
+      dealValue: clientData.dealValue || 0,
+      contractDate: clientData.contractDate || new Date().toISOString().split('T')[0],
+      paymentTerms: clientData.paymentTerms || '',
+      paymentStatus: clientData.paymentStatus || 'up_to_date',
+      stage: clientData.stage || 'onboarding',
+      assignedSuccessManagerId: clientData.assignedSuccessManagerId || currentUser?.id,
+      assignedSuccessManagerName: clientData.assignedSuccessManagerName || currentUser?.name,
+      debutanteId: clientData.debutanteId || null,
+      debutanteSlug: clientData.debutanteSlug || null,
+      commercialLeadId: clientData.commercialLeadId,
+      commercialLeadCode: clientData.commercialLeadCode,
+      commercialHistory: clientData.commercialHistory,
+      notes: clientData.notes || '',
+      documents: clientData.documents || [],
+      activities: clientData.activities || [
+        {
+          id: generateUuid(),
+          type: 'status_change',
+          description: 'Cliente cadastrado no Pós-Venda.',
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.name || 'Administrador',
+        }
+      ],
+      createdAt: new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+
+    setClients(prev => {
+      const updated = [newClient, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+
+    clientService.upsert(newClient);
+    return id;
+  };
+
+  const updateClient = (id: string, updates: Partial<Client>) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          const mod: Client = {
+            ...c,
+            ...updates,
+            name: updates.birthdayPersonName || updates.name || c.name,
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const deleteClient = (id: string) => {
+    setClients(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+    clientService.delete(id);
+  };
+
+  const updateClientStage = (id: string, stage: ClientStage) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          const stageLabels: Record<ClientStage, string> = {
+            onboarding: 'Onboarding & Boas-Vindas',
+            planning: 'Planejamento & Cronograma',
+            suppliers: 'Definição de Fornecedores',
+            final_alignment: 'Alinhamento Final',
+            party_day: 'Semana do Evento',
+            completed: 'Festa Realizada',
+            archived: 'Arquivado',
+          };
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'status_change',
+            description: `Avançou para a etapa "${stageLabels[stage] || stage}".`,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Administrador',
+          };
+          const mod: Client = {
+            ...c,
+            stage,
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const addClientNote = (id: string, noteText: string) => {
+    if (!noteText.trim()) return;
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'note',
+            description: noteText.trim(),
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Equipe de Sucesso',
+          };
+          const mod: Client = {
+            ...c,
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const addClientDocument = (id: string, doc: Omit<ClientDocument, 'id' | 'uploadedAt'>) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          const newDoc: ClientDocument = {
+            ...doc,
+            id: generateUuid(),
+            uploadedAt: new Date().toISOString().split('T')[0],
+          };
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'document_uploaded',
+            description: `Documento anexado: ${doc.title}`,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Administrador',
+          };
+          const mod: Client = {
+            ...c,
+            documents: [newDoc, ...(c.documents || [])],
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const linkClientDebutante = (clientId: string, debutanteId: string | null) => {
+    let debSlug: string | null = null;
+    if (debutanteId) {
+      const targetDeb = debutantes.find(d => d.id === debutanteId);
+      debSlug = targetDeb?.slug || null;
+    }
+
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === clientId) {
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'debutante_linked',
+            description: debutanteId 
+              ? `Vinculado ao App de Lista de Convidados (/app/${debSlug || debutanteId}).`
+              : 'Desvinculado do App de Lista de Convidados.',
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Administrador',
+          };
+          const mod: Client = {
+            ...c,
+            debutanteId,
+            debutanteSlug: debSlug,
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // ── CRM Leads — Stage & Activity ────────────────────────────────────────────
@@ -2643,6 +3214,88 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           timestamp: newActivity.timestamp,
         }).catch(err => console.error('❌ Erro ao registrar participante no Supabase:', err));
       }
+    }
+
+    // Se a etapa for alterada para Contrato Fechado (Ganho), assegura criação no Pós-Venda
+    if (newStage === 'contract_signed' && targetLead) {
+      setClients(prevClients => {
+        const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === targetLead.phone));
+        if (existingIdx >= 0) return prevClients;
+
+        const newCliId = generateUuid();
+        const targetVenueId = targetLead.venueId || venues[0]?.id || '';
+        const venueObj = venues.find(v => v.id === targetVenueId);
+        const pDate = targetLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const birthdayName = (targetLead as any).birthdayPersonName?.trim() || targetLead.name.trim();
+        const primaryDecisor = (targetLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (targetLead.contacts || [])[0];
+        const payer = primaryDecisor?.name || (targetLead as any).decisionMakerName?.trim() || (targetLead as any).payerName?.trim() || `${targetLead.name.trim()} (Responsável)`;
+        const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
+        const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
+
+        const newClient: Client = {
+          id: newCliId,
+          code: generateClientCode(),
+          name: birthdayName,
+          payerName: payer,
+          payerRelationship: payerRel,
+          payerCpf: (targetLead as any).payerCpf || (targetLead as any).cpf || '',
+          payerPhone: payerPhone,
+          payerEmail: targetLead.email?.trim() || '',
+          payerAddress: (targetLead as any).address || '',
+          payerNeighborhood: (targetLead as any).neighborhood || '',
+          payerCity: (targetLead as any).city || '',
+          birthdayPersonName: birthdayName,
+          birthdayPersonAge: (targetLead as any).birthdayPersonAge || 15,
+          birthdayPersonBirthdate: (targetLead as any).debutanteBirthDate || '',
+          eventType: targetLead.eventType || '15_anos',
+          eventDate: pDate,
+          eventTime: (targetLead as any).eventTime || '20:00 às 02:00',
+          guestCount: (targetLead as any).guestCount || (targetLead as any).estimatedGuests || 150,
+          venueId: targetVenueId,
+          venueName: venueObj?.name || 'Bonomo Festas',
+          packageSold: targetLead.packageSold || targetLead.interestService || 'Contrato Fechado',
+          dealValue: targetLead.dealValue || targetLead.estimatedBudget || 0,
+          contractDate: new Date().toISOString().split('T')[0],
+          contractStatus: 'aguardando_sinal',
+          contractSignedAt: null,
+          signalPaid: false,
+          paymentTerms: (targetLead as any).paymentTerms || targetLead.paymentMethod || 'Negociação comercial fechada',
+          paymentStatus: 'pending',
+          stage: 'onboarding',
+          contacts: targetLead.contacts || [],
+          assignedSuccessManagerId: undefined,
+          assignedSuccessManagerName: undefined,
+          debutanteId: null,
+          debutanteSlug: null,
+          commercialLeadId: leadId,
+          commercialLeadCode: targetLead.code || (targetLead as any).leadCode,
+          commercialHistory: {
+            origin: targetLead.sourceName || targetLead.source || 'Comercial CRM',
+            closedBy: author,
+            closedAt: new Date().toISOString(),
+            originalNotes: targetLead.notes || '',
+            closerReport: 'Lead movido para Ganho.',
+          },
+          notes: targetLead.notes || '',
+          documents: [],
+          activities: [
+            {
+              id: generateUuid(),
+              type: 'status_change' as const,
+              description: `Venda Ganha confirmada por ${author}. Cliente integrado ao Pós-Venda.`,
+              createdAt: new Date().toISOString(),
+              createdBy: author,
+            }
+          ],
+          createdAt: new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+
+        const updated = [newClient, ...prevClients];
+        safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+        clientService.upsert(newClient);
+        return updated;
+      });
     }
   };
 
@@ -3197,7 +3850,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const closeLeadSaleWithValue = (leadId: string, dealValue: number, packageSold: string, contractDate?: string) => {
+  const closeLeadSaleWithValue = (leadId: string, dealValue: number, packageSold: string, contractDate?: string, closerNotes?: string) => {
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
@@ -3210,8 +3863,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       leadId,
       timestamp: new Date().toISOString(),
       type: 'deal_closed',
-      title: `Contrato Fechado: ${formattedVal}`,
-      text: `Venda concluída! Pacote: ${packageSold}. Valor: ${formattedVal}. Data: ${cDate}.`,
+      title: `Venda Concretizada (Ganho): ${formattedVal}`,
+      text: closerNotes ? `Venda concluída! Pacote: ${packageSold}. Valor: ${formattedVal}. Data: ${cDate}.\nRelatório do Closer: ${closerNotes}` : `Venda concluída! Pacote: ${packageSold}. Valor: ${formattedVal}. Data: ${cDate}.`,
       authorName: author,
       authorId,
       authorAvatarUrl: authorAvatar,
@@ -3246,6 +3899,127 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       syncDebutanteLeadStats(lead.debutanteId);
       return targetLead;
     }));
+
+    // Sincronização e duplicação automática para a esteira de Pós-Venda (Cliente)
+    const currentLead = leads.find(l => l.id === leadId);
+    if (currentLead) {
+      setClients(prevClients => {
+        const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === currentLead.phone));
+        if (existingIdx >= 0) {
+          // Já existe, atualiza com os novos dados de fechamento
+          const updated = [...prevClients];
+          const handoverActs = closerNotes ? [
+            {
+              id: generateUuid(),
+              type: 'status_change' as const,
+              description: `📋 Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              createdAt: new Date().toISOString(),
+              createdBy: author,
+            }
+          ] : [];
+
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            dealValue,
+            packageSold,
+            contractDate: cDate,
+            activities: [...handoverActs, ...(updated[existingIdx].activities || [])],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+          clientService.upsert(updated[existingIdx]);
+          return updated;
+        } else {
+          // Cria novo Cliente no Pós-Venda duplicando o Lead Comercial
+          const newCliId = generateUuid();
+          const targetVenueId = currentLead.venueId || venues[0]?.id || '';
+          const venueObj = venues.find(v => v.id === targetVenueId);
+          const pDate = currentLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+          const birthdayName = (currentLead as any).birthdayPersonName?.trim() || currentLead.name.trim();
+          
+          // Extrair decisor dos contatos se houver
+          const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (currentLead.contacts || [])[0];
+          const payer = primaryDecisor?.name || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
+          const payerPhone = primaryDecisor?.phone || currentLead.phone.trim();
+          const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'mother';
+
+          const initialActivities = [];
+          if (closerNotes) {
+            initialActivities.push({
+              id: generateUuid(),
+              type: 'status_change' as const,
+              description: `📋 Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              createdAt: new Date().toISOString(),
+              createdBy: author,
+            });
+          }
+          initialActivities.push({
+            id: generateUuid(),
+            type: 'status_change' as const,
+            description: `Venda Ganha confirmada no CRM por ${author} (Pacote: ${packageSold} • ${formattedVal}). Cliente integrado ao Pós-Venda.`,
+            createdAt: new Date().toISOString(),
+            createdBy: author,
+          });
+
+          const newClient: Client = {
+            id: newCliId,
+            code: generateClientCode(),
+            name: birthdayName, // O nome principal é o nome da Aniversariante
+            payerName: payer,
+            payerRelationship: payerRel,
+            payerCpf: (currentLead as any).payerCpf || (currentLead as any).cpf || '',
+            payerPhone: payerPhone,
+            payerEmail: currentLead.email?.trim() || '',
+            payerAddress: (currentLead as any).address || '',
+            payerNeighborhood: (currentLead as any).neighborhood || '',
+            payerCity: (currentLead as any).city || '',
+            birthdayPersonName: birthdayName,
+            birthdayPersonAge: (currentLead as any).birthdayPersonAge || 15,
+            birthdayPersonBirthdate: (currentLead as any).debutanteBirthDate || '',
+            eventType: currentLead.eventType || '15_anos',
+            eventDate: pDate,
+            eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
+            guestCount: (currentLead as any).guestCount || (currentLead as any).estimatedGuests || 150,
+            venueId: targetVenueId,
+            venueName: venueObj?.name || 'Bonomo Festas',
+            packageSold,
+            dealValue,
+            contractDate: cDate,
+            contractStatus: 'aguardando_sinal',
+            contractSignedAt: null,
+            signalPaid: false,
+            paymentTerms: (currentLead as any).paymentTerms || 'Negociação comercial fechada',
+            paymentStatus: 'pending',
+            stage: 'onboarding',
+            contacts: currentLead.contacts || [],
+            assignedSuccessManagerId: undefined,
+            assignedSuccessManagerName: undefined,
+            debutanteId: null,
+            debutanteSlug: null,
+            commercialLeadId: leadId,
+            commercialLeadCode: currentLead.code || (currentLead as any).leadCode,
+            commercialHistory: {
+              origin: currentLead.sourceName || currentLead.source || (currentLead as any).origin || 'Comercial CRM',
+              closedBy: author,
+              closedAt: new Date().toISOString(),
+              originalNotes: currentLead.notes || '',
+              closerReport: closerNotes || '',
+            },
+            notes: currentLead.notes || '',
+            documents: [],
+            activities: initialActivities,
+            createdAt: new Date().toISOString().split('T')[0],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+
+          const updated = [newClient, ...prevClients];
+          safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+          clientService.upsert(newClient);
+          return updated;
+        }
+      });
+    }
 
     if (isSupabaseConfigured) {
       leadService.upsert({
@@ -3577,8 +4351,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       leadService.upsert({
         id: leadId,
-        closerId: undefined,
-        closerName: undefined,
+        closerId: null as any,
+        closerName: null as any,
       }).catch(err => console.error('❌ Erro ao remover Closer no Supabase:', err));
 
       leadService.addActivity(leadId, {
@@ -3626,9 +4400,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       leadService.upsert({
         id: leadId,
-        sdrId: undefined,
-        sdrName: undefined,
-        assignedTo: undefined,
+        sdrId: null as any,
+        sdrName: null as any,
+        assignedTo: null as any,
       }).catch(err => console.error('❌ Erro ao remover SDR no Supabase:', err));
 
       leadService.addActivity(leadId, {
@@ -3813,7 +4587,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addBenefitCatalogItem = (data: Omit<BenefitCatalogItem, 'id' | 'createdAt'>): string => {
     const id = generateUuid();
-    const newItem: BenefitCatalogItem = { ...data, id, createdAt: new Date().toISOString().split('T')[0] };
+    const effectiveVenueId = data.venueId || (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id || undefined));
+    const newItem: BenefitCatalogItem = { ...data, id, venueId: effectiveVenueId, createdAt: new Date().toISOString().split('T')[0] };
     setBenefitsCatalog(prev => {
       const updated = [newItem, ...prev];
       safeLocalStorageSet(STORAGE_KEY_BENEFITS, JSON.stringify(updated));
@@ -3852,7 +4627,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addVipCatalogItem = (data: Omit<VipRewardCatalogItem, 'id' | 'createdAt'>): string => {
     const id = generateUuid();
-    const newItem: VipRewardCatalogItem = { ...data, id, createdAt: new Date().toISOString().split('T')[0] };
+    const effectiveVenueId = data.venueId || (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id || undefined));
+    const newItem: VipRewardCatalogItem = { ...data, id, venueId: effectiveVenueId, createdAt: new Date().toISOString().split('T')[0] };
     setVipCatalog(prev => {
       const updated = [newItem, ...prev];
       safeLocalStorageSet(STORAGE_KEY_VIP_CATALOG, JSON.stringify(updated));
@@ -3892,8 +4668,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Templates CRUD ───────────────────────────────────────────────────────────
 
   const addTemplate = (data: Omit<JourneyTemplate, 'id' | 'createdAt'>): string => {
-    const id = `template_${Date.now()}`;
-    const newTemplate: JourneyTemplate = { ...data, id, createdAt: new Date().toISOString().split('T')[0] };
+    const id = generateUuid();
+    const effectiveVenueId = data.venueId || (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id || undefined));
+    const newTemplate: JourneyTemplate = { ...data, id, venueId: effectiveVenueId, createdAt: new Date().toISOString().split('T')[0] };
     setTemplates(prev => {
       const updated = [newTemplate, ...prev];
       safeLocalStorageSet(STORAGE_KEY_TEMPLATES, JSON.stringify(updated));
@@ -4113,7 +4890,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         id,
         leadId: data.leadId,
         description: data.title + (data.description ? ` - ${data.description}` : ''),
-        dueDate: data.dueDate,
+        dueDate: data.dueDate || '',
         dueTime: data.dueTime,
         priority: data.priority === 'urgent' ? 'high' : (data.priority as 'low' | 'medium' | 'high' | undefined),
         status: data.status === 'completed' ? 'completed' : 'pending',
@@ -4157,13 +4934,44 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateTask = (id: string, data: Partial<AdminTask>) => {
+    let fullTaskToSave: AdminTask | undefined;
     setTasks(prev => {
-      const updated = prev.map(t => t.id === id ? { ...t, ...data } : t);
+      const updated = prev.map(t => {
+        if (t.id === id) {
+          fullTaskToSave = { ...t, ...data };
+          return fullTaskToSave;
+        }
+        return t;
+      });
       safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
       return updated;
     });
 
-    taskService.upsert({ id, ...data });
+    if (fullTaskToSave) {
+      taskService.upsert(fullTaskToSave);
+    } else {
+      taskService.upsert({ id, ...data });
+    }
+
+    setLeads(prev => {
+      let changed = false;
+      const updated = prev.map(lead => {
+        if (!(lead.tasks || []).some(t => t.id === id)) return lead;
+        changed = true;
+        return {
+          ...lead,
+          tasks: (lead.tasks || []).map(t => t.id === id ? {
+            ...t,
+            ...data,
+          } as any : t),
+        };
+      });
+      if (changed) {
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        return updated;
+      }
+      return prev;
+    });
   };
 
   const deleteTask = (id: string) => {
@@ -4313,9 +5121,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       debutantes: scopedDebutantes,
       allDebutantes: debutantes,
       leads: scopedLeads,
-      templates,
-      benefitsCatalog,
-      vipCatalog,
+      templates: scopedTemplates,
+      benefitsCatalog: scopedBenefitsCatalog,
+      vipCatalog: scopedVipCatalog,
       funnels: scopedFunnels,
       tasks,
       activeVenueId,
@@ -4346,9 +5154,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateDebutanteVipRewards,
       linkDebutanteJourney,
       markWelcomeVideoSeen,
+      clients: scopedClients,
+      allClients: clients,
+      addClient,
+      updateClient,
+      deleteClient,
+      updateClientStage,
+      addClientNote,
+      addClientDocument,
+      linkClientDebutante,
       addFunnel,
       updateFunnel,
       deleteFunnel,
+      deleteFunnelWithLeadMigration,
       duplicateFunnel,
       sources: scopedSources,
       allSources: sources,
@@ -4414,6 +5232,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       updateMqlQuestion,
       deleteMqlQuestion,
       saveLeadMqlAnswers,
+      resetVenueLeadsMql,
       leadGoal,
       setLeadGoal,
       featureFlags,

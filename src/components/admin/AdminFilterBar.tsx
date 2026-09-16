@@ -24,6 +24,7 @@ export interface FilterState {
 interface AdminFilterBarProps {
   filters: FilterState;
   onChange: (newFilters: FilterState) => void;
+  showCollaboratorFilter?: boolean;
   showDebutanteFilter?: boolean;
   showCategoryFilter?: boolean;
   showSortFilter?: boolean;
@@ -37,6 +38,7 @@ interface AdminFilterBarProps {
 export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
   filters,
   onChange,
+  showCollaboratorFilter = true,
   showDebutanteFilter = false,
   showSortFilter = false,
   sortOptions = [],
@@ -472,125 +474,127 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
           </div>
 
           {/* 3. COLABORADOR BUTTON (MULTI-SELECT) */}
-          <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => setOpenDropdown(openDropdown === 'collaborator' ? null : 'collaborator')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: selectedCollabIds.length > 0 ? 'var(--adm-green-bg)' : 'var(--adm-bg-input)',
-                border: `1px solid ${selectedCollabIds.length > 0 ? 'var(--adm-green)' : 'var(--adm-border)'}`,
-                color: selectedCollabIds.length > 0 ? 'var(--adm-green)' : 'var(--adm-text-title)',
-                borderRadius: '10px',
-                padding: '7px 12px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <UserCheck size={14} color="var(--adm-green)" />
-              <span>
-                {selectedCollabIds.length === 0 
-                  ? `Toda a Equipe (${collaborators.length})` 
-                  : selectedCollabIds.length === 1 
-                    ? collaborators.find(c => c.id === selectedCollabIds[0])?.name 
-                    : `Equipe (${selectedCollabIds.length})`}
-              </span>
-              <ChevronDown size={13} style={{ transform: openDropdown === 'collaborator' ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-            </button>
+          {showCollaboratorFilter && (
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setOpenDropdown(openDropdown === 'collaborator' ? null : 'collaborator')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: selectedCollabIds.length > 0 ? 'var(--adm-green-bg)' : 'var(--adm-bg-input)',
+                  border: `1px solid ${selectedCollabIds.length > 0 ? 'var(--adm-green)' : 'var(--adm-border)'}`,
+                  color: selectedCollabIds.length > 0 ? 'var(--adm-green)' : 'var(--adm-text-title)',
+                  borderRadius: '10px',
+                  padding: '7px 12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <UserCheck size={14} color="var(--adm-green)" />
+                <span>
+                  {selectedCollabIds.length === 0 
+                    ? `Toda a Equipe (${collaborators.length})` 
+                    : selectedCollabIds.length === 1 
+                      ? collaborators.find(c => c.id === selectedCollabIds[0])?.name 
+                      : `Equipe (${selectedCollabIds.length})`}
+                </span>
+                <ChevronDown size={13} style={{ transform: openDropdown === 'collaborator' ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </button>
 
-            {/* Collaborator Popover Dropdown */}
-            {openDropdown === 'collaborator' && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 6px)',
-                left: 0,
-                zIndex: 999,
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '14px',
-                padding: '10px',
-                width: '320px',
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px',
-                animation: 'fadeIn 0.15s ease-out',
-                maxHeight: '340px',
-                overflowY: 'auto',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px' }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                    Filtrar Colaboradores
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...filters, collaboratorId: 'all', collaboratorIds: [] })}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-green)',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  >
-                    Ver Todos
-                  </button>
-                </div>
-
-                {collaborators.map(c => {
-                  const isSelected = selectedCollabIds.includes(c.id);
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => toggleCollaborator(c.id)}
+              {/* Collaborator Popover Dropdown */}
+              {openDropdown === 'collaborator' && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  zIndex: 999,
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '14px',
+                  padding: '10px',
+                  width: '320px',
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  animation: 'fadeIn 0.15s ease-out',
+                  maxHeight: '340px',
+                  overflowY: 'auto',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                      Filtrar Colaboradores
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...filters, collaboratorId: 'all', collaboratorIds: [] })}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: isSelected ? 'var(--adm-green-bg)' : 'var(--adm-bg-input)',
-                        border: `1px solid ${isSelected ? 'var(--adm-green)' : 'transparent'}`,
-                        borderRadius: '8px',
-                        padding: '8px 10px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-green)',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
                         cursor: 'pointer',
-                        textAlign: 'left',
+                        padding: 0,
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          style={{ accentColor: 'var(--adm-green)', cursor: 'pointer' }}
-                        />
-                        {c.avatarUrl ? (
-                          <img src={c.avatarUrl} alt={c.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(52, 211, 153, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800, color: 'var(--adm-green)' }}>
-                            {c.name.charAt(0)}
-                          </div>
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 800, color: isSelected ? 'var(--adm-green)' : 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {c.name}
-                          </div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
-                            {c.role === 'admin' ? 'Gerência' : c.role.toUpperCase()}
+                      Ver Todos
+                    </button>
+                  </div>
+
+                  {collaborators.map(c => {
+                    const isSelected = selectedCollabIds.includes(c.id);
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => toggleCollaborator(c.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: isSelected ? 'var(--adm-green-bg)' : 'var(--adm-bg-input)',
+                          border: `1px solid ${isSelected ? 'var(--adm-green)' : 'transparent'}`,
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}}
+                            style={{ accentColor: 'var(--adm-green)', cursor: 'pointer' }}
+                          />
+                          {c.avatarUrl ? (
+                            <img src={c.avatarUrl} alt={c.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(52, 211, 153, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800, color: 'var(--adm-green)' }}>
+                              {c.name.charAt(0)}
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: isSelected ? 'var(--adm-green)' : 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {c.name}
+                            </div>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
+                              {c.role === 'admin' ? 'Gerência' : c.role.toUpperCase()}
+                            </div>
                           </div>
                         </div>
+                        {isSelected && <Check size={14} color="var(--adm-green)" />}
                       </div>
-                      {isSelected && <Check size={14} color="var(--adm-green)" />}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 4. DEBUTANTE FILTER (MULTI-SELECT) */}
           {showDebutanteFilter && (

@@ -2,12 +2,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   FileText, ChevronRight, ChevronLeft, Calendar,
-  Plus, Check, X, Clock, PhoneCall, Eye
+  Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminLeadInspector } from './AdminLeadInspector';
-import type { LeadActivity, CrmStage } from '../../types/admin';
+import type { Lead, LeadActivity, CrmStage } from '../../types/admin';
 
 interface AdminWhatsAppWorkspaceViewProps {
   initialLeadId?: string;
@@ -36,11 +36,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     addLeadTask,
     completeLeadTask,
     updateLeadStage,
-    getFeatureStatus,
+    mqlQuestions,
   } = useAdminState();
 
-  const isWhatsAppDisabled = getFeatureStatus('whatsapp') === 'disabled' && currentUser?.role !== 'dev';
-  const isWhatsAppComingSoon = getFeatureStatus('whatsapp') === 'coming_soon' && currentUser?.role !== 'dev';
+  const hasIcpConfigured = (targetLead: Lead) => {
+    if (!mqlQuestions || mqlQuestions.length === 0) return false;
+    return mqlQuestions.some(q =>
+      (targetLead.funnelId && ((q.funnelIds && q.funnelIds.includes(targetLead.funnelId)) || q.funnelId === targetLead.funnelId)) ||
+      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId)) ||
+      q.venueId === targetLead.venueId ||
+      q.venueId === 'all'
+    );
+  };
 
   const activeFunnel = funnels.find(f => f.id === activeFunnelId);
   const isPostSaleFunnel = Boolean(
@@ -62,7 +69,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [quickFilter, setQuickFilter] = useState<'open' | 'my' | 'all'>('open');
 
   // Side Drawer: Lead Inspector (Ficha do Lead) - Opens on the LEFT of chat area
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  // When embedded in funnel (opened from Kanban), inspector starts open (true).
+  // When in standalone WhatsApp view, inspector starts closed (false) ready to chat.
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(isEmbeddedInFunnel);
 
   // Detailed Filters State
   const [filterVenueId, setFilterVenueId] = useState<string>('all');
@@ -71,15 +80,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [filterTemperature, setFilterTemperature] = useState<string>('all');
 
   // Composer Mode: 'whatsapp' | 'notes' | 'tasks'
-  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>(() => {
-    return isWhatsAppDisabled ? 'notes' : 'whatsapp';
-  });
-
-  useEffect(() => {
-    if (isWhatsAppDisabled && composerTab === 'whatsapp') {
-      setComposerTab('notes');
-    }
-  }, [isWhatsAppDisabled, composerTab]);
+  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>('whatsapp');
   
   // WhatsApp / Note Text
   const [messageText, setMessageText] = useState('');
@@ -100,12 +101,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Sync initialLeadId prop
+  // Sync initialLeadId prop & maintain inspector open if embedded in funnel
   useEffect(() => {
     if (initialLeadId) {
       setSelectedLeadId(initialLeadId);
+      if (isEmbeddedInFunnel) {
+        setIsInspectorOpen(true);
+      }
     }
-  }, [initialLeadId]);
+  }, [initialLeadId, isEmbeddedInFunnel]);
 
   // Sync searchQuery prop
   useEffect(() => {
@@ -198,11 +202,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
       return true;
     });
-
-    // Fallback: If result would be 0 leads, return leads so user always sees the conversations
-    if (result.length === 0 && leads.length > 0) {
-      return leads;
-    }
 
     return result;
   }, [leads, activeFunnelId, activeVenueId, quickFilter, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, currentUser, funnels, selectedLeadId, initialLeadId]);
@@ -359,7 +358,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [selectedLead?.activities, composerTab]);
 
   const icpRating = useMemo(() => {
-    if (!selectedLead || getFeatureStatus('icp') === 'disabled') return null;
+    if (!selectedLead || !hasIcpConfigured(selectedLead)) return null;
     const score = selectedLead.mqlScore ?? 0;
     const isTop = score >= 80 || selectedLead.mqlLevel === 'top';
     const isQualified = (score >= 50 && score < 80) || selectedLead.mqlLevel === 'qualified';
@@ -368,7 +367,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const bg = isTop ? 'rgba(16, 185, 129, 0.15)' : isQualified ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
     const border = isTop ? 'rgba(16, 185, 129, 0.35)' : isQualified ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.35)';
     return { score, label, color, bg, border };
-  }, [selectedLead]);
+  }, [selectedLead, mqlQuestions]);
 
   return (
     <div style={{
@@ -646,12 +645,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
               const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
-              const originLabel = lead.subSource || lead.sourceName || (lead.source === 'whatsapp' ? 'WhatsApp' : lead.source === 'instagram' ? 'Instagram' : lead.source === 'parceria' ? 'Parceria' : lead.source === 'evento_externo' ? 'Evento Externo' : (lead.source || 'Direto'));
+              
+              const isIndication = lead.source === 'indicacao' || Boolean(lead.debutanteName && lead.debutanteName !== 'Indicação Externa' && lead.debutanteName !== 'WhatsApp Direto');
+              const rawOrigin = lead.subSource || lead.sourceName || (lead.source === 'whatsapp' ? 'WhatsApp' : lead.source === 'instagram' ? 'Instagram' : lead.source === 'parceria' ? 'Parceria' : lead.source === 'evento_externo' ? 'Evento Externo' : lead.source);
+              const originLabel = isIndication ? 'Indicação' : (rawOrigin === 'Direto' ? null : rawOrigin);
+
+              const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : (lead.assignedTo ? collaborators.find(c => c.name === lead.assignedTo) : undefined);
+              const closerCollab = lead.closerId ? collaborators.find(c => c.id === lead.closerId) : undefined;
+              const hasTwoDistinct = Boolean(sdrCollab && closerCollab && sdrCollab.id !== closerCollab.id);
+              const singleCollab = sdrCollab || closerCollab;
 
               return (
                 <div
                   key={lead.id}
-                  onClick={() => setSelectedLeadId(lead.id)}
+                  onClick={() => {
+                    setSelectedLeadId(lead.id);
+                    if (isEmbeddedInFunnel) {
+                      setIsInspectorOpen(true);
+                    } else {
+                      setIsInspectorOpen(false);
+                    }
+                  }}
                   style={{
                     padding: '12px 16px',
                     borderBottom: '1px solid var(--adm-border)',
@@ -672,8 +686,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 >
                   {/* Lead Avatar */}
                   <div style={{
-                    width: '40px',
-                    height: '40px',
+                    width: '38px',
+                    height: '38px',
                     borderRadius: '50%',
                     background: 'var(--adm-bg-input)',
                     border: '1.5px solid var(--adm-border)',
@@ -682,49 +696,195 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     justifyContent: 'center',
                     color: 'var(--adm-accent)',
                     fontWeight: 800,
-                    fontSize: '0.88rem',
+                    fontSize: '0.86rem',
                     flexShrink: 0,
                   }}>
-                    {/* Avatar */}
                     {displayName.charAt(0).toUpperCase()}
                   </div>
 
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {/* Info Column */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    {/* 1. Linha Superior: Nome do Usuário à Esquerda + Horário no Topo Direito */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {displayName}
                       </div>
-                      <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', flexShrink: 0 }}>
+                      <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', flexShrink: 0, fontWeight: 600 }}>
                         {lastActivity ? new Date(lastActivity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </div>
                     </div>
 
-                    {/* Tags na Parte Superior do Card: Casa de Festa + Origem Real */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
-                        {venue?.name || 'Unidade'}
-                      </span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
-                        {originLabel}
-                      </span>
-                      {lead.mqlScore !== undefined && getFeatureStatus('icp') !== 'disabled' && (
-                        <span style={{
-                          fontSize: '0.6rem',
-                          fontWeight: 600,
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          background: lead.mqlLevel === 'top' ? 'rgba(16,185,129,0.12)' : lead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
-                          color: lead.mqlLevel === 'top' ? '#10B981' : lead.mqlLevel === 'qualified' ? '#F59E0B' : '#EF4444',
-                        }}>
-                          {lead.mqlLevel === 'top' ? 'ICP A' : lead.mqlLevel === 'qualified' ? 'ICP B' : 'ICP C'}
-                        </span>
-                      )}
+                    {/* 2. Linha Intermediária: Prévia / Placeholder de Mensagem */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      minHeight: '12px',
+                    }}>
+                      <div style={{
+                        height: '7px',
+                        width: '120px',
+                        borderRadius: '4px',
+                        background: 'var(--adm-border)',
+                        opacity: 0.45,
+                      }} />
                     </div>
 
-                    {/* Trecho da Última Mensagem / Telefone */}
-                    <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {lastActivity ? (lastActivity.text || lastActivity.title) : lead.phone}
+                    {/* 3. Linha Inferior: Etiquetas à Esquerda + Avatar do Responsável no Canto Inferior Direito */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginTop: '1px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                        {venue && (
+                          <span style={{
+                            fontSize: '0.60rem',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(59, 130, 246, 0.12)',
+                            color: '#3B82F6',
+                            border: '1px solid rgba(59, 130, 246, 0.35)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            <Building2 size={10} color="#3B82F6" />
+                            <span>{venue.name}</span>
+                          </span>
+                        )}
+                        {originLabel && (
+                          <span style={{
+                            fontSize: '0.60rem',
+                            fontWeight: 700,
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: isIndication ? 'rgba(212, 175, 55, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+                            color: isIndication ? '#D4AF37' : '#10B981',
+                            border: `1px solid ${isIndication ? 'rgba(212, 175, 55, 0.35)' : 'rgba(16, 185, 129, 0.25)'}`,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {originLabel}
+                          </span>
+                        )}
+                        {hasIcpConfigured(lead) && (
+                          <span style={{
+                            fontSize: '0.58rem',
+                            fontWeight: 700,
+                            padding: '1px 4px',
+                            borderRadius: '4px',
+                            background: lead.mqlLevel === 'top' ? 'rgba(16,185,129,0.12)' : lead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                            color: lead.mqlLevel === 'top' ? '#10B981' : lead.mqlLevel === 'qualified' ? '#F59E0B' : '#EF4444',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {lead.mqlLevel === 'top' ? 'ICP A' : lead.mqlLevel === 'qualified' ? 'ICP B' : 'ICP C'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Avatares do SDR & Closer (Sobrepostos se forem diferentes, Único se for o mesmo, UserPlus se desatribuído) */}
+                      <div style={{ flexShrink: 0 }}>
+                        {hasTwoDistinct ? (
+                          <div
+                            title={`SDR: ${sdrCollab!.name} | Closer: ${closerCollab!.name}`}
+                            style={{
+                              position: 'relative',
+                              width: '28px',
+                              height: '18px',
+                            }}
+                          >
+                            {/* Closer (fundo / direita) */}
+                            <div style={{
+                              position: 'absolute',
+                              left: '10px',
+                              top: 0,
+                              zIndex: 1,
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: 'rgba(249, 115, 22, 0.2)',
+                              border: '1.2px solid var(--adm-bg-card)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.54rem',
+                              fontWeight: 800,
+                              color: '#F97316',
+                              overflow: 'hidden',
+                            }}>
+                              {closerCollab!.avatarUrl ? (
+                                <img src={closerCollab!.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                closerCollab!.name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+
+                            {/* SDR (frente / esquerda) */}
+                            <div style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              zIndex: 2,
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: 'rgba(20, 169, 215, 0.2)',
+                              border: '1.2px solid var(--adm-bg-card)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.54rem',
+                              fontWeight: 800,
+                              color: 'var(--adm-accent)',
+                              overflow: 'hidden',
+                            }}>
+                              {sdrCollab!.avatarUrl ? (
+                                <img src={sdrCollab!.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                sdrCollab!.name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                          </div>
+                        ) : singleCollab ? (
+                          <div
+                            title={`Responsável: ${singleCollab.name}`}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              background: 'rgba(20, 169, 215, 0.15)',
+                              border: '1.2px solid var(--adm-accent)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.56rem',
+                              fontWeight: 800,
+                              color: 'var(--adm-accent)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {singleCollab.avatarUrl ? (
+                              <img src={singleCollab.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              singleCollab.name.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            title="Sem responsável comercial (Livre para assumir)"
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '50%',
+                              border: '1px dashed var(--adm-border)',
+                              background: 'var(--adm-bg-input)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--adm-text-muted)',
+                            }}
+                          >
+                            <UserPlus size={10} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -749,6 +909,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }}>
           <AdminLeadInspector
             lead={selectedLead}
+            isPostSale={isPostSaleFunnel}
             onStageChange={(newStage: CrmStage) => updateLeadStage(selectedLead.id, newStage)}
             onToggleCollapse={() => setIsInspectorOpen(false)}
             readOnly={isReadOnlyForPosVenda || isLeadSpectator}
@@ -866,42 +1027,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
               </div>
 
-              {/* Right: WhatsApp Web Button & Close Button */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                {(() => {
-                  const cleanDigits = selectedLead.phone.replace(/\D/g, '');
-                  const phoneWithDdi = cleanDigits.startsWith('55') ? cleanDigits : `55${cleanDigits}`;
-                  const whatsappWebUrl = `https://web.whatsapp.com/send?phone=${phoneWithDdi}`;
-
-                  return (
-                    <a
-                      href={whatsappWebUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Abrir no WhatsApp Web"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        background: '#25D366',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '6px 12px',
-                        fontSize: '0.76rem',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                        cursor: 'pointer',
-                        transition: 'opacity 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                    >
-                      <MessageSquare size={14} />
-                      <span>WhatsApp Web</span>
-                    </a>
-                  );
-                })()}
+              {/* Right: Close Button */}
+              {onClose && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                   <button
                     type="button"
                     onClick={onClose}
@@ -915,11 +1043,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       display: 'flex',
                       alignItems: 'center',
                     }}
-                    title="Fechar Caixa de Entrada"
+                    title="Fechar Visualização"
                   >
                     <X size={15} />
                   </button>
                 </div>
+              )}
             </div>
 
             {/* Spectator Mode Notice Banner */}
@@ -1292,34 +1421,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 borderBottom: '1px solid var(--adm-border)',
                 paddingBottom: '8px',
               }}>
-                {!isWhatsAppDisabled && (
-                  <button
-                    type="button"
-                    onClick={() => setComposerTab('whatsapp')}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                      border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
-                      color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
-                      fontSize: '0.76rem',
-                      fontWeight: composerTab === 'whatsapp' ? 800 : 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <MessageSquare size={13} />
-                    <span>WhatsApp</span>
-                    {isWhatsAppComingSoon && (
-                      <span style={{ fontSize: '0.6rem', background: 'rgba(20, 169, 215, 0.2)', color: '#14A9D7', padding: '1px 5px', borderRadius: '4px' }}>
-                        Em Breve
-                      </span>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setComposerTab('whatsapp')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                    border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
+                    color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
+                    fontSize: '0.76rem',
+                    fontWeight: composerTab === 'whatsapp' ? 800 : 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <MessageSquare size={13} />
+                  <span>WhatsApp</span>
+                </button>
 
                 <button
                   type="button"

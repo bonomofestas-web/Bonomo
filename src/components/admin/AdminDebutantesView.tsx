@@ -3,27 +3,22 @@ import {
   Users, Plus, Share2, Send, 
   Gift, Edit3, Trash2, Check, 
   ExternalLink, Building2, Search, LayoutGrid, List,
-  Calendar, Target, Power, Sparkles, Phone
+  Calendar, Power, Phone, Mail, Crown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminDebutanteModal } from './AdminDebutanteModal';
 import { AdminDebutanteDetailView } from './AdminDebutanteDetailView';
-import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
-import { AdminJourneysConfigView } from './AdminJourneysConfigView';
-import { AdminAppointmentsView } from './AdminAppointmentsView';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import type { DebutanteAccount } from '../../types/admin';
+import type { DebutanteAccount, EventType } from '../../types/admin';
 
 interface AdminDebutantesViewProps {
   onOpenDebutanteApp?: (slug: string) => void;
   onOpenLead?: (leadId: string) => void;
-  initialSubTab?: 'debutantes' | 'benefits' | 'templates' | 'appointments';
 }
 
 export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
-  initialSubTab = 'debutantes',
   onOpenLead,
 }) => {
   const { 
@@ -33,12 +28,10 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
     deleteDebutanteAccount,
     toggleDebutanteStatus,
     currentUser,
+    templates,
   } = useAdminState();
 
   const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
-
-  // Sub-tabs: 'debutantes' | 'benefits' | 'templates' | 'appointments'
-  const [activeSubTab, setActiveSubTab] = useState<'debutantes' | 'benefits' | 'templates' | 'appointments'>(initialSubTab);
 
   // Selected Debutante for In-Page Detail View
   const [selectedDebutanteId, setSelectedDebutanteId] = useState<string | null>(null);
@@ -51,6 +44,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   const [debutanteToDelete, setDebutanteToDelete] = useState<{ id: string; name: string } | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [filterModule, setFilterModule] = useState<'all' | 'active' | 'inactive' | 'journey' | 'guests_only'>('all');
+  const [filterEventType, setFilterEventType] = useState<EventType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [filterState, setFilterState] = useState<FilterState>({
@@ -76,14 +70,20 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       const matchesVenue = !venueTarget || d.venueId === venueTarget;
       if (!matchesVenue) return false;
 
-      // 2. Status / Module Filter
+      // 2. Event Type Filter
+      if (filterEventType !== 'all') {
+        const itemType = d.eventType || 'debutante_15';
+        if (itemType !== filterEventType) return false;
+      }
+
+      // 3. Status / Module Filter
       const isInactive = d.status === 'inactive';
       if (filterModule === 'active' && isInactive) return false;
       if (filterModule === 'inactive' && !isInactive) return false;
       if (filterModule === 'journey' && (!d.hasJourneyEnabled || isInactive)) return false;
       if (filterModule === 'guests_only' && (d.hasJourneyEnabled || isInactive)) return false;
 
-      // 3. Search Query
+      // 4. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesName = d.name.toLowerCase().includes(q);
@@ -92,7 +92,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         if (!matchesName && !matchesPhone && !matchesEmail) return false;
       }
 
-      // 4. Period / Temporal Filter
+      // 5. Period / Temporal Filter
       if (filterState.period !== 'all') {
         const today = new Date();
         const createdDate = new Date(d.createdAt || Date.now());
@@ -121,7 +121,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       if (sortBy === 'oldest') return (new Date(a.createdAt || '').getTime() || 0) - (new Date(b.createdAt || '').getTime() || 0);
       return (new Date(b.createdAt || '').getTime() || 0) - (new Date(a.createdAt || '').getTime() || 0);
     });
-  }, [debutantes, activeVenueId, filterState, filterModule, searchQuery]);
+  }, [debutantes, activeVenueId, filterState, filterModule, filterEventType, searchQuery]);
 
   const handleCopyExclusiveLink = (slug: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -166,7 +166,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
       animation: 'fadeIn 0.25s ease-out',
       fontFamily: "'Poppins', sans-serif",
     }}>
-      {/* ── UNIFIED SUB-NAVIGATION HEADER ── */}
+      {/* ── HEADER BAR ── */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -176,100 +176,72 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         borderBottom: '1.5px solid var(--adm-border)',
         paddingBottom: '16px',
       }}>
-        {/* Navigation Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'debutantes', label: 'Aniversariantes', icon: <Users size={16} />, count: debutantes.length },
-            { id: 'benefits', label: 'Prêmios & Benefícios VIP', icon: <Gift size={16} />, roles: ['dev', 'master', 'admin'] },
-            { id: 'templates', label: 'Jornadas & Metas', icon: <Target size={16} />, roles: ['dev', 'master', 'admin'] },
-            { id: 'appointments', label: 'Compromissos & Degustações', icon: <Calendar size={16} /> },
-          ]
-          .filter(tab => !tab.roles || tab.roles.includes(currentUser?.role || 'admin'))
-          .map(tab => {
-            const isActive = activeSubTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveSubTab(tab.id as any)}
-                style={{
-                  background: isActive ? 'rgba(212, 175, 55, 0.15)' : 'var(--adm-bg-card)',
-                  border: `1.5px solid ${isActive ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                  color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  borderRadius: '14px',
-                  padding: '8px 16px',
-                  fontSize: '0.82rem',
-                  fontWeight: isActive ? 800 : 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'all 0.15s ease',
-                  boxShadow: isActive ? '0 4px 14px rgba(212, 175, 55, 0.2)' : 'none',
-                }}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-                {tab.count !== undefined && (
-                  <span style={{
-                    background: isActive ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
-                    color: isActive ? '#000' : 'var(--adm-text-title)',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                  }}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '14px',
+            background: 'var(--adm-bg-card)',
+            border: '1.5px solid var(--adm-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 16px rgba(212,175,55,0.25)',
+          }}>
+            <Gift size={22} color="var(--adm-accent)" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px' }}>
+              Aplicativo • Contas & Convidados
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
+              Gestão de contas, convites e links de acesso ao aplicativo oficial (/app/:slug)
+            </p>
+          </div>
         </div>
 
-        {/* Global Action (only on debutantes tab) */}
-        {activeSubTab === 'debutantes' && !selectedDebutanteId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              onClick={() => {
-                setDebutanteToEdit(null);
-                setIsModalOpen(true);
-              }}
-              className="adm-btn-primary"
-              style={{
-                padding: '8px 18px',
-                borderRadius: '12px',
-                fontWeight: 800,
-                fontSize: '0.82rem',
-              }}
-            >
-              <Plus size={16} />
-              <span>Cadastrar Aniversariante</span>
-            </button>
-          </div>
+        {!selectedDebutanteId && (
+          <button
+            onClick={() => {
+              setDebutanteToEdit(null);
+              setIsModalOpen(true);
+            }}
+            className="adm-btn-primary"
+            style={{
+              padding: '9px 18px',
+              borderRadius: '12px',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Plus size={16} />
+            <span>Cadastrar Conta no App</span>
+          </button>
         )}
       </div>
 
-      {/* ── TAB 1: ANIVERSARIANTES / DEBUTANTES ─────────────────────────────── */}
-      {activeSubTab === 'debutantes' && (
-        selectedDebutanteId ? (
-          (() => {
-            const deb = debutantes.find(d => d.id === selectedDebutanteId);
-            if (!deb) return null;
-            return (
-              <AdminDebutanteDetailView
-                debutante={deb}
-                venue={venues.find(v => v.id === deb.venueId)}
-                onBack={() => setSelectedDebutanteId(null)}
-                onEdit={() => {
-                  setDebutanteToEdit(deb);
-                  setIsModalOpen(true);
-                }}
-                onOpenLead={onOpenLead}
-              />
-            );
-          })()
-        ) : (
+      {/* ── ANIVERSARIANTES CONTENT ─────────────────────────────── */}
+      {selectedDebutanteId ? (
+        (() => {
+          const deb = debutantes.find(d => d.id === selectedDebutanteId);
+          if (!deb) return null;
+          return (
+            <AdminDebutanteDetailView
+              debutante={deb}
+              venue={venues.find(v => v.id === deb.venueId)}
+              onBack={() => setSelectedDebutanteId(null)}
+              onEdit={() => {
+                setDebutanteToEdit(deb);
+                setIsModalOpen(true);
+              }}
+              onOpenLead={onOpenLead}
+            />
+          );
+        })()
+      ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Search & Filter Bar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -297,12 +269,51 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
             <AdminFilterBar
               filters={filterState}
               onChange={setFilterState}
+              showCollaboratorFilter={false}
               showSortFilter={true}
               sortOptions={sortOptions}
               resultCount={filteredDebutantes.length}
               totalCount={debutantes.length}
               labelUnit="aniversariantes"
             />
+
+            {/* Event Category Filter Pills (Limpo, sem emojis) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', overflowX: 'auto', paddingBottom: '2px' }}>
+              {[
+                { id: 'all', label: 'Todos os Eventos' },
+                { id: 'debutante_15', label: '15 Anos' },
+                { id: 'birthday_kids', label: 'Infantil' },
+                { id: 'birthday_adult', label: 'Adulto' },
+                { id: 'baby_shower', label: 'Chá de Bebê' },
+                { id: 'wedding_anniversary', label: 'Bodas / Casamento' },
+                { id: 'graduation', label: 'Formatura' },
+                { id: 'corporate', label: 'Corporativo' },
+                { id: 'other', label: 'Outros' },
+              ].map(typeTab => (
+                <button
+                  key={typeTab.id}
+                  type="button"
+                  onClick={() => setFilterEventType(typeTab.id as any)}
+                  style={{
+                    background: filterEventType === typeTab.id ? 'rgba(212, 175, 55, 0.2)' : 'var(--adm-bg-card)',
+                    border: `1px solid ${filterEventType === typeTab.id ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                    color: filterEventType === typeTab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                    borderRadius: '16px',
+                    padding: '5px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: filterEventType === typeTab.id ? 800 : 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>{typeTab.label}</span>
+                </button>
+              ))}
+            </div>
 
             {/* Module Filter Pills & Right-Aligned Cards/List Switch */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
@@ -428,6 +439,20 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                 const guestsConfirmed = deb.guests.filter(g => g.status === 'confirmed').length;
                 const totalReferrals = deb.referrals?.length || 0;
 
+                const getEventBadge = (type?: EventType) => {
+                  switch (type) {
+                    case 'birthday_kids': return { label: 'Infantil', icon: '🎈', color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.12)' };
+                    case 'birthday_adult': return { label: 'Adulto', icon: '🥂', color: '#A855F7', bg: 'rgba(168, 85, 247, 0.12)' };
+                    case 'baby_shower': return { label: 'Chá Bebê', icon: '🍼', color: '#F472B6', bg: 'rgba(244, 114, 182, 0.12)' };
+                    case 'wedding_anniversary': return { label: 'Bodas', icon: '💍', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' };
+                    case 'graduation': return { label: 'Formatura', icon: '🎓', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)' };
+                    case 'corporate': return { label: 'Corporativo', icon: '🏢', color: '#64748B', bg: 'rgba(100, 116, 139, 0.12)' };
+                    case 'other': return { label: 'Outro', icon: '✨', color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.12)' };
+                    default: return { label: '15 Anos', icon: '👑', color: '#D4AF37', bg: 'rgba(212, 175, 55, 0.12)' };
+                  }
+                };
+                const eventBadge = getEventBadge(deb.eventType);
+
                 return (
                   <div
                     key={deb.id}
@@ -474,6 +499,18 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           </h3>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <span style={{
+                              background: eventBadge.bg,
+                              color: eventBadge.color,
+                              border: `1px solid ${eventBadge.color}40`,
+                              borderRadius: '6px',
+                              padding: '1px 5px',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                            }}>
+                              {eventBadge.icon} {eventBadge.label}
+                            </span>
+
                             {deb.status === 'inactive' ? (
                               <span style={{
                                 background: 'rgba(239, 68, 68, 0.15)',
@@ -497,30 +534,6 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                                 fontWeight: 800,
                               }}>
                                 Ativa
-                              </span>
-                            )}
-
-                            {deb.hasJourneyEnabled ? (
-                              <span style={{
-                                background: 'var(--adm-accent-bg)',
-                                color: 'var(--adm-accent)',
-                                borderRadius: '8px',
-                                padding: '2px 6px',
-                                fontSize: '0.64rem',
-                                fontWeight: 800,
-                              }}>
-                                Jornada VIP
-                              </span>
-                            ) : (
-                              <span style={{
-                                background: 'var(--adm-bg-input)',
-                                color: 'var(--adm-text-muted)',
-                                borderRadius: '8px',
-                                padding: '2px 6px',
-                                fontSize: '0.64rem',
-                                fontWeight: 700,
-                              }}>
-                                Convidados
                               </span>
                             )}
                           </div>
@@ -570,6 +583,63 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       </div>
                     </div>
 
+                    {/* Jornada VIP de Prêmios & Progresso Real-time */}
+                    {deb.hasJourneyEnabled && (() => {
+                      const currentSales = deb.convertedReferralSales || 0;
+                      const template = templates.find(t => t.id === deb.journeyTemplateId) || templates[0];
+                      const rewards = template?.vipRewards || [];
+                      const nextReward = rewards.find(r => r.requiredSales > currentSales) || rewards[rewards.length - 1];
+                      const targetRequired = nextReward ? nextReward.requiredSales : 5;
+                      const progressPercent = Math.min(100, Math.round((currentSales / (targetRequired || 1)) * 100));
+                      const remainingSales = Math.max(0, targetRequired - currentSales);
+
+                      return (
+                        <div style={{
+                          background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, rgba(212, 175, 55, 0.04) 100%)',
+                          border: '1px solid rgba(212, 175, 55, 0.35)',
+                          borderRadius: '10px',
+                          padding: '8px 10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 800, color: '#D4AF37' }}>
+                              <Crown size={12} />
+                              <span>Jornada VIP {nextReward ? `• ${nextReward.name}` : ''}</span>
+                            </span>
+                            <span style={{ fontWeight: 800, color: '#D4AF37' }}>
+                              {progressPercent}%
+                            </span>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div style={{
+                            width: '100%',
+                            height: '6px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                          }}>
+                            <div style={{
+                              width: `${progressPercent}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, #D4AF37 0%, #F59E0B 100%)',
+                              borderRadius: '6px',
+                              transition: 'width 0.3s ease',
+                            }} />
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
+                            <span>{currentSales} {currentSales === 1 ? 'venda confirmada' : 'vendas confirmadas'}</span>
+                            <span style={{ fontWeight: remainingSales === 0 ? 800 : 500, color: remainingSales === 0 ? '#10B981' : 'var(--adm-text-muted)' }}>
+                              {remainingSales > 0 ? `Falta ${remainingSales} para o prêmio` : '🏆 Meta Conquistada!'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Action Buttons */}
                     <div style={{
                       display: 'flex',
@@ -606,11 +676,11 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         <button
                           type="button"
                           onClick={(e) => handleOpenInviteDirect(deb.slug, e)}
-                          title="Abrir a Página do Convite Oficial"
+                          title="Abrir o Convite Oficial"
                           style={{
-                            background: 'rgba(168, 85, 247, 0.12)',
-                            border: '1px solid rgba(168, 85, 247, 0.35)',
-                            color: '#C084FC',
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
                             borderRadius: '10px',
                             padding: '6px 9px',
                             fontSize: '0.72rem',
@@ -619,9 +689,10 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
+                            transition: 'all 0.15s ease',
                           }}
                         >
-                          <Sparkles size={12} />
+                          <Mail size={12} color="var(--adm-accent)" />
                           <span>Convite</span>
                         </button>
                       </div>
@@ -853,7 +924,30 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         }}
                       >
                         <ExternalLink size={13} />
-                        <span>Visualizar</span>
+                        <span>App</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenInviteDirect(deb.slug, e)}
+                        title="Abrir Convite Oficial"
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          color: 'var(--adm-text-title)',
+                          borderRadius: '10px',
+                          padding: '6px 12px',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Mail size={13} color="var(--adm-accent)" />
+                        <span>Convite</span>
                       </button>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -931,22 +1025,6 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
             </div>
           )}
         </div>
-        )
-      )}
-
-      {/* ── TAB 2: PRÊMIOS & BENEFÍCIOS VIP ─────────────────────────────────── */}
-      {activeSubTab === 'benefits' && (
-        <AdminBenefitsCatalogView />
-      )}
-
-      {/* ── TAB 3: JORNADAS & METAS ─────────────────────────────────────────── */}
-      {activeSubTab === 'templates' && (
-        <AdminJourneysConfigView />
-      )}
-
-      {/* ── TAB 4: COMPROMISSOS & DEGUSTAÇÕES ───────────────────────────────── */}
-      {activeSubTab === 'appointments' && (
-        <AdminAppointmentsView />
       )}
 
       {/* ── MODALS ── */}

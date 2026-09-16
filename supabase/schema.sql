@@ -354,11 +354,13 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de Storage Públicas para Leitura
-CREATE POLICY IF NOT EXISTS "Public Read Access" 
+DROP POLICY IF EXISTS "Public Read Access" ON storage.objects;
+CREATE POLICY "Public Read Access" 
 ON storage.objects FOR SELECT 
 USING (bucket_id IN ('venues', 'debutantes', 'funnels', 'invites', 'benefits'));
 
-CREATE POLICY IF NOT EXISTS "Authenticated Upload Access" 
+DROP POLICY IF EXISTS "Authenticated Upload Access" ON storage.objects;
+CREATE POLICY "Authenticated Upload Access" 
 ON storage.objects FOR INSERT 
 TO authenticated 
 WITH CHECK (bucket_id IN ('venues', 'debutantes', 'funnels', 'invites', 'benefits'));
@@ -531,4 +533,58 @@ INSERT INTO public.collaborators (
     name = 'Dev Master',
     role = 'master',
     active = true;
+
+-- ============================================================================
+-- 15. TABELA DE CLIENTES PÓS-VENDA (CONTRATANTES & PÓS-VENDA)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    payer_name TEXT,
+    payer_relationship TEXT,
+    payer_cpf TEXT,
+    payer_phone TEXT,
+    payer_email TEXT,
+    payer_address TEXT,
+    payer_neighborhood TEXT,
+    payer_city TEXT,
+    birthday_person_name TEXT,
+    birthday_person_age INT,
+    birthday_person_birthdate DATE,
+    event_type TEXT DEFAULT '15_anos',
+    event_date DATE,
+    event_time TEXT,
+    guest_count INT DEFAULT 0,
+    venue_id UUID REFERENCES public.venues(id) ON DELETE SET NULL,
+    venue_name TEXT,
+    package_sold TEXT,
+    deal_value NUMERIC(12, 2) DEFAULT 0,
+    contract_date DATE,
+    payment_terms TEXT,
+    payment_status TEXT DEFAULT 'pending',
+    stage TEXT DEFAULT 'onboarding',
+    assigned_success_manager_id UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
+    assigned_success_manager_name TEXT,
+    debutante_id UUID REFERENCES public.debutantes(id) ON DELETE SET NULL,
+    debutante_slug TEXT,
+    commercial_lead_id UUID REFERENCES public.leads(id) ON DELETE SET NULL,
+    commercial_lead_code TEXT,
+    commercial_history JSONB DEFAULT '[]'::jsonb,
+    notes TEXT DEFAULT '',
+    documents JSONB DEFAULT '[]'::jsonb,
+    activities JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_clients_venue_id ON public.clients(venue_id);
+CREATE INDEX IF NOT EXISTS idx_clients_stage ON public.clients(stage);
+CREATE INDEX IF NOT EXISTS idx_clients_commercial_lead_id ON public.clients(commercial_lead_id);
+CREATE INDEX IF NOT EXISTS idx_clients_debutante_id ON public.clients(debutante_id);
+CREATE INDEX IF NOT EXISTS idx_clients_code ON public.clients(code);
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "clients_full_access" ON public.clients FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+ALTER TABLE public.clients REPLICA IDENTITY FULL;
+
 

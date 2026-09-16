@@ -354,11 +354,13 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Políticas de Storage Públicas para Leitura
-CREATE POLICY IF NOT EXISTS "Public Read Access" 
+DROP POLICY IF EXISTS "Public Read Access" ON storage.objects;
+CREATE POLICY "Public Read Access" 
 ON storage.objects FOR SELECT 
 USING (bucket_id IN ('venues', 'debutantes', 'funnels', 'invites', 'benefits'));
 
-CREATE POLICY IF NOT EXISTS "Authenticated Upload Access" 
+DROP POLICY IF EXISTS "Authenticated Upload Access" ON storage.objects;
+CREATE POLICY "Authenticated Upload Access" 
 ON storage.objects FOR INSERT 
 TO authenticated 
 WITH CHECK (bucket_id IN ('venues', 'debutantes', 'funnels', 'invites', 'benefits'));

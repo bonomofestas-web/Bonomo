@@ -53,6 +53,7 @@ export const leadService = {
           code: row.code,
           funnelId: row.funnel_id,
           venueId: row.venue_id,
+          venueName: row.venue_name || undefined,
           sourceId: row.source_id,
           sourceName: row.source_name,
           subSource: row.sub_source,
@@ -93,6 +94,7 @@ export const leadService = {
           packageSold: row.package_sold,
           contractDate: row.contract_date,
           partyDate: row.party_date,
+          funnelEnteredAt: row.funnel_entered_at || row.created_at || new Date().toISOString(),
           mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
           mqlLevel: row.mql_level || undefined,
           mqlAnswers: row.mql_answers || undefined,
@@ -123,6 +125,7 @@ export const leadService = {
       if (lead.isValidated !== undefined) payload.is_validated = lead.isValidated;
       if (lead.pointsGranted !== undefined) payload.points_granted = lead.pointsGranted;
       if (lead.rejectionReason !== undefined) payload.rejection_reason = lead.rejectionReason;
+      if (lead.funnelEnteredAt !== undefined) payload.funnel_entered_at = lead.funnelEnteredAt;
       
       if (lead.sourceId !== undefined) payload.source_id = isUuid(lead.sourceId) ? lead.sourceId : null;
       if (lead.source !== undefined) payload.source = lead.source;
@@ -133,11 +136,11 @@ export const leadService = {
       if (lead.mqlLevel !== undefined) payload.mql_level = lead.mqlLevel;
       if (lead.mqlAnswers !== undefined) payload.mql_answers = lead.mqlAnswers;
 
-      if (lead.sdrId !== undefined) payload.sdr_id = isUuid(lead.sdrId) ? lead.sdrId : null;
-      if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName;
-      if (lead.closerId !== undefined) payload.closer_id = isUuid(lead.closerId) ? lead.closerId : null;
-      if (lead.closerName !== undefined) payload.closer_name = lead.closerName;
-      if (lead.assignedTo !== undefined) payload.assigned_to = lead.assignedTo;
+      if (lead.sdrId !== undefined) payload.sdr_id = (lead.sdrId && isUuid(lead.sdrId)) ? lead.sdrId : null;
+      if (lead.sdrName !== undefined) payload.sdr_name = lead.sdrName || null;
+      if (lead.closerId !== undefined) payload.closer_id = (lead.closerId && isUuid(lead.closerId)) ? lead.closerId : null;
+      if (lead.closerName !== undefined) payload.closer_name = lead.closerName || null;
+      if (lead.assignedTo !== undefined) payload.assigned_to = lead.assignedTo || null;
       
       if (lead.dealValue !== undefined) payload.deal_value = lead.dealValue;
       if (lead.packageSold !== undefined) payload.package_sold = lead.packageSold;
@@ -146,8 +149,9 @@ export const leadService = {
         payload.party_date = lead.partyDate || lead.eventDate;
       }
       
-      if (lead.venueId !== undefined && isUuid(lead.venueId)) payload.venue_id = lead.venueId;
-      if ((lead as any).funnelId !== undefined && isUuid((lead as any).funnelId)) payload.funnel_id = (lead as any).funnelId;
+      if (lead.venueId !== undefined) payload.venue_id = isUuid(lead.venueId) ? lead.venueId : null;
+      if (lead.venueName !== undefined) payload.venue_name = lead.venueName;
+      if ((lead as any).funnelId !== undefined) payload.funnel_id = isUuid((lead as any).funnelId) ? (lead as any).funnelId : null;
       if (lead.debutanteId !== undefined) payload.debutante_id = isUuid(lead.debutanteId) ? lead.debutanteId : null;
       if (lead.debutanteName !== undefined) payload.debutante_name = lead.debutanteName;
       if (lead.debutanteSlug !== undefined) payload.debutante_slug = lead.debutanteSlug;

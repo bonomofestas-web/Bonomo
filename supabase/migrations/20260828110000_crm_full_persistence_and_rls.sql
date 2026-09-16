@@ -80,10 +80,15 @@ DROP POLICY IF EXISTS "commercial_funnels_public_read" ON public.commercial_funn
 DROP POLICY IF EXISTS "commercial_funnels_auth_write" ON public.commercial_funnels;
 CREATE POLICY "commercial_funnels_full_access" ON public.commercial_funnels FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- JOURNEY TEMPLATES
-DROP POLICY IF EXISTS "journey_templates_full_access" ON public.journey_templates;
-DROP POLICY IF EXISTS "journey_templates_all_access" ON public.journey_templates;
-CREATE POLICY "journey_templates_full_access" ON public.journey_templates FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- JOURNEY TEMPLATES (Aplicado somente se a tabela já existir)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'journey_templates') THEN
+        DROP POLICY IF EXISTS "journey_templates_full_access" ON public.journey_templates;
+        DROP POLICY IF EXISTS "journey_templates_all_access" ON public.journey_templates;
+        CREATE POLICY "journey_templates_full_access" ON public.journey_templates FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    END IF;
+END $$;
 
 -- GUESTS & APPOINTMENTS
 DROP POLICY IF EXISTS "guests_full_access" ON public.guests;

@@ -3,7 +3,7 @@ import {
   ArrowLeft, Crown, Gift, Users, Sparkles, CheckCircle2, 
   ExternalLink, Building2, Check,
   Share2, Award, Edit3, Phone,
-  Calendar, Eye, Plus, Trash2, X, MapPin
+  Calendar, Eye, Plus, Trash2, X, MapPin, Video, Play, Mail
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -33,11 +33,16 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
   
   // Journey Preview Modal State
   const [isJourneyPreviewOpen, setIsJourneyPreviewOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
 
   // Appointments Modal & Delete States
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
   const [appointmentToEdit, setAppointmentToEdit] = useState<{ debutanteId: string; appointment: Appointment } | null>(null);
   const [appointmentToDelete, setAppointmentToDelete] = useState<{ appId: string; title: string } | null>(null);
+
+  // Guests Search & Filter States
+  const [guestSearch, setGuestSearch] = useState('');
+  const [guestStatusFilter, setGuestStatusFilter] = useState<'all' | 'confirmed' | 'declined' | 'pending'>('all');
 
   const validReferralsCount = debutante.referrals?.filter(r => r.status === 'validated').length || 0;
   const totalReferrals = debutante.referrals?.length || 0;
@@ -198,7 +203,7 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
               gap: '6px',
             }}
           >
-            <ExternalLink size={15} />
+            <Mail size={15} color="var(--adm-accent)" />
             <span>Ver Convite Digital</span>
           </button>
 
@@ -397,6 +402,104 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
             <span>Visualizar Jornada (Preview)</span>
           </button>
         )}
+      </div>
+
+      {/* Debutante Vertical Welcome Video Card */}
+      <div style={{
+        padding: '16px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '16px',
+        background: 'var(--adm-bg-card)',
+        border: '1px solid var(--adm-border)',
+        borderRadius: '16px',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            background: debutante.welcomeVideoUrl ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
+            border: `1.5px solid ${debutante.welcomeVideoUrl ? '#10B981' : 'var(--adm-border)'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: debutante.welcomeVideoUrl ? '#10B981' : 'var(--adm-text-muted)',
+            flexShrink: 0,
+          }}>
+            <Video size={20} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                Vídeo Vertical de Boas-Vindas
+              </span>
+              {debutante.welcomeVideoUrl ? (
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  Configurado (R2)
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
+                  Não configurado
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
+              {debutante.welcomeVideoUrl 
+                ? 'Vídeo vertical 9:16 ativo. A debutante assiste a esta mensagem ao iniciar a experiência.'
+                : 'Nenhum vídeo vertical de boas-vindas cadastrado para esta debutante.'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {debutante.welcomeVideoUrl && (
+            <button
+              type="button"
+              onClick={() => setIsVideoModalOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #D4AF37 0%, #AA7C11 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '8px 14px',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 14px rgba(212, 175, 55, 0.25)',
+              }}
+            >
+              <Play size={13} fill="#000" />
+              <span>Assistir Vídeo (9:16)</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onEdit}
+            style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              color: 'var(--adm-text-title)',
+              borderRadius: '10px',
+              padding: '8px 14px',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Edit3 size={13} />
+            <span>{debutante.welcomeVideoUrl ? 'Trocar Vídeo' : 'Adicionar Vídeo'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Sub-Navigation Tabs */}
@@ -789,161 +892,327 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
           </div>
         )}
 
-        {/* TAB 3: LISTA DE CONVIDADOS COMPLETA COM TODAS AS COLUNAS (AUDIO 10) */}
-        {activeTab === 'guests' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                  Lista de Convidados ({debutante.guests.length} / {debutante.currentGuestLimit})
-                </h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-                  Acompanhe nomes, categorias, idades, gêneros, contatos e status de confirmação dos convidados.
-                </p>
-              </div>
-            </div>
+        {/* TAB 3: LISTA DE CONVIDADOS COMPLETA COM TODAS AS COLUNAS */}
+        {activeTab === 'guests' && (() => {
+          const confirmedGuests = debutante.guests.filter(g => g.status === 'confirmed');
+          const declinedGuests = debutante.guests.filter(g => g.status === 'declined');
+          const pendingGuests = debutante.guests.filter(g => !g.status || g.status === 'pending');
+          const totalPlusOnesConfirmed = confirmedGuests.reduce((sum, g) => sum + (g.plusOnes || 0), 0);
+          const totalHeadcountConfirmed = confirmedGuests.length + totalPlusOnesConfirmed;
 
-            {debutante.guests.length === 0 ? (
-              <div className="saas-card" style={{ padding: '48px', textAlign: 'center', color: 'var(--adm-text-muted)' }}>
-                Nenhum convidado adicionado ainda pela aniversariante.
-              </div>
-            ) : (
-              <div className="saas-card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)', color: 'var(--adm-text-muted)', textAlign: 'left' }}>
-                        <th style={{ padding: '12px 18px', fontWeight: 700 }}>Convidado</th>
-                        <th style={{ padding: '12px 18px', fontWeight: 700 }}>Grupo</th>
-                        <th style={{ padding: '12px 18px', fontWeight: 700 }}>Idade</th>
-                        <th style={{ padding: '12px 18px', fontWeight: 700 }}>Sexo / Gênero</th>
-                        <th style={{ padding: '12px 18px', fontWeight: 700 }}>Telefone</th>
-                        <th style={{ padding: '12px 18px', fontWeight: 700, textAlign: 'right' }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {debutante.guests.map((g, idx) => {
-                        const groupBadge = getGuestGroupBadge(g.group || 'Geral');
-                        const isConfirmed = g.status === 'confirmed';
-                        const isDeclined = g.status === 'declined';
+          const filteredGuests = debutante.guests.filter(g => {
+            if (guestStatusFilter === 'confirmed' && g.status !== 'confirmed') return false;
+            if (guestStatusFilter === 'declined' && g.status !== 'declined') return false;
+            if (guestStatusFilter === 'pending' && (g.status === 'confirmed' || g.status === 'declined')) return false;
 
-                        return (
-                          <tr
-                            key={g.id || idx}
-                            style={{
-                              borderBottom: '1px solid var(--adm-border)',
-                              transition: 'background 0.15s ease',
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <td style={{ padding: '12px 18px' }}>
-                              <div style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                                {g.name}
-                              </div>
-                              {g.plusOnes > 0 && (
-                                <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', marginTop: '2px' }}>
-                                  + {g.plusOnes} acompanhante(s)
+            if (guestSearch.trim()) {
+              const q = guestSearch.toLowerCase();
+              const matchesName = g.name.toLowerCase().includes(q);
+              const matchesPhone = g.phone?.includes(q);
+              const matchesGroup = g.group?.toLowerCase().includes(q);
+              if (!matchesName && !matchesPhone && !matchesGroup) return false;
+            }
+            return true;
+          });
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* Top Guest KPI Summary Cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                gap: '12px',
+              }}>
+                <div className="saas-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(212, 175, 55, 0.12)', color: 'var(--adm-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Total na Lista</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title)', marginTop: '2px' }}>
+                      {debutante.guests.length} <span style={{ fontSize: '0.8rem', color: 'var(--adm-text-muted)' }}>/ {debutante.currentGuestLimit} máx</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-green)', textTransform: 'uppercase', fontWeight: 700 }}>Confirmados</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-green)', marginTop: '2px' }}>
+                      {confirmedGuests.length} <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>({totalHeadcountConfirmed} presentes)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.12)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: '#F59E0B', textTransform: 'uppercase', fontWeight: 700 }}>Aguardando RSVP</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#F59E0B', marginTop: '2px' }}>
+                      {pendingGuests.length} <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>pendentes</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: '#EF4444', textTransform: 'uppercase', fontWeight: 700 }}>Recusados</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#EF4444', marginTop: '2px' }}>
+                      {declinedGuests.length} <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>não irão</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Guest Search & Filter Bar */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '14px',
+                padding: '12px 16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '220px' }}>
+                  <input
+                    type="text"
+                    value={guestSearch}
+                    onChange={(e) => setGuestSearch(e.target.value)}
+                    placeholder="Buscar convidado por nome, telefone ou grupo..."
+                    style={{
+                      width: '100%',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '8px 14px',
+                      fontSize: '0.80rem',
+                      color: 'var(--adm-text-title)',
+                      outline: 'none',
+                    }}
+                  />
+                  {guestSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setGuestSearch('')}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: `Todos (${debutante.guests.length})` },
+                    { id: 'confirmed', label: `Confirmados (${confirmedGuests.length})` },
+                    { id: 'pending', label: `Pendentes (${pendingGuests.length})` },
+                    { id: 'declined', label: `Recusados (${declinedGuests.length})` },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setGuestStatusFilter(f.id as any)}
+                      style={{
+                        background: guestStatusFilter === f.id ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
+                        color: guestStatusFilter === f.id ? '#000000' : 'var(--adm-text-muted)',
+                        border: `1px solid ${guestStatusFilter === f.id ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                        borderRadius: '8px',
+                        padding: '5px 12px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Guest Table */}
+              {filteredGuests.length === 0 ? (
+                <div className="saas-card" style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--adm-text-muted)' }}>
+                  <Users size={36} color="var(--adm-accent)" style={{ margin: '0 auto 10px auto', opacity: 0.5 }} />
+                  <div style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Nenhum convidado encontrado
+                  </div>
+                  <p style={{ fontSize: '0.78rem', margin: '4px 0 0 0' }}>
+                    {guestSearch ? 'Tente ajustar os termos de pesquisa ou filtros.' : 'A aniversariante ainda não adicionou convidados.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="saas-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--adm-border)' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1.5px solid var(--adm-border)', color: 'var(--adm-text-muted)', textAlign: 'left' }}>
+                          <th style={{ padding: '14px 20px', fontWeight: 800 }}>Convidado</th>
+                          <th style={{ padding: '14px 18px', fontWeight: 800 }}>Grupo</th>
+                          <th style={{ padding: '14px 18px', fontWeight: 800 }}>Idade</th>
+                          <th style={{ padding: '14px 18px', fontWeight: 800 }}>Gênero</th>
+                          <th style={{ padding: '14px 18px', fontWeight: 800 }}>Contato</th>
+                          <th style={{ padding: '14px 20px', fontWeight: 800, textAlign: 'right' }}>Status RSVP</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredGuests.map((g, idx) => {
+                          const groupBadge = getGuestGroupBadge(g.group || 'Geral');
+                          const isConfirmed = g.status === 'confirmed';
+                          const isDeclined = g.status === 'declined';
+
+                          return (
+                            <tr
+                              key={g.id || idx}
+                              style={{
+                                borderBottom: '1px solid var(--adm-border)',
+                                transition: 'background 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <td style={{ padding: '14px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: isConfirmed ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                                    border: `1px solid ${isConfirmed ? '#10B981' : 'var(--adm-border)'}`,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isConfirmed ? '#10B981' : 'var(--adm-text-muted)',
+                                    fontWeight: 800,
+                                    fontSize: '0.78rem',
+                                    flexShrink: 0,
+                                  }}>
+                                    {g.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.88rem' }}>
+                                      {g.name}
+                                    </div>
+                                    {g.plusOnes > 0 && (
+                                      <div style={{ fontSize: '0.70rem', color: 'var(--adm-accent)', marginTop: '2px', fontWeight: 700 }}>
+                                        + {g.plusOnes} acompanhante(s)
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                            </td>
+                              </td>
 
-                            <td style={{ padding: '12px 18px' }}>
-                              <span style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                background: groupBadge.bg,
-                                color: groupBadge.color,
-                                border: `1px solid ${groupBadge.border}`,
-                                display: 'inline-block',
-                              }}>
-                                {g.group || 'Geral'}
-                              </span>
-                            </td>
+                              <td style={{ padding: '14px 18px' }}>
+                                <span style={{
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  background: groupBadge.bg,
+                                  color: groupBadge.color,
+                                  border: `1px solid ${groupBadge.border}`,
+                                  display: 'inline-block',
+                                }}>
+                                  {g.group || 'Geral'}
+                                </span>
+                              </td>
 
-                            <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)' }}>
-                              {g.age ? `${g.age} anos` : '-'}
-                            </td>
+                              <td style={{ padding: '14px 18px', color: 'var(--adm-text-title)', fontWeight: 600 }}>
+                                {g.age ? `${g.age} anos` : '—'}
+                              </td>
 
-                            <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)', textTransform: 'capitalize' }}>
-                              {g.gender ? (g.gender === 'female' ? 'Feminino' : g.gender === 'male' ? 'Masculino' : 'Outro') : '-'}
-                            </td>
+                              <td style={{ padding: '14px 18px', color: 'var(--adm-text-muted)', textTransform: 'capitalize', fontSize: '0.78rem' }}>
+                                {g.gender ? (g.gender === 'female' ? 'Feminino' : g.gender === 'male' ? 'Masculino' : 'Outro') : '—'}
+                              </td>
 
-                            <td style={{ padding: '12px 18px', color: 'var(--adm-text-body)' }}>
-                              {g.phone ? formatPhone(g.phone) : '-'}
-                            </td>
+                              <td style={{ padding: '14px 18px', color: 'var(--adm-text-body)' }}>
+                                {g.phone ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem' }}>
+                                    <Phone size={12} color="var(--adm-accent)" />
+                                    <span>{formatPhone(g.phone)}</span>
+                                  </span>
+                                ) : '—'}
+                              </td>
 
-                            <td style={{ padding: '12px 18px', textAlign: 'right' }}>
-                              <span style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                padding: '3px 10px',
-                                borderRadius: '8px',
-                                background: isConfirmed ? 'rgba(34, 197, 94, 0.15)' : isDeclined ? 'rgba(239, 68, 68, 0.15)' : 'var(--adm-bg-input)',
-                                color: isConfirmed ? 'var(--adm-green)' : isDeclined ? '#EF4444' : 'var(--adm-text-muted)',
-                                border: `1px solid ${isConfirmed ? 'rgba(34, 197, 94, 0.3)' : isDeclined ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
-                                display: 'inline-block',
-                              }}>
-                                {isConfirmed ? 'Confirmado' : isDeclined ? 'Recusado' : 'Pendente'}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  padding: '4px 10px',
+                                  borderRadius: '8px',
+                                  background: isConfirmed ? 'rgba(16, 185, 129, 0.15)' : isDeclined ? 'rgba(239, 68, 68, 0.15)' : 'var(--adm-bg-input)',
+                                  color: isConfirmed ? 'var(--adm-green)' : isDeclined ? '#EF4444' : 'var(--adm-text-muted)',
+                                  border: `1px solid ${isConfirmed ? 'rgba(16, 185, 129, 0.3)' : isDeclined ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}>
+                                  <span style={{
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    background: isConfirmed ? '#10B981' : isDeclined ? '#EF4444' : '#9CA3AF',
+                                  }} />
+                                  <span>{isConfirmed ? 'Confirmado' : isDeclined ? 'Recusado' : 'Pendente'}</span>
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: AGENDA DE COMPROMISSOS DESTA ANIVERSARIANTE (AUDIO 10) */}
-        {activeTab === 'appointments' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                  Compromissos Agendados de {debutante.name} ({debutante.appointments?.length || 0})
-                </h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
-                  Degustações de buffet, provas de vestido, ensaios e reuniões de alinhamento exclusivas desta festa.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAppointmentToEdit(null);
-                  setIsAppointmentModalOpen(true);
-                }}
-                className="adm-btn-primary"
-                style={{
-                  borderRadius: '10px',
-                  padding: '8px 16px',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Plus size={15} />
-                <span>+ Novo Compromisso</span>
-              </button>
+              )}
             </div>
+          );
+        })()}
 
-            {(!debutante.appointments || debutante.appointments.length === 0) ? (
-              <div className="saas-card" style={{ padding: '48px', textAlign: 'center', color: 'var(--adm-text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                <Calendar size={38} color="#60A5FA" style={{ opacity: 0.5 }} />
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                  Nenhum compromisso agendado
+        {/* TAB 4: AGENDA DE COMPROMISSOS DESTA ANIVERSARIANTE */}
+        {activeTab === 'appointments' && (() => {
+          const appointmentsList = debutante.appointments || [];
+          const confirmedApps = appointmentsList.filter(a => a.status === 'confirmed');
+          const completedApps = appointmentsList.filter(a => a.status === 'completed');
+          const scheduledApps = appointmentsList.filter(a => !a.status || a.status === 'scheduled');
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* Top Header & Metrics */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+              }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={20} color="#60A5FA" />
+                    <span>Compromissos e Agenda da Debutante</span>
+                  </h3>
+                  <p style={{ fontSize: '0.80rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
+                    Degustações de buffet, provas de vestido, ensaios e reuniões de alinhamento exclusivas para a festa de {debutante.name}.
+                  </p>
                 </div>
-                <p style={{ fontSize: '0.82rem', margin: 0 }}>
-                  Clique no botão acima para agendar degustações, provas de vestido ou reuniões com a debutante.
-                </p>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -952,150 +1221,252 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
                   }}
                   className="adm-btn-primary"
                   style={{
-                    borderRadius: '10px',
-                    padding: '8px 18px',
-                    fontSize: '0.8rem',
+                    borderRadius: '12px',
+                    padding: '9px 18px',
+                    fontSize: '0.82rem',
                     fontWeight: 800,
-                    marginTop: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  <Plus size={15} />
-                  <span>Criar Primeiro Compromisso</span>
+                  <Plus size={16} />
+                  <span>+ Agendar Novo Compromisso</span>
                 </button>
               </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
-                {debutante.appointments.map((app) => {
-                  const statusLabel = app.status === 'confirmed' ? 'Confirmado' : app.status === 'completed' ? 'Concluído' : 'Agendado';
-                  const statusColor = app.status === 'confirmed' ? '#10B981' : app.status === 'completed' ? '#8B5CF6' : '#06B6D4';
 
-                  return (
-                    <div
-                      key={app.id}
-                      className="saas-card"
-                      style={{
-                        padding: '16px 18px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px',
-                        position: 'relative',
-                      }}
-                    >
-                      {/* Top Category & Status */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          background: 'var(--adm-accent-bg)',
-                          color: 'var(--adm-accent)',
-                          border: '1px solid var(--adm-accent)',
-                        }}>
-                          {app.category}
-                        </span>
-
-                        <span style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          background: `${statusColor}18`,
-                          color: statusColor,
-                          border: `1px solid ${statusColor}40`,
-                        }}>
-                          {statusLabel}
-                        </span>
-                      </div>
-
-                      {/* Title & Description */}
-                      <div>
-                        <div style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          {app.title}
-                        </div>
-                        {app.notes && (
-                          <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginTop: '3px', lineHeight: 1.4 }}>
-                            {app.notes}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Date, Time & Location */}
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        fontSize: '0.76rem',
-                        color: 'var(--adm-text-muted)',
-                        borderTop: '1px solid var(--adm-border)',
-                        paddingTop: '10px',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={13} color="var(--adm-accent)" />
-                          <span><strong>{app.date.split('-').reverse().join('/')}</strong> às <strong>{app.time}</strong></span>
-                        </div>
-                        {app.location && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MapPin size={13} color="#EF4444" />
-                            <span>{app.location}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions Bottom */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--adm-border)', paddingTop: '10px', marginTop: 'auto' }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAppointmentToEdit({ debutanteId: debutante.id, appointment: app });
-                            setIsAppointmentModalOpen(true);
-                          }}
-                          style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            borderRadius: '8px',
-                            padding: '5px 10px',
-                            fontSize: '0.74rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Edit3 size={12} />
-                          <span>Editar</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setAppointmentToDelete({ appId: app.id, title: app.title })}
-                          style={{
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            color: '#EF4444',
-                            borderRadius: '8px',
-                            padding: '5px 10px',
-                            fontSize: '0.74rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Trash2 size={12} />
-                          <span>Excluir</span>
-                        </button>
-                      </div>
+              {/* Appointment Stat Pills */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px',
+              }}>
+                <div className="saas-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(96, 165, 250, 0.12)', color: '#60A5FA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Calendar size={16} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Total Agendado</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      {appointmentsList.length}
                     </div>
-                  );
-                })}
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.64rem', color: '#10B981', textTransform: 'uppercase', fontWeight: 700 }}>Confirmados</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
+                      {confirmedApps.length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(139, 92, 246, 0.12)', color: '#A78BFA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={16} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.64rem', color: '#A78BFA', textTransform: 'uppercase', fontWeight: 700 }}>Concluídos</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#A78BFA' }}>
+                      {completedApps.length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="saas-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(6, 182, 212, 0.12)', color: '#22D3EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Calendar size={16} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.64rem', color: '#22D3EE', textTransform: 'uppercase', fontWeight: 700 }}>Pendentes</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#22D3EE' }}>
+                      {scheduledApps.length}
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Appointments Grid */}
+              {appointmentsList.length === 0 ? (
+                <div className="saas-card" style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--adm-text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                  <Calendar size={42} color="#60A5FA" style={{ opacity: 0.4 }} />
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Nenhum compromisso agendado para esta debutante
+                  </div>
+                  <p style={{ fontSize: '0.80rem', margin: 0, maxWidth: '400px', lineHeight: 1.5 }}>
+                    Cadastre degustações de cardápio, reuniões de roteiro ou provas de vestido para manter a aniversariante informada.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppointmentToEdit(null);
+                      setIsAppointmentModalOpen(true);
+                    }}
+                    className="adm-btn-primary"
+                    style={{
+                      borderRadius: '10px',
+                      padding: '8px 20px',
+                      fontSize: '0.80rem',
+                      fontWeight: 800,
+                      marginTop: '6px',
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Criar Primeiro Compromisso</span>
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+                  {appointmentsList.map((app) => {
+                    const statusLabel = app.status === 'confirmed' ? 'Confirmado' : app.status === 'completed' ? 'Concluído' : 'Agendado';
+                    const statusColor = app.status === 'confirmed' ? '#10B981' : app.status === 'completed' ? '#8B5CF6' : '#38BDF8';
+
+                    return (
+                      <div
+                        key={app.id}
+                        className="saas-card"
+                        style={{
+                          padding: '18px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '12px',
+                          border: '1.5px solid var(--adm-border)',
+                          position: 'relative',
+                        }}
+                      >
+                        {/* Top Category & Status */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'var(--adm-accent-bg)',
+                            color: 'var(--adm-accent)',
+                            border: '1px solid var(--adm-accent)',
+                          }}>
+                            {app.category}
+                          </span>
+
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: `${statusColor}18`,
+                            color: statusColor,
+                            border: `1px solid ${statusColor}40`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: statusColor }} />
+                            <span>{statusLabel}</span>
+                          </span>
+                        </div>
+
+                        {/* Title & Notes */}
+                        <div>
+                          <div style={{ fontSize: '0.98rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
+                            {app.title}
+                          </div>
+                          {app.notes && (
+                            <div style={{
+                              fontSize: '0.76rem',
+                              color: 'var(--adm-text-muted)',
+                              marginTop: '6px',
+                              lineHeight: 1.4,
+                              background: 'var(--adm-bg-input)',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: '1px solid var(--adm-border)',
+                            }}>
+                              {app.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Date, Time & Location */}
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          fontSize: '0.76rem',
+                          color: 'var(--adm-text-muted)',
+                          borderTop: '1px solid var(--adm-border)',
+                          paddingTop: '10px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={13} color="var(--adm-accent)" />
+                            <span><strong>{app.date.split('-').reverse().join('/')}</strong> às <strong>{app.time}</strong></span>
+                          </div>
+                          {app.location && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <MapPin size={13} color="#EF4444" />
+                              <span>{app.location}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions Bottom */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--adm-border)', paddingTop: '10px', marginTop: 'auto' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAppointmentToEdit({ debutanteId: debutante.id, appointment: app });
+                              setIsAppointmentModalOpen(true);
+                            }}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              color: 'var(--adm-text-title)',
+                              borderRadius: '8px',
+                              padding: '5px 12px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Edit3 size={12} />
+                            <span>Editar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setAppointmentToDelete({ appId: app.id, title: app.title })}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              color: '#EF4444',
+                              borderRadius: '8px',
+                              padding: '5px 12px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>Excluir</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── MODAL PREVIEW DA JORNADA COMPLETA (AUDIO 10) ── */}
@@ -1280,6 +1651,79 @@ export const AdminDebutanteDetailView: React.FC<AdminDebutanteDetailViewProps> =
         onConfirm={handleDeleteAppointment}
         onClose={() => setAppointmentToDelete(null)}
       />
+
+      {/* Modal Reprodução de Vídeo Vertical (9:16) */}
+      {isVideoModalOpen && debutante.welcomeVideoUrl && (
+        <div 
+          onClick={() => setIsVideoModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.88)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '380px',
+              aspectRatio: '9 / 16',
+              background: '#000',
+              borderRadius: '24px',
+              overflow: 'hidden',
+              boxShadow: '0 24px 60px rgba(0, 0, 0, 0.9), 0 0 30px rgba(212, 175, 55, 0.2)',
+              border: '1.5px solid rgba(212, 175, 55, 0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setIsVideoModalOpen(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(0, 0, 0, 0.65)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#FFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <video
+              src={debutante.welcomeVideoUrl}
+              controls
+              autoPlay
+              playsInline
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
