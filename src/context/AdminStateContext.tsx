@@ -28,7 +28,9 @@ import type {
   Client,
   ClientStage,
   ClientDocument,
-  ClientActivity
+  ClientActivity,
+  VenueAgendaConfig,
+  CommercialCommitment
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -49,6 +51,7 @@ import { leadService } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
+import { agendaAvailabilityService } from '../services/agendaAvailabilityService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
@@ -63,6 +66,8 @@ const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
 const STORAGE_KEY_VENUES = 'bonomo_admin_venues_v7';
 const STORAGE_KEY_DEBUTANTES = 'bonomo_admin_debutantes_v7';
 const STORAGE_KEY_CLIENTS = 'bonomo_admin_clients_v7';
+const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_admin_agenda_configs_v1';
+const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
 const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
 const STORAGE_KEY_SOURCES = 'bonomo_admin_sources_v1';
 const STORAGE_KEY_TEMPLATES = 'bonomo_admin_templates_v7';
@@ -267,6 +272,9 @@ export interface AdminContextType {
   duplicateFunnel: (funnelId: string, targetVenueId?: string) => string;
 
   // CRM Leads — Stage & Assignment
+  unindexedLeadsCount: number;
+  reassignLeadFunnel: (leadId: string, destinationFunnelId: string, stageId?: string) => Promise<boolean>;
+  reassignMultipleLeadsFunnel: (leadIds: string[], destinationFunnelId: string, stageId?: string) => Promise<{ successCount: number; failedCount: number }>;
   updateLeadStage: (leadId: string, newStage: CrmStage) => void;
   addLeadNote: (leadId: string, noteText: string) => void;
   validateLead: (leadId: string) => void;
@@ -313,6 +321,9 @@ export interface AdminContextType {
     debutanteBirthDate?: string;
     customFieldValues?: Record<string, any>;
     tags?: string[];
+    createdBy?: string;
+    createdByName?: string;
+    createdByAvatar?: string;
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
@@ -361,10 +372,30 @@ export interface AdminContextType {
   shareJourneyTemplateToVenue: (templateId: string, targetVenueId: string) => void;
   shareCatalogItemToVenue: (type: 'benefit' | 'vip', itemId: string, targetVenueId: string) => void;
 
-  // Appointments
+  // Appointments & Unified Agenda
+  appointments: Appointment[];
   addAppointmentForDebutante: (debutanteId: string, appData: Omit<Appointment, 'id'>) => void;
   updateAppointmentForDebutante: (debutanteId: string, appId: string, appData: Partial<Appointment>) => void;
   deleteAppointmentForDebutante: (debutanteId: string, appId: string) => void;
+  addAppointment: (appData: Omit<Appointment, 'id'>) => Promise<Appointment | null>;
+  updateAppointment: (appId: string, appData: Partial<Appointment>) => Promise<boolean>;
+  deleteAppointment: (appId: string) => Promise<boolean>;
+
+  // Motor de Disponibilidade de Agenda & Compromissos Comerciais (Visitas e Degustações)
+  venueAgendaConfigs: VenueAgendaConfig[];
+  updateVenueAgendaConfig: (config: VenueAgendaConfig) => Promise<boolean>;
+  scheduleCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', commitmentData: {
+    date: string;
+    time: string;
+    durationMinutes?: number;
+    pax: number;
+    responsibleCollaboratorId?: string;
+    responsibleName?: string;
+    notes?: string;
+    venueId?: string;
+  }) => Promise<boolean>;
+  completeCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', feedback?: string) => Promise<boolean>;
+  cancelCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', reason?: string) => Promise<boolean>;
 
   // General & Personal Tasks (Home / CRM)
   tasks: AdminTask[];
@@ -502,6 +533,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [tasks, setTasks] = useState<AdminTask[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_TASKS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [venueAgendaConfigs, setVenueAgendaConfigs] = useState<VenueAgendaConfig[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_AGENDA_CONFIGS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_APPOINTMENTS);
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -849,24 +890,48 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const loadLiveSupabaseData = async () => {
       try {
-        const [dbVenues, dbFunnels, dbLeads, dbDebutantes, dbTasks, dbCollabs, dbBenefits, dbVip, dbTemplates, dbSources, dbMql, dbClients] = await Promise.all([
-          venueService.getAll(),
-          funnelService.getAll(),
-          leadService.getAll(),
-          debutanteService.getAll(),
-          taskService.getAll(),
-          collaboratorService.getAll(),
-          catalogService.getAllBenefits(),
-          catalogService.getAllVipRewards(),
-          journeyTemplateService.getAll(),
-          sourceService.getAll(),
-          mqlService.getAll(),
-          clientService.getAll(),
+        const results = await Promise.allSettled([
+          venueService.getAll(),             // 0
+          funnelService.getAll(),            // 1
+          leadService.getAll(),              // 2
+          debutanteService.getAll(),         // 3
+          taskService.getAll(),              // 4
+          collaboratorService.getAll(),      // 5
+          catalogService.getAllBenefits(),   // 6
+          catalogService.getAllVipRewards(), // 7
+          journeyTemplateService.getAll(),   // 8
+          sourceService.getAll(),            // 9
+          mqlService.getAll(),               // 10
+          clientService.getAll(),            // 11
+          agendaAvailabilityService.getAllConfigs(), // 12
+          appointmentService.getAll(),       // 13
         ]);
+
+        const dbVenues = results[0].status === 'fulfilled' ? results[0].value : [];
+        const dbFunnels = results[1].status === 'fulfilled' ? results[1].value : [];
+        const dbLeads = results[2].status === 'fulfilled' ? results[2].value : [];
+        const dbDebutantes = results[3].status === 'fulfilled' ? results[3].value : [];
+        const dbTasks = results[4].status === 'fulfilled' ? results[4].value : [];
+        const dbCollabs = results[5].status === 'fulfilled' ? results[5].value : [];
+        const dbBenefits = results[6].status === 'fulfilled' ? results[6].value : [];
+        const dbVip = results[7].status === 'fulfilled' ? results[7].value : [];
+        const dbTemplates = results[8].status === 'fulfilled' ? results[8].value : [];
+        const dbSources = results[9].status === 'fulfilled' ? results[9].value : [];
+        const dbMql = results[10].status === 'fulfilled' ? results[10].value : [];
+        const dbClients = results[11].status === 'fulfilled' ? results[11].value : [];
+        const dbAgendaConfigs = results[12].status === 'fulfilled' ? results[12].value : [];
+        const dbAppointments = results[13].status === 'fulfilled' ? results[13].value : [];
+
+        const serviceNames = ['venues', 'funnels', 'leads', 'debutantes', 'tasks', 'collaborators', 'benefits', 'vip', 'templates', 'sources', 'mql', 'clients', 'agendaConfigs', 'appointments'];
+        results.forEach((res, idx) => {
+          if (res.status === 'rejected') {
+            console.warn(`[Supabase Sync] Falha ao carregar ${serviceNames[idx]}:`, res.reason);
+          }
+        });
 
         if (isMounted) {
           let syncedFunnels = dbFunnels;
-          if (dbVenues.length > 0) {
+          if (results[0].status === 'fulfilled' && dbVenues.length > 0) {
             setVenues(dbVenues);
             safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(dbVenues));
             // Garante que toda casa possua funil comercial primário cadastrado no Supabase
@@ -883,44 +948,59 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(freshSources));
             }
           } else {
-            if (dbFunnels.length > 0) {
+            if (results[1].status === 'fulfilled' && dbFunnels.length > 0) {
               setFunnels(dbFunnels);
               safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(dbFunnels));
             }
-            if (dbSources.length > 0) {
+            if (results[9].status === 'fulfilled' && dbSources.length > 0) {
               setSources(dbSources);
               safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(dbSources));
             }
           }
 
-          if (dbLeads.length > 0) {
+          if (results[2].status === 'fulfilled' && Array.isArray(dbLeads)) {
+            const funnelNameMap = new Map<string, string>();
+            syncedFunnels.forEach(f => {
+              funnelNameMap.set(f.name.toLowerCase().trim(), f.id);
+            });
+
             const enrichedLeads = dbLeads.map(l => {
               const code = l.code || generateLeadCode();
               const name = (!l.name || l.name.trim() === '' || l.name === 'Sem nome' || l.name === 'Lead Sem Nome')
                 ? code
                 : l.name;
-              return { ...l, code, name };
+              let funnelId = l.funnelId;
+              // Reconciliação: se o lead tinha salvo o nome do funil ao invés do ID, remapeia para o ID oficial
+              if (funnelId && funnelNameMap.has(funnelId.toLowerCase().trim())) {
+                funnelId = funnelNameMap.get(funnelId.toLowerCase().trim())!;
+              }
+              return { ...l, code, name, funnelId };
             });
             setLeads(enrichedLeads);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(enrichedLeads));
           }
-          setMqlQuestions(dbMql);
-          safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(dbMql));
 
-          // Database is Single Source of Truth — do NOT resurrect deleted records
-          if (dbDebutantes.length >= 0) {
+          if (results[10].status === 'fulfilled') {
+            setMqlQuestions(dbMql);
+            safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(dbMql));
+          }
+
+          if (results[3].status === 'fulfilled' && Array.isArray(dbDebutantes)) {
             setDebutantes(dbDebutantes);
             safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(dbDebutantes));
           }
 
-          if (Array.isArray(dbTasks)) {
+          if (results[4].status === 'fulfilled' && Array.isArray(dbTasks)) {
             setTasks(dbTasks);
             safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(dbTasks));
           }
-          if (Array.isArray(dbClients) && dbClients.length > 0) {
+
+          if (results[11].status === 'fulfilled' && Array.isArray(dbClients)) {
             setClients(dbClients);
             safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(dbClients));
           }
-          if (Array.isArray(dbCollabs)) {
+
+          if (results[5].status === 'fulfilled' && Array.isArray(dbCollabs)) {
             setCollaborators(dbCollabs);
             safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(dbCollabs));
             const activeEmail = currentUser?.email;
@@ -958,6 +1038,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           } else {
             // Seed Supabase with local templates if empty
             templates.forEach(t => journeyTemplateService.upsert(t));
+          }
+
+          if (Array.isArray(dbAgendaConfigs) && dbAgendaConfigs.length > 0) {
+            setVenueAgendaConfigs(dbAgendaConfigs);
+            safeLocalStorageSet(STORAGE_KEY_AGENDA_CONFIGS, JSON.stringify(dbAgendaConfigs));
+          }
+
+          if (Array.isArray(dbAppointments)) {
+            setAppointments(dbAppointments);
+            safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(dbAppointments));
           }
 
           // Realtime sync of system feature flags from Supabase
@@ -1916,6 +2006,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const addCollaborator = (data: Omit<Collaborator, 'id' | 'createdAt'>): string => {
+    // RBAC: Gerentes (admin/gerencia) não podem criar outros gerentes, masters ou devs
+    const isManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
+    if (isManager) {
+      if (['admin', 'gerencia', 'master', 'dev'].includes(data.role)) {
+        alert('Acesso Negado: Gerentes não possuem permissão para cadastrar outros gerentes ou administradores.');
+        throw new Error('Acesso Negado: Gerentes não podem criar outros gerentes.');
+      }
+    }
+
     const id = generateUuid();
     const newCollab: Collaborator = {
       ...data,
@@ -1944,6 +2043,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateCollaborator = (id: string, data: Partial<Collaborator>) => {
+    // RBAC: Gerentes não podem editar o próprio perfil na lista nem perfis de outros gerentes/superiores
+    const isManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
+    if (isManager) {
+      if (id === currentUser?.id) {
+        alert('Acesso Negado: Gerentes não podem alterar seu próprio perfil na lista de colaboradores.');
+        return;
+      }
+      const targetCollab = collaborators.find(c => c.id === id);
+      if (targetCollab && ['master', 'admin', 'gerencia', 'dev'].includes(targetCollab.role)) {
+        alert('Acesso Negado: Gerentes não podem editar outros gerentes ou superiores.');
+        return;
+      }
+      if (data.role && ['master', 'admin', 'gerencia', 'dev'].includes(data.role)) {
+        alert('Acesso Negado: Gerentes não podem promover colaboradores para cargos de gerência.');
+        return;
+      }
+    }
+
     setCollaborators(prev => {
       const updated = prev.map(c => c.id === id ? { ...c, ...data } : c);
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
@@ -2254,7 +2371,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  const updateVenue = (id: string, venueData: Partial<Venue>) => {
+  const updateVenue = async (id: string, venueData: Partial<Venue>) => {
     setVenues(prev => {
       const updated = prev.map(v => v.id === id ? { ...v, ...venueData } : v);
       safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(updated));
@@ -2262,7 +2379,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     // O funil comercial é soberano e independente do nome das casas de festa (não altera nome de funil)
-    venueService.upsert({ id, ...venueData });
+    await venueService.upsert({ id, ...venueData });
   };
 
   const deleteVenue = async (id: string): Promise<{ success: boolean; message?: string; activeDebutantesCount?: number }> => {
@@ -2511,14 +2628,67 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return id;
   };
 
-  const updateFunnel = (id: string, data: Partial<CommercialFunnel>) => {
+  const updateFunnel = async (id: string, data: Partial<CommercialFunnel>) => {
+    const existingFunnel = funnels.find(f => f.id === id);
+    const oldName = existingFunnel?.name;
+
+    const payloadWithPinned: Partial<CommercialFunnel> = { ...data };
+    if (data.isPinned === true && !data.pinnedAt && !existingFunnel?.pinnedAt) {
+      payloadWithPinned.pinnedAt = new Date().toISOString();
+    } else if (data.isPinned === false) {
+      payloadWithPinned.pinnedAt = undefined;
+    }
+
     setFunnels(prev => {
-      const updated = prev.map(f => f.id === id ? { ...f, ...data } : f);
+      const updated = prev.map(f => f.id === id ? { ...f, ...payloadWithPinned } : f);
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
       return updated;
     });
 
-    funnelService.upsert({ id, ...data });
+    // Se o funil foi renomeado, assegura que nenhum lead ou origem perca o vínculo
+    if (oldName && data.name && oldName.trim() !== data.name.trim()) {
+      setLeads(prev => {
+        let hasChanges = false;
+        const updated = prev.map(l => {
+          if (l.funnelId === oldName || l.funnelId === id) {
+            hasChanges = true;
+            return { ...l, funnelId: id };
+          }
+          return l;
+        });
+        if (hasChanges) {
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      setSources(prev => {
+        let hasChanges = false;
+        const updated = prev.map(s => {
+          if (s.funnelId === oldName || s.funnelId === id) {
+            hasChanges = true;
+            return { ...s, funnelId: id };
+          }
+          return s;
+        });
+        if (hasChanges) {
+          safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      if (isSupabaseConfigured) {
+        supabase
+          .from('leads')
+          .update({ funnel_id: id })
+          .or(`funnel_id.eq.${id},funnel_id.eq.${oldName}`)
+          .then(({ error }) => {
+            if (error) console.warn('[updateFunnel] Erro ao sincronizar leads com novo nome do funil:', error);
+          });
+      }
+    }
+
+    await funnelService.upsert({ id, ...data });
   };
 
   const deleteFunnel = (id: string) => {
@@ -2705,6 +2875,77 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     funnelService.upsert(clonedFunnel);
     return newId;
+  };
+
+  // ── Leads Desindexados & Realocação de Funil ────────────────────────────────
+  const unindexedLeadsCount = useMemo(() => {
+    const validFunnelIds = new Set(funnels.map(f => f.id));
+    return leads.filter(l => !l.funnelId || !validFunnelIds.has(l.funnelId)).length;
+  }, [leads, funnels]);
+
+  const reassignLeadFunnel = async (leadId: string, destinationFunnelId: string, stageId?: string): Promise<boolean> => {
+    const targetLead = leads.find(l => l.id === leadId);
+    const destFunnel = funnels.find(f => f.id === destinationFunnelId);
+    if (!targetLead || !destFunnel) return false;
+
+    const defaultStage = (stageId || destFunnel.stages?.[0]?.id || 'in_analysis') as CrmStage;
+    const oldFunnel = funnels.find(f => f.id === targetLead.funnelId);
+    const oldFunnelName = oldFunnel ? oldFunnel.name : 'Sem Funil (Desindexado)';
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+
+    const activity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now,
+      type: 'status_change',
+      title: 'Realocação de Funil',
+      text: `Lead realocado de "${oldFunnelName}" para "${destFunnel.name}" (etapa: "${defaultStage}").`,
+      authorName: currentUser?.name || 'Sistema F5',
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+    };
+
+    setLeads(prev => {
+      const updated = prev.map(l => l.id === leadId ? {
+        ...l,
+        funnelId: destinationFunnelId,
+        stage: defaultStage,
+        venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : l.venueId,
+        activities: [activity, ...(l.activities || [])],
+        updatedAt: today,
+      } : l);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      await leadService.upsert({
+        id: leadId,
+        funnelId: destinationFunnelId,
+        stage: defaultStage,
+        venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : undefined,
+      }).catch(err => console.error('Erro ao realocar lead no Supabase:', err));
+
+      leadService.addActivity(leadId, activity).catch(err => console.error('Erro ao registrar atividade:', err));
+    }
+    return true;
+  };
+
+  const reassignMultipleLeadsFunnel = async (
+    leadIds: string[], 
+    destinationFunnelId: string, 
+    stageId?: string
+  ): Promise<{ successCount: number; failedCount: number }> => {
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const id of leadIds) {
+      const ok = await reassignLeadFunnel(id, destinationFunnelId, stageId);
+      if (ok) successCount++;
+      else failedCount++;
+    }
+    return { successCount, failedCount };
   };
 
   // ── Unconfigured Sources Warning ───────────────────────────────────────────
@@ -3101,26 +3342,85 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return [...(lead.participants || []), participant];
   };
 
-  const syncDebutanteLeadStats = (debutanteId: string) => {
+  const syncDebutanteLeadStats = (debutanteId: string, currentUpdatedLeads?: Lead[]) => {
+    if (!debutanteId) return;
     setDebutantes(prev => prev.map(d => {
       if (d.id !== debutanteId) return d;
 
-      const debLeads = leads.filter(l => l.debutanteId === debutanteId);
+      const leadSource = currentUpdatedLeads || leads;
+      const debLeads = leadSource.filter(l => l.debutanteId === debutanteId);
       const validCount = debLeads.filter(l => l.isValidated).length;
-      const salesCount = debLeads.filter(l => l.stage === 'contract_signed').length;
-      const progress = Math.min(100, Math.round((validCount / d.totalTargetReferrals) * 100));
+      const salesCount = debLeads.filter(l => {
+        const s = l.stage as string;
+        return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
+      }).length;
+      const progress = d.totalTargetReferrals > 0 
+        ? Math.min(100, Math.round((validCount / d.totalTargetReferrals) * 100))
+        : 0;
 
-      return {
+      // Update matching referrals inside the debutante account
+      const updatedReferrals = (d.referrals || []).map(ref => {
+        const matchingLead = debLeads.find(l => 
+          l.id === ref.id || 
+          (l.phone && ref.phone && l.phone.replace(/\D/g, '') === ref.phone.replace(/\D/g, '')) ||
+          (l.name && ref.name && l.name.toLowerCase() === ref.name.toLowerCase())
+        );
+        if (matchingLead) {
+          const s = matchingLead.stage as string;
+          const isSale = s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
+          return {
+            ...ref,
+            status: (isSale || matchingLead.isValidated) ? ('validated' as const) : ref.status,
+            pointsGranted: (isSale || matchingLead.isValidated) ? 1 : ref.pointsGranted,
+            convertedToSale: isSale,
+            saleValue: isSale ? matchingLead.dealValue : undefined,
+          };
+        }
+        return ref;
+      });
+
+      const updatedAccount: DebutanteAccount = {
         ...d,
         validReferrals: validCount,
         convertedReferralSales: salesCount,
         journeyProgressPercentage: progress,
+        referrals: updatedReferrals,
       };
+
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_DEBUTANTES);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const next = parsed.map((item: any) => item.id === d.id ? updatedAccount : item);
+          safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(next));
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      if (isSupabaseConfigured) {
+        debutanteService.upsert({
+          id: d.id,
+          validReferrals: validCount,
+          convertedReferralSales: salesCount,
+          journeyProgressPercentage: progress,
+          referrals: updatedReferrals,
+        }).catch(err => console.error('Erro ao sincronizar debutante no Supabase:', err));
+      }
+
+      return updatedAccount;
     }));
   };
 
   const updateLeadStage = (leadId: string, newStage: CrmStage) => {
     const targetLead = leads.find(l => l.id === leadId);
+
+    // Regra F5 System: Não é permitido retornar para "Novo Lead" após ter avançado no funil
+    if (targetLead && targetLead.stage !== 'new_lead' && newStage === 'new_lead') {
+      alert('Regra do CRM: A coluna "Novo Lead" é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
+      return;
+    }
+
     const stageLabels: Record<CrmStage, string> = {
       new_lead: 'Novo Lead',
       in_analysis: 'Em Análise',
@@ -3151,6 +3451,36 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // Regra: Ao mover para qualquer estágio após "Novo Lead" (ex: Em Análise), se não tiver SDR, o usuário assume como SDR
     const shouldClaimSdr = newStage !== 'new_lead' && (!targetLead?.sdrId && !targetLead?.assignedTo) && Boolean(authorId);
 
+    // Automação de Gatilhos da Etapa de Destino (ex: Transferência Automática de Funil)
+    const currentLeadFunnel = funnels.find(f => f.id === targetLead?.funnelId || f.name === targetLead?.funnelId);
+    const destStageConfig = currentLeadFunnel?.stages?.find(s => s.id === newStage);
+    const moveFunnelTrigger = destStageConfig?.triggers?.find(t => (t.type === 'move_to_funnel' || (t as any).type === 'transfer_funnel') && t.targetFunnelId);
+
+    let finalFunnelId = targetLead?.funnelId;
+    let finalStage = newStage;
+    let autoTriggerActivity: LeadActivity | null = null;
+
+    if (moveFunnelTrigger && moveFunnelTrigger.targetFunnelId) {
+      const targetFunnel = funnels.find(f => f.id === moveFunnelTrigger.targetFunnelId);
+      if (targetFunnel) {
+        finalFunnelId = targetFunnel.id;
+        finalStage = (moveFunnelTrigger.targetStageId || targetFunnel.stages?.[0]?.id || 'new_lead') as CrmStage;
+        const targetStageName = targetFunnel.stages?.find(s => s.id === finalStage)?.name || finalStage;
+
+        autoTriggerActivity = {
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'status_change',
+          title: 'Gatilho de Automação',
+          text: `Gatilho da etapa "${destStageConfig?.name || newStageLabel}" acionado: Lead transferido automaticamente para o funil "${targetFunnel.name}" na etapa "${targetStageName}".`,
+          authorName: 'Robô F5 Automações',
+          authorId: 'system_bot',
+          authorAvatarUrl: '/logo_f5.png',
+        };
+      }
+    }
+
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
 
@@ -3165,23 +3495,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
       }
 
+      const activitiesToAdd = autoTriggerActivity ? [autoTriggerActivity, newActivity] : [newActivity];
+
       return {
         ...lead,
-        stage: newStage,
+        stage: finalStage,
+        funnelId: finalFunnelId,
         sdrId: shouldClaimSdr ? authorId : lead.sdrId,
         sdrName: shouldClaimSdr ? author : lead.sdrName,
         assignedTo: shouldClaimSdr ? author : lead.assignedTo,
         participants: updatedParticipants,
-        activities: [newActivity, ...lead.activities],
+        activities: [...activitiesToAdd, ...lead.activities],
         updatedAt: new Date().toISOString().split('T')[0],
       };
     }));
+
+    // Sincronização automática com a Debutante caso seja Ganho (Venda)
+    const isWonStageTransition = finalStage === 'contract_signed' || (finalStage as string) === 'deal_closed' || (finalStage as string) === 'contrato_fechado';
+    if (isWonStageTransition && targetLead?.debutanteId) {
+      setTimeout(() => {
+        syncDebutanteLeadStats(targetLead.debutanteId);
+      }, 60);
+    }
 
     // Sincronização 100% no Supabase
     if (isSupabaseConfigured) {
       const updatePayload: any = {
         id: leadId,
-        stage: newStage,
+        stage: finalStage,
+        funnel_id: finalFunnelId,
       };
       if (shouldClaimSdr) {
         updatePayload.sdrId = authorId;
@@ -3203,6 +3545,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         authorId,
         authorAvatarUrl: authorAvatar,
       }).catch(err => console.error('❌ Erro ao registrar atividade de etapa no Supabase:', err));
+
+      if (autoTriggerActivity) {
+        leadService.addActivity(leadId, autoTriggerActivity).catch(err => {
+          console.warn('Erro ao salvar atividade de gatilho no Supabase:', err);
+        });
+      }
 
       if (authorId) {
         leadService.addParticipant(leadId, {
@@ -3483,6 +3831,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  // Roleta Comercial de Distribuição Automática de Leads por Funil
+  const getRoundRobinAssignment = (funnelId?: string): Collaborator | null => {
+    if (!funnelId) return null;
+    const funnel = funnels.find(f => f.id === funnelId || f.name === funnelId);
+    if (!funnel || funnel.distributionMode !== 'round_robin' || !funnel.assignedSdrIds || funnel.assignedSdrIds.length === 0) {
+      return null;
+    }
+
+    const eligibleSdrs = funnel.assignedSdrIds
+      .map(id => collaborators.find(c => c.id === id && c.active !== false))
+      .filter((c): c is Collaborator => Boolean(c));
+
+    if (eligibleSdrs.length === 0) return null;
+
+    const currentIndex = typeof funnel.roundRobinNextIndex === 'number' ? funnel.roundRobinNextIndex : 0;
+    const assignedSdr = eligibleSdrs[currentIndex % eligibleSdrs.length];
+    const nextIndex = (currentIndex + 1) % eligibleSdrs.length;
+
+    // Atualiza o ponteiro da roleta no funil de forma atômica
+    setFunnels(prev => {
+      const updated = prev.map(f => f.id === funnel.id ? { ...f, roundRobinNextIndex: nextIndex } : f);
+      safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      funnelService.upsert({ id: funnel.id, roundRobinNextIndex: nextIndex }).catch(err => {
+        console.warn('[RoundRobin] Erro ao salvar roundRobinNextIndex no Supabase:', err);
+      });
+    }
+
+    return assignedSdr;
+  };
+
   const createLeadFromReferral = (data: {
     debutanteId: string;
     debutanteName: string;
@@ -3500,8 +3882,45 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const venueReferralSource = sources.find(s => s.venueId === data.venueId && s.type === 'referral' && s.status === 'active');
     const destinationFunnelId = venueReferralSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'indicacao';
 
+    // Roleta Automática
+    const autoSdr = getRoundRobinAssignment(destinationFunnelId);
+    const initialParticipants: LeadParticipant[] = autoSdr ? [{
+      id: generateUuid(),
+      collaboratorId: autoSdr.id,
+      collaboratorName: autoSdr.name,
+      collaboratorRole: autoSdr.role || 'sdr',
+      collaboratorAvatarUrl: autoSdr.avatarUrl,
+      action: 'round_robin',
+      timestamp: new Date().toISOString(),
+    }] : [];
+
     const leadCode = generateLeadCode();
     const cleanLeadName = (data.name && data.name.trim() !== '') ? data.name.trim() : leadCode;
+
+    const activities: LeadActivity[] = [
+      {
+        id: `act_${Date.now()}`,
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'creation',
+        title: `Indicação enviada pela debutante ${data.debutanteName}`,
+        authorName: data.debutanteName,
+      }
+    ];
+
+    if (autoSdr) {
+      activities.unshift({
+        id: generateUuid(),
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'status_change',
+        title: 'Distribuição Automática',
+        text: `Lead distribuído automaticamente pela Roleta Comercial do funil para o SDR ${autoSdr.name}.`,
+        authorName: 'Robô F5 Automações',
+        authorId: 'system_bot',
+        authorAvatarUrl: '/logo_f5.png',
+      });
+    }
 
     const newLead: Lead = {
       id: newLeadId,
@@ -3519,21 +3938,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       age: data.age,
       group: data.group,
       notes: data.notes,
+      sdrId: autoSdr ? autoSdr.id : undefined,
+      sdrName: autoSdr ? autoSdr.name : undefined,
+      assignedTo: autoSdr ? autoSdr.name : undefined,
       stage: 'new_lead',
       isValidated: false,
       pointsGranted: 0,
-      participants: [],
+      participants: initialParticipants,
       tasks: [],
-      activities: [
-        {
-          id: `act_${Date.now()}`,
-          leadId: newLeadId,
-          timestamp: new Date().toISOString(),
-          type: 'creation',
-          title: `Indicação enviada pela debutante ${data.debutanteName}`,
-          authorName: data.debutanteName,
-        }
-      ],
+      activities,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -3565,8 +3978,46 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       targetFunnelId = match.funnelId || targetFunnelId;
     }
 
+    // Roleta Automática
+    const autoSdr = getRoundRobinAssignment(targetFunnelId);
+    const initialParticipants: LeadParticipant[] = autoSdr ? [{
+      id: generateUuid(),
+      collaboratorId: autoSdr.id,
+      collaboratorName: autoSdr.name,
+      collaboratorRole: autoSdr.role || 'sdr',
+      collaboratorAvatarUrl: autoSdr.avatarUrl,
+      action: 'round_robin',
+      timestamp: new Date().toISOString(),
+    }] : [];
+
     const leadCode = generateLeadCode();
     const cleanName = (data.name && data.name.trim() !== '') ? data.name.trim() : leadCode;
+
+    const activities: LeadActivity[] = [
+      {
+        id: generateUuid(),
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'creation',
+        title: matchedSubSource ? `Lead captado via WhatsApp / ${matchedSubSource}` : 'Lead captado via WhatsApp API',
+        text: data.firstMessage ? `Primeira mensagem: "${data.firstMessage}"` : undefined,
+        authorName: 'WhatsApp API',
+      }
+    ];
+
+    if (autoSdr) {
+      activities.unshift({
+        id: generateUuid(),
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'status_change',
+        title: 'Distribuição Automática',
+        text: `Lead distribuído automaticamente pela Roleta Comercial do funil para o SDR ${autoSdr.name}.`,
+        authorName: 'Robô F5 Automações',
+        authorId: 'system_bot',
+        authorAvatarUrl: '/logo_f5.png',
+      });
+    }
 
     const newLead: Lead = {
       id: newLeadId,
@@ -3586,22 +4037,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       age: 15,
       group: 'WhatsApp',
       notes: data.firstMessage ? `Primeira mensagem: "${data.firstMessage}"` : undefined,
+      sdrId: autoSdr ? autoSdr.id : undefined,
+      sdrName: autoSdr ? autoSdr.name : undefined,
+      assignedTo: autoSdr ? autoSdr.name : undefined,
       stage: 'new_lead',
       isValidated: false,
       pointsGranted: 0,
-      participants: [],
+      participants: initialParticipants,
       tasks: [],
-      activities: [
-        {
-          id: generateUuid(),
-          leadId: newLeadId,
-          timestamp: new Date().toISOString(),
-          type: 'creation',
-          title: matchedSubSource ? `Lead captado via WhatsApp / ${matchedSubSource}` : 'Lead captado via WhatsApp API',
-          text: data.firstMessage ? `Mensagem inicial: "${data.firstMessage}"` : undefined,
-          authorName: 'WhatsApp API',
-        }
-      ],
+      activities,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -3647,16 +4091,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     debutanteBirthDate?: string;
     customFieldValues?: Record<string, any>;
     tags?: string[];
+    createdBy?: string;
+    createdByName?: string;
+    createdByAvatar?: string;
   }): Promise<string> => {
     const newLeadId = generateUuid();
     const leadCode = generateLeadCode();
     const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
+
+    const DEFAULT_COMMERCIAL_FUNNEL_ID = 'f1111111-1111-1111-1111-111111111111';
+    const primaryFunnel = funnels.find(f => f.isPrimary);
+    const isValUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+    const resolvedFunnelId = (data.funnelId && isValUuid(data.funnelId))
+      ? data.funnelId
+      : (primaryFunnel?.id || DEFAULT_COMMERCIAL_FUNNEL_ID);
 
     let sdrName = data.sdrName;
     if (data.sdrId && !sdrName) {
       const found = collaborators.find(c => c.id === data.sdrId);
       if (found) sdrName = found.name;
     }
+
+    // Roleta Automática: se não houver SDR previamente informado, consulta a roleta do funil
+    const autoSdr = (!data.sdrId && !sdrName) ? getRoundRobinAssignment(resolvedFunnelId) : null;
+    const finalSdrId = data.sdrId || autoSdr?.id;
+    const finalSdrName = sdrName || autoSdr?.name;
 
     let closerName = data.closerName;
     if (data.closerId && !closerName) {
@@ -3675,6 +4134,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       authorId: currentUser?.id,
     };
 
+    const initialParticipants: LeadParticipant[] = autoSdr ? [{
+      id: generateUuid(),
+      collaboratorId: autoSdr.id,
+      collaboratorName: autoSdr.name,
+      collaboratorRole: autoSdr.role || 'sdr',
+      collaboratorAvatarUrl: autoSdr.avatarUrl,
+      action: 'round_robin',
+      timestamp: new Date().toISOString(),
+    }] : [];
+
+    const activities: LeadActivity[] = [initialActivity];
+    if (autoSdr) {
+      activities.unshift({
+        id: generateUuid(),
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'status_change',
+        title: 'Distribuição Automática',
+        text: `Lead distribuído automaticamente pela Roleta Comercial do funil para o SDR ${autoSdr.name}.`,
+        authorName: 'Robô F5 Automações',
+        authorId: 'system_bot',
+        authorAvatarUrl: '/logo_f5.png',
+      });
+    }
+
     const newLead: Lead = {
       id: newLeadId,
       masterId: scopedMasterId || currentUser?.id,
@@ -3683,7 +4167,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       debutanteName: '',
       debutanteSlug: '',
       venueId: data.venueId,
-      funnelId: data.funnelId,
+      funnelId: resolvedFunnelId,
       sourceId: data.sourceId,
       source: data.source || 'outro',
       sourceName: data.sourceName || (data.source ? String(data.source) : 'Cadastro Manual'),
@@ -3696,23 +4180,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       estimatedGuests: data.estimatedGuests ? Number(data.estimatedGuests) : undefined,
       estimatedBudget: data.estimatedBudget ? Number(data.estimatedBudget) : undefined,
       temperature: data.temperature || 'warm',
-      sdrId: data.sdrId,
-      sdrName,
+      sdrId: finalSdrId,
+      sdrName: finalSdrName,
       closerId: data.closerId,
       closerName,
-      assignedTo: sdrName || closerName || currentUser?.name,
+      assignedTo: finalSdrName || closerName || currentUser?.name,
       notes: data.notes?.trim() || undefined,
       debutanteBirthDate: data.debutanteBirthDate,
       stage: data.stage || 'new_lead',
       isValidated: false,
       pointsGranted: 0,
-      participants: [],
+      participants: initialParticipants,
       tasks: [],
-      activities: [initialActivity],
+      activities,
       customFieldValues: data.customFieldValues || {},
       tags: data.tags || [],
       age: 15,
       group: 'Geral',
+      createdBy: data.createdBy || currentUser?.id,
+      createdByName: data.createdByName || currentUser?.name || 'Cadastro Manual',
+      createdByAvatar: data.createdByAvatar || currentUser?.avatarUrl,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -3726,6 +4213,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       await leadService.upsert(newLead);
       await leadService.addActivity(newLeadId, initialActivity);
+      if (autoSdr && activities[0]) {
+        await leadService.addActivity(newLeadId, activities[0]);
+      }
       if (data.sourceId) {
         sourceService.recordEvent(data.sourceId, data.venueId, 'lead_created', newLeadId, {
           sourceName: data.sourceName,
@@ -4808,6 +5298,294 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const addAppointment = async (appData: Omit<Appointment, 'id'>): Promise<Appointment | null> => {
+    const tempId = `app_${Date.now()}`;
+    const newApp: Appointment = { ...appData, id: tempId };
+
+    setAppointments(prev => {
+      const next = [...prev, newApp];
+      safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      const created = await appointmentService.create({
+        debutanteId: appData.debutanteId,
+        leadId: appData.leadId,
+        venueId: appData.venueId,
+        appointment: appData,
+      });
+
+      if (created) {
+        setAppointments(prev => {
+          const next = prev.map(a => a.id === tempId ? created : a);
+          safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+          return next;
+        });
+        return created;
+      }
+      return newApp;
+    } catch (err) {
+      console.error('Falha ao persistir agendamento no Supabase:', err);
+      return newApp;
+    }
+  };
+
+  const updateAppointment = async (appId: string, appData: Partial<Appointment>): Promise<boolean> => {
+    setAppointments(prev => {
+      const next = prev.map(a => a.id === appId ? { ...a, ...appData } : a);
+      safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      if (!appId.startsWith('app_')) {
+        return await appointmentService.update(appId, appData);
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha ao atualizar agendamento no Supabase:', err);
+      return false;
+    }
+  };
+
+  const deleteAppointment = async (appId: string): Promise<boolean> => {
+    setAppointments(prev => {
+      const next = prev.filter(a => a.id !== appId);
+      safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      if (!appId.startsWith('app_')) {
+        return await appointmentService.delete(appId);
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha ao deletar agendamento no Supabase:', err);
+      return false;
+    }
+  };
+
+  const updateVenueAgendaConfig = async (config: VenueAgendaConfig): Promise<boolean> => {
+    setVenueAgendaConfigs(prev => {
+      const idx = prev.findIndex(c => c.venueId === config.venueId);
+      let next: VenueAgendaConfig[];
+      if (idx >= 0) {
+        next = [...prev];
+        next[idx] = config;
+      } else {
+        next = [...prev, config];
+      }
+      safeLocalStorageSet(STORAGE_KEY_AGENDA_CONFIGS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      return await agendaAvailabilityService.saveConfig(config);
+    } catch (err) {
+      console.error('Falha ao salvar configuração de agenda no Supabase:', err);
+      return false;
+    }
+  };
+
+  const scheduleCommercialCommitment = async (
+    leadId: string, 
+    type: 'visit' | 'tasting', 
+    commitmentData: {
+      date: string;
+      time: string;
+      durationMinutes?: number;
+      pax: number;
+      responsibleCollaboratorId?: string;
+      responsibleName?: string;
+      notes?: string;
+      venueId?: string;
+    }
+  ): Promise<boolean> => {
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead) {
+      console.error('Lead não encontrado para agendamento:', leadId);
+      return false;
+    }
+
+    const commitmentId = generateUuid();
+    const newCommitment: CommercialCommitment = {
+      id: commitmentId,
+      type,
+      date: commitmentData.date,
+      time: commitmentData.time,
+      durationMinutes: commitmentData.durationMinutes || (type === 'visit' ? 45 : 60),
+      pax: Number(commitmentData.pax || 2),
+      status: 'scheduled',
+      responsibleCollaboratorId: commitmentData.responsibleCollaboratorId,
+      responsibleName: commitmentData.responsibleName,
+      notes: commitmentData.notes,
+      venueId: commitmentData.venueId || targetLead.venueId,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Atualização otimista no Lead
+    setLeads(prev => {
+      const next = prev.map(l => {
+        if (l.id === leadId) {
+          if (type === 'visit') {
+            return { ...l, visitCommitment: newCommitment };
+          } else {
+            return { ...l, tastingCommitment: newCommitment };
+          }
+        }
+        return l;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    // Cria também na tabela central de appointments para visualização no calendário
+    await addAppointment({
+      title: `${type === 'visit' ? 'Visita Comercial' : 'Degustação Gastronômica'} • ${targetLead.name}`,
+      category: type === 'visit' ? 'Visita Técnica / Apresentação' : 'Buffet & Degustação',
+      date: commitmentData.date,
+      time: commitmentData.time,
+      location: (venues.find(v => v.id === (commitmentData.venueId || targetLead.venueId))?.name) || 'Casa de Festas',
+      status: 'scheduled',
+      targetType: 'lead',
+      leadId: targetLead.id,
+      leadName: targetLead.name,
+      pax: Number(commitmentData.pax || 2),
+      guestsCount: Number(commitmentData.pax || 2),
+      venueId: commitmentData.venueId || targetLead.venueId,
+      responsibleCollaboratorId: commitmentData.responsibleCollaboratorId,
+      responsibleName: commitmentData.responsibleName,
+      notes: commitmentData.notes,
+    });
+
+    // Persistência no Lead no Supabase
+    try {
+      const updatePayload = type === 'visit'
+        ? { visitCommitment: newCommitment }
+        : { tastingCommitment: newCommitment };
+      await leadService.update(leadId, updatePayload as any);
+      return true;
+    } catch (err) {
+      console.error('Falha ao persistir compromisso comercial no lead:', err);
+      return true;
+    }
+  };
+
+  const completeCommercialCommitment = async (
+    leadId: string, 
+    type: 'visit' | 'tasting', 
+    feedback?: string
+  ): Promise<boolean> => {
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead) return false;
+
+    const currentCommitment = type === 'visit' ? targetLead.visitCommitment : targetLead.tastingCommitment;
+    if (!currentCommitment) return false;
+
+    const completedCommitment: CommercialCommitment = {
+      ...currentCommitment,
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      notes: feedback ? `${currentCommitment.notes || ''} [Conclusão: ${feedback}]`.trim() : currentCommitment.notes,
+    };
+
+    setLeads(prev => {
+      const next = prev.map(l => {
+        if (l.id === leadId) {
+          if (type === 'visit') {
+            return { ...l, visitCommitment: completedCommitment };
+          } else {
+            return { ...l, tastingCommitment: completedCommitment };
+          }
+        }
+        return l;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    // Atualiza appointments relacionados
+    setAppointments(prev => {
+      const next = prev.map(a => {
+        if (a.leadId === leadId && (type === 'visit' ? a.title.includes('Visita') : a.title.includes('Degustação'))) {
+          return { ...a, status: 'completed' as const };
+        }
+        return a;
+      });
+      safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      const updatePayload = type === 'visit'
+        ? { visitCommitment: completedCommitment }
+        : { tastingCommitment: completedCommitment };
+      await leadService.update(leadId, updatePayload as any);
+      return true;
+    } catch (err) {
+      console.error('Falha ao concluir compromisso no Supabase:', err);
+      return true;
+    }
+  };
+
+  const cancelCommercialCommitment = async (
+    leadId: string, 
+    type: 'visit' | 'tasting', 
+    reason?: string
+  ): Promise<boolean> => {
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead) return false;
+
+    const currentCommitment = type === 'visit' ? targetLead.visitCommitment : targetLead.tastingCommitment;
+    if (!currentCommitment) return false;
+
+    const cancelledCommitment: CommercialCommitment = {
+      ...currentCommitment,
+      status: 'cancelled',
+      notes: reason ? `${currentCommitment.notes || ''} [Cancelamento: ${reason}]`.trim() : currentCommitment.notes,
+    };
+
+    setLeads(prev => {
+      const next = prev.map(l => {
+        if (l.id === leadId) {
+          if (type === 'visit') {
+            return { ...l, visitCommitment: cancelledCommitment };
+          } else {
+            return { ...l, tastingCommitment: cancelledCommitment };
+          }
+        }
+        return l;
+      });
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    // Atualiza appointments relacionados
+    setAppointments(prev => {
+      const next = prev.map(a => {
+        if (a.leadId === leadId && (type === 'visit' ? a.title.includes('Visita') : a.title.includes('Degustação'))) {
+          return { ...a, status: 'cancelled' as const };
+        }
+        return a;
+      });
+      safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      const updatePayload = type === 'visit'
+        ? { visitCommitment: cancelledCommitment }
+        : { tastingCommitment: cancelledCommitment };
+      await leadService.update(leadId, updatePayload as any);
+      return true;
+    } catch (err) {
+      console.error('Falha ao cancelar compromisso no Supabase:', err);
+      return true;
+    }
+  };
+
   // ── Query Helpers ────────────────────────────────────────────────────────────
 
   const getDebutanteBySlug = (slug: string): DebutanteAccount | undefined => {
@@ -4924,6 +5702,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           };
         });
         safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    const effectiveClientId = data.debutanteId || data.customProperties?.clientId;
+    if (effectiveClientId) {
+      const author = data.createdByName || currentUser?.name || 'Administrador';
+      const newClientActivity: ClientActivity = {
+        id: generateUuid(),
+        clientId: effectiveClientId,
+        timestamp: new Date().toISOString(),
+        type: 'task_created',
+        description: `📋 Tarefa agendada: "${data.title}" (Prazo: ${data.dueDate || 'Sem prazo'}${data.dueTime ? ' às ' + data.dueTime : ''})`,
+        createdAt: new Date().toISOString(),
+        createdBy: author,
+      };
+
+      setClients(prev => {
+        let changed = false;
+        const updated = prev.map(cli => {
+          if (cli.id !== effectiveClientId && cli.debutanteId !== effectiveClientId) return cli;
+          changed = true;
+          return {
+            ...cli,
+            activities: [newClientActivity, ...(cli.activities || [])],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+        });
+        if (changed) {
+          safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+        }
         return updated;
       });
     }
@@ -5058,14 +5867,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const completeTaskWithFeedback = (taskId: string, feedback: string) => {
     let targetTask: AdminTask | undefined;
+    const cleanFeedback = feedback.trim();
+    const nowIso = new Date().toISOString();
+
     setTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId) {
           targetTask = {
             ...t,
             status: 'completed' as const,
-            mandatoryFeedback: feedback.trim(),
-            completedAt: new Date().toISOString(),
+            resolution: cleanFeedback,
+            mandatoryFeedback: cleanFeedback,
+            completedAt: nowIso,
+            customProperties: {
+              ...(t.customProperties || {}),
+              resolution: cleanFeedback,
+            },
           };
           return targetTask;
         }
@@ -5075,37 +5892,79 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    if (targetTask && targetTask.leadId) {
-      const author = currentUser?.name || 'Administrador';
-      const newActivity: LeadActivity = {
-        id: generateUuid(),
-        leadId: targetTask.leadId,
-        timestamp: new Date().toISOString(),
-        type: 'task_completed',
-        title: `Tarefa concluída: ${targetTask.title}`,
-        text: feedback.trim() ? `Feedback registrado: "${feedback.trim()}"` : 'Tarefa marcada como concluída.',
-        authorName: author,
-        authorId: currentUser?.id,
-        authorAvatarUrl: currentUser?.avatarUrl,
-      };
+    if (targetTask) {
+      taskService.upsert(targetTask);
 
-      setLeads(prev => {
-        const updated = prev.map(lead => {
-          if (lead.id !== targetTask?.leadId) return lead;
-          return {
-            ...lead,
-            tasks: (lead.tasks || []).map(t => t.id === taskId ? {
-              ...t,
-              status: 'completed' as const,
-              completedAt: new Date().toISOString(),
-            } : t),
-            activities: [newActivity, ...(lead.activities || [])],
-            updatedAt: new Date().toISOString().split('T')[0],
-          };
+      const author = currentUser?.name || 'Administrador';
+      const effectiveLeadId = (targetTask as AdminTask).leadId || (targetTask as AdminTask).customProperties?.leadId;
+      const effectiveClientId = (targetTask as AdminTask).debutanteId || (targetTask as AdminTask).customProperties?.clientId;
+
+      // 1. Atualizar Lead
+      if (effectiveLeadId) {
+        const newActivity: LeadActivity = {
+          id: generateUuid(),
+          leadId: effectiveLeadId,
+          timestamp: nowIso,
+          type: 'task_completed',
+          title: `Tarefa concluída: ${(targetTask as AdminTask).title}`,
+          text: cleanFeedback ? `Resumo: "${cleanFeedback}"` : 'Tarefa marcada como concluída.',
+          authorName: author,
+          authorId: currentUser?.id,
+          authorAvatarUrl: currentUser?.avatarUrl,
+        };
+
+        setLeads(prev => {
+          const updated = prev.map(lead => {
+            if (lead.id !== effectiveLeadId) return lead;
+            return {
+              ...lead,
+              tasks: (lead.tasks || []).map(t => t.id === taskId ? {
+                ...t,
+                status: 'completed' as const,
+                completedAt: nowIso,
+              } : t),
+              activities: [newActivity, ...(lead.activities || [])],
+              updatedAt: nowIso.split('T')[0],
+            };
+          });
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+          return updated;
         });
-        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-        return updated;
-      });
+
+        if (isSupabaseConfigured) {
+          leadService.addActivity(effectiveLeadId, newActivity).catch(err => console.warn('Erro ao salvar atividade de tarefa:', err));
+        }
+      }
+
+      // 2. Atualizar Cliente
+      if (effectiveClientId) {
+        const newClientActivity: ClientActivity = {
+          id: generateUuid(),
+          clientId: effectiveClientId,
+          timestamp: nowIso,
+          type: 'task_completed',
+          description: `✅ Tarefa concluída: "${(targetTask as AdminTask).title}"${cleanFeedback ? ` • Resultado: "${cleanFeedback}"` : ''}`,
+          createdAt: nowIso,
+          createdBy: author,
+        };
+
+        setClients(prev => {
+          let changed = false;
+          const updated = prev.map(cli => {
+            if (cli.id !== effectiveClientId && cli.debutanteId !== effectiveClientId) return cli;
+            changed = true;
+            return {
+              ...cli,
+              activities: [newClientActivity, ...(cli.activities || [])],
+              updatedAt: nowIso.split('T')[0],
+            };
+          });
+          if (changed) {
+            safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+          }
+          return updated;
+        });
+      }
     }
   };
 
@@ -5168,6 +6027,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deleteFunnel,
       deleteFunnelWithLeadMigration,
       duplicateFunnel,
+      unindexedLeadsCount,
+      reassignLeadFunnel,
+      reassignMultipleLeadsFunnel,
       sources: scopedSources,
       allSources: sources,
       addSource,
@@ -5223,6 +6085,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addAppointmentForDebutante,
       updateAppointmentForDebutante,
       deleteAppointmentForDebutante,
+      appointments,
+      addAppointment,
+      updateAppointment,
+      deleteAppointment,
+      venueAgendaConfigs,
+      updateVenueAgendaConfig,
+      scheduleCommercialCommitment,
+      completeCommercialCommitment,
+      cancelCommercialCommitment,
       getDebutanteBySlug,
       getVenueById,
       getCollaboratorById,

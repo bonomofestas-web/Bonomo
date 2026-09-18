@@ -1,6 +1,6 @@
 -- ============================================================================
 -- F5 SYSTEM • SCRIPT UNIFICADO DE CRIAÇÃO E MIGRAÇÃO DE NOVO BANCO SUPABASE
--- Data de geração: 2026-09-16T02:28:31.815Z
+-- Data de geração: 2026-09-16T04:57:17.137Z
 -- Instruções:
 -- 1. Abra o novo projeto no Supabase Dashboard (https://supabase.com/dashboard)
 -- 2. No menu lateral esquerdo, clique em "SQL Editor"

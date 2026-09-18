@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ArrowLeft, FileText, Plus, ExternalLink, Check, Copy, Trash2, 
   Clock, Sparkles, Send, CheckCircle2, MessageSquare, Shield, Heart,
-  FileCheck, Users, ChevronDown
+  FileCheck, Users, ChevronDown, CheckSquare, Edit3
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import type { ClientStage, ClientDocument, LeadContact } from '../../types/admin';
+import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
+import type { ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus } from '../../types/admin';
 
 interface AdminClientInspectorProps {
   clientId: string | null;
@@ -87,13 +89,23 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     addClientDocument,
     linkClientDebutante,
     addDebutanteAccount,
+    tasks,
+    updateTask,
+    deleteTask,
+    completeTaskWithFeedback,
   } = useAdminState();
 
-  const [activeTab, setActiveTab] = useState<'timeline' | 'whatsapp' | 'documents' | 'commercial'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'whatsapp' | 'tasks' | 'documents' | 'commercial'>('timeline');
   const [newNote, setNewNote] = useState('');
   const [copiedAppUrl, setCopiedAppUrl] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
+  
+  // Task detail modal & completion state
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<AdminTask | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
+  const [completingTask, setCompletingTask] = useState<AdminTask | null>(null);
   
   // Document Upload Modal state
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
@@ -120,6 +132,29 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
   const linkedDebutante = client.debutanteId ? debutantes.find(d => d.id === client.debutanteId) : null;
   const stageInfo = STAGE_CONFIG[client.stage] || STAGE_CONFIG.onboarding;
+
+  const clientTasks = useMemo(() => {
+    if (!client) return [];
+    return tasks.filter(t => 
+      t.debutanteId === client.id ||
+      t.debutanteId === client.debutanteId ||
+      t.customProperties?.clientId === client.id ||
+      t.customProperties?.debutanteId === client.debutanteId ||
+      (client.commercialLeadId && (t.leadId === client.commercialLeadId || t.customProperties?.leadId === client.commercialLeadId))
+    );
+  }, [tasks, client.id, client.debutanteId, client.commercialLeadId]);
+
+  const handleTaskStageChange = (task: AdminTask, newStatus: TaskStatus) => {
+    if (newStatus === 'completed') {
+      setCompletingTask(task);
+    } else {
+      updateTask(task.id, {
+        status: newStatus,
+        customStatusId: newStatus === 'in_progress' ? 'st_in_progress' : 'st_todo',
+        completedAt: undefined,
+      });
+    }
+  };
 
   const handleCopyAppUrl = () => {
     const slug = client.debutanteSlug || linkedDebutante?.slug;
@@ -1290,6 +1325,30 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
             <button
               type="button"
+              onClick={() => setActiveTab('tasks')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'tasks' ? 'var(--adm-bg-input)' : 'transparent',
+                color: activeTab === 'tasks' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                fontWeight: activeTab === 'tasks' ? 800 : 500,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+              }}
+            >
+              <CheckSquare size={14} />
+              <span>Tarefas & Agendamentos</span>
+              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', fontWeight: 700 }}>
+                {clientTasks.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('documents')}
               style={{
                 display: 'flex',
@@ -1515,7 +1574,290 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             </div>
           )}
 
-          {/* Tab 3: Documentos & Anexos */}
+          {/* Tab 3: Tarefas & Agendamentos */}
+          {activeTab === 'tasks' && (
+            <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Tarefas & Agendamentos do Pós-Venda
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                    Gerencie degustações, visitas técnicas, revisões de contratos e pendências deste cliente
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTask(null);
+                    setIsTaskModalOpen(true);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: 'var(--adm-accent, #B8860B)',
+                    color: '#FFF',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(212, 175, 55, 0.25)',
+                  }}
+                >
+                  <Plus size={14} />
+                  <span>Nova Tarefa / Agendamento</span>
+                </button>
+              </div>
+
+              {clientTasks.length === 0 ? (
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px dashed var(--adm-border)',
+                  borderRadius: '12px',
+                  padding: '40px 20px',
+                  textAlign: 'center',
+                  color: 'var(--adm-text-muted)',
+                }}>
+                  <CheckSquare size={32} style={{ opacity: 0.4, marginBottom: '8px' }} />
+                  <p style={{ margin: 0, fontSize: '0.84rem', fontWeight: 600 }}>Nenhuma tarefa vinculada a este cliente.</p>
+                  <p style={{ margin: '4px 0 12px', fontSize: '0.74rem' }}>Crie compromissos como degustação, envio de contrato ou visita técnica.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTask(null);
+                      setIsTaskModalOpen(true);
+                    }}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--adm-border)',
+                      background: 'var(--adm-bg-input)',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + Criar Primeira Tarefa
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {clientTasks.map(task => {
+                    const isDone = task.status === 'completed';
+                    const isLate = !isDone && Boolean(task.dueDate) && new Date(task.dueDate!) < new Date();
+                    const collabLabel = task.createdByName || (task.assignedToIds && task.assignedToIds.length ? 'Equipe' : null);
+
+                    return (
+                      <div
+                        key={task.id}
+                        style={{
+                          background: 'var(--adm-bg-card)',
+                          border: `1px solid ${isDone ? 'rgba(16, 185, 129, 0.25)' : isLate ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
+                          borderRadius: '10px',
+                          padding: '12px 16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                              <strong style={{
+                                fontSize: '0.86rem',
+                                color: isDone ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                                textDecoration: isDone ? 'line-through' : 'none',
+                              }}>
+                                {task.title}
+                              </strong>
+                              {task.priority && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 700,
+                                  background: task.priority === 'urgent' || task.priority === 'high' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                                  color: task.priority === 'urgent' || task.priority === 'high' ? '#EF4444' : '#3B82F6',
+                                }}>
+                                  {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+                                </span>
+                              )}
+                              {task.type && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 600,
+                                  background: 'var(--adm-bg-input)',
+                                  color: 'var(--adm-text-muted)',
+                                  border: '1px solid var(--adm-border)',
+                                }}>
+                                  {task.type}
+                                </span>
+                              )}
+                            </div>
+
+                            {task.description && (
+                              <p style={{ margin: '0 0 6px', fontSize: '0.76rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                                {task.description}
+                              </p>
+                            )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isLate ? '#EF4444' : undefined, fontWeight: isLate ? 700 : 500 }}>
+                                <Clock size={12} />
+                                {task.dueDate ? `Prazo: ${new Date(task.dueDate).toLocaleDateString('pt-BR')}` : 'Sem prazo'}
+                                {isLate && ' (Atrasada)'}
+                              </span>
+                              {collabLabel && (
+                                <span>Resp: <strong style={{ color: 'var(--adm-text-title)' }}>{collabLabel}</strong></span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingTask(task);
+                                setIsTaskModalOpen(true);
+                              }}
+                              title="Editar Tarefa Completa"
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '6px',
+                                padding: '6px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTaskToDelete(task)}
+                              title="Excluir Tarefa"
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                borderRadius: '6px',
+                                padding: '6px',
+                                color: '#EF4444',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 3-Stage Status Pill Selector */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          paddingTop: '8px',
+                          borderTop: '1px solid var(--adm-border)',
+                          flexWrap: 'wrap',
+                        }}>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginRight: '4px' }}>
+                            Etapa da Tarefa:
+                          </span>
+                          {(['todo', 'in_progress', 'completed'] as TaskStatus[]).map(statusKey => {
+                            const isCurrent = task.status === statusKey;
+                            const labels: Record<TaskStatus, string> = {
+                              todo: 'Não Iniciada',
+                              in_progress: 'Em Execução',
+                              waiting: 'Aguardando',
+                              completed: 'Finalizada',
+                            };
+
+                            let activeBg = 'var(--adm-bg-input)';
+                            let activeColor = 'var(--adm-text-muted)';
+                            let activeBorder = 'var(--adm-border)';
+
+                            if (isCurrent) {
+                              if (statusKey === 'completed') {
+                                activeBg = 'rgba(16, 185, 129, 0.15)';
+                                activeColor = '#10B981';
+                                activeBorder = 'rgba(16, 185, 129, 0.4)';
+                              } else if (statusKey === 'in_progress') {
+                                activeBg = 'rgba(59, 130, 246, 0.15)';
+                                activeColor = '#3B82F6';
+                                activeBorder = 'rgba(59, 130, 246, 0.4)';
+                              } else {
+                                activeBg = 'rgba(245, 158, 11, 0.15)';
+                                activeColor = '#F59E0B';
+                                activeBorder = 'rgba(245, 158, 11, 0.4)';
+                              }
+                            }
+
+                            return (
+                              <button
+                                key={statusKey}
+                                type="button"
+                                onClick={() => handleTaskStageChange(task, statusKey)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '4px 9px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${activeBorder}`,
+                                  background: activeBg,
+                                  color: activeColor,
+                                  fontSize: '0.70rem',
+                                  fontWeight: isCurrent ? 800 : 500,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.12s ease',
+                                }}
+                              >
+                                {isCurrent && statusKey === 'completed' && <CheckCircle2 size={11} />}
+                                <span>{labels[statusKey]}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Resolution / Feedback if completed */}
+                        {task.resolution && (
+                          <div style={{
+                            background: 'rgba(16, 185, 129, 0.06)',
+                            borderLeft: '3px solid #10B981',
+                            padding: '6px 10px',
+                            borderRadius: '0 6px 6px 0',
+                            fontSize: '0.72rem',
+                            color: 'var(--adm-text-title)',
+                          }}>
+                            <span style={{ fontWeight: 700, color: '#10B981', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>
+                              Registro de Conclusão / O que aconteceu:
+                            </span>
+                            {task.resolution}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 4: Documentos & Anexos */}
           {activeTab === 'documents' && (
             <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1708,7 +2050,49 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
         </div>
       )}
 
-      {/* ── Confirm Delete Modal ── */}
+      {/* ── Client Task Detail Modal (Create / Edit) ── */}
+      <AdminTaskDetailModal
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setEditingTask(null);
+        }}
+        task={editingTask}
+        initialClientId={client.id}
+        initialLeadId={client.commercialLeadId || undefined}
+      />
+
+      {/* ── Task Completion Feedback Modal ── */}
+      <AdminTaskCompletionModal
+        isOpen={!!completingTask}
+        taskTitle={completingTask?.title || ''}
+        onClose={() => setCompletingTask(null)}
+        onConfirm={(feedback) => {
+          if (completingTask) {
+            completeTaskWithFeedback(completingTask.id, feedback);
+            setCompletingTask(null);
+          }
+        }}
+      />
+
+      {/* ── Confirm Task Deletion Modal ── */}
+      <AdminConfirmModal
+        isOpen={!!taskToDelete}
+        onClose={() => setTaskToDelete(null)}
+        onConfirm={() => {
+          if (taskToDelete) {
+            deleteTask(taskToDelete.id);
+            setTaskToDelete(null);
+          }
+        }}
+        title="Excluir Tarefa"
+        message={`Deseja realmente excluir a tarefa "${taskToDelete?.title}"?`}
+        confirmText="Sim, Excluir"
+        cancelText="Cancelar"
+        danger={true}
+      />
+
+      {/* ── Confirm Delete Client Modal ── */}
       <AdminConfirmModal
         isOpen={isDeleting}
         onClose={() => setIsDeleting(false)}

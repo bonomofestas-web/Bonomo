@@ -231,16 +231,20 @@ export const sourceService = {
     try {
       const existingSources = await this.getAll();
       const hasExactlyOneFunnel = funnels.length === 1 && isUuid(funnels[0].id);
-      const autoFunnelId = hasExactlyOneFunnel ? funnels[0].id : '';
+      const primaryFunnel = funnels.find(f => f.isPrimary);
+      const autoFunnelId = hasExactlyOneFunnel 
+        ? funnels[0].id 
+        : (primaryFunnel?.id || (funnels[0]?.id && isUuid(funnels[0].id) ? funnels[0].id : ''));
 
       for (const venue of venues) {
-        const referralSource = existingSources.find(s => s.venueId === venue.id && s.type === 'referral');
+        const venueSources = existingSources.filter(s => s.venueId === venue.id && s.type === 'referral');
+        const expectedName = `Indicações • ${venue.name}`;
 
-        if (!referralSource) {
+        if (venueSources.length === 0) {
           await this.upsert({
             id: generateUuid(),
             venueId: venue.id,
-            name: `Indicações • ${venue.name}`,
+            name: expectedName,
             type: 'referral',
             funnelId: autoFunnelId,
             status: 'active',
@@ -248,6 +252,23 @@ export const sourceService = {
               systemManaged: true,
             },
           });
+        } else {
+          // Mantém a primeira e atualiza o nome caso a casa de festa tenha sido renomeada
+          const primarySource = venueSources[0];
+          if (primarySource.name !== expectedName) {
+            await this.upsert({
+              ...primarySource,
+              name: expectedName,
+              funnelId: primarySource.funnelId || autoFunnelId,
+              status: 'active',
+            });
+          }
+          // Remove eventuais duplicatas excedentes
+          if (venueSources.length > 1) {
+            for (let i = 1; i < venueSources.length; i++) {
+              await this.delete(venueSources[i].id);
+            }
+          }
         }
       }
     } catch (err) {

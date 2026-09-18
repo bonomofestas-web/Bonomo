@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "cleanup:db-photos": "node scripts/purgeBase64Photos.mjs",
+    "prepush": "node scripts/purgeBase64Photos.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "backup:db": "node scripts/backup-prod-data.mjs",

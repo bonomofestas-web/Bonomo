@@ -5,7 +5,7 @@ import {
   UserPlus, Shield, ShieldCheck, Plus,
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
-  Power
+  Power, Lock
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -26,6 +26,8 @@ export const AdminCollaboratorsView: React.FC = () => {
     tasks,
     sendCollaboratorInvite,
   } = useAdminState();
+
+  const isCurrentUserManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [collaboratorToEdit, setCollaboratorToEdit] = useState<Collaborator | null>(null);
@@ -113,7 +115,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     }
   };
 
-  const handleOpenCreate = () => {
+  const handleOpenAdd = () => {
     setCollaboratorToEdit(null);
     setFormName('');
     setFormEmail('');
@@ -127,7 +129,16 @@ export const AdminCollaboratorsView: React.FC = () => {
     setIsFormOpen(true);
   };
 
+  const handleOpenCreate = handleOpenAdd;
+
   const handleOpenEdit = (collab: Collaborator) => {
+    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+    const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
+    if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
+      alert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de gerência ou superior.');
+      return;
+    }
+
     setCollaboratorToEdit(collab);
     setFormName(collab.name || '');
     setFormEmail(collab.email || '');
@@ -151,6 +162,12 @@ export const AdminCollaboratorsView: React.FC = () => {
     if (e) e.preventDefault();
     if (!formName.trim() || !formEmail.trim()) {
       alert('Preencha ao menos o nome e e-mail do colaborador.');
+      return;
+    }
+
+    const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'dev' || collaboratorToEdit?.role === 'gerencia';
+    if (isCurrentUserManager && (formSectors.includes('gerencia') || isTargetManagerOrAbove)) {
+      alert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de gerência nem alterar perfis superiores.');
       return;
     }
 
@@ -197,6 +214,13 @@ export const AdminCollaboratorsView: React.FC = () => {
   };
 
   const handleOpenDelete = (collab: Collaborator) => {
+    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+    const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
+    if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
+      alert('Acesso restrito: gerentes não podem excluir o próprio perfil nem colaboradores com função de gerência ou superior.');
+      return;
+    }
+
     setCollabToDelete(collab);
     setReassignMode('transfer');
     const firstOther = collaborators.find(c => c.id !== collab.id && c.active && c.role !== 'dev');
@@ -588,6 +612,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                 {/* 3. Setor de Gerência */}
                 <div
                   onClick={() => {
+                    if (isCurrentUserManager) return;
                     const isSelected = formSectors.includes('gerencia');
                     setFormSectors(isSelected ? formSectors.filter(s => s !== 'gerencia') : [...formSectors, 'gerencia']);
                   }}
@@ -597,24 +622,39 @@ export const AdminCollaboratorsView: React.FC = () => {
                     gap: '12px',
                     padding: '12px 14px',
                     borderRadius: '12px',
-                    border: formSectors.includes('gerencia') ? '1.5px solid #3B82F6' : '1px solid var(--adm-border)',
-                    background: formSectors.includes('gerencia') ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: 'pointer',
+                    border: isCurrentUserManager 
+                      ? '1px dashed var(--adm-border)'
+                      : formSectors.includes('gerencia') ? '1.5px solid #3B82F6' : '1px solid var(--adm-border)',
+                    background: isCurrentUserManager
+                      ? 'var(--adm-bg-card)'
+                      : formSectors.includes('gerencia') ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-input)',
+                    cursor: isCurrentUserManager ? 'not-allowed' : 'pointer',
+                    opacity: isCurrentUserManager ? 0.6 : 1,
                     transition: 'all 0.15s ease',
                   }}
                 >
                   <input
                     type="checkbox"
-                    checked={formSectors.includes('gerencia')}
+                    checked={!isCurrentUserManager && formSectors.includes('gerencia')}
+                    disabled={isCurrentUserManager}
                     onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#3B82F6' }}
+                    style={{ marginTop: '3px', cursor: isCurrentUserManager ? 'not-allowed' : 'pointer', accentColor: '#3B82F6' }}
                   />
                   <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('gerencia') ? '#3B82F6' : 'var(--adm-text-title)' }}>
-                      Setor de Gerência
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('gerencia') && !isCurrentUserManager ? '#3B82F6' : 'var(--adm-text-title)' }}>
+                        Setor de Gerência
+                      </span>
+                      {isCurrentUserManager && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', padding: '1px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <Lock size={10} /> Apenas Master
+                        </span>
+                      )}
+                    </div>
                     <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.
+                      {isCurrentUserManager
+                        ? 'Gerentes não possuem permissão para conceder acesso de gerência a outros usuários.'
+                        : 'Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.'}
                     </p>
                   </div>
                 </div>
@@ -960,8 +1000,10 @@ export const AdminCollaboratorsView: React.FC = () => {
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
           const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
           const isMasterRole = collab.role === 'master';
-          const isOtherAdminWhenManager = currentUser?.role === 'admin' && (collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev');
-          const canToggle = !isSelf && !isMasterRole && !isOtherAdminWhenManager;
+          const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+          const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
+          const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
+          const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
 
           return (
             <div
@@ -1263,30 +1305,59 @@ export const AdminCollaboratorsView: React.FC = () => {
                   }}>
                     🛡️ Conta Desenvolvedor
                   </span>
+                ) : isSelf ? (
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: 'var(--adm-accent)',
+                    background: 'rgba(212, 175, 55, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)',
+                  }}>
+                    👤 Seu Perfil
+                  </span>
+                ) : isCurrentUserManager && isTargetManagerOrAbove ? (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: 'var(--adm-text-muted)',
+                    background: 'var(--adm-bg-elevated)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--adm-border)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <Lock size={12} /> Perfil Gerencial Protegido
+                  </span>
                 ) : (
                   <>
-                    <button
-                      onClick={() => handleOpenEdit(collab)}
-                      style={{
-                        background: 'var(--adm-bg-elevated)',
-                        border: '1px solid var(--adm-border)',
-                        color: 'var(--adm-text-title)',
-                        borderRadius: '10px',
-                        padding: '6px 14px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <Edit3 size={13} color="var(--adm-accent)" />
-                      <span>Editar</span>
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleOpenEdit(collab)}
+                        style={{
+                          background: 'var(--adm-bg-elevated)',
+                          border: '1px solid var(--adm-border)',
+                          color: 'var(--adm-text-title)',
+                          borderRadius: '10px',
+                          padding: '6px 14px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Edit3 size={13} color="var(--adm-accent)" />
+                        <span>Editar</span>
+                      </button>
+                    )}
 
-                    {collab.role !== 'master' && (
+                    {canDelete && (
                       <button
                         onClick={() => handleOpenDelete(collab)}
                         style={{

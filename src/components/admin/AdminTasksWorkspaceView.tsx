@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
-  X, MessageSquare, Users, CheckSquare
+  X, MessageSquare, Users, CheckSquare, Sliders
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
+import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminTasksKanbanView } from './tasks/AdminTasksKanbanView';
 import { AdminTasksTableView } from './tasks/AdminTasksTableView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
@@ -32,6 +34,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     tasks: contextTasks, 
     collaborators, 
     toggleTaskStatus,
+    completeTaskWithFeedback,
     updateTask,
   } = useAdminState();
 
@@ -65,6 +68,18 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [prefilledDueDate, setPrefilledDueDate] = useState<string | undefined>(undefined);
   const [prefilledDueTime, setPrefilledDueTime] = useState<string | undefined>(undefined);
   const [prefilledCustomType, setPrefilledCustomType] = useState<string | undefined>(undefined);
+  const [completingTask, setCompletingTask] = useState<AdminTask | null>(null);
+  const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false);
+
+  const handleTableToggleStatus = useCallback((taskId: string) => {
+    const task = contextTasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (task.status !== 'completed') {
+      setCompletingTask(task);
+    } else {
+      toggleTaskStatus(taskId);
+    }
+  }, [contextTasks, toggleTaskStatus]);
 
   // Refs for outside click
   const filterDropdownRef = useRef<HTMLDivElement>(null);
@@ -716,6 +731,32 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             {filteredTasks.length} {filteredTasks.length === 1 ? 'item' : 'itens'}
           </span>
 
+          {/* Grade & Disponibilidade Semanal (Visitas & Degustações - Exclusivo Gerência, visível apenas no modo Mês e quando filtrado por Visitas ou Degustações) */}
+          {workspaceContext === 'visits_tastings' && viewMode === 'month' && (visitsSubFilter === 'visit' || visitsSubFilter === 'tasting') && (currentUser?.role === 'master' || currentUser?.role === 'dev' || currentUser?.role === 'admin') && (
+            <button
+              type="button"
+              onClick={() => setIsAgendaModalOpen(true)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '8px',
+                background: 'rgba(212, 175, 55, 0.12)',
+                border: '1px solid rgba(212, 175, 55, 0.4)',
+                color: '#D4AF37',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+              title={`Configurar regras semanais e bloqueios de grade para ${visitsSubFilter === 'tasting' ? 'Degustações' : 'Visitas'}`}
+            >
+              <Sliders size={13} />
+              <span>{visitsSubFilter === 'tasting' ? 'Grade de Degustação' : 'Grade de Visitas'}</span>
+            </button>
+          )}
+
           {/* + NOVA TAREFA Primary Blue Button */}
           <button
             type="button"
@@ -768,7 +809,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             allTasks={contextTasks}
             collaborators={collaborators}
             onOpenTask={handleOpenTask}
-            onToggleStatus={toggleTaskStatus}
+            onToggleStatus={handleTableToggleStatus}
             todayStr={todayStr}
             workspaceContext={workspaceContext}
           />
@@ -1163,6 +1204,28 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         initialDatabaseId={modalDatabaseId || (selectedDatabaseId !== 'all' ? selectedDatabaseId : undefined)}
         workspaceContext={modalWorkspaceContext}
       />
+
+      {/* ── MODAL DE CONCLUSÃO DE TAREFA COM FEEDBACK ── */}
+      <AdminTaskCompletionModal
+        isOpen={!!completingTask}
+        taskTitle={completingTask?.title || ''}
+        onClose={() => setCompletingTask(null)}
+        onConfirm={(feedback) => {
+          if (completingTask) {
+            completeTaskWithFeedback(completingTask.id, feedback);
+            setCompletingTask(null);
+          }
+        }}
+      />
+
+      {/* ── MODAL DE CONFIGURAÇÃO DE GRADE & DISPONIBILIDADE DA AGENDA (GERÊNCIA) ── */}
+      {isAgendaModalOpen && (
+        <AdminAgendaAvailabilityModal
+          venueId={activeVenueId || undefined}
+          initialTab={visitsSubFilter === 'tasting' ? 'tastings' : 'visits'}
+          onClose={() => setIsAgendaModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

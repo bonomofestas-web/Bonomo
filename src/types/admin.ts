@@ -153,12 +153,13 @@ export interface CollaboratorTimeLog {
 }
 
 export type LeadSource = 
-  | 'indicacao'      // Indicação da Debutante / App
-  | 'instagram'      // Redes Sociais / Instagram Direct
-  | 'trafego_pago'   // Anúncios Meta Ads / Google Ads
-  | 'whatsapp'       // WhatsApp Direto
-  | 'parceria'       // Parceiros / Cerimonialistas
-  | 'evento_externo' // Evento / Feira
+  | 'indicacao'        // Indicação da Debutante / App
+  | 'instagram'        // Redes Sociais / Instagram Direct
+  | 'trafego_pago'     // Anúncios Meta Ads / Google Ads
+  | 'whatsapp'         // WhatsApp Direto
+  | 'parceria'         // Parceiros / Cerimonialistas
+  | 'evento_externo'   // Evento / Feira
+  | 'cadastro_interno' // Cadastro Manual / CRM Interno
   | 'outro';
 
 export interface LeadGoal {
@@ -337,17 +338,30 @@ export interface LeadContact {
   name: string;
   phone: string;
   email?: string;
+  cpf?: string;
+  address?: string;
   neighborhood?: string;
   role: LeadContactRole;
   roleCustomName?: string;
   isPrimaryDecisionMaker?: boolean;
 }
 
+export interface PodiumTargetConfig {
+  funnelId?: string; // 'all' ou ID do funil
+  stageId?: string;  // 'all' ou ID da etapa
+}
+
+export interface PodiumConfig {
+  sdr: PodiumTargetConfig;
+  closer: PodiumTargetConfig;
+}
+
 export interface FunnelStageTrigger {
   id: string;
-  type: 'notify_closer' | 'move_copy_to_funnel' | 'assign_role' | 'send_whatsapp';
+  type: 'move_to_funnel' | 'move_copy_to_funnel' | 'notify_closer' | 'assign_role' | 'send_whatsapp';
   label: string;
   targetFunnelId?: string;
+  targetStageId?: string;
   targetRoleId?: string;
   description?: string;
   whatsappTemplate?: string;
@@ -436,6 +450,8 @@ export interface Lead {
   name: string;
   phone: string;
   email?: string;
+  cpf?: string;              // CPF do lead / decisor
+  birthday?: string;         // Data de nascimento / aniversário do aniversariante
   source?: LeadSource;       // Origem do Lead (Indicação, Instagram, Tráfego Pago, WhatsApp, etc)
   responseTimeMinutes?: number; // Tempo de resposta do atendimento em minutos
   neighborhood?: string; // Bairro
@@ -494,12 +510,68 @@ export interface Lead {
   // Tarefas vinculadas ao lead
   tasks: LeadTask[];
 
+  // Compromissos Comerciais Exclusivos (Máximo 1 de cada por lead, eterno)
+  visitCommitment?: CommercialCommitment;
+  tastingCommitment?: CommercialCommitment;
+
   partyDate?: string;   // Data prevista para a festa de 15 anos do lead
   funnelEnteredAt?: string; // Data exata em que o lead entrou no funil
   secondaryFunnelIds?: string[]; // IDs dos funis secundários onde o lead também é exibido simultaneamente
   activities: LeadActivity[];
+  createdBy?: string;         // ID do usuário/colaborador que realizou o cadastro manual
+  createdByName?: string;     // Nome legível do autor do cadastro manual
+  createdByAvatar?: string;   // Foto/avatar do autor do cadastro manual
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Compromissos Comerciais & Motor de Agenda (F5 System) ───────────────────
+export type CommercialCommitmentType = 'visit' | 'tasting';
+export type CommercialCommitmentStatus = 'not_scheduled' | 'scheduled' | 'completed' | 'cancelled';
+
+export interface CommercialCommitment {
+  id?: string;
+  scheduled?: boolean;
+  type: CommercialCommitmentType;
+  date?: string;           // YYYY-MM-DD
+  time?: string;           // HH:mm
+  durationMinutes?: number;// Duração estimada em minutos
+  pax: number;             // Total de pessoas contando com o lead (PAX)
+  status: CommercialCommitmentStatus;
+  scheduledAt?: string;    // Data ISO do agendamento
+  completedAt?: string;    // Data ISO da conclusão
+  cancelledAt?: string;
+  responsibleId?: string;  // SDR ou Closer responsável
+  responsibleCollaboratorId?: string;
+  responsibleName?: string;
+  appointmentId?: string;  // Vínculo com o agendamento no calendário unificado
+  notes?: string;
+  venueId?: string;
+  createdAt?: string;
+}
+
+export interface AgendaRecurringRule {
+  enabledDays: number[];        // 0=Domingo, 1=Segunda, ..., 6=Sábado
+  timeSlots: string[];          // ['10:00', '14:00', '16:00', '18:00']
+  durationMinutes: number;      // Duração de cada compromisso (ex: 45 min)
+  maxConcurrentPerSlot: number; // Capacidade de agendamentos por slot (ex: 3)
+  maxPaxPerSlot?: number;       // Limite de PAX por slot (ex: 20)
+}
+
+export interface AgendaDateOverride {
+  date: string;                 // YYYY-MM-DD
+  isBlocked: boolean;           // Se true, o dia inteiro está bloqueado
+  reason?: string;              // 'Feriado', 'Manutenção', 'Evento Privado'
+  customSlots?: string[];       // Horários específicos que substituem a regra naquele dia
+}
+
+export interface VenueAgendaConfig {
+  id?: string;
+  venueId: string;              // ID da Casa de Festa ou 'all'
+  visitsRule: AgendaRecurringRule;
+  tastingsRule: AgendaRecurringRule;
+  dateOverrides: AgendaDateOverride[];
+  updatedAt?: string;
 }
 
 // ── Entidade Cliente & Pós-Venda (F5 System) ──────────────────────────────────
@@ -627,6 +699,7 @@ export interface CommercialFunnel {
   allowedCollaboratorIds?: string[]; // IDs dos colaboradores permitidos (vazio = todos)
   allowedRoles?: AdminRole[]; // Cargos que podem interagir neste funil
   isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda
+  isWonStageEnabled?: boolean; // Se a etapa de Ganho está ativada neste funil (padrão: true)
   isEntryStageActive?: boolean; // Etapa de leads de entrada ativada (estilo Como CRM)
   detectDuplicates?: boolean; // Detectar leads duplicados
   duplicateRules?: string; // Regras de duplicidade (legado)
@@ -637,12 +710,17 @@ export interface CommercialFunnel {
   icon?: string;
   customImageUrl?: string; // Foto ou imagem customizada do funil (400x400)
   isPinned?: boolean; // Se o funil está fixado na Sidebar
+  pinnedAt?: string; // Data/hora de fixação para preservar a ordem cronológica de fixação
+  order?: number; // Ordem personalizada de exibição do funil
   stagesCount?: number;
   stages?: FunnelStageConfig[]; // Etapas customizadas do funil
   customFields?: FunnelCustomField[]; // Campos extras personalizados para os leads deste funil
   packageOptions?: string[]; // Lista de pacotes de venda deste funil
   paymentOptions?: string[]; // Lista de condições/formatos de pagamento deste funil
   predefinedTags?: string[]; // Tags pré-configuradas e recomendadas para leads deste funil
+  distributionMode?: 'manual' | 'round_robin'; // Modo de distribuição dos novos leads (manual ou roleta)
+  assignedSdrIds?: string[]; // IDs dos SDRs que participam da distribuição automática deste funil
+  roundRobinNextIndex?: number; // Índice do próximo SDR na roleta
   isPrimary?: boolean;
   isDemo?: boolean;
   createdAt?: string;
@@ -825,4 +903,12 @@ export interface SupportTicket {
   messages?: SupportTicketMessage[];
 }
 
+export interface PodiumTargetConfig {
+  funnelId?: string; // se vazio ou 'all', aplica a todos os funis
+  stageId?: string;  // etapa alvo (ex: 'scheduled' para SDR, 'deal_closed' / 'contract_signed' para Closer)
+}
 
+export interface PodiumConfig {
+  sdr: PodiumTargetConfig;
+  closer: PodiumTargetConfig;
+}

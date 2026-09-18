@@ -7,7 +7,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import type { AdminTask } from '../../types/admin';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
-import { AdminTaskModal } from './AdminTaskModal';
+import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 
 // WhatsApp Brand SVG Icon
 const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 13, color = '#25D366' }) => (
@@ -44,7 +44,6 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [defaultTaskTime, setDefaultTaskTime] = useState<string>('09:00');
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -117,19 +116,7 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
   }, [dayFollowUps, selectedDate, todayStr]);
 
   const handleQuickComplete = (task: AdminTask) => {
-    if (task.leadId) {
-      setCompletingTaskId(task.id);
-      setFeedbackText('');
-    } else {
-      completeTaskWithFeedback(task.id, 'Follow-up concluído com sucesso.');
-    }
-  };
-
-  const handleSaveFeedback = () => {
-    if (!completingTaskId || !feedbackText.trim()) return;
-    completeTaskWithFeedback(completingTaskId, feedbackText.trim());
-    setCompletingTaskId(null);
-    setFeedbackText('');
+    setCompletingTaskId(task.id);
   };
 
   const handleOpenNewAtHour = (hour: string) => {
@@ -675,100 +662,30 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
 
       {/* Create New Task Modal */}
       {isNewTaskModalOpen && (
-        <AdminTaskModal
+        <AdminTaskDetailModal
           isOpen={isNewTaskModalOpen}
           onClose={() => setIsNewTaskModalOpen(false)}
-          defaultDueDate={selectedDate}
-          defaultDueTime={defaultTaskTime}
-          defaultType="followup"
+          task={null}
+          initialDueDate={selectedDate}
+          initialDueTime={defaultTaskTime}
+          initialCustomType="Follow-up WhatsApp"
+          initialDatabaseId="db_followup"
+          workspaceContext="followup"
         />
       )}
 
       {/* Feedback Prompt on Complete */}
-      {completingTaskId && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(6px)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-        }}>
-          <div style={{
-            background: 'var(--adm-bg-card)',
-            border: '1.5px solid var(--adm-accent)',
-            borderRadius: '16px',
-            maxWidth: '460px',
-            width: '100%',
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
-          }}>
-            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-              Feedback do Follow-up
-            </h4>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
-              Descreva o resultado do contato para atualizar a timeline do lead no CRM.
-            </p>
-            <textarea
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder="Ex: Mensagem enviada pelo WhatsApp; Lead solicitou orçamento; Agendou visita..."
-              rows={4}
-              autoFocus
-              style={{
-                width: '100%',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '8px',
-                padding: '10px',
-                fontSize: '0.84rem',
-                color: 'var(--adm-text-body)',
-                outline: 'none',
-                fontFamily: "'Inter', sans-serif",
-                resize: 'none',
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setCompletingTaskId(null)}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--adm-border)',
-                  color: 'var(--adm-text-muted)',
-                  borderRadius: '8px',
-                  padding: '7px 14px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveFeedback}
-                disabled={!feedbackText.trim()}
-                className="adm-btn-primary"
-                style={{
-                  padding: '7px 16px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  cursor: feedbackText.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Registrar Feedback
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminTaskCompletionModal
+        isOpen={Boolean(completingTaskId)}
+        taskTitle={tasks.find(t => t.id === completingTaskId)?.title || 'Follow-up'}
+        onClose={() => setCompletingTaskId(null)}
+        onConfirm={(feedback) => {
+          if (completingTaskId) {
+            completeTaskWithFeedback(completingTaskId, feedback);
+            setCompletingTaskId(null);
+          }
+        }}
+      />
     </div>
   );
 };

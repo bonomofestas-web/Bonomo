@@ -20,6 +20,7 @@ export type AdminTabType =
   | 'team-calendar'
   | 'dashboard' 
   | 'crm' 
+  | 'leads'
   | 'followups'
   | 'whatsapp'
   | 'post-sale-crm'
@@ -81,6 +82,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     funnels,
     hasUnconfiguredSources,
     unconfiguredSourcesCount,
+    unindexedLeadsCount,
     getFeatureStatus,
     collaborators,
     impersonatingMaster,
@@ -132,19 +134,20 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   </svg>
 );
 
-  // 2. Comercial: Dashboard, WhatsApp, Funil, Follow-up
+  // 2. Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Visitas & Degustação
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
     { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'post-sale-visits-tastings', label: 'Visitas & Degustação', icon: <Calendar size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Clientes, Aplicativo (com Jornada VIP Integrada), Visitas & Degustação, Compromissos
+  // 3. Pós-Venda: Clientes, Aplicativo (com Jornada VIP Integrada), Compromissos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'post-sale-crm', label: 'Clientes', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
     { id: 'debutantes', label: 'Aplicativo', icon: <Gift size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
-    { id: 'post-sale-visits-tastings', label: 'Visitas & Degustação', icon: <Calendar size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda', 'crm', 'sdr', 'closer'] },
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
   ];
 
@@ -178,6 +181,13 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       if (!funnel.isPinned) return false;
       if (!activeVenueId) return true;
       return funnel.venueId === activeVenueId || funnel.venueId === 'all';
+    }).sort((a, b) => {
+      if (a.pinnedAt && b.pinnedAt) {
+        return a.pinnedAt.localeCompare(b.pinnedAt);
+      }
+      if (a.pinnedAt) return -1;
+      if (b.pinnedAt) return 1;
+      return 0;
     });
   }, [funnels, activeVenueId]);
 
@@ -354,6 +364,18 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               boxShadow: '0 0 6px rgba(20, 169, 215, 0.8)',
             }} />
           )}
+          {item.id === 'leads' && unindexedLeadsCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '3px',
+              right: '3px',
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              background: '#F59E0B',
+              boxShadow: '0 0 6px rgba(245, 158, 11, 0.9)',
+            }} />
+          )}
           {isActive && (
             <span style={{
               position: 'absolute',
@@ -435,6 +457,28 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               }}
             >
               <AlertTriangle size={13} />
+            </span>
+          )}
+          {item.id === 'leads' && unindexedLeadsCount > 0 && (
+            <span
+              title={`${unindexedLeadsCount} lead(s) desindexados (sem funil)!`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 5px',
+                borderRadius: '5px',
+                background: 'rgba(245, 158, 11, 0.18)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                color: '#F59E0B',
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                flexShrink: 0,
+                animation: 'pulse 2s infinite ease-in-out',
+              }}
+            >
+              <AlertTriangle size={11} />
+              {unindexedLeadsCount}
             </span>
           )}
         </span>

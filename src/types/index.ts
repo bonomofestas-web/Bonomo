@@ -14,7 +14,7 @@ export type AppointmentCategory =
   | 'DJ & Pista' 
   | 'Cerimonial';
 
-export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
 
 export type TabType = 'journey' | 'referrals' | 'guests' | 'appointments' | 'benefits';
 
@@ -220,6 +220,7 @@ export interface Appointment {
   debutanteId?: string;
   debutanteName?: string;
   guestsCount?: number;
+  pax?: number;
 }
 
 export interface Benefit {

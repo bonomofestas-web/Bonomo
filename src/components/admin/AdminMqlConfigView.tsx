@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Plus, Trash2, Edit2, X, ArrowRight, ArrowLeft,
   Share2, Layers, Sparkles,
-  Info, Check, GitBranch
+  Info, Check, GitBranch, ChevronUp, ChevronDown, GripVertical
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -63,7 +63,12 @@ export const AdminMqlConfigView: React.FC = () => {
   // Delete Profile Confirmation State
   const [profileToDelete, setProfileToDelete] = useState<IcpProfileGroup | null>(null);
 
-  // ── 1. HUB: Agrupamento de perfis ICP por Funis & Nome ──
+  // ── 1. Filtro Estrito: Apenas funis comerciais (proibido pós-venda em ICP) ──
+  const commercialFunnels = useMemo(() => {
+    return funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && !f.name?.toLowerCase().includes('pós-venda'));
+  }, [funnels]);
+
+  // ── 2. HUB: Agrupamento de perfis ICP por Funis Comerciais & Nome ──
   const icpProfiles = useMemo<IcpProfileGroup[]>(() => {
     const groupsMap = new Map<string, {
       name: string;
@@ -89,13 +94,13 @@ export const AdminMqlConfigView: React.FC = () => {
             : (qVenueIds.length > 0 ? `v_${qVenueIds.slice().sort().join('_')}` : `q_${q.id}`));
 
       if (!groupsMap.has(key)) {
-        let defaultName = 'Formato de Qualificação';
+        let defaultName = 'Formulário de ICP';
         if (q.profileName) {
           defaultName = q.profileName;
         } else if (qFunnelIds.length > 0) {
-          defaultName = funnels.filter(f => qFunnelIds.includes(f.id)).map(f => f.name).join(' • ') || 'Qualificação Funil';
+          defaultName = commercialFunnels.filter(f => qFunnelIds.includes(f.id)).map(f => f.name).join(' • ') || 'ICP Comercial';
         } else if (qVenueIds.length > 0) {
-          defaultName = venues.filter(v => qVenueIds.includes(v.id)).map(v => v.name).join(' • ') || 'Qualificação Geral';
+          defaultName = venues.filter(v => qVenueIds.includes(v.id)).map(v => v.name).join(' • ') || 'ICP Geral';
         }
 
         groupsMap.set(key, {
@@ -110,22 +115,22 @@ export const AdminMqlConfigView: React.FC = () => {
       qFunnelIds.forEach(id => grp.funnelIds.add(id));
       qVenueIds.forEach(id => grp.venueIds.add(id));
       grp.questions.push(q);
-      if (q.profileName && (!grp.name || grp.name === 'Formato de Qualificação')) {
+      if (q.profileName && (!grp.name || grp.name === 'Formulário de ICP' || grp.name === 'Formato de Qualificação')) {
         grp.name = q.profileName;
       }
     });
 
     const result: IcpProfileGroup[] = [];
     groupsMap.forEach((grp, key) => {
-      const matchedFunnelIds = Array.from(grp.funnelIds).filter(id => funnels.some(f => f.id === id));
-      const matchedFunnels = funnels.filter(f => matchedFunnelIds.includes(f.id));
+      const matchedFunnelIds = Array.from(grp.funnelIds).filter(id => commercialFunnels.some(f => f.id === id));
+      const matchedFunnels = commercialFunnels.filter(f => matchedFunnelIds.includes(f.id));
 
       const matchedVenueIds = Array.from(grp.venueIds).filter(id => venues.some(v => v.id === id));
       const matchedVenues = venues.filter(v => matchedVenueIds.includes(v.id));
 
       const finalName = grp.name || (matchedFunnels.length > 0 
         ? matchedFunnels.map(f => f.name).join(' • ') 
-        : (matchedVenues.length > 0 ? matchedVenues.map(v => v.name).join(' • ') : 'Formato de Qualificação'));
+        : (matchedVenues.length > 0 ? matchedVenues.map(v => v.name).join(' • ') : 'Formulário de ICP'));
 
       result.push({
         id: key,
@@ -139,7 +144,7 @@ export const AdminMqlConfigView: React.FC = () => {
     });
 
     return result;
-  }, [funnels, venues, mqlQuestions]);
+  }, [commercialFunnels, venues, mqlQuestions]);
 
   // Unlinked Funnels (Funnels that have NO qualification format assigned)
   const unlinkedFunnels = useMemo(() => {
@@ -147,8 +152,8 @@ export const AdminMqlConfigView: React.FC = () => {
     icpProfiles.forEach(p => {
       p.funnelIds.forEach(id => assignedFunnelIds.add(id));
     });
-    return funnels.filter(f => !assignedFunnelIds.has(f.id));
-  }, [funnels, icpProfiles]);
+    return commercialFunnels.filter(f => !assignedFunnelIds.has(f.id));
+  }, [commercialFunnels, icpProfiles]);
 
   // Active Profile currently being edited/viewed
   const currentProfile = useMemo(() => {
@@ -187,6 +192,12 @@ export const AdminMqlConfigView: React.FC = () => {
   };
 
   const handleToggleFunnelSelection = (funnelId: string) => {
+    const isAlreadyLinked = icpProfiles.some(p => p.id !== editingProfile?.id && p.funnelIds.includes(funnelId));
+    if (isAlreadyLinked) {
+      alert('Regra do CRM: Cada funil comercial só pode ter 1 Formulário de ICP vinculado.');
+      return;
+    }
+
     if (selectedFunnelIdsInput.includes(funnelId)) {
       setSelectedFunnelIdsInput(prev => prev.filter(id => id !== funnelId));
     } else {
@@ -262,6 +273,38 @@ export const AdminMqlConfigView: React.FC = () => {
     }
 
     setProfileToDelete(null);
+  };
+
+  // ── Handlers Inline (Edição Rápida e Reordenação Direta) ──
+  const handleSaveQuestionTitleInline = (questionId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    updateMqlQuestion(questionId, { title: newTitle.trim() });
+  };
+
+  const handleSaveQuestionDescInline = (questionId: string, newDesc: string) => {
+    updateMqlQuestion(questionId, { description: newDesc.trim() });
+  };
+
+  const handleSaveOptionInline = (questionId: string, optId: string, newText: string) => {
+    const question = mqlQuestions.find(q => q.id === questionId);
+    if (!question) return;
+    const updatedOpts = question.options.map(opt => opt.id === optId ? { ...opt, label: newText } : opt);
+    updateMqlQuestion(questionId, { options: updatedOpts });
+  };
+
+  const handleMoveQuestion = (idx: number, direction: 'up' | 'down') => {
+    if (!currentProfile) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentProfile.questions.length) return;
+
+    const reordered = [...currentProfile.questions];
+    const temp = reordered[idx];
+    reordered[idx] = reordered[targetIdx];
+    reordered[targetIdx] = temp;
+
+    reordered.forEach((q, newOrder) => {
+      updateMqlQuestion(q.id, { order: newOrder });
+    });
   };
 
   // ── Handlers do Modal de Pergunta ──
@@ -747,8 +790,8 @@ export const AdminMqlConfigView: React.FC = () => {
           <div style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
-            backdropFilter: 'blur(8px)',
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -756,29 +799,29 @@ export const AdminMqlConfigView: React.FC = () => {
             padding: '20px',
           }}>
             <div style={{
-              background: '#141118',
-              border: '1.5px solid rgba(20, 169, 215, 0.4)',
-              borderRadius: '20px',
+              background: 'var(--adm-bg-card, #ffffff)',
+              border: '1px solid var(--adm-border, #E2E8F0)',
+              borderRadius: '16px',
               maxWidth: '560px',
               width: '100%',
               padding: '24px',
               display: 'flex',
               flexDirection: 'column',
               gap: '18px',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.9)',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.18)',
             }}>
               {/* Modal Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border, #E2E8F0)', paddingBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <IcpTargetUserIcon size={20} color="#14A9D7" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
-                    {editingProfile ? 'Editar Formato de Qualificação' : 'Novo Formato de Qualificação'}
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
+                    {editingProfile ? 'Editar Formulário de ICP' : 'Novo Formulário de ICP'}
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsProfileModalOpen(false)}
-                  style={{ background: 'transparent', border: 'none', color: '#9E988D', cursor: 'pointer' }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted, #64748B)', cursor: 'pointer', padding: '4px' }}
                 >
                   <X size={18} />
                 </button>
@@ -787,27 +830,27 @@ export const AdminMqlConfigView: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {/* Nome do Formato */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
-                    Nome do Formato de Qualificação *
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', marginBottom: '6px' }}>
+                    Nome do Formulário de ICP *
                   </label>
                   <input
                     type="text"
                     value={profileNameInput}
                     onChange={(e) => setProfileNameInput(e.target.value)}
-                    placeholder="Ex: Qualificação Comercial Padrão, Qualificação Tráfego..."
+                    placeholder="Ex: ICP Qualificação Comercial, ICP Tráfego Pago..."
                     className="adm-input"
-                    style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.82rem' }}
+                    style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.82rem', background: 'var(--adm-bg-input, #F8FAFC)', border: '1px solid var(--adm-border, #E2E8F0)', color: 'var(--adm-text-body, #1E293B)', padding: '0 12px' }}
                   />
                 </div>
 
                 {/* Seleção de Funis */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF' }}>
-                      Funis Vinculados a este Formato *
+                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                      Funis Comerciais Vinculados *
                     </label>
-                    <span style={{ fontSize: '0.66rem', color: '#14A9D7' }}>
-                      1 funil possui no máximo 1 formato ativo
+                    <span style={{ fontSize: '0.66rem', color: '#14A9D7', fontWeight: 700 }}>
+                      Regra: 1 funil possui no máximo 1 ICP ativo
                     </span>
                   </div>
 
@@ -819,23 +862,32 @@ export const AdminMqlConfigView: React.FC = () => {
                     overflowY: 'auto',
                     padding: '4px',
                   }}>
-                    {funnels.map(f => {
+                    {commercialFunnels.map(f => {
                       const isSelected = selectedFunnelIdsInput.includes(f.id);
                       const otherProfile = icpProfiles.find(p => p.id !== editingProfile?.id && p.funnelIds.includes(f.id));
+                      const isBlocked = Boolean(otherProfile && !isSelected);
 
                       return (
                         <div
                           key={f.id}
-                          onClick={() => handleToggleFunnelSelection(f.id)}
+                          onClick={() => {
+                            if (isBlocked) return;
+                            handleToggleFunnelSelection(f.id);
+                          }}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             padding: '10px 14px',
                             borderRadius: '10px',
-                            background: isSelected ? 'rgba(20, 169, 215, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                            border: `1px solid ${isSelected ? '#14A9D7' : 'rgba(255, 255, 255, 0.1)'}`,
-                            cursor: 'pointer',
+                            background: isSelected 
+                              ? 'rgba(20, 169, 215, 0.10)' 
+                              : isBlocked 
+                                ? 'var(--adm-bg-input, #F8FAFC)' 
+                                : 'var(--adm-bg-card, #ffffff)',
+                            border: `1px solid ${isSelected ? '#14A9D7' : 'var(--adm-border, #E2E8F0)'}`,
+                            cursor: isBlocked ? 'not-allowed' : 'pointer',
+                            opacity: isBlocked ? 0.65 : 1,
                             transition: 'all 0.15s ease',
                           }}
                         >
@@ -845,7 +897,7 @@ export const AdminMqlConfigView: React.FC = () => {
                               height: '20px',
                               borderRadius: '6px',
                               background: isSelected ? '#14A9D7' : 'transparent',
-                              border: `1.5px solid ${isSelected ? '#14A9D7' : '#8096A8'}`,
+                              border: `1.5px solid ${isSelected ? '#14A9D7' : 'var(--adm-border, #CBD5E1)'}`,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -853,7 +905,7 @@ export const AdminMqlConfigView: React.FC = () => {
                             }}>
                               {isSelected && <Check size={14} />}
                             </div>
-                            <span style={{ fontSize: '0.80rem', fontWeight: 700, color: isSelected ? '#FFFFFF' : '#D3E0EA' }}>
+                            <span style={{ fontSize: '0.80rem', fontWeight: 700, color: isSelected ? '#14A9D7' : 'var(--adm-text-title, #0F172A)' }}>
                               {f.name}
                             </span>
                           </div>
@@ -861,13 +913,14 @@ export const AdminMqlConfigView: React.FC = () => {
                           {otherProfile && !isSelected && (
                             <span style={{
                               fontSize: '0.64rem',
-                              color: '#F59E0B',
+                              color: '#D97706',
                               background: 'rgba(245, 158, 11, 0.12)',
                               border: '1px solid rgba(245, 158, 11, 0.3)',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontWeight: 700,
                             }}>
-                              No formato: {otherProfile.name}
+                              Já vinculado: {otherProfile.name}
                             </span>
                           )}
                         </div>
@@ -877,12 +930,20 @@ export const AdminMqlConfigView: React.FC = () => {
                 </div>
 
                 {/* Buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '10px', borderTop: '1px solid var(--adm-border, #E2E8F0)', paddingTop: '14px' }}>
                   <button
                     type="button"
                     onClick={() => setIsProfileModalOpen(false)}
-                    className="adm-btn-secondary"
-                    style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700 }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      background: 'transparent',
+                      border: '1px solid var(--adm-border, #CBD5E1)',
+                      color: 'var(--adm-text-muted, #64748B)',
+                      cursor: 'pointer',
+                    }}
                   >
                     Cancelar
                   </button>
@@ -892,7 +953,7 @@ export const AdminMqlConfigView: React.FC = () => {
                     className="adm-btn-primary"
                     style={{ padding: '8px 20px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 900 }}
                   >
-                    Salvar Formato
+                    Salvar Formulário
                   </button>
                 </div>
               </div>
@@ -1274,35 +1335,117 @@ export const AdminMqlConfigView: React.FC = () => {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                    <div style={{
-                      width: '26px',
-                      height: '26px',
-                      borderRadius: '8px',
-                      background: 'rgba(20, 169, 215, 0.15)',
-                      color: '#14A9D7',
-                      fontWeight: 900,
-                      fontSize: '0.78rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      {idx + 1}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flex: 1, minWidth: 0 }}>
+                    {/* Alça e Controles de Reordenação */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                      <div title="Alça de ordenação" style={{ color: 'var(--adm-text-muted, #94A3B8)', cursor: 'grab', display: 'flex', alignItems: 'center' }}>
+                        <GripVertical size={16} />
+                      </div>
+                      <div style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '8px',
+                        background: 'rgba(20, 169, 215, 0.15)',
+                        color: '#14A9D7',
+                        fontWeight: 900,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {idx + 1}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => handleMoveQuestion(idx, 'up')}
+                          title="Mover para cima"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            padding: '1px',
+                            cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                            color: idx === 0 ? 'var(--adm-border, #CBD5E1)' : 'var(--adm-text-muted, #64748B)',
+                            lineHeight: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === currentProfile.questions.length - 1}
+                          onClick={() => handleMoveQuestion(idx, 'down')}
+                          title="Mover para baixo"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            padding: '1px',
+                            cursor: idx === currentProfile.questions.length - 1 ? 'not-allowed' : 'pointer',
+                            color: idx === currentProfile.questions.length - 1 ? 'var(--adm-border, #CBD5E1)' : 'var(--adm-text-muted, #64748B)',
+                            lineHeight: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <h3 style={{ fontSize: '0.90rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                        {q.title}
-                      </h3>
-                      {q.description && (
-                        <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: 0, marginTop: '2px' }}>
-                          {q.description}
-                        </p>
-                      )}
+
+                    {/* Título e Descrição Inline */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <input
+                        defaultValue={q.title}
+                        onBlur={(e) => handleSaveQuestionTitleInline(q.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                        }}
+                        title="Clique para editar o título inline"
+                        style={{
+                          fontSize: '0.90rem',
+                          fontWeight: 800,
+                          color: 'var(--adm-text-title, #0F172A)',
+                          background: 'transparent',
+                          border: '1px solid transparent',
+                          borderRadius: '6px',
+                          padding: '2px 6px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          outline: 'none',
+                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = 'var(--adm-accent, #6366F1)'}
+                        onBlurCapture={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                      />
+                      <input
+                        defaultValue={q.description || ''}
+                        onBlur={(e) => handleSaveQuestionDescInline(q.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                        }}
+                        placeholder="Adicionar descrição / objetivo inline (opcional)..."
+                        title="Clique para editar a descrição inline"
+                        style={{
+                          fontSize: '0.74rem',
+                          color: 'var(--adm-text-muted, #64748B)',
+                          background: 'transparent',
+                          border: '1px solid transparent',
+                          borderRadius: '6px',
+                          padding: '2px 6px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          outline: 'none',
+                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = 'var(--adm-accent, #6366F1)'}
+                        onBlurCapture={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                      />
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     <button
                       type="button"
                       onClick={() => handleOpenEditQuestionModal(q)}
@@ -1335,13 +1478,13 @@ export const AdminMqlConfigView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 4 Opções Empilhadas */}
+                {/* 4 Opções Empilhadas com Edição Inline Direta */}
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '6px',
                   padding: '12px',
-                  background: 'var(--adm-bg-input)',
+                  background: 'var(--adm-bg-input, #F8FAFC)',
                   borderRadius: '10px',
                 }}>
                   {q.options.map(opt => {
@@ -1352,10 +1495,10 @@ export const AdminMqlConfigView: React.FC = () => {
                       <div
                         key={opt.id}
                         style={{
-                          background: 'var(--adm-bg-card)',
+                          background: 'var(--adm-bg-card, #ffffff)',
                           border: `1px solid ${conf.border}`,
                           borderRadius: '8px',
-                          padding: '9px 12px',
+                          padding: '8px 12px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -1381,9 +1524,28 @@ export const AdminMqlConfigView: React.FC = () => {
                           }}>
                             {conf.label}
                           </span>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600, lineHeight: 1.3 }}>
-                            {opt.label}
-                          </span>
+                          <input
+                            defaultValue={opt.label}
+                            onBlur={(e) => handleSaveOptionInline(q.id, opt.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.currentTarget.blur();
+                            }}
+                            title="Clique para editar inline esta alternativa"
+                            style={{
+                              fontSize: '0.78rem',
+                              color: 'var(--adm-text-title, #0F172A)',
+                              fontWeight: 600,
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              flex: 1,
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                            onFocus={(e) => e.currentTarget.style.borderColor = conf.color}
+                            onBlurCapture={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                          />
                         </div>
                         <span style={{
                           fontSize: '0.68rem',
@@ -1432,8 +1594,8 @@ export const AdminMqlConfigView: React.FC = () => {
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.85)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(6px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1441,9 +1603,9 @@ export const AdminMqlConfigView: React.FC = () => {
           padding: '20px',
         }}>
           <div style={{
-            background: '#141118',
-            border: '1.5px solid rgba(20, 169, 215, 0.4)',
-            borderRadius: '20px',
+            background: 'var(--adm-bg-card, #ffffff)',
+            border: '1px solid var(--adm-border, #E2E8F0)',
+            borderRadius: '16px',
             maxWidth: '640px',
             width: '100%',
             maxHeight: '90vh',
@@ -1452,19 +1614,19 @@ export const AdminMqlConfigView: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.9)',
+            boxShadow: '0 20px 48px rgba(0,0,0,0.18)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border, #E2E8F0)', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <IcpTargetUserIcon size={20} color="#14A9D7" />
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
-                  {editingQuestionId ? 'Editar Pergunta' : 'Nova Pergunta'}
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
+                  {editingQuestionId ? 'Editar Pergunta de ICP' : 'Nova Pergunta de ICP'}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsQuestionModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: '#9E988D', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted, #64748B)', cursor: 'pointer', padding: '4px' }}
               >
                 <X size={18} />
               </button>
@@ -1473,7 +1635,7 @@ export const AdminMqlConfigView: React.FC = () => {
             <form onSubmit={handleSaveQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {/* Question Title */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', marginBottom: '6px' }}>
                   Título da Pergunta *
                 </label>
                 <input
@@ -1482,14 +1644,14 @@ export const AdminMqlConfigView: React.FC = () => {
                   onChange={(e) => setQuestionTitle(e.target.value)}
                   placeholder="Ex: Qual a previsão de data da celebração?"
                   className="adm-input"
-                  style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.80rem' }}
+                  style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.82rem', background: 'var(--adm-bg-input, #F8FAFC)', border: '1px solid var(--adm-border, #E2E8F0)', color: 'var(--adm-text-body, #1E293B)', padding: '0 12px' }}
                   required
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', marginBottom: '6px' }}>
                   Descrição / Objetivo (Opcional)
                 </label>
                 <input
@@ -1498,14 +1660,14 @@ export const AdminMqlConfigView: React.FC = () => {
                   onChange={(e) => setQuestionDescription(e.target.value)}
                   placeholder="Ex: Avalia urgência de decisão e maturidade comercial"
                   className="adm-input"
-                  style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.80rem' }}
+                  style={{ width: '100%', height: '40px', borderRadius: '10px', fontSize: '0.80rem', background: 'var(--adm-bg-input, #F8FAFC)', border: '1px solid var(--adm-border, #E2E8F0)', color: 'var(--adm-text-body, #1E293B)', padding: '0 12px' }}
                 />
               </div>
 
               {/* 4 Standardized Situations Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF' }}>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                     Defina o Texto para as 4 Situações Comerciais:
                   </label>
                   <span style={{ fontSize: '0.66rem', color: '#14A9D7', fontWeight: 700 }}>
@@ -1524,7 +1686,7 @@ export const AdminMqlConfigView: React.FC = () => {
                           display: 'flex',
                           alignItems: 'center',
                           gap: '10px',
-                          background: 'rgba(255, 255, 255, 0.03)',
+                          background: 'var(--adm-bg-input, #F8FAFC)',
                           border: `1px solid ${conf.border}`,
                           borderRadius: '10px',
                           padding: '8px 10px',
@@ -1551,7 +1713,7 @@ export const AdminMqlConfigView: React.FC = () => {
                           }}>
                             {conf.label}
                           </span>
-                          <span style={{ fontSize: '0.60rem', color: '#9E988D', marginLeft: '2px' }}>
+                          <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted, #64748B)', marginLeft: '2px' }}>
                             Peso: {conf.points}%
                           </span>
                         </div>
@@ -1563,7 +1725,7 @@ export const AdminMqlConfigView: React.FC = () => {
                           onChange={(e) => handleOptionLabelChange(opt.situation, e.target.value)}
                           placeholder={`Texto da resposta ${conf.label.toLowerCase()}...`}
                           className="adm-input"
-                          style={{ flex: 1, height: '36px', borderRadius: '8px', fontSize: '0.78rem' }}
+                          style={{ flex: 1, height: '36px', borderRadius: '8px', fontSize: '0.78rem', background: 'var(--adm-bg-card, #ffffff)', border: '1px solid var(--adm-border, #CBD5E1)', color: 'var(--adm-text-body, #1E293B)', padding: '0 10px' }}
                           required
                         />
                       </div>
@@ -1573,12 +1735,20 @@ export const AdminMqlConfigView: React.FC = () => {
               </div>
 
               {/* Form Buttons */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '8px', borderTop: '1px solid var(--adm-border, #E2E8F0)', paddingTop: '14px' }}>
                 <button
                   type="button"
                   onClick={() => setIsQuestionModalOpen(false)}
-                  className="adm-btn-secondary"
-                  style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700 }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    background: 'transparent',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    color: 'var(--adm-text-muted, #64748B)',
+                    cursor: 'pointer',
+                  }}
                 >
                   Cancelar
                 </button>

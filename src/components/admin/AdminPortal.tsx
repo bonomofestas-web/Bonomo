@@ -34,6 +34,7 @@ import { AdminErrorBoundary } from './AdminErrorBoundary';
 import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
 import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
+import { AdminLeadsListView } from './AdminLeadsListView';
 import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut } from 'lucide-react';
 import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
 
@@ -405,6 +406,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onLeadOpened={() => setCrmOpenLeadId(undefined)}
           />
         );
+      case 'leads':
+        return (
+          <AdminLeadsListView
+            onOpenLead={(leadId) => handleOpenLeadFromTask(leadId)}
+            onNavigateFunnel={(funnelId) => {
+              setActiveFunnelId(funnelId);
+              handleSelectTab('crm', funnelId);
+            }}
+          />
+        );
       case 'followups':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="followup" />;
       case 'whatsapp':
@@ -618,7 +629,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Clientes'; }
               else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'Aniversariantes'; }
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
-              else if (activeTab === 'post-sale-visits-tastings') { category = 'Pós-Venda'; title = 'Visitas & Degustação'; }
+              else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Visitas & Degustação'; }
               else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
               else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
               else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }

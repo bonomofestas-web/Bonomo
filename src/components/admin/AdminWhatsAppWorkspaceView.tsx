@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   FileText, ChevronRight, ChevronLeft, Calendar,
-  Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus
+  Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus, CheckSquare
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -13,16 +13,22 @@ interface AdminWhatsAppWorkspaceViewProps {
   initialLeadId?: string;
   activeFunnelId?: string;
   searchQuery?: string;
+  leadOwnershipFilter?: 'all' | 'open' | 'mine';
+  sortBy?: string;
   onClose?: () => void;
   isEmbeddedInFunnel?: boolean;
+  initialComposerTab?: 'whatsapp' | 'notes' | 'tasks';
 }
 
 export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProps> = ({
   initialLeadId,
   activeFunnelId,
   searchQuery = '',
+  leadOwnershipFilter,
+  sortBy,
   onClose,
   isEmbeddedInFunnel = false,
+  initialComposerTab,
 }) => {
   const { 
     leads, 
@@ -37,6 +43,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     completeLeadTask,
     updateLeadStage,
     mqlQuestions,
+    tasks,
+    updateTask,
   } = useAdminState();
 
   const hasIcpConfigured = (targetLead: Lead) => {
@@ -80,7 +88,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [filterTemperature, setFilterTemperature] = useState<string>('all');
 
   // Composer Mode: 'whatsapp' | 'notes' | 'tasks'
-  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>('whatsapp');
+  const [composerTab, setComposerTab] = useState<'whatsapp' | 'notes' | 'tasks'>(initialComposerTab || 'whatsapp');
+
+  useEffect(() => {
+    if (initialComposerTab) {
+      setComposerTab(initialComposerTab);
+    }
+  }, [initialComposerTab]);
   
   // WhatsApp / Note Text
   const [messageText, setMessageText] = useState('');
@@ -98,6 +112,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [taskDueTime, setTaskDueTime] = useState('14:00');
   const [taskAssigneeId, setTaskAssigneeId] = useState<string>(currentUser?.id || '');
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+
+  // Task Completion / Resolution State (moldando a barra inferior)
+  const [completingTask, setCompletingTask] = useState<any | null>(null);
+  const [taskResolutionText, setTaskResolutionText] = useState<string>('');
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -134,51 +152,67 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return filterVenueId !== 'all' || filterStage !== 'all' || filterCollaboratorId !== 'all' || filterTemperature !== 'all';
   }, [filterVenueId, filterStage, filterCollaboratorId, filterTemperature]);
 
+  const getLastMessageTime = (l: Lead) => {
+    const contactActs = (l.activities || []).filter(a => a.type === 'contact' || a.type === 'note');
+    if (contactActs.length > 0) {
+      return new Date(contactActs[contactActs.length - 1].timestamp || 0).getTime();
+    }
+    return new Date(l.updatedAt || l.createdAt || 0).getTime();
+  };
+
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
     const currentFunnel = activeFunnelId ? funnels.find(f => f.id === activeFunnelId) : null;
-    const targetVenueId = currentFunnel?.venueId || (activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : null);
+    const targetVenueId = (currentFunnel?.venueId && currentFunnel.venueId !== 'all')
+      ? currentFunnel.venueId
+      : (activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : null);
 
     const result = leads.filter(lead => {
-      // 1. Funnel filter if embedded
-      if (activeFunnelId && lead.funnelId && lead.funnelId !== activeFunnelId) {
-        return false;
-      }
-
-      // 2. Specific venue isolation
-      if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
-        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
-          return false;
+      // 1. Funnel & Venue Matching
+      if (currentFunnel) {
+        if (lead.funnelId) {
+          if (lead.funnelId !== currentFunnel.id) {
+            if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+          }
+        } else if (targetVenueId) {
+          if (lead.venueId !== targetVenueId) {
+            if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+          }
+        }
+      } else if (targetVenueId) {
+        if (lead.venueId !== targetVenueId) {
+          if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
       }
 
-      // 3. Quick Filter Tabs
-      if (quickFilter === 'open') {
-        if (lead.stage === 'contract_signed' || lead.stage === 'lost') {
+      // 2. Ownership / Quick Filter Tabs
+      const effectiveOwnership = (isEmbeddedInFunnel && leadOwnershipFilter) ? leadOwnershipFilter : quickFilter;
+      if (effectiveOwnership === 'open') {
+        const s = lead.stage as string;
+        if (s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado' || s === 'lost' || s === 'cancelado') {
           if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
             return false;
           }
         }
-      } else if (quickFilter === 'my') {
-        const isMyLead = lead.assignedTo === currentUser?.name || 
-          lead.sdrId === currentUser?.id || 
-          lead.closerId === currentUser?.id ||
-          lead.sdrName === currentUser?.name ||
-          lead.closerName === currentUser?.name;
+      } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
+        const isMyLead = 
+          Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id)) ||
+          Boolean(currentUser?.name && (lead.sdrName === currentUser.name || lead.closerName === currentUser.name || lead.assignedTo === currentUser.name)) ||
+          Boolean(currentUser?.id && (lead.participants || []).some(p => p.collaboratorId === currentUser.id));
         if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
-      // 4. Specific venue filter
+      // 3. Specific venue filter
       if (filterVenueId !== 'all' && lead.venueId !== filterVenueId) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
-      // 5. Stage filter
+      // 4. Stage filter
       if (filterStage !== 'all' && lead.stage !== filterStage) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
-      // 6. Collaborator filter
+      // 5. Collaborator filter
       if (filterCollaboratorId !== 'all') {
         const matchesSdr = lead.sdrId === filterCollaboratorId;
         const matchesCloser = lead.closerId === filterCollaboratorId;
@@ -186,25 +220,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         if (!matchesSdr && !matchesCloser && !matchesAssigned && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
-      // 7. Temperature filter
+      // 6. Temperature filter
       if (filterTemperature !== 'all' && lead.temperature !== filterTemperature) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
-      // 8. Search term
-      if (searchTerm.trim()) {
-        const clean = searchTerm.toLowerCase();
+      // 7. Search term (Sync with searchQuery if embedded)
+      const term = (isEmbeddedInFunnel && searchQuery) ? searchQuery : searchTerm;
+      if (term.trim()) {
+        const clean = term.toLowerCase();
         const matchesName = lead.name.toLowerCase().includes(clean);
         const matchesPhone = lead.phone.replace(/\D/g, '').includes(clean.replace(/\D/g, ''));
         const matchesDeb = lead.debutanteName?.toLowerCase().includes(clean);
-        if (!matchesName && !matchesPhone && !matchesDeb) return false;
+        if (!matchesName && !matchesPhone && !matchesDeb && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       return true;
     });
 
-    return result;
-  }, [leads, activeFunnelId, activeVenueId, quickFilter, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, currentUser, funnels, selectedLeadId, initialLeadId]);
+    return result.sort((a, b) => {
+      const effectiveSort = (isEmbeddedInFunnel && sortBy) ? sortBy : 'message_recent';
+      if (effectiveSort === 'message_recent') {
+        return getLastMessageTime(b) - getLastMessageTime(a);
+      }
+      if (effectiveSort === 'message_oldest') {
+        return getLastMessageTime(a) - getLastMessageTime(b);
+      }
+      if (effectiveSort === 'oldest') {
+        return new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
+      }
+      if (effectiveSort === 'name_asc') {
+        return a.name.localeCompare(b.name);
+      }
+      if (effectiveSort === 'name_desc') {
+        return b.name.localeCompare(a.name);
+      }
+      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+    });
+  }, [leads, activeFunnelId, activeVenueId, quickFilter, leadOwnershipFilter, sortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, funnels, selectedLeadId, initialLeadId, isEmbeddedInFunnel]);
 
   // Set initial selected lead if none selected
   useEffect(() => {
@@ -287,6 +340,68 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setTaskDescription('');
   };
 
+  // Conclusão de Tarefa com Resolução / Resultado
+  const handleFinishCompletingTask = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedLead || !completingTask) return;
+
+    const resText = taskResolutionText.trim();
+    const taskId = completingTask.id;
+
+    if (updateTask) {
+      updateTask(taskId, {
+        status: 'completed',
+        resolution: resText,
+        customProperties: {
+          ...(completingTask.customProperties || {}),
+          resolution: resText,
+        },
+      });
+    }
+
+    completeLeadTask(selectedLead.id, taskId);
+
+    if (resText) {
+      const author = currentUser?.name || 'Equipe Comercial';
+      const newAct: LeadActivity = {
+        id: `act_${Date.now()}`,
+        leadId: selectedLead.id,
+        timestamp: new Date().toISOString(),
+        type: 'task_completed',
+        title: `Resolução da Tarefa: ${completingTask.title || completingTask.description || 'Atendimento'}`,
+        text: resText,
+        authorName: author,
+        authorId: currentUser?.id,
+        authorAvatarUrl: currentUser?.avatarUrl,
+      };
+      updateLeadData(selectedLead.id, {
+        activities: [newAct, ...(selectedLead.activities || [])],
+        updatedAt: new Date().toISOString().split('T')[0],
+      });
+    }
+
+    setCompletingTask(null);
+    setTaskResolutionText('');
+  };
+
+  // Tarefas Unificadas do Lead (Combina tarefas internas do lead com tarefas globais atribuídas ao leadId)
+  const combinedLeadTasks = useMemo(() => {
+    if (!selectedLead) return [];
+    const fromLead = selectedLead.tasks || [];
+    const fromGlobal = (tasks || []).filter(t => t.leadId === selectedLead.id || t.customProperties?.leadId === selectedLead.id);
+    const map = new Map<string, any>();
+    fromLead.forEach(t => map.set(t.id, t));
+    fromGlobal.forEach(t => {
+      const existing = map.get(t.id);
+      map.set(t.id, {
+        ...existing,
+        ...t,
+        description: t.title || t.description || existing?.description || 'Tarefa sem título',
+      });
+    });
+    return Array.from(map.values());
+  }, [selectedLead, tasks]);
+
   // Audio Recording Handlers
   const startAudioRecording = () => {
     setIsRecording(true);
@@ -359,6 +474,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const icpRating = useMemo(() => {
     if (!selectedLead || !hasIcpConfigured(selectedLead)) return null;
+    const hasAnswers = Boolean(
+      selectedLead.mqlAnswers && 
+      Object.keys(selectedLead.mqlAnswers).some(k => Boolean(selectedLead.mqlAnswers![k]))
+    );
+    if (!hasAnswers && (selectedLead.mqlScore === undefined || selectedLead.mqlScore === 0)) {
+      return {
+        score: undefined,
+        label: 'Indefinido',
+        color: 'var(--adm-text-muted)',
+        bg: 'var(--adm-bg-card)',
+        border: 'var(--adm-border)',
+        isUndefined: true,
+      };
+    }
     const score = selectedLead.mqlScore ?? 0;
     const isTop = score >= 80 || selectedLead.mqlLevel === 'top';
     const isQualified = (score >= 50 && score < 80) || selectedLead.mqlLevel === 'qualified';
@@ -366,19 +495,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const color = isTop ? '#10B981' : isQualified ? '#F59E0B' : '#EF4444';
     const bg = isTop ? 'rgba(16, 185, 129, 0.15)' : isQualified ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)';
     const border = isTop ? 'rgba(16, 185, 129, 0.35)' : isQualified ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.35)';
-    return { score, label, color, bg, border };
+    return { score, label, color, bg, border, isUndefined: false };
   }, [selectedLead, mqlQuestions]);
 
   return (
     <div style={{
-      height: isEmbeddedInFunnel ? 'calc(100vh - 120px)' : 'calc(100vh - 40px)',
+      height: isEmbeddedInFunnel ? 'calc(100vh - 100px)' : '100%',
       display: 'flex',
+      flex: 1,
+      width: '100%',
       background: 'var(--adm-bg-card)',
-      borderRadius: '24px',
-      border: '1px solid var(--adm-border)',
+      borderRadius: 0,
+      border: 'none',
+      borderTop: '1px solid var(--adm-border)',
       overflow: 'hidden',
-      margin: isEmbeddedInFunnel ? '0' : '20px',
-      boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+      margin: 0,
+      boxShadow: 'none',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
       position: 'relative',
     }}>
@@ -395,11 +527,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }}>
         {/* Top Header & Search Bar */}
         <div style={{
-          padding: '16px',
+          padding: isEmbeddedInFunnel ? '12px 16px' : '16px',
           borderBottom: '1px solid var(--adm-border)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: isEmbeddedInFunnel ? '0px' : '12px',
           background: 'var(--adm-bg-input)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -426,16 +558,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             </div>
           </div>
 
-          {/* Quick Filter Tabs: Em Aberto | Meus Leads | Todos */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            background: 'var(--adm-bg-card)',
-            padding: '3px',
-            borderRadius: '10px',
-            border: '1px solid var(--adm-border)',
-          }}>
+          {!isEmbeddedInFunnel && (
+            <>
+              {/* Quick Filter Tabs: Em Aberto | Meus Leads | Todos */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'var(--adm-bg-card)',
+                padding: '3px',
+                borderRadius: '10px',
+                border: '1px solid var(--adm-border)',
+              }}>
             <button
               type="button"
               onClick={() => setQuickFilter('open')}
@@ -627,6 +761,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               )}
             </div>
           </div>
+            </>
+          )}
         </div>
 
         {/* Leads Conversations Scrollable List */}
@@ -764,19 +900,48 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             {originLabel}
                           </span>
                         )}
-                        {hasIcpConfigured(lead) && (
-                          <span style={{
-                            fontSize: '0.58rem',
-                            fontWeight: 700,
-                            padding: '1px 4px',
-                            borderRadius: '4px',
-                            background: lead.mqlLevel === 'top' ? 'rgba(16,185,129,0.12)' : lead.mqlLevel === 'qualified' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
-                            color: lead.mqlLevel === 'top' ? '#10B981' : lead.mqlLevel === 'qualified' ? '#F59E0B' : '#EF4444',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {lead.mqlLevel === 'top' ? 'ICP A' : lead.mqlLevel === 'qualified' ? 'ICP B' : 'ICP C'}
-                          </span>
-                        )}
+                        {hasIcpConfigured(lead) && (() => {
+                          const hasAns = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).some(k => Boolean(lead.mqlAnswers![k])));
+                          const isUndef = !hasAns && (lead.mqlScore === undefined || lead.mqlScore === 0);
+                          if (isUndef) {
+                            return (
+                              <span style={{
+                                fontSize: '0.58rem',
+                                fontWeight: 700,
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: 'var(--adm-bg-card)',
+                                color: 'var(--adm-text-muted)',
+                                border: '1px solid var(--adm-border)',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}>
+                                <IcpTargetUserIcon size={10} color="var(--adm-text-muted)" />
+                                <span>Indefinido</span>
+                              </span>
+                            );
+                          }
+                          const isTop = (lead.mqlScore ?? 0) >= 80 || lead.mqlLevel === 'top';
+                          const isQual = ((lead.mqlScore ?? 0) >= 50 && (lead.mqlScore ?? 0) < 80) || lead.mqlLevel === 'qualified';
+                          const lbl = isTop ? 'ICP A' : isQual ? 'ICP B' : 'ICP C';
+                          const col = isTop ? '#10B981' : isQual ? '#F59E0B' : '#EF4444';
+                          const bgCol = isTop ? 'rgba(16,185,129,0.12)' : isQual ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+                          return (
+                            <span style={{
+                              fontSize: '0.58rem',
+                              fontWeight: 700,
+                              padding: '1px 4px',
+                              borderRadius: '4px',
+                              background: bgCol,
+                              color: col,
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {lbl}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       {/* Avatares do SDR & Closer (Sobrepostos se forem diferentes, Único se for o mesmo, UserPlus se desatribuído) */}
@@ -897,9 +1062,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       {/* ── COLUNA 2: GAVETA LATERAL FICHA DO LEAD (INSPECTOR NO LADO ESQUERDO) ───── */}
       {selectedLead && isInspectorOpen && (
         <div style={{
-          width: '380px',
-          minWidth: '340px',
-          maxWidth: '400px',
+          width: '320px',
+          minWidth: '290px',
+          maxWidth: '340px',
           borderRight: '1px solid var(--adm-border)',
           background: 'var(--adm-bg-card)',
           display: 'flex',
@@ -1015,7 +1180,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             alignItems: 'center',
                             gap: '4px',
                           }}>
-                            <IcpTargetUserIcon size={12} color={icpRating.color} /> {icpRating.label} ({icpRating.score}%)
+                            <IcpTargetUserIcon size={12} color={icpRating.color} /> {icpRating.label} {!icpRating.isUndefined ? `(${icpRating.score}%)` : ''}
                           </span>
                         )}
                       </div>
@@ -1279,36 +1444,49 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               {/* 3. ABA TAREFAS: Exibe tarefas agendadas */}
               {composerTab === 'tasks' && (
-                (!selectedLead?.tasks || selectedLead.tasks.length === 0) ? (
+                combinedLeadTasks.length === 0 ? (
                   <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--adm-text-muted)' }}>
                     <Calendar size={28} style={{ opacity: 0.3, margin: '0 auto 8px auto' }} />
                     <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Nenhuma tarefa agendada</div>
                     <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Agende retornos, confirmações de visita ou ligações no formulário abaixo.</div>
                   </div>
                 ) : (
-                  selectedLead.tasks.map(t => {
+                  combinedLeadTasks.map(t => {
                     const isCompleted = t.status === 'completed';
+                    const isTargetCompleting = completingTask?.id === t.id;
+                    const resolutionVal = t.resolution || t.customProperties?.resolution;
+
                     return (
                       <div
                         key={t.id}
                         style={{
                           padding: '10px 14px',
                           borderRadius: '10px',
-                          background: isCompleted ? 'rgba(16,185,129,0.05)' : 'var(--adm-bg-card)',
-                          border: `1px solid ${isCompleted ? 'rgba(16,185,129,0.3)' : 'var(--adm-border)'}`,
+                          background: isTargetCompleting ? 'var(--adm-accent-bg)' : isCompleted ? 'rgba(16,185,129,0.05)' : 'var(--adm-bg-card)',
+                          border: `1px solid ${isTargetCompleting ? 'var(--adm-accent)' : isCompleted ? 'rgba(16,185,129,0.3)' : 'var(--adm-border)'}`,
                           display: 'flex',
                           alignItems: 'flex-start',
                           justifyContent: 'space-between',
                           gap: '10px',
+                          transition: 'all 0.15s ease',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1, minWidth: 0 }}>
                           <button
                             type="button"
-                            onClick={() => selectedLead && completeLeadTask(selectedLead.id, t.id)}
+                            onClick={() => {
+                              if (!isCompleted) {
+                                setCompletingTask(t);
+                                setTaskResolutionText(resolutionVal || '');
+                              } else if (selectedLead) {
+                                if (updateTask) updateTask(t.id, { status: 'todo' });
+                                completeLeadTask(selectedLead.id, t.id);
+                              }
+                            }}
+                            title={isCompleted ? 'Tarefa concluída' : 'Clique para concluir e registrar resultado'}
                             style={{
-                              background: isCompleted ? '#10B981' : 'transparent',
-                              border: `1.5px solid ${isCompleted ? '#10B981' : 'var(--adm-border)'}`,
+                              background: isCompleted ? '#10B981' : (isTargetCompleting ? 'var(--adm-accent)' : 'transparent'),
+                              border: `1.5px solid ${isCompleted ? '#10B981' : (isTargetCompleting ? 'var(--adm-accent)' : 'var(--adm-border)')}`,
                               borderRadius: '4px',
                               width: '18px',
                               height: '18px',
@@ -1320,9 +1498,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               flexShrink: 0,
                               marginTop: '2px',
                               color: '#FFF',
+                              transition: 'all 0.15s ease',
                             }}
                           >
                             {isCompleted && <Check size={12} />}
+                            {isTargetCompleting && !isCompleted && <Clock size={11} />}
                           </button>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
@@ -1353,18 +1533,34 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 {t.priority === 'high' ? 'Alta' : t.priority === 'medium' ? 'Média' : 'Baixa'}
                               </span>
                             </div>
+
+                            {/* Resolução Salva */}
+                            {resolutionVal && (
+                              <div style={{
+                                marginTop: '6px',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(16, 185, 129, 0.08)',
+                                border: '1px solid rgba(16, 185, 129, 0.25)',
+                                fontSize: '0.70rem',
+                                color: '#10B981',
+                              }}>
+                                <strong>Resolução:</strong> {resolutionVal}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <span style={{
                           fontSize: '0.66rem',
                           fontWeight: 700,
-                          color: isCompleted ? '#10B981' : '#F59E0B',
-                          background: isCompleted ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                          color: isCompleted ? '#10B981' : isTargetCompleting ? 'var(--adm-accent)' : '#F59E0B',
+                          background: isCompleted ? 'rgba(16,185,129,0.1)' : isTargetCompleting ? 'var(--adm-accent-bg)' : 'rgba(245,158,11,0.1)',
+                          border: isTargetCompleting ? '1px solid var(--adm-accent)' : 'none',
                           padding: '2px 6px',
                           borderRadius: '4px',
                           flexShrink: 0,
                         }}>
-                          {isCompleted ? 'Concluída' : 'Pendente'}
+                          {isCompleted ? 'Concluída' : isTargetCompleting ? 'Finalizando...' : 'Pendente'}
                         </span>
                       </div>
                     );
@@ -1488,8 +1684,91 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </button>
               </div>
 
-              {/* 1. COMPOSER: TAREFAS */}
-              {composerTab === 'tasks' ? (
+              {/* 0. COMPOSER: RESOLUÇÃO / RESULTADO DA TAREFA */}
+              {completingTask ? (
+                <form onSubmit={handleFinishCompletingTask} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingBottom: '4px',
+                    borderBottom: '1px solid var(--adm-border)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-accent)' }}>
+                      <CheckSquare size={14} />
+                      <span>Encerrar Tarefa: {completingTask.title || completingTask.description || 'Tarefa'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setCompletingTask(null); setTaskResolutionText(''); }}
+                      title="Cancelar"
+                      style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '2px' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
+                      Resultado / Resolução da Tarefa:
+                    </label>
+                    <textarea
+                      autoFocus
+                      value={taskResolutionText}
+                      onChange={(e) => setTaskResolutionText(e.target.value)}
+                      placeholder="Descreva o desfecho, o que foi conversado ou o resultado deste atendimento..."
+                      rows={2}
+                      className="adm-input"
+                      style={{
+                        width: '100%',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        fontSize: '0.78rem',
+                        color: 'var(--adm-text-title)',
+                        resize: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                      required
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setCompletingTask(null); setTaskResolutionText(''); }}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '5px 12px',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        color: 'var(--adm-text-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        background: '#10B981',
+                        color: '#FFF',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '5px 14px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Check size={13} />
+                      <span>Concluir Tarefa</span>
+                    </button>
+                  </div>
+                </form>
+              ) : composerTab === 'tasks' ? (
                 <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <input
                     type="text"

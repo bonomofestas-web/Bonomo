@@ -46,7 +46,12 @@ export const funnelService = {
         packageOptions: Array.isArray(row.package_options) ? row.package_options : row.packageOptions,
         paymentOptions: Array.isArray(row.payment_options) ? row.payment_options : row.paymentOptions,
         predefinedTags: Array.isArray(row.predefined_tags) ? row.predefined_tags : row.predefinedTags,
-        customFields: Array.isArray(row.custom_fields) ? row.custom_fields : row.customFields,
+        isWonStageEnabled: row.is_won_stage_enabled ?? true,
+        distributionMode: row.distribution_mode || 'manual',
+        assignedSdrIds: Array.isArray(row.assigned_sdr_ids) ? row.assigned_sdr_ids : [],
+        roundRobinNextIndex: row.round_robin_next_index || 0,
+        pinnedAt: row.pinned_at || undefined,
+        order: row.order !== undefined ? Number(row.order) : 0,
         createdAt: row.created_at || new Date().toISOString(),
       }));
     } catch (err) {
@@ -87,6 +92,12 @@ export const funnelService = {
       if (funnel.paymentOptions !== undefined) payload.payment_options = funnel.paymentOptions;
       if (funnel.predefinedTags !== undefined) payload.predefined_tags = funnel.predefinedTags;
       if (funnel.customFields !== undefined) payload.custom_fields = funnel.customFields;
+      if (funnel.isWonStageEnabled !== undefined) payload.is_won_stage_enabled = funnel.isWonStageEnabled;
+      if (funnel.distributionMode !== undefined) payload.distribution_mode = funnel.distributionMode;
+      if (funnel.assignedSdrIds !== undefined) payload.assigned_sdr_ids = funnel.assignedSdrIds;
+      if (funnel.roundRobinNextIndex !== undefined) payload.round_robin_next_index = funnel.roundRobinNextIndex;
+      if (funnel.pinnedAt !== undefined) payload.pinned_at = funnel.pinnedAt || null;
+      if (funnel.order !== undefined) payload.order = funnel.order;
 
       if (isUuid) {
         const { data: updated, error: updateErr } = await supabase
@@ -99,10 +110,50 @@ export const funnelService = {
           return true;
         }
 
+        if (updateErr) {
+          console.warn('⚠️ Tentativa de update completo em commercial_funnels falhou, tentando fallback resiliente com campos principais:', updateErr.message);
+          const fallbackPayload: any = {
+            name: funnel.name,
+            stages: funnel.stages,
+            stages_count: funnel.stagesCount,
+            category: funnel.category,
+            description: funnel.description,
+            icon: funnel.icon,
+            badge: funnel.badge,
+            badge_color: funnel.badgeColor,
+            is_pinned: funnel.isPinned,
+            pinned_at: funnel.pinnedAt,
+            order: funnel.order,
+            is_primary: funnel.isPrimary,
+          };
+          Object.keys(fallbackPayload).forEach(k => fallbackPayload[k] === undefined && delete fallbackPayload[k]);
+
+          const { data: retryUpdated, error: retryErr } = await supabase
+            .from('commercial_funnels')
+            .update(fallbackPayload)
+            .eq('id', funnel.id)
+            .select('id');
+
+          if (!retryErr && retryUpdated && retryUpdated.length > 0) {
+            return true;
+          }
+        }
+
         payload.id = funnel.id;
         const { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
         if (insertErr) {
-          console.error('❌ Erro ao inserir funil no Supabase:', insertErr);
+          console.warn('⚠️ Tentativa de insert completo em commercial_funnels falhou, tentando fallback:', insertErr.message);
+          const fallbackInsert: any = {
+            id: funnel.id,
+            name: funnel.name || 'Novo Funil',
+            venue_id: funnel.venueId,
+            category: funnel.category || 'Marketing Digital',
+            stages: funnel.stages || [],
+            stages_count: funnel.stagesCount || (funnel.stages?.length || 4),
+          };
+          const { error: retryInsErr } = await supabase.from('commercial_funnels').insert(fallbackInsert);
+          if (!retryInsErr) return true;
+          console.error('❌ Erro final ao inserir funil no Supabase:', insertErr);
           return false;
         }
         return true;

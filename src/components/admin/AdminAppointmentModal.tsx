@@ -29,6 +29,7 @@ const STATUS_CONFIG: Record<AppointmentStatus, { label: string; icon: any; color
   confirmed: { label: 'Confirmado', icon: CheckCircle2, color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
   scheduled: { label: 'Agendado', icon: Clock, color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.12)' },
   completed: { label: 'Concluído', icon: Sparkles, color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' },
+  cancelled: { label: 'Cancelado', icon: AlertCircle, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)' },
 };
 
 export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({

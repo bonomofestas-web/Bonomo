@@ -140,7 +140,6 @@ export const venueService = {
       if (venue.leadDistributionMode !== undefined) payload.lead_distribution_mode = venue.leadDistributionMode;
       if (venue.leadDistributionSdrIds !== undefined) payload.lead_distribution_sdr_ids = venue.leadDistributionSdrIds;
       if (venue.roundRobinNextIndex !== undefined) payload.round_robin_next_index = venue.roundRobinNextIndex;
-      if (venue.active !== undefined) payload.active = venue.active;
       if (venue.masterId !== undefined) payload.master_id = venue.masterId;
 
       if (isUuid) {

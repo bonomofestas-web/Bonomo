@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  MoreHorizontal, ArrowUpRight, ArrowDownRight, Target,
+  MoreHorizontal, MoreVertical, ArrowUpRight, ArrowDownRight, Target,
   DollarSign, Award, Users, Clock,
-  Activity, Compass
+  Activity, Compass, Settings, X, Check
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminFilterBar, type FilterState } from './AdminFilterBar';
@@ -10,7 +10,7 @@ import { AdminVenueGoalsModal } from './AdminVenueGoalsModal';
 import { getCollaboratorTimeLogs } from '../../hooks/useActiveTimeTracker';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 import type { AdminTabType } from './AdminSidebar';
-import type { Venue, VenueGoals } from '../../types/admin';
+import type { Venue, VenueGoals, PodiumConfig } from '../../types/admin';
 
 interface AdminDashboardViewProps {
   onNavigateTab?: (tab: AdminTabType) => void;
@@ -29,9 +29,100 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     collaborators, 
     currentUser, 
     activeVenueId,
+    funnels,
   } = useAdminState();
   
   const [selectedVenueForGoals, setSelectedVenueForGoals] = useState<Venue | null>(null);
+
+  // Configuração dos Pódios de SDR e Closer
+  const [podiumConfig, setPodiumConfig] = useState<PodiumConfig>(() => {
+    try {
+      const saved = localStorage.getItem('f5_podium_config_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Erro ao carregar podiumConfig', e);
+    }
+    return {
+      sdr: { funnelId: 'all', stageId: 'scheduled' },
+      closer: { funnelId: 'all', stageId: 'contract_signed' },
+    };
+  });
+
+  const [podiumModalTarget, setPodiumModalTarget] = useState<'sdr' | 'closer' | null>(null);
+  const [tempFunnelId, setTempFunnelId] = useState<string>('all');
+  const [tempStageId, setTempStageId] = useState<string>('scheduled');
+
+  const openPodiumConfigModal = (target: 'sdr' | 'closer') => {
+    const current = podiumConfig[target] || { funnelId: 'all', stageId: target === 'sdr' ? 'scheduled' : 'contract_signed' };
+    setTempFunnelId(current.funnelId || 'all');
+    setTempStageId(current.stageId || (target === 'sdr' ? 'scheduled' : 'contract_signed'));
+    setPodiumModalTarget(target);
+  };
+
+  const handleSavePodiumConfig = () => {
+    if (!podiumModalTarget) return;
+    const updated: PodiumConfig = {
+      ...podiumConfig,
+      [podiumModalTarget]: {
+        funnelId: tempFunnelId,
+        stageId: tempStageId,
+      },
+    };
+    setPodiumConfig(updated);
+    try {
+      localStorage.setItem('f5_podium_config_v1', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Erro ao salvar podiumConfig', e);
+    }
+    setPodiumModalTarget(null);
+  };
+
+  const handleResetPodiumConfig = () => {
+    if (!podiumModalTarget) return;
+    const defaultStage = podiumModalTarget === 'sdr' ? 'scheduled' : 'contract_signed';
+    const updated: PodiumConfig = {
+      ...podiumConfig,
+      [podiumModalTarget]: {
+        funnelId: 'all',
+        stageId: defaultStage,
+      },
+    };
+    setPodiumConfig(updated);
+    try {
+      localStorage.setItem('f5_podium_config_v1', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Erro ao salvar podiumConfig', e);
+    }
+    setPodiumModalTarget(null);
+  };
+
+  const getStageDisplayLabel = (target: 'sdr' | 'closer') => {
+    const cfg = podiumConfig[target];
+    if (!cfg) return target === 'sdr' ? 'Reuniões & Degustações' : 'Faturamento & Vendas';
+    
+    if (cfg.funnelId && cfg.funnelId !== 'all') {
+      const fn = (funnels || []).find(f => f.id === cfg.funnelId);
+      const stg = fn?.stages?.find(s => s.id === cfg.stageId);
+      if (stg) return stg.name;
+    }
+    switch (cfg.stageId) {
+      case 'scheduled':
+      case 'meeting_scheduled':
+      case 'visita_agendada':
+        return 'Reuniões Agendadas';
+      case 'decision':
+      case 'degustacao':
+        return 'Em Análise / Degustação';
+      case 'contract_signed':
+      case 'deal_closed':
+      case 'contrato_fechado':
+        return 'Contratos Fechados';
+      case 'in_negotiation':
+        return 'Em Atendimento';
+      default:
+        return cfg.stageId || (target === 'sdr' ? 'Reuniões & Degustações' : 'Faturamento & Vendas');
+    }
+  };
   
   // High-performance filter state — defaults to 7 days
   const [filterState, setFilterState] = useState<FilterState>({
@@ -263,14 +354,33 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       .sort((a, b) => b.activeSeconds - a.activeSeconds);
   }, [collaborators]);
 
-  // SDR Rankings (Only performers with meetings > 0)
+  // SDR Rankings (Only performers with meetings > 0 or matching configured stage)
   const sdrRankings = useMemo(() => {
+    const targetFunnelId = podiumConfig.sdr?.funnelId || 'all';
+    const targetStageId = podiumConfig.sdr?.stageId || 'scheduled';
+
     return collaborators
       .filter(c => c.active && (c.role === 'sdr' || c.role === 'crm' || c.role === 'admin' || c.role === 'master'))
       .map(sdr => {
-        const sdrLeads = scopedLeads.filter(l => l.sdrId === sdr.id || l.assignedTo === sdr.name);
-        const meetings = sdrLeads.filter(l => l.stage === 'meeting_scheduled' || l.stage === 'contract_signed').length;
-        const sales = sdrLeads.filter(l => l.stage === 'contract_signed').length;
+        const sdrLeads = scopedLeads.filter(l => {
+          const isAssigned = l.sdrId === sdr.id || l.assignedTo === sdr.name;
+          if (!isAssigned) return false;
+          if (targetFunnelId !== 'all' && l.funnelId && l.funnelId !== targetFunnelId) return false;
+          return true;
+        });
+
+        const meetings = sdrLeads.filter(l => {
+          const s = l.stage as string;
+          if (targetStageId === 'scheduled' || targetStageId === 'meeting_scheduled') {
+            return s === 'scheduled' || s === 'meeting_scheduled' || s === 'visita_agendada' || s === 'decision' || s === 'contract_signed' || s === 'deal_closed';
+          }
+          return s === targetStageId;
+        }).length;
+
+        const sales = sdrLeads.filter(l => {
+          const s = l.stage as string;
+          return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
+        }).length;
         const vName = venues.find(v => v.id === sdr.venueId)?.name || 'Rede Geral';
         return {
           id: sdr.id,
@@ -286,14 +396,28 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       .filter(sdr => sdr.meetingsScheduled > 0)
       .sort((a, b) => b.meetingsScheduled - a.meetingsScheduled || b.totalLeads - a.totalLeads)
       .slice(0, 5);
-  }, [collaborators, scopedLeads, venues]);
+  }, [collaborators, scopedLeads, venues, podiumConfig.sdr]);
 
   // Closer Rankings (Only performers with revenue or sales > 0)
   const closerRankings = useMemo(() => {
+    const targetFunnelId = podiumConfig.closer?.funnelId || 'all';
+    const targetStageId = podiumConfig.closer?.stageId || 'contract_signed';
+
     return collaborators
       .filter(c => c.active && (c.role === 'closer' || c.role === 'crm' || c.role === 'admin' || c.role === 'master'))
       .map(closer => {
-        const closerSales = scopedLeads.filter(l => (l.closerId === closer.id || l.assignedTo === closer.name) && l.stage === 'contract_signed');
+        const closerSales = scopedLeads.filter(l => {
+          const isAssigned = l.closerId === closer.id || l.assignedTo === closer.name;
+          if (!isAssigned) return false;
+          if (targetFunnelId !== 'all' && l.funnelId && l.funnelId !== targetFunnelId) return false;
+
+          const s = l.stage as string;
+          if (targetStageId === 'contract_signed' || targetStageId === 'deal_closed') {
+            return s === 'contract_signed' || s === 'deal_closed' || s === 'contrato_fechado';
+          }
+          return s === targetStageId;
+        });
+
         const rev = closerSales.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
         const vName = venues.find(v => v.id === closer.venueId)?.name || 'Rede Geral';
         return {
@@ -310,7 +434,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       .filter(closer => closer.revenue > 0 || closer.salesCount > 0)
       .sort((a, b) => b.revenue - a.revenue || b.salesCount - a.salesCount)
       .slice(0, 5);
-  }, [collaborators, scopedLeads, venues]);
+  }, [collaborators, scopedLeads, venues, podiumConfig.closer]);
 
   const sdrPodium = {
     first: sdrRankings[0] || null,
@@ -906,23 +1030,53 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🎯 Pódio de SDRs (Reuniões & Degustações)</span>
+                <span>🎯 Pódio de SDRs ({getStageDisplayLabel('sdr')})</span>
               </h3>
               <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
-                Campeões em agendamento de reuniões e qualificação
+                Campeões em agendamento de reuniões e avanço no funil
               </p>
             </div>
-            <span style={{
-              background: 'rgba(139, 92, 246, 0.15)',
-              color: '#8B5CF6',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-            }}>
-              SDRs Top Performers
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                background: 'rgba(139, 92, 246, 0.15)',
+                color: '#8B5CF6',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+              }}>
+                SDRs Top Performers
+              </span>
+              <button
+                type="button"
+                onClick={() => openPodiumConfigModal('sdr')}
+                title="Configurar Funil e Etapa Alvo do Pódio de SDR"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-muted)',
+                  borderRadius: '8px',
+                  width: '28px',
+                  height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#8B5CF6';
+                  e.currentTarget.style.borderColor = '#8B5CF6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-text-muted)';
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                }}
+              >
+                <MoreVertical size={15} />
+              </button>
+            </div>
           </div>
 
           {/* 3D Podium Display SDRs */}
@@ -1024,23 +1178,53 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🏆 Pódio de Closers (Faturamento & Vendas)</span>
+                <span>🏆 Pódio de Closers ({getStageDisplayLabel('closer')})</span>
               </h3>
               <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0' }}>
                 Campeões em conversão e receita fechada
               </p>
             </div>
-            <span style={{
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#10B981',
-              padding: '4px 10px',
-              borderRadius: '20px',
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-            }}>
-              Closers Top Performers
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10B981',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+              }}>
+                Closers Top Performers
+              </span>
+              <button
+                type="button"
+                onClick={() => openPodiumConfigModal('closer')}
+                title="Configurar Funil e Etapa Alvo do Pódio de Closer"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-muted)',
+                  borderRadius: '8px',
+                  width: '28px',
+                  height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#10B981';
+                  e.currentTarget.style.borderColor = '#10B981';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-text-muted)';
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                }}
+              >
+                <MoreVertical size={15} />
+              </button>
+            </div>
           </div>
 
           {/* 3D Podium Display Closers */}
@@ -1136,6 +1320,245 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         onClose={() => setSelectedVenueForGoals(null)}
         venue={selectedVenueForGoals}
       />
+
+      {/* Modal de Configuração de Pódio (SDR / Closer) */}
+      {podiumModalTarget && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '480px',
+            padding: '24px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
+            animation: 'fadeIn 0.18s ease-out',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '18px',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Settings size={18} color={podiumModalTarget === 'sdr' ? '#8B5CF6' : '#10B981'} />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    {podiumModalTarget === 'sdr' ? 'Configurar Meta do Pódio de SDRs' : 'Configurar Meta do Pódio de Closers'}
+                  </h3>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                  {podiumModalTarget === 'sdr' 
+                    ? 'Selecione qual funil e qual etapa de avanço contabiliza o resultado dos SDRs no pódio.'
+                    : 'Selecione qual funil e qual etapa representa a meta de conversão dos Closers no pódio.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPodiumModalTarget(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Seletor de Funil */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                Funil Comercial
+              </label>
+              <select
+                value={tempFunnelId}
+                onChange={(e) => {
+                  const newFunnelId = e.target.value;
+                  setTempFunnelId(newFunnelId);
+                  if (newFunnelId === 'all') {
+                    setTempStageId(podiumModalTarget === 'sdr' ? 'scheduled' : 'contract_signed');
+                  } else {
+                    const fn = (funnels || []).find(f => f.id === newFunnelId);
+                    if (fn && fn.stages && fn.stages.length > 0) {
+                      setTempStageId(fn.stages[0].id);
+                    }
+                  }
+                }}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '100%',
+                }}
+              >
+                <option value="all">🌐 Todos os Funis Comerciais</option>
+                {(funnels || []).map(fn => (
+                  <option key={fn.id} value={fn.id}>{fn.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Seletor de Etapa Alvo */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                Etapa Alvo da Meta
+              </label>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                maxHeight: '220px',
+                overflowY: 'auto',
+                paddingRight: '4px',
+              }}>
+                {(() => {
+                  let stagesList: { id: string; name: string; color?: string }[] = [];
+                  if (tempFunnelId !== 'all') {
+                    const fn = (funnels || []).find(f => f.id === tempFunnelId);
+                    stagesList = (fn?.stages || []).map(s => ({ id: s.id, name: s.name, color: s.color }));
+                  } else {
+                    stagesList = [
+                      { id: 'scheduled', name: 'Reunião Agendada / Agendamento', color: '#8B5CF6' },
+                      { id: 'decision', name: 'Em Análise / Degustação / Visita', color: '#F97316' },
+                      { id: 'in_negotiation', name: 'Em Atendimento / Negociação', color: '#3B82F6' },
+                      { id: 'contract_signed', name: 'Contrato Assinado / Ganho', color: '#10B981' },
+                      { id: 'deal_closed', name: 'Venda Fechada / Finalizado', color: '#10B981' },
+                    ];
+                  }
+
+                  return stagesList.map(stg => {
+                    const isSelected = tempStageId === stg.id;
+                    return (
+                      <button
+                        key={stg.id}
+                        type="button"
+                        onClick={() => setTempStageId(stg.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                          border: `1px solid ${isSelected ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{
+                            width: '9px',
+                            height: '9px',
+                            borderRadius: '50%',
+                            background: stg.color || 'var(--adm-accent)',
+                          }} />
+                          <span style={{
+                            fontSize: '0.78rem',
+                            fontWeight: isSelected ? 800 : 500,
+                            color: isSelected ? 'var(--adm-text-title)' : 'var(--adm-text-body)',
+                          }}>
+                            {stg.name}
+                          </span>
+                        </div>
+                        {isSelected && <Check size={14} color="var(--adm-accent)" />}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--adm-border)',
+              marginTop: '4px',
+            }}>
+              <button
+                type="button"
+                onClick={handleResetPodiumConfig}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Restaurar padrão
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPodiumModalTarget(null)}
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePodiumConfig}
+                  style={{
+                    background: podiumModalTarget === 'sdr'
+                      ? 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)'
+                      : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    border: 'none',
+                    color: '#FFF',
+                    borderRadius: '8px',
+                    padding: '6px 16px',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  <Check size={14} />
+                  <span>Salvar Meta</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @media (max-width: 900px) {

@@ -8,9 +8,10 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { Lead, CrmStage, AdminTask } from '../../types/admin';
+import type { Lead, CrmStage, AdminTask, TaskStatus } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
   initialLeadId?: string;
@@ -45,7 +46,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     leads, venues, collaborators, currentUser, activeVenueId,
     updateLeadStage, closeLeadSaleWithValue, addLeadNote,
     assignLeadSdr,
-    tasks, toggleTaskStatus, updateTask, deleteTask
+    tasks, addTask, updateTask, deleteTask, completeTaskWithFeedback
   } = useAdminState();
 
   // ── Column 1 filter tabs ──────────────────────────────────────────────────
@@ -60,10 +61,13 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const [noteText, setNoteText] = useState('');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
-  // ── Task detail modal state ────────────────────────────────────────────────
+  // ── Task detail modal & completion state ───────────────────────────────────
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<AdminTask | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
+  const [completingTask, setCompletingTask] = useState<AdminTask | null>(null);
+  const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [quickTaskDueDate, setQuickTaskDueDate] = useState('');
 
   useEffect(() => {
     if (initialLeadId) {
@@ -141,8 +145,64 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
 
   const leadTasks = useMemo(() => {
     if (!currentLead) return [];
-    return tasks.filter(t => t.leadId === currentLead.id || t.customProperties?.leadId === currentLead.id || (t as any).commercialLeadId === currentLead.id);
-  }, [tasks, currentLead?.id]);
+    return tasks.filter(t => 
+      t.leadId === currentLead.id || 
+      t.customProperties?.leadId === currentLead.id || 
+      (t as any).commercialLeadId === currentLead.id ||
+      (currentLead.debutanteId && (t.debutanteId === currentLead.debutanteId || t.customProperties?.clientId === currentLead.debutanteId)) ||
+      (currentLead.phone && t.customProperties?.phone === currentLead.phone) ||
+      (currentLead.tasks && currentLead.tasks.some(lt => lt.id === t.id))
+    );
+  }, [tasks, currentLead?.id, currentLead?.debutanteId, currentLead?.phone, currentLead?.tasks]);
+
+  const handleTaskStageChange = (task: AdminTask, newStatus: TaskStatus) => {
+    if (newStatus === 'completed') {
+      setCompletingTask(task);
+    } else {
+      updateTask(task.id, {
+        status: newStatus,
+        customStatusId: newStatus === 'in_progress' ? 'st_in_progress' : 'st_todo',
+        completedAt: undefined,
+      });
+    }
+  };
+
+  const handleQuickCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentLead || !quickTaskTitle.trim()) return;
+
+    addTask({
+      databaseId: 'db_followup',
+      title: quickTaskTitle.trim(),
+      description: '',
+      content: '',
+      dueDate: quickTaskDueDate.trim() || new Date().toISOString().split('T')[0],
+      dueTime: '14:00',
+      status: 'todo',
+      customStatusId: 'st_todo',
+      priority: 'medium',
+      type: 'followup',
+      customType: 'Follow-up WhatsApp',
+      createdById: currentUser?.id || 'system',
+      createdByName: currentUser?.name || 'Comercial',
+      assignedToIds: currentUser?.id ? [currentUser.id] : [],
+      leadId: currentLead.id,
+      leadName: currentLead.name,
+      debutanteId: currentLead.debutanteId || undefined,
+      debutanteName: currentLead.debutanteName || undefined,
+      venueId: currentLead.venueId,
+      customProperties: {
+        leadId: currentLead.id,
+        leadName: currentLead.name,
+        venueId: currentLead.venueId,
+        debutanteId: currentLead.debutanteId || undefined,
+        clientId: currentLead.debutanteId || undefined,
+      },
+    });
+
+    setQuickTaskTitle('');
+    setQuickTaskDueDate('');
+  };
 
   const leadActivities = currentLead?.activities || [];
 
@@ -726,8 +786,14 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
                               <button
                                 type="button"
-                                onClick={() => toggleTaskStatus(t.id)}
-                                title={isCompleted ? 'Marcar como pendente' : 'Marcar como concluída'}
+                                onClick={() => {
+                                  if (isCompleted) {
+                                    handleTaskStageChange(t, 'todo');
+                                  } else {
+                                    setCompletingTask(t);
+                                  }
+                                }}
+                                title={isCompleted ? 'Marcar como pendente' : 'Finalizar tarefa (Registrar Feedback)'}
                                 style={{
                                   background: isCompleted ? '#10B981' : 'transparent',
                                   border: `1.5px solid ${isCompleted ? '#10B981' : 'var(--adm-border)'}`,
@@ -801,6 +867,81 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                             </div>
                           </div>
 
+                          {/* Seletor de Etapas da Tarefa: Não Iniciada | Em Execução | Finalizada */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              background: 'var(--adm-bg-input)',
+                              padding: '2px 3px',
+                              borderRadius: '7px',
+                              border: '1px solid var(--adm-border)',
+                            }}>
+                              <button
+                                type="button"
+                                onClick={() => handleTaskStageChange(t, 'todo')}
+                                style={{
+                                  background: (t.status === 'todo' || !t.status) ? '#64748B' : 'transparent',
+                                  color: (t.status === 'todo' || !t.status) ? '#FFFFFF' : 'var(--adm-text-muted)',
+                                  border: 'none',
+                                  borderRadius: '5px',
+                                  padding: '2px 7px',
+                                  fontSize: '0.67rem',
+                                  fontWeight: (t.status === 'todo' || !t.status) ? 800 : 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.12s ease',
+                                }}
+                              >
+                                Não Iniciada
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleTaskStageChange(t, 'in_progress')}
+                                style={{
+                                  background: t.status === 'in_progress' ? '#2563EB' : 'transparent',
+                                  color: t.status === 'in_progress' ? '#FFFFFF' : 'var(--adm-text-muted)',
+                                  border: 'none',
+                                  borderRadius: '5px',
+                                  padding: '2px 7px',
+                                  fontSize: '0.67rem',
+                                  fontWeight: t.status === 'in_progress' ? 800 : 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.12s ease',
+                                }}
+                              >
+                                Em Execução
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleTaskStageChange(t, 'completed')}
+                                style={{
+                                  background: t.status === 'completed' ? '#10B981' : 'transparent',
+                                  color: t.status === 'completed' ? '#FFFFFF' : 'var(--adm-text-muted)',
+                                  border: 'none',
+                                  borderRadius: '5px',
+                                  padding: '2px 7px',
+                                  fontSize: '0.67rem',
+                                  fontWeight: t.status === 'completed' ? 800 : 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.12s ease',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                {t.status === 'completed' && <CheckCircle2 size={10} strokeWidth={2.5} />}
+                                <span>Finalizada</span>
+                              </button>
+                            </div>
+
+                            {t.resolution && (
+                              <span style={{ fontSize: '0.66rem', color: '#10B981', fontWeight: 600 }}>
+                                ✓ Feedback registrado
+                              </span>
+                            )}
+                          </div>
+
                           {/* Campo de Resolução / Resultado Inline (auto-save on blur) */}
                           <div style={{ marginTop: '2px' }}>
                             <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '2px' }}>
@@ -843,52 +984,137 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               )}
             </div>
 
-            {/* Caixa de Digitação Inferior (Modo Nota Interna Automático) */}
-            <div style={{
-              padding: '12px 16px',
-              borderTop: '1px solid var(--adm-border)',
-              background: 'var(--adm-bg-card)',
-              flexShrink: 0,
-            }}>
-              <form onSubmit={handleSendInternalNote} style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  placeholder="Escrever uma nota interna ou registro de atendimento..."
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.8rem',
-                    outline: 'none',
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={!noteText.trim()}
-                  style={{
-                    background: noteText.trim() ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
-                    color: noteText.trim() ? '#000' : 'var(--adm-text-muted)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '8px 16px',
-                    fontSize: '0.76rem',
-                    fontWeight: 800,
-                    cursor: noteText.trim() ? 'pointer' : 'not-allowed',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <span>Salvar Nota</span>
-                  <Send size={12} />
-                </button>
-              </form>
-            </div>
+            {/* Barra Inferior Dinâmica: Tarefa Rápida se Tab Tarefas; Nota Interna se outras tabs */}
+            {activeTabCol3 === 'tasks' ? (
+              <div style={{
+                padding: '10px 16px',
+                borderTop: '1px solid var(--adm-border)',
+                background: 'var(--adm-bg-card)',
+                flexShrink: 0,
+              }}>
+                <form onSubmit={handleQuickCreateTask} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Adicionar tarefa rápida para este lead... (Pressione Enter)"
+                    value={quickTaskTitle}
+                    onChange={(e) => setQuickTaskTitle(e.target.value)}
+                    style={{
+                      flex: 1,
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <input
+                    type="date"
+                    value={quickTaskDueDate}
+                    onChange={(e) => setQuickTaskDueDate(e.target.value)}
+                    style={{
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      padding: '7px 10px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.74rem',
+                      outline: 'none',
+                      width: '130px',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!quickTaskTitle.trim()}
+                    style={{
+                      background: quickTaskTitle.trim() ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
+                      color: quickTaskTitle.trim() ? '#000' : 'var(--adm-text-muted)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 14px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      cursor: quickTaskTitle.trim() ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Plus size={13} />
+                    <span>Criar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTask(null);
+                      setIsTaskModalOpen(true);
+                    }}
+                    title="Abrir formulário completo de tarefa"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--adm-border)',
+                      color: 'var(--adm-text-title)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Mais Detalhes
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div style={{
+                padding: '12px 16px',
+                borderTop: '1px solid var(--adm-border)',
+                background: 'var(--adm-bg-card)',
+                flexShrink: 0,
+              }}>
+                <form onSubmit={handleSendInternalNote} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Escrever uma nota interna ou registro de atendimento..."
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    style={{
+                      flex: 1,
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!noteText.trim()}
+                    style={{
+                      background: noteText.trim() ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
+                      color: noteText.trim() ? '#000' : 'var(--adm-text-muted)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      cursor: noteText.trim() ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span>Salvar Nota</span>
+                    <Send size={12} />
+                  </button>
+                </form>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -932,6 +1158,20 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
             setTaskToDelete(null);
           }}
           onClose={() => setTaskToDelete(null)}
+        />
+      )}
+
+      {/* Modal Finalizar Tarefa com Feedback */}
+      {completingTask && (
+        <AdminTaskCompletionModal
+          isOpen={Boolean(completingTask)}
+          taskTitle={completingTask.title || completingTask.description || 'Tarefa'}
+          initialFeedback={completingTask.resolution || completingTask.customProperties?.resolution || ''}
+          onClose={() => setCompletingTask(null)}
+          onConfirm={(feedback) => {
+            completeTaskWithFeedback(completingTask.id, feedback);
+            setCompletingTask(null);
+          }}
         />
       )}
 

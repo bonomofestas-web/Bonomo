@@ -98,6 +98,14 @@ export const leadService = {
           mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
           mqlLevel: row.mql_level || undefined,
           mqlAnswers: row.mql_answers || undefined,
+          visitCommitment: row.visit_commitment || undefined,
+          tastingCommitment: row.tasting_commitment || undefined,
+          customFieldValues: row.custom_field_values || {},
+          createdBy: row.created_by || undefined,
+          createdByName: row.created_by_name || undefined,
+          createdByAvatar: row.created_by_avatar || undefined,
+          cpf: row.cpf || undefined,
+          birthday: row.birthday || undefined,
           participants: leadParticipants,
           tasks: [],
           activities: leadActivities,
@@ -128,8 +136,11 @@ export const leadService = {
       if (lead.funnelEnteredAt !== undefined) payload.funnel_entered_at = lead.funnelEnteredAt;
       
       if (lead.sourceId !== undefined) payload.source_id = isUuid(lead.sourceId) ? lead.sourceId : null;
-      if (lead.source !== undefined) payload.source = lead.source;
-      if (lead.sourceName !== undefined) payload.source_name = lead.sourceName;
+      if (lead.sourceName !== undefined) {
+        payload.source_name = lead.sourceName;
+      } else if (lead.source !== undefined) {
+        payload.source_name = String(lead.source);
+      }
       if (lead.subSource !== undefined) payload.sub_source = lead.subSource;
 
       if (lead.mqlScore !== undefined) payload.mql_score = lead.mqlScore;
@@ -149,9 +160,13 @@ export const leadService = {
         payload.party_date = lead.partyDate || lead.eventDate;
       }
       
+      const DEFAULT_COMMERCIAL_FUNNEL_ID = 'f1111111-1111-1111-1111-111111111111';
       if (lead.venueId !== undefined) payload.venue_id = isUuid(lead.venueId) ? lead.venueId : null;
       if (lead.venueName !== undefined) payload.venue_name = lead.venueName;
-      if ((lead as any).funnelId !== undefined) payload.funnel_id = isUuid((lead as any).funnelId) ? (lead as any).funnelId : null;
+      if ((lead as any).funnelId !== undefined) {
+        const rawFId = (lead as any).funnelId;
+        payload.funnel_id = isUuid(rawFId) ? rawFId : (rawFId === 'comercial' || !rawFId ? DEFAULT_COMMERCIAL_FUNNEL_ID : null);
+      }
       if (lead.debutanteId !== undefined) payload.debutante_id = isUuid(lead.debutanteId) ? lead.debutanteId : null;
       if (lead.debutanteName !== undefined) payload.debutante_name = lead.debutanteName;
       if (lead.debutanteSlug !== undefined) payload.debutante_slug = lead.debutanteSlug;
@@ -172,6 +187,14 @@ export const leadService = {
       if (lead.paymentMethod !== undefined) payload.payment_method = lead.paymentMethod;
       if (lead.temperature !== undefined) payload.temperature = lead.temperature;
       if (lead.tags !== undefined) payload.tags = lead.tags;
+      if (lead.visitCommitment !== undefined) payload.visit_commitment = lead.visitCommitment;
+      if (lead.tastingCommitment !== undefined) payload.tasting_commitment = lead.tastingCommitment;
+      if (lead.customFieldValues !== undefined) payload.custom_field_values = lead.customFieldValues;
+      if (lead.createdBy !== undefined) payload.created_by = (lead.createdBy && isUuid(lead.createdBy)) ? lead.createdBy : null;
+      if (lead.createdByName !== undefined) payload.created_by_name = lead.createdByName || null;
+      if (lead.createdByAvatar !== undefined) payload.created_by_avatar = lead.createdByAvatar || null;
+      if (lead.cpf !== undefined) payload.cpf = lead.cpf || null;
+      if (lead.birthday !== undefined) payload.birthday = lead.birthday || null;
 
       if (isUuid(lead.id)) {
         // Tenta fazer UPDATE no registro existente
@@ -185,12 +208,35 @@ export const leadService = {
           return true;
         }
 
+        // Fallback resiliente: se falhou por coluna ausente antes da migration, retenta sem os campos novos
+        if (updateErr) {
+          console.warn('⚠️ Tentativa de update completo em leads falhou, aplicando fallback resiliente:', updateErr.message);
+          const corePayload = { ...payload };
+          delete corePayload.visit_commitment;
+          delete corePayload.tasting_commitment;
+          delete corePayload.custom_field_values;
+          delete corePayload.funnel_entered_at;
+
+          const { data: retryUpdated, error: retryErr } = await supabase
+            .from('leads')
+            .update(corePayload)
+            .eq('id', lead.id)
+            .select('id');
+
+          if (!retryErr && retryUpdated && retryUpdated.length > 0) {
+            return true;
+          }
+        }
+
         // Se não existia ainda, prepara payload completo para INSERT
         payload.id = lead.id;
         if (!payload.name) payload.name = lead.name || 'Sem nome';
         if (!payload.phone) payload.phone = lead.phone || '';
-        if (!payload.venue_id) payload.venue_id = 'a1111111-1111-1111-1111-111111111111';
-        if (!payload.funnel_id) payload.funnel_id = 'f1111111-1111-1111-1111-111111111111';
+        if (payload.venue_id === undefined && isUuid(lead.venueId)) payload.venue_id = lead.venueId;
+        if (payload.funnel_id === undefined || payload.funnel_id === null) {
+          const rawFId = (lead as any).funnelId;
+          payload.funnel_id = isUuid(rawFId) ? rawFId : DEFAULT_COMMERCIAL_FUNNEL_ID;
+        }
         if (payload.stage === undefined) payload.stage = 'new_lead';
 
         const { error: insertErr } = await supabase.from('leads').insert(payload);
@@ -264,6 +310,10 @@ export const leadService = {
       console.error('❌ Falha em leadService.addParticipant:', err);
       return false;
     }
+  },
+
+  async update(id: string, updates: Partial<Lead>): Promise<boolean> {
+    return this.upsert({ id, ...updates });
   },
 
   async delete(id: string): Promise<boolean> {

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  ChevronDown, X, Plus, Trash2, Zap, Copy, MessageSquare, 
+  ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, MessageSquare, 
   ShieldAlert, Sparkles, AlertTriangle, Building2, Radio, Link2, FileText, Settings,
   Inbox, Clock, Calendar, DollarSign, XCircle, Users, Award, Trophy, PhoneCall,
   PartyPopper, CheckCircle2, Target, Layers, Package, CreditCard, Tag, Sliders,
-  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter
+  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter, RefreshCw
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
@@ -92,6 +92,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 }) => {
   const { 
     currentUser,
+    collaborators,
     funnels, 
     venues,
     sources,
@@ -144,6 +145,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   // Local Form states (Only saved when clicking "Salvar")
   const [funnelName, setFunnelName] = useState('');
   const [isEntryStageActive, setIsEntryStageActive] = useState(false);
+  const [isWonStageEnabled, setIsWonStageEnabled] = useState(true);
+  const [distributionMode, setDistributionMode] = useState<'manual' | 'round_robin'>('manual');
+  const [assignedSdrIds, setAssignedSdrIds] = useState<string[]>([]);
   const [detectDuplicates, setDetectDuplicates] = useState(true);
   const [duplicateRuleConfig, setDuplicateRuleConfig] = useState<FunnelDuplicateRuleConfig>({
     matchPhone: true,
@@ -154,6 +158,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [stages, setStages] = useState<FunnelStageConfig[]>([]);
   const [activeEditingHintStageId, setActiveEditingHintStageId] = useState<string | null>(null);
   const [activeIconPickerStageId, setActiveIconPickerStageId] = useState<string | null>(null);
+
+  // Estados de Gatilhos / Automação da Etapa
+  const [activeTriggerStageId, setActiveTriggerStageId] = useState<string | null>(null);
+  const [selectedTargetFunnelId, setSelectedTargetFunnelId] = useState<string>('');
+  const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -254,6 +263,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setFunnelName(activeFunnel.name || '');
     const entryActive = Boolean(activeFunnel.isEntryStageActive);
     setIsEntryStageActive(entryActive);
+    setIsWonStageEnabled(activeFunnel.isWonStageEnabled !== false);
+    setDistributionMode(activeFunnel.distributionMode || 'manual');
+    setAssignedSdrIds(activeFunnel.assignedSdrIds || []);
     setDetectDuplicates(activeFunnel.detectDuplicates !== false);
     setDuplicateRuleConfig(activeFunnel.duplicateRuleConfig || {
       matchPhone: true,
@@ -327,12 +339,17 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       if (!hasEntry) {
         finalStages = [ENTRY_STAGE_DEF, ...finalStages];
       }
+    } else {
+      finalStages = finalStages.filter(s => s.id !== 'new_lead' && s.id !== 'onboarding' && !s.name.toLowerCase().includes('entrada'));
     }
     finalStages = finalStages.map((s, idx) => ({ ...s, order: idx }));
 
     updateFunnel(activeFunnel.id, {
       name: funnelName.trim() || activeFunnel.name,
       isEntryStageActive,
+      isWonStageEnabled,
+      distributionMode,
+      assignedSdrIds,
       detectDuplicates,
       duplicateRuleConfig,
       stages: finalStages,
@@ -405,6 +422,22 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     if (confirm(`Deseja remover a etapa "${target?.name}"?`)) {
       setStages(prev => prev.filter(s => s.id !== stageId));
     }
+  };
+
+  const handleMoveStage = (stageId: string, direction: 'left' | 'right') => {
+    setStages(prev => {
+      const stageIdx = prev.findIndex(s => s.id === stageId);
+      if (stageIdx === -1) return prev;
+      const targetIdx = direction === 'left' ? stageIdx - 1 : stageIdx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+
+      const next = [...prev];
+      const temp = next[stageIdx];
+      next[stageIdx] = next[targetIdx];
+      next[targetIdx] = temp;
+
+      return next.map((s, idx) => ({ ...s, order: idx }));
+    });
   };
 
   const handleSaveHint = (stageId: string, hint: string) => {
@@ -494,14 +527,47 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   };
 
   const displayedStages = useMemo(() => {
-    if (isEntryStageActive) return stages;
-    return stages.filter((s, idx) => {
+    let list = isEntryStageActive ? stages : stages.filter((s, idx) => {
       if (idx === 0 && (s.id === 'new_lead' || s.id === 'onboarding' || s.name.toLowerCase().includes('entrada'))) {
         return false;
       }
       return true;
     });
-  }, [stages, isEntryStageActive]);
+    if (!isWonStageEnabled) {
+      list = list.filter(s => !s.isWon && s.id !== 'deal_closed' && s.id !== 'contrato_fechado');
+    }
+    return list;
+  }, [stages, isEntryStageActive, isWonStageEnabled]);
+
+  const handleSaveTransferTrigger = (stageId: string) => {
+    if (!selectedTargetFunnelId) return;
+    const newTrigger = {
+      id: `trig_${Date.now()}`,
+      type: 'move_to_funnel' as const,
+      label: 'Transferência de Funil',
+      targetFunnelId: selectedTargetFunnelId,
+      targetStageId: selectedTargetStageId,
+    };
+    setStages(prev => prev.map(s => {
+      if (s.id !== stageId) return s;
+      const existing = (s.triggers || []).filter(t => t.type !== 'move_to_funnel');
+      return {
+        ...s,
+        triggers: [...existing, newTrigger],
+      };
+    }));
+    setActiveTriggerStageId(null);
+  };
+
+  const handleRemoveTrigger = (stageId: string, triggerId: string) => {
+    setStages(prev => prev.map(s => {
+      if (s.id !== stageId) return s;
+      return {
+        ...s,
+        triggers: (s.triggers || []).filter(t => t.id !== triggerId),
+      };
+    }));
+  };
 
   if (!canConfigure) {
     return (
@@ -880,6 +946,184 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               )}
             </div>
 
+            {/* Habilitar Etapa de Ganho no Funil */}
+            <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Habilitar Etapa de Ganho</span>
+                <input 
+                  type="checkbox" 
+                  checked={isWonStageEnabled} 
+                  onChange={(e) => setIsWonStageEnabled(e.target.checked)} 
+                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent, #3B82F6)' }} 
+                />
+              </div>
+              <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
+                {isWonStageEnabled 
+                  ? 'Este funil permite conclusão de vendas (etapa Ganho ativa).' 
+                  : 'Funil de Passagem / Qualificação: leads são apenas qualificados e transferidos ou dados como perda.'}
+              </p>
+            </div>
+
+            {/* Distribuição de Leads no Funil (Fila Livre vs Roleta Automática) */}
+            <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Users size={15} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Distribuição de Leads</span>
+                </div>
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: distributionMode === 'round_robin' ? '#10B981' : '#3B82F6',
+                  border: `1px solid ${distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                }}>
+                  {distributionMode === 'round_robin' ? 'Roleta Ativa' : 'Fila Livre'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setDistributionMode('manual')}
+                  style={{
+                    padding: '8px 6px',
+                    borderRadius: '8px',
+                    border: `1px solid ${distributionMode === 'manual' ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-border)'}`,
+                    background: distributionMode === 'manual' ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                    color: distributionMode === 'manual' ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <span>Fila Livre (Manual)</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 400, opacity: 0.8 }}>SDRs puxam</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDistributionMode('round_robin')}
+                  style={{
+                    padding: '8px 6px',
+                    borderRadius: '8px',
+                    border: `1px solid ${distributionMode === 'round_robin' ? '#10B981' : 'var(--adm-border)'}`,
+                    background: distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                    color: distributionMode === 'round_robin' ? '#10B981' : 'var(--adm-text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><RefreshCw size={11} /> Roleta Automática</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 400, opacity: 0.8 }}>Divisão igual</span>
+                </button>
+              </div>
+
+              {distributionMode === 'round_robin' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                      SDRs Participantes ({assignedSdrIds.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const commercialCollabs = collaborators.filter(c => c.active !== false);
+                        if (assignedSdrIds.length === commercialCollabs.length) {
+                          setAssignedSdrIds([]);
+                        } else {
+                          setAssignedSdrIds(commercialCollabs.map(c => c.id));
+                        }
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-accent, #3B82F6)',
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      {assignedSdrIds.length === collaborators.filter(c => c.active !== false).length ? 'Desmarcar todos' : 'Marcar todos'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '160px', overflowY: 'auto' }}>
+                    {collaborators.filter(c => c.active !== false).map(collab => {
+                      const isSelected = assignedSdrIds.includes(collab.id);
+                      return (
+                        <label
+                          key={collab.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                            border: `1px solid ${isSelected ? 'rgba(59, 130, 246, 0.25)' : 'transparent'}`,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAssignedSdrIds(prev => [...prev, collab.id]);
+                              } else {
+                                setAssignedSdrIds(prev => prev.filter(id => id !== collab.id));
+                              }
+                            }}
+                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#10B981' }}
+                          />
+                          {collab.avatarUrl ? (
+                            <img src={collab.avatarUrl} alt={collab.name} style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--adm-accent, #3B82F6)', color: '#fff', fontSize: '0.65rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {collab.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {collab.name}
+                            </span>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', textTransform: 'capitalize' }}>
+                              {collab.role || 'Comercial'}
+                            </span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {assignedSdrIds.length === 0 && (
+                    <div style={{ fontSize: '0.68rem', color: '#F59E0B', fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '6px 8px' }}>
+                      ⚠️ Selecione ao menos 1 SDR para que a roleta distribua os novos leads.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
+                  Novos leads entram em "Novo Lead" sem responsável definido. Qualquer SDR da equipe comercial pode assumir.
+                </p>
+              )}
+            </div>
+
             {/* Controle duplicado */}
             <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -938,17 +1182,30 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
                   QUALIFICAÇÃO
                 </div>
-                <span style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  color: '#10B981',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                }}>
-                  {displayedQualificationQuestions.length} Perguntas
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    background: displayedQualificationQuestions.length > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+                    color: displayedQualificationQuestions.length > 0 ? '#10B981' : '#94A3B8',
+                    border: `1px solid ${displayedQualificationQuestions.length > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`,
+                  }}>
+                    {displayedQualificationQuestions.length > 0 ? 'Ativa' : 'Inativa'}
+                  </span>
+                  <span style={{
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    background: 'var(--adm-bg-card)',
+                    color: 'var(--adm-text-muted)',
+                    border: '1px solid var(--adm-border)',
+                  }}>
+                    {displayedQualificationQuestions.length} Perguntas
+                  </span>
+                </div>
               </div>
               
               <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
@@ -1245,6 +1502,57 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             />
                           ))}
                         </div>
+
+                        {/* Reorder Buttons (Mover para esquerda / direita) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveStage(stage.id, 'left')}
+                            disabled={index === 0}
+                            title="Mover etapa para a esquerda"
+                            style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '4px',
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              color: index === 0 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: index === 0 ? 'not-allowed' : 'pointer',
+                              opacity: index === 0 ? 0.4 : 1,
+                              padding: 0,
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <ChevronLeft size={11} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleMoveStage(stage.id, 'right')}
+                            disabled={index === displayedStages.length - 1}
+                            title="Mover etapa para a direita"
+                            style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '4px',
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              color: index === displayedStages.length - 1 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: index === displayedStages.length - 1 ? 'not-allowed' : 'pointer',
+                              opacity: index === displayedStages.length - 1 ? 0.4 : 1,
+                              padding: 0,
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <ChevronRight size={11} />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1296,6 +1604,205 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           <p style={{ fontSize: '0.72rem', color: stage.hints ? 'var(--adm-text-body)' : 'var(--adm-text-muted)', margin: 0, fontStyle: stage.hints ? 'normal' : 'italic', lineHeight: 1.35 }}>
                             {stage.hints || 'Nenhuma orientação cadastrada para esta etapa.'}
                           </p>
+                        )}
+                      </div>
+
+                      {/* Gatilhos / Automação da Etapa */}
+                      <div style={{
+                        background: 'var(--adm-bg-card)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Zap size={12} color="#8B5CF6" />
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                              GATILHOS / AUTOMAÇÃO
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Lista de Gatilhos configurados */}
+                        {((stage.triggers || []).filter(t => t.type === 'move_to_funnel')).map(trigger => {
+                          const targetFunnel = funnels.find(f => f.id === trigger.targetFunnelId);
+                          const targetStage = targetFunnel?.stages?.find(s => s.id === trigger.targetStageId);
+
+                          return (
+                            <div
+                              key={trigger.id}
+                              style={{
+                                background: 'rgba(139, 92, 246, 0.08)',
+                                border: '1px solid rgba(139, 92, 246, 0.25)',
+                                borderRadius: '6px',
+                                padding: '6px 8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#8B5CF6', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Zap size={10} /> Transferência de Funil
+                                </span>
+                                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  Para: <strong>{targetFunnel?.name || 'Outro Funil'}</strong> {targetStage ? `• ${targetStage.name}` : ''}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTrigger(stage.id, trigger.id)}
+                                title="Remover gatilho"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--adm-text-muted)',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Formulário Inline para Adicionar Novo Gatilho */}
+                        {activeTriggerStageId === stage.id ? (
+                          <div style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-accent)',
+                            borderRadius: '6px',
+                            padding: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                          }}>
+                            <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              Novo Gatilho: Transferência de Funil
+                            </span>
+                            
+                            <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                              Funil de Destino:
+                            </label>
+                            <select
+                              value={selectedTargetFunnelId}
+                              onChange={(e) => {
+                                setSelectedTargetFunnelId(e.target.value);
+                                const f = funnels.find(fun => fun.id === e.target.value);
+                                setSelectedTargetStageId(f?.stages?.[0]?.id || '');
+                              }}
+                              style={{
+                                width: '100%',
+                                background: 'var(--adm-bg-card)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                fontSize: '0.72rem',
+                                color: 'var(--adm-text-body)',
+                                outline: 'none',
+                              }}
+                            >
+                              <option value="">Selecione o funil de destino...</option>
+                              {funnels.filter(f => f.id !== activeFunnel?.id).map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                              ))}
+                            </select>
+
+                            {selectedTargetFunnelId && (
+                              <>
+                                <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                  Etapa de Destino:
+                                </label>
+                                <select
+                                  value={selectedTargetStageId}
+                                  onChange={(e) => setSelectedTargetStageId(e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    background: 'var(--adm-bg-card)',
+                                    border: '1px solid var(--adm-border)',
+                                    borderRadius: '4px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.72rem',
+                                    color: 'var(--adm-text-body)',
+                                    outline: 'none',
+                                  }}
+                                >
+                                  {funnels.find(f => f.id === selectedTargetFunnelId)?.stages?.map(st => (
+                                    <option key={st.id} value={st.id}>{st.name}</option>
+                                  ))}
+                                </select>
+                              </>
+                            )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setActiveTriggerStageId(null)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--adm-text-muted)',
+                                  fontSize: '0.68rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!selectedTargetFunnelId}
+                                onClick={() => handleSaveTransferTrigger(stage.id)}
+                                style={{
+                                  background: selectedTargetFunnelId ? 'var(--adm-accent)' : 'var(--adm-border)',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '3px 8px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: selectedTargetFunnelId ? 'pointer' : 'not-allowed',
+                                }}
+                              >
+                                Salvar Gatilho
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTriggerStageId(stage.id);
+                              const otherFunnel = funnels.find(f => f.id !== activeFunnel?.id);
+                              setSelectedTargetFunnelId(otherFunnel?.id || '');
+                              setSelectedTargetStageId(otherFunnel?.stages?.[0]?.id || '');
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: '1px dashed var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '5px',
+                              color: 'var(--adm-accent)',
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Plus size={11} />
+                            Adicionar Gatilho
+                          </button>
                         )}
                       </div>
                     </div>

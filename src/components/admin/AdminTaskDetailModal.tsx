@@ -78,6 +78,7 @@ interface AdminTaskDetailModalProps {
   initialCustomType?: string;
   initialIsFollowUp?: boolean;
   initialLeadId?: string;
+  initialClientId?: string;
   isHomeContext?: boolean;
   workspaceContext?: 'all' | 'general' | 'followup' | 'visits_tastings' | 'appointments';
 }
@@ -95,6 +96,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
   initialCustomType,
   initialIsFollowUp = false,
   initialLeadId,
+  initialClientId,
   isHomeContext = false,
   workspaceContext,
 }) => {
@@ -414,8 +416,15 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       const defaultSdr = (['sdr', 'closer', 'crm'].includes(userRole) && currentUser?.id) ? currentUser.id : '';
       setSdrAssigneeId(defaultSdr);
       setSelectedLeadId(initialLeadId || '');
-      setSelectedClientId('');
-      if (isPostSaleRole || initialDatabaseId === 'db_visits_tastings' || initialDatabaseId === 'db_appointments' || workspaceContext === 'visits_tastings' || workspaceContext === 'appointments') {
+      setSelectedClientId(initialClientId || '');
+
+      if (initialClientId) {
+        setLinkMode('client');
+        const matchedClient = (clients || []).find(c => c.id === initialClientId);
+        if (matchedClient?.commercialLeadId && !initialLeadId) {
+          setSelectedLeadId(matchedClient.commercialLeadId);
+        }
+      } else if (isPostSaleRole || initialDatabaseId === 'db_visits_tastings' || initialDatabaseId === 'db_appointments' || workspaceContext === 'visits_tastings' || workspaceContext === 'appointments') {
         setLinkMode('client');
       } else {
         setLinkMode('lead');
@@ -424,7 +433,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       setComments([]);
       setNewCommentText('');
     }
-  }, [task, isOpen, initialDatabaseId, initialStatus, initialIsFollowUp, initialLeadId, initialDueDate, initialDueTime, initialType, initialCustomType, currentUser?.id, isPostSaleRole, workspaceContext, contextInfo.defaultType, userRole]);
+  }, [task, isOpen, initialDatabaseId, initialStatus, initialIsFollowUp, initialLeadId, initialClientId, initialDueDate, initialDueTime, initialType, initialCustomType, currentUser?.id, isPostSaleRole, workspaceContext, contextInfo.defaultType, userRole, clients]);
 
   // Print helper
   const handlePrint = () => {
@@ -823,6 +832,12 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
         customType: customType.trim() || contextInfo.defaultType,
         sdrAssigneeId: sdrAssigneeId || undefined,
         sdrName: sdrCollab?.name || undefined,
+        leadId: selectedLeadId || undefined,
+        leadName: lead?.name || undefined,
+        debutanteId: selectedClientId || undefined,
+        clientId: selectedClientId || undefined,
+        debutanteName: client?.name || client?.birthdayPersonName || undefined,
+        clientName: client?.name || client?.birthdayPersonName || undefined,
       },
     });
 

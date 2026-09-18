@@ -46,8 +46,10 @@ export const taskService = {
       return (data || []).map((row: any) => ({
         id: row.id,
         databaseId: row.database_id || 'default_collabs',
-        leadId: row.lead_id,
-        debutanteId: row.debutante_id,
+        leadId: row.lead_id || row.custom_properties?.leadId || undefined,
+        leadName: row.lead_name || row.custom_properties?.leadName || undefined,
+        debutanteId: row.debutante_id || row.custom_properties?.debutanteId || row.custom_properties?.clientId || undefined,
+        debutanteName: row.debutante_name || row.custom_properties?.debutanteName || row.custom_properties?.clientName || undefined,
         venueId: row.venue_id,
         title: row.title,
         description: row.description,
@@ -105,8 +107,19 @@ export const taskService = {
         payload.assigned_to_ids = (task.assignedToIds || []).filter(id => typeof id === 'string' && uuidRegex.test(id));
       }
       
+      if (task.resolution !== undefined) {
+        payload.resolution = task.resolution;
+      }
+
+      const effectiveLeadId = task.leadId || task.customProperties?.leadId;
+      const effectiveDebutanteId = task.debutanteId || task.customProperties?.debutanteId || task.customProperties?.clientId;
+
       const mergedCustomProps = {
         ...(task.customProperties || {}),
+        ...(effectiveLeadId !== undefined ? { leadId: effectiveLeadId } : {}),
+        ...(task.leadName !== undefined ? { leadName: task.leadName } : {}),
+        ...(effectiveDebutanteId !== undefined ? { debutanteId: effectiveDebutanteId, clientId: effectiveDebutanteId } : {}),
+        ...(task.debutanteName !== undefined ? { debutanteName: task.debutanteName, clientName: task.debutanteName } : {}),
         ...(task.observations !== undefined ? { observations: task.observations } : {}),
         ...(task.resolution !== undefined ? { resolution: task.resolution } : {}),
         ...(task.customType !== undefined ? { customType: task.customType } : {}),
