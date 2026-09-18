@@ -507,10 +507,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     display: 'flex',
                     flexDirection: 'column',
                     maxHeight: '100%',
+                    minHeight: 0,
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    overflow: 'hidden',
                   }}
                 >
-                  {/* Column Header */}
+                  {/* Column Header (Sticky) */}
                   <div style={{
                     padding: '14px 16px',
                     borderBottom: '1px solid var(--adm-border)',
@@ -521,6 +523,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '4px',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10,
+                    flexShrink: 0,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
@@ -544,14 +550,18 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                   </div>
 
                   {/* Cards Container */}
-                  <div style={{
-                    flex: 1,
-                    overflowY: 'auto',
-                    padding: '12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                  }}>
+                  <div 
+                    style={{
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}
+                    className="custom-scrollbar"
+                  >
                     {stageClients.map(client => {
                       const pTime = new Date(client.eventDate).getTime();
                       const daysLeft = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));

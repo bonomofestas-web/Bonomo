@@ -527,7 +527,8 @@ export interface Lead {
 
 // ── Compromissos Comerciais & Motor de Agenda (F5 System) ───────────────────
 export type CommercialCommitmentType = 'visit' | 'tasting';
-export type CommercialCommitmentStatus = 'not_scheduled' | 'scheduled' | 'completed' | 'cancelled';
+export type CommercialCommitmentStatus = 'not_scheduled' | 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+
 
 export interface CommercialCommitment {
   id?: string;

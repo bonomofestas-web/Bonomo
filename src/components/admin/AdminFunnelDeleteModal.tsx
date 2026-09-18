@@ -42,12 +42,15 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
   }, [availableFunnels, funnelToDelete.id]);
 
   const [selectedDestFunnelId, setSelectedDestFunnelId] = useState<string>(() => {
-    return otherFunnels[0]?.id || '';
+    return otherFunnels[0]?.id || 'unassigned';
   });
 
+  const isUnassigned = selectedDestFunnelId === 'unassigned';
+
   const selectedDestFunnel = useMemo(() => {
-    return otherFunnels.find(f => f.id === selectedDestFunnelId) || otherFunnels[0];
-  }, [otherFunnels, selectedDestFunnelId]);
+    if (isUnassigned) return null;
+    return otherFunnels.find(f => f.id === selectedDestFunnelId) || otherFunnels[0] || null;
+  }, [otherFunnels, selectedDestFunnelId, isUnassigned]);
 
   // Leads belonging to this funnel
   const funnelLeads = useMemo(() => {
@@ -140,7 +143,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
     });
 
     setStageMapping(newMapping);
-  }, [selectedDestFunnelId, stagesToMap, destinationAvailableStages]);
+  }, [selectedDestFunnelId, stagesToMap, destinationAvailableStages, selectedDestFunnel]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -153,13 +156,8 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (otherFunnels.length === 0) {
-      setErrorMsg('Não é possível excluir o único funil ativo da conta.');
-      return;
-    }
-
     if (!selectedDestFunnelId) {
-      setErrorMsg('Por favor, selecione o funil de destino.');
+      setErrorMsg('Por favor, selecione o destino dos leads.');
       return;
     }
 
@@ -175,6 +173,7 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
 
   // ── RENDER CASE 1: Cannot delete if only 1 funnel exists ──
   if (otherFunnels.length === 0) {
@@ -537,12 +536,12 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
               color: 'var(--adm-text-muted)',
               marginBottom: '10px',
             }}>
-              1. Selecione o Funil de Destino
+              1. Para onde deseja enviar os leads deste funil?
             </label>
             
             <div style={{
               display: 'grid',
-              gridTemplateColumns: otherFunnels.length > 1 ? 'repeat(auto-fit, minmax(240px, 1fr))' : '1fr',
+              gridTemplateColumns: otherFunnels.length > 0 ? 'repeat(auto-fit, minmax(260px, 1fr))' : '1fr',
               gap: '10px',
             }}>
               {otherFunnels.map(f => {
@@ -596,210 +595,284 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
                   </div>
                 );
               })}
+
+              {/* Opção Desatribuir Leads */}
+              <div
+                onClick={() => setSelectedDestFunnelId('unassigned')}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  border: isUnassigned ? '2px solid #F59E0B' : '1px solid var(--adm-border)',
+                  background: isUnassigned ? 'rgba(245, 158, 11, 0.08)' : 'var(--adm-bg-input)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: isUnassigned ? '#F59E0B' : 'rgba(255,255,255,0.06)',
+                    color: isUnassigned ? '#000' : 'var(--adm-text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Radio size={16} />
+                  </div>
+                  <div>
+                    <div style={{
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      color: isUnassigned ? 'var(--adm-text-title)' : 'var(--adm-text-body)',
+                    }}>
+                      Desatribuir Leads (Sem Funil)
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                      Mantém os leads preservados na base geral
+                    </div>
+                  </div>
+                </div>
+                {isUnassigned && (
+                  <CheckCircle2 size={18} color="#F59E0B" />
+                )}
+              </div>
             </div>
           </div>
 
-          {/* STEP 2: Automatic Standard Stage Routing Rules */}
-          <div>
+          {/* Se Unassigned foi escolhido, mostra aviso claro */}
+          {isUnassigned ? (
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '10px',
-            }}>
-              <label style={{
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                color: 'var(--adm-text-muted)',
-                margin: 0,
-              }}>
-                2. Roteamento Automático de Etapas Padrão
-              </label>
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: '#10B981',
-                background: 'rgba(16, 185, 129, 0.12)',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}>
-                <Sparkles size={11} /> Regra Nativa
-              </span>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              background: 'var(--adm-bg-input)',
-              border: '1px solid var(--adm-border)',
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
               borderRadius: '12px',
-              padding: '12px 16px',
+              padding: '14px 16px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
             }}>
-              {/* Ganho */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.82rem',
-                padding: '6px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
-                  <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Contrato Fechado (Ganho)</span>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                    ({stageStats.ganhoCount} {stageStats.ganhoCount === 1 ? 'lead' : 'leads'})
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10B981', fontWeight: 600 }}>
-                  <ArrowRight size={13} />
-                  <span>Contrato Fechado no novo funil</span>
-                </div>
-              </div>
-
-              {/* Perdido */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.82rem',
-                padding: '6px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
-                  <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Perdido / Recusado</span>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                    ({stageStats.perdidoCount} {stageStats.perdidoCount === 1 ? 'lead' : 'leads'})
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontWeight: 600 }}>
-                  <ArrowRight size={13} />
-                  <span>Perdido / Recusado no novo funil</span>
-                </div>
-              </div>
-
-              {/* Novo Lead (Entrada) */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.82rem',
-                padding: '6px 0',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3B82F6' }} />
-                  <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Novo Lead (Entrada)</span>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                    ({stageStats.novoLeadCount} {stageStats.novoLeadCount === 1 ? 'lead' : 'leads'})
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3B82F6', fontWeight: 600 }}>
-                  <ArrowRight size={13} />
-                  <span>
-                    {destHasEntryStage ? 'Novo Lead (Entrada Ativa)' : `1ª Etapa (${destFirstStageName})`}
-                  </span>
-                </div>
+              <Info size={20} color="#F59E0B" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '0.82rem', color: 'var(--adm-text-body)', lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--adm-text-title)' }}>
+                  {funnelLeads.length} leads
+                </strong>{' '}
+                deste funil não serão excluídos. Eles ficarão sem funil atribuído e poderão ser realocados posteriormente pelo filtro geral de leads.
               </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* STEP 2: Automatic Standard Stage Routing Rules */}
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '10px',
+                }}>
+                  <label style={{
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    color: 'var(--adm-text-muted)',
+                    margin: 0,
+                  }}>
+                    2. Roteamento Automático de Etapas Padrão
+                  </label>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#10B981',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <Sparkles size={11} /> Regra Nativa
+                  </span>
+                </div>
 
-          {/* STEP 3: Interactive Mapping for Custom Intermediate Stages */}
-          {stagesToMap.length > 0 && (
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                color: 'var(--adm-text-muted)',
-                marginBottom: '10px',
-              }}>
-                3. Mapeamento das Etapas Intermediárias
-              </label>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                }}>
+                  {/* Ganho */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.82rem',
+                    padding: '6px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Contrato Fechado (Ganho)</span>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                        ({stageStats.ganhoCount} {stageStats.ganhoCount === 1 ? 'lead' : 'leads'})
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10B981', fontWeight: 600 }}>
+                      <ArrowRight size={13} />
+                      <span>Contrato Fechado no novo funil</span>
+                    </div>
+                  </div>
 
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-              }}>
-                {stagesToMap.map(srcStage => {
-                  const targetStageId = stageMapping[srcStage.id] || destinationAvailableStages[0]?.id || '';
-                  return (
-                    <div
-                      key={srcStage.id}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '12px',
-                        padding: '12px 16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                      }}
-                    >
-                      {/* Left: Source Stage & Count */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px' }}>
-                        <span style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          background: srcStage.color,
-                          flexShrink: 0,
-                        }} />
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--adm-text-title)' }}>
-                            {srcStage.name}
-                          </div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                            {srcStage.leadsCount} {srcStage.leadsCount === 1 ? 'lead' : 'leads'} nesta etapa
-                          </div>
-                        </div>
-                      </div>
+                  {/* Perdido */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.82rem',
+                    padding: '6px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Perdido / Recusado</span>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                        ({stageStats.perdidoCount} {stageStats.perdidoCount === 1 ? 'lead' : 'leads'})
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontWeight: 600 }}>
+                      <ArrowRight size={13} />
+                      <span>Perdido / Recusado no novo funil</span>
+                    </div>
+                  </div>
 
-                      {/* Middle: Arrow */}
-                      <div style={{ color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center' }}>
-                        <ArrowRight size={16} />
-                      </div>
+                  {/* Novo Lead (Entrada) */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.82rem',
+                    padding: '6px 0',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3B82F6' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--adm-text-title)' }}>Novo Lead (Entrada)</span>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                        ({stageStats.novoLeadCount} {stageStats.novoLeadCount === 1 ? 'lead' : 'leads'})
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3B82F6', fontWeight: 600 }}>
+                      <ArrowRight size={13} />
+                      <span>
+                        {destHasEntryStage ? 'Novo Lead (Entrada Ativa)' : `1ª Etapa (${destFirstStageName})`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                      {/* Right: Target Stage Dropdown */}
-                      <div style={{ flex: 1, maxWidth: '280px' }}>
-                        <select
-                          value={targetStageId}
-                          onChange={(e) => handleStageChange(srcStage.id, e.target.value)}
+              {/* STEP 3: Interactive Mapping for Custom Intermediate Stages */}
+              {stagesToMap.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <label style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      color: 'var(--adm-text-muted)',
+                      margin: 0,
+                    }}>
+                      3. Mapeamento das Etapas Intermediárias
+                    </label>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                      Etapas com leads identificadas
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}>
+                    {stagesToMap.map(srcStage => {
+                      const targetStageId = stageMapping[srcStage.id] || destinationAvailableStages[0]?.id || '';
+                      return (
+                        <div
+                          key={srcStage.id}
                           style={{
-                            width: '100%',
-                            background: 'var(--adm-bg-card)',
+                            background: 'var(--adm-bg-input)',
                             border: '1px solid var(--adm-border)',
-                            borderRadius: '8px',
-                            color: 'var(--adm-text-title)',
-                            fontSize: '0.84rem',
-                            fontWeight: 600,
-                            padding: '8px 12px',
-                            outline: 'none',
+                            borderRadius: '12px',
+                            padding: '12px 16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
                           }}
                         >
-                          {destinationAvailableStages.map(destStage => (
-                            <option key={destStage.id} value={destStage.id}>
-                              {destStage.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                          {/* Left: Source Stage & Count */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px' }}>
+                            <span style={{
+                              width: '10px',
+                              height: '10px',
+                              borderRadius: '50%',
+                              background: srcStage.color,
+                              flexShrink: 0,
+                            }} />
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--adm-text-title)' }}>
+                                {srcStage.name}
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: srcStage.leadsCount > 0 ? 'var(--adm-accent, #D4AF37)' : 'var(--adm-text-muted)', fontWeight: srcStage.leadsCount > 0 ? 700 : 400 }}>
+                                {srcStage.leadsCount} {srcStage.leadsCount === 1 ? 'lead' : 'leads'} nesta etapa
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Middle: Arrow */}
+                          <div style={{ color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center' }}>
+                            <ArrowRight size={16} />
+                          </div>
+
+                          {/* Right: Target Stage Dropdown */}
+                          <div style={{ flex: 1, maxWidth: '280px' }}>
+                            <select
+                              value={targetStageId}
+                              onChange={(e) => handleStageChange(srcStage.id, e.target.value)}
+                              style={{
+                                width: '100%',
+                                background: 'var(--adm-bg-card)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '8px',
+                                color: 'var(--adm-text-title)',
+                                fontSize: '0.84rem',
+                                fontWeight: 600,
+                                padding: '8px 12px',
+                                outline: 'none',
+                              }}
+                            >
+                              {destinationAvailableStages.map(destStage => (
+                                <option key={destStage.id} value={destStage.id}>
+                                  {destStage.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
+
 
           {/* STEP 4: Sources Rerouting Notice */}
           {linkedSources.length > 0 && (
@@ -891,14 +964,15 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Migrando e Excluindo...</span>
+                  <span>{isUnassigned ? 'Desatribuindo e Excluindo...' : 'Migrando e Excluindo...'}</span>
                 </>
               ) : (
                 <>
                   <Trash2 size={16} />
-                  <span>Migrar {funnelLeads.length} Leads e Excluir Funil</span>
+                  <span>{isUnassigned ? `Desatribuir ${funnelLeads.length} Leads e Excluir Funil` : `Migrar ${funnelLeads.length} Leads e Excluir Funil`}</span>
                 </>
               )}
+
             </button>
           </div>
         </div>

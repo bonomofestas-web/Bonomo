@@ -536,6 +536,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     );
   };
 
+  const toggleColumnSelectAll = (colLeads: Lead[], e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const colLeadIds = colLeads.map(l => l.id);
+    if (colLeadIds.length === 0) return;
+    const allSelected = colLeadIds.every(id => selectedLeadIds.includes(id));
+    if (allSelected) {
+      setSelectedLeadIds(prev => prev.filter(id => !colLeadIds.includes(id)));
+    } else {
+      setSelectedLeadIds(prev => Array.from(new Set([...prev, ...colLeadIds])));
+    }
+  };
+
+
   const handleBulkMoveStage = (targetStage: CrmStage) => {
     selectedLeadIds.forEach(id => {
       updateLeadStage(id, targetStage);
@@ -2238,7 +2251,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             </div>
           </div>
 
-          {/* KANBAN BOARD VIEW (Crescimento Vertical Livre & Drag-to-Scroll Horizontal) */}
+          {/* KANBAN BOARD VIEW (Scroll Vertical Independente nas Colunas & Header Fixo Sticky) */}
           {viewMode === 'kanban' && (
             <div
               ref={boardRef}
@@ -2249,17 +2262,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               style={{
                 display: 'flex',
                 flexDirection: 'row',
-                alignItems: 'flex-start',
+                alignItems: 'stretch',
                 gap: '12px',
                 overflowX: 'auto',
                 overflowY: 'hidden',
                 flex: 1,
-                minHeight: 'calc(100vh - 120px)',
+                height: 'calc(100vh - 120px)',
+                maxHeight: 'calc(100vh - 120px)',
                 width: '100%',
                 paddingLeft: '16px',
                 paddingRight: '40px',
                 paddingTop: '8px',
-                paddingBottom: '40px',
+                paddingBottom: '16px',
                 boxSizing: 'border-box',
                 cursor: isDraggingBoard ? 'grabbing' : 'grab',
                 userSelect: isDraggingBoard ? 'none' : 'auto',
@@ -2297,7 +2311,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        alignSelf: 'flex-start',
+                        alignSelf: 'stretch',
                         width: '44px',
                         minWidth: '44px',
                         maxWidth: '44px',
@@ -2307,7 +2321,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                         gap: '12px',
                         transition: 'all 0.15s ease',
-                        minHeight: '380px',
                       }}
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
@@ -2365,15 +2378,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       borderRadius: '8px',
                       display: 'flex',
                       flexDirection: 'column',
-                      alignSelf: 'flex-start',
+                      alignSelf: 'stretch',
+                      height: '100%',
+                      maxHeight: '100%',
+                      minHeight: 0,
                       width: '350px',
                       minWidth: '350px',
                       maxWidth: '360px',
                       flex: '0 0 350px',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      overflow: 'hidden',
                     }}
                   >
-                    {/* Column Header - Clique na barra ou cabeçalho minimiza a coluna */}
+                    {/* Column Header - Sticky / Fixo no topo da coluna */}
                     <div 
                       onClick={() => toggleColumnCollapse(col.id)}
                       title={`Clique para minimizar a etapa "${col.title}"`}
@@ -2389,14 +2406,42 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         gap: '3px',
                         cursor: 'pointer',
                         userSelect: 'none',
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 10,
+                        flexShrink: 0,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                          {isMultiSelectMode && (
+                            <input
+                              type="checkbox"
+                              checked={columnLeads.length > 0 && columnLeads.every(l => selectedLeadIds.includes(l.id))}
+                              ref={el => {
+                                if (el) {
+                                  const allSel = columnLeads.length > 0 && columnLeads.every(l => selectedLeadIds.includes(l.id));
+                                  const someSel = columnLeads.some(l => selectedLeadIds.includes(l.id));
+                                  el.indeterminate = someSel && !allSel;
+                                }
+                              }}
+                              onClick={(e) => toggleColumnSelectAll(columnLeads, e)}
+                              onChange={() => {}}
+                              title={columnLeads.length > 0 && columnLeads.every(l => selectedLeadIds.includes(l.id)) ? "Desmarcar todos desta etapa" : "Selecionar todos desta etapa"}
+                              style={{
+                                cursor: 'pointer',
+                                accentColor: 'var(--adm-accent, #6366F1)',
+                                width: '14px',
+                                height: '14px',
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
                           {renderColumnIcon(col.icon || col.id, 13, col.headerColor)}
                           <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {col.title}
                           </span>
+
                           {col.hints && (
                             <div style={{ position: 'relative', display: 'inline-flex' }}>
                               <button
@@ -2506,13 +2551,20 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </span>
                     </div>
 
-                    {/* Cards Container (Crescimento Vertical Livre) */}
-                    <div style={{
-                      padding: '8px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                    }}>
+                    {/* Cards Container (Scroll Vertical com Header Fixo) */}
+                    <div 
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: 'auto',
+                        padding: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        boxSizing: 'border-box',
+                      }}
+                      className="custom-scrollbar"
+                    >
                       {columnLeads.length === 0 ? (
                         <div style={{
                           textAlign: 'center',
@@ -3439,6 +3491,29 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.80rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--adm-bg-elevated)', borderBottom: '1px solid var(--adm-border)', color: 'var(--adm-text-muted)', textAlign: 'left' }}>
+                    {isMultiSelectMode && (
+                      <th style={{ width: '40px', padding: '10px 12px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredLeads.length > 0 && filteredLeads.every(l => selectedLeadIds.includes(l.id))}
+                          ref={el => {
+                            if (el) {
+                              const allSelected = filteredLeads.length > 0 && filteredLeads.every(l => selectedLeadIds.includes(l.id));
+                              const someSelected = filteredLeads.some(l => selectedLeadIds.includes(l.id));
+                              el.indeterminate = someSelected && !allSelected;
+                            }
+                          }}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedLeadIds(filteredLeads.map(l => l.id));
+                            } else {
+                              setSelectedLeadIds([]);
+                            }
+                          }}
+                          style={{ cursor: 'pointer', accentColor: 'var(--adm-accent, #6366F1)' }}
+                        />
+                      </th>
+                    )}
                     <th style={{ padding: '10px 16px', fontWeight: 700 }}>{isPostSaleView ? 'Nome do Cliente' : 'Nome do Lead'}</th>
                     <th style={{ padding: '10px 16px', fontWeight: 700 }}>Telefone</th>
                     <th style={{ padding: '10px 16px', fontWeight: 700 }}>{isPostSaleView ? 'Evento / Data' : 'Idade / Origem'}</th>
@@ -3452,19 +3527,41 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   {filteredLeads.map(lead => {
                     const col = columns.find(c => c.id === lead.stage) || columns[0];
                     const hasNoAssignee = !lead.assignedTo || lead.assignedTo === 'Sem responsável' || lead.assignedTo === 'Não atribuído';
+                    const isSelectedInMulti = selectedLeadIds.includes(lead.id);
 
                     return (
                       <tr 
                         key={lead.id}
-                        onClick={() => handleOpenLeadWorkspace(lead)}
+                        onClick={() => {
+                          if (isMultiSelectMode) {
+                            toggleLeadSelection(lead.id);
+                          } else {
+                            handleOpenLeadWorkspace(lead);
+                          }
+                        }}
                         style={{
                           borderBottom: '1px solid var(--adm-border)',
                           cursor: 'pointer',
+                          background: isSelectedInMulti ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
                           transition: 'background 0.15s ease',
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-elevated)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        onMouseEnter={(e) => {
+                          if (!isSelectedInMulti) e.currentTarget.style.background = 'var(--adm-bg-elevated)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelectedInMulti) e.currentTarget.style.background = 'transparent';
+                        }}
                       >
+                        {isMultiSelectMode && (
+                          <td style={{ width: '40px', padding: '8px 12px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelectedInMulti}
+                              onChange={() => toggleLeadSelection(lead.id)}
+                              style={{ cursor: 'pointer', accentColor: 'var(--adm-accent, #6366F1)' }}
+                            />
+                          </td>
+                        )}
                         <td style={{ padding: '8px 16px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                           <div>{lead.name}</div>
                           <div style={{ fontSize: '0.64rem', color: isPostSaleView ? '#06B6D4' : 'var(--adm-accent)', fontWeight: 700 }}>

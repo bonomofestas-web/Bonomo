@@ -395,7 +395,8 @@ export interface AdminContextType {
     venueId?: string;
   }) => Promise<boolean>;
   completeCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', feedback?: string) => Promise<boolean>;
-  cancelCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', reason?: string) => Promise<boolean>;
+  cancelCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', reason?: string, statusOverride?: 'cancelled' | 'no_show') => Promise<boolean>;
+
 
   // General & Personal Tasks (Home / CRM)
   tasks: AdminTask[];
@@ -2732,17 +2733,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     const funnelToDelete = funnels.find(f => f.id === funnelId);
-    const destFunnel = funnels.find(f => f.id === destinationFunnelId);
-    if (!funnelToDelete || !destFunnel) {
+    const isUnassigned = destinationFunnelId === 'unassigned' || !destinationFunnelId;
+    const destFunnel = isUnassigned ? null : funnels.find(f => f.id === destinationFunnelId);
+    if (!funnelToDelete || (!isUnassigned && !destFunnel)) {
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
     const deletedFunnelName = funnelToDelete.name;
-    const destFunnelName = destFunnel.name;
+    const destFunnelName = isUnassigned ? 'Sem Funil (Desatribuído)' : destFunnel!.name;
 
     const now = new Date().toISOString();
     const today = now.split('T')[0];
-    const destDefaultFirstStage = destFunnel.stages?.[0]?.id || 'in_analysis';
+    const destDefaultFirstStage = destFunnel?.stages?.[0]?.id || 'in_analysis';
 
     const updatedLeadsList: Lead[] = [];
 
@@ -2753,12 +2755,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         let targetStage: any = lead.stage;
 
-        if (lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed') {
+        if (isUnassigned) {
+          // Desatribui mantendo histórico
+          targetStage = lead.stage || 'new_lead';
+        } else if (lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed') {
           targetStage = 'contract_signed';
         } else if (lead.stage === 'lost') {
           targetStage = 'lost';
         } else if (lead.stage === 'new_lead') {
-          targetStage = destFunnel.isEntryStageActive ? 'new_lead' : destDefaultFirstStage;
+          targetStage = destFunnel!.isEntryStageActive ? 'new_lead' : destDefaultFirstStage;
         } else if (stageMapping[lead.stage]) {
           targetStage = stageMapping[lead.stage];
         } else {
@@ -2771,7 +2776,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           timestamp: now,
           type: 'status_change',
           title: 'Migração de Funil',
-          text: `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${targetStage}") devido à exclusão do funil de origem.`,
+          text: isUnassigned
+            ? `Lead desatribuído do funil "${deletedFunnelName}" devido à exclusão do funil de origem.`
+            : `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${targetStage}") devido à exclusão do funil de origem.`,
           authorName: currentUser?.name || 'Sistema F5',
           authorId: currentUser?.id || 'system_bot',
           authorAvatarUrl: currentUser?.avatarUrl || '/logo_f5.png',
@@ -2779,7 +2786,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         const modifiedLead: Lead = {
           ...lead,
-          funnelId: destinationFunnelId,
+          funnelId: isUnassigned ? undefined : destinationFunnelId,
           stage: targetStage,
           activities: [migrationActivity, ...(lead.activities || [])],
           updatedAt: today,
@@ -2798,7 +2805,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       for (const mLead of updatedLeadsList) {
         leadService.upsert({
           id: mLead.id,
-          funnelId: destinationFunnelId,
+          funnelId: isUnassigned ? null as any : destinationFunnelId,
           stage: mLead.stage,
         }).catch(err => console.error('Erro ao migrar lead no Supabase:', err));
 
@@ -2807,7 +2814,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           timestamp: now,
           type: 'status_change',
           title: 'Migração de Funil',
-          text: `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${mLead.stage}") devido à exclusão do funil de origem.`,
+          text: isUnassigned
+            ? `Lead desatribuído do funil "${deletedFunnelName}" devido à exclusão do funil de origem.`
+            : `Lead migrado do funil "${deletedFunnelName}" para o funil "${destFunnelName}" (etapa: "${mLead.stage}") devido à exclusão do funil de origem.`,
           authorName: currentUser?.name || 'Sistema F5',
           authorId: currentUser?.id,
           authorAvatarUrl: currentUser?.avatarUrl,
@@ -2823,7 +2832,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updatedSourcesCount++;
           const rerouted = { 
             ...s, 
-            funnelId: destinationFunnelId, 
+            funnelId: isUnassigned ? '' : destinationFunnelId, 
+            status: isUnassigned ? ('inactive' as const) : s.status,
             updatedAt: now 
           };
           if (isSupabaseConfigured) {
@@ -2836,6 +2846,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
       return updated;
     });
+
 
     // 3. Delete funnel
     setFunnels(prev => {
@@ -5533,7 +5544,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const cancelCommercialCommitment = async (
     leadId: string, 
     type: 'visit' | 'tasting', 
-    reason?: string
+    reason?: string,
+    statusOverride?: 'cancelled' | 'no_show'
   ): Promise<boolean> => {
     const targetLead = leads.find(l => l.id === leadId);
     if (!targetLead) return false;
@@ -5541,10 +5553,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const currentCommitment = type === 'visit' ? targetLead.visitCommitment : targetLead.tastingCommitment;
     if (!currentCommitment) return false;
 
+    const finalStatus = statusOverride || 'cancelled';
+
     const cancelledCommitment: CommercialCommitment = {
       ...currentCommitment,
-      status: 'cancelled',
-      notes: reason ? `${currentCommitment.notes || ''} [Cancelamento: ${reason}]`.trim() : currentCommitment.notes,
+      status: finalStatus,
+      cancelledAt: new Date().toISOString(),
+      notes: reason ? `${currentCommitment.notes || ''} [${finalStatus === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelamento'}: ${reason}]`.trim() : currentCommitment.notes,
     };
 
     setLeads(prev => {
@@ -5581,10 +5596,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await leadService.update(leadId, updatePayload as any);
       return true;
     } catch (err) {
-      console.error('Falha ao cancelar compromisso no Supabase:', err);
+      console.error('Falha ao atualizar status de cancelamento/no-show no Supabase:', err);
       return true;
     }
   };
+
 
   // ── Query Helpers ────────────────────────────────────────────────────────────
 

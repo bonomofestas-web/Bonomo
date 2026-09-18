@@ -511,6 +511,26 @@ p { margin: 0; }
   height: 0;
 }
 
+/* Custom Sleek Scrollbar for Kanban and Admin Lists */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--adm-border, rgba(255, 255, 255, 0.15)) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--adm-border, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--adm-accent, rgba(255, 255, 255, 0.3));
+}
+
 /* Modal overlay mobile-first touch optimization */
 .modal-overlay-responsive {
   position: fixed;

@@ -204,6 +204,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [draftPackageSold, setDraftPackageSold] = useState(lead.packageSold || lead.interestService || '');
   const [draftPaymentMethod, setDraftPaymentMethod] = useState(lead.paymentMethod || '');
 
+  // Dynamic optional fields toggle
+  const [showBirthdayField, setShowBirthdayField] = useState(false);
+  const [showEmailField, setShowEmailField] = useState(false);
+  const [showCpfField, setShowCpfField] = useState(false);
+  const [showNeighborhoodField, setShowNeighborhoodField] = useState(false);
+  const [showAddressField, setShowAddressField] = useState(false);
+
   React.useEffect(() => {
     setDraftName(lead.name || '');
     setDraftPhone(lead.phone || '');
@@ -219,7 +226,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     setDraftPackageSold(lead.packageSold || lead.interestService || '');
     setDraftPaymentMethod(lead.paymentMethod || '');
     setIsOutcomeUnlocked(false);
+    setShowBirthdayField(false);
+    setShowEmailField(false);
+    setShowCpfField(false);
+    setShowNeighborhoodField(false);
+    setShowAddressField(false);
   }, [lead.id, lead.name, lead.phone, lead.email, lead.neighborhood, lead.address, lead.birthday, lead.debutanteBirthDate, lead.cpf, lead.estimatedGuests, lead.desiredPeriod, lead.dealValue, lead.estimatedBudget, lead.packageSold, lead.interestService, lead.paymentMethod]);
+
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
   const leadSource = lead.sourceId ? sources.find(s => s.id === lead.sourceId) : undefined;
@@ -2401,11 +2414,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {/* CARD 1: VISITA */}
               <div style={{
                 background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.visitCommitment ? 'rgba(56, 189, 248, 0.35)' : 'var(--adm-border)'}`,
+                border: `1px solid ${lead.visitCommitment ? (lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)') : 'var(--adm-border)'}`,
                 borderRadius: '10px',
                 padding: '10px 12px',
                 display: 'flex',
@@ -2415,7 +2428,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <CalendarIcon size={14} color="#38BDF8" />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                       Visita
                     </span>
                   </div>
@@ -2439,7 +2452,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       border: `1px solid ${lead.visitCommitment.status === 'completed' ? '#10B981' : lead.visitCommitment.status === 'scheduled' ? '#38BDF8' : '#EF4444'}`,
                       textTransform: 'uppercase',
                     }}>
-                      {lead.visitCommitment.status === 'completed' ? '✓ Realizada' : lead.visitCommitment.status === 'scheduled' ? 'Agendada' : 'Cancelada'}
+                      {lead.visitCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.visitCommitment.status === 'scheduled' ? 'Agendada' : lead.visitCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
                     </span>
                   ) : (
                     <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
@@ -2449,9 +2462,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {lead.visitCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.70rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data:</span>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
                       <strong style={{ color: 'var(--adm-text-title)' }}>
                         {new Date(lead.visitCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.visitCommitment.time}
                       </strong>
@@ -2462,7 +2475,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         fontWeight: 900,
                         color: '#D4AF37',
                         background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 5px',
+                        padding: '1px 6px',
                         borderRadius: '4px',
                       }}>
                         {lead.visitCommitment.pax} PAX
@@ -2482,37 +2495,66 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                           onClick={() => setCompletingCommitmentType('visit')}
                           style={{
                             flex: 1,
-                            padding: '4px 8px',
-                            borderRadius: '5px',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
                             background: '#10B981',
                             border: 'none',
                             color: '#FFFFFF',
-                            fontSize: '0.66rem',
+                            fontSize: '0.68rem',
                             fontWeight: 800,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: '3px',
+                            gap: '4px',
                           }}
                         >
-                          <Check size={11} /> Concluir
+                          <Check size={12} /> Sucesso
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCancellingCommitmentType('visit')}
+                          onClick={() => cancelCommercialCommitment(lead.id, 'visit', 'Lead não compareceu à visita', 'no_show')}
                           style={{
-                            padding: '4px 8px',
-                            borderRadius: '5px',
-                            background: 'transparent',
-                            border: '1px solid #EF4444',
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
                             color: '#EF4444',
-                            fontSize: '0.66rem',
+                            fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
                           }}
                         >
-                          Cancelar
+                          <X size={12} /> No-Show
+                        </button>
+                      </div>
+                    )}
+
+                    {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCommitmentType('visit')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38BDF8',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Visita
                         </button>
                       </div>
                     )}
@@ -2523,25 +2565,25 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       type="button"
                       onClick={() => setScheduleCommitmentType('visit')}
                       style={{
-                        padding: '7px 10px',
+                        padding: '6px 14px',
                         borderRadius: '6px',
                         background: 'rgba(56, 189, 248, 0.1)',
                         border: '1px solid rgba(56, 189, 248, 0.35)',
                         color: '#38BDF8',
-                        fontSize: '0.72rem',
+                        fontSize: '0.74rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
+                        gap: '5px',
+                        width: 'fit-content',
                         transition: 'all 0.15s ease',
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
                     >
                       <Plus size={12} />
-                      <span>Agendar Visita</span>
+                      <span>Agendar</span>
                     </button>
                   )
                 )}
@@ -2550,7 +2592,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               {/* CARD 2: DEGUSTAÇÃO */}
               <div style={{
                 background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.tastingCommitment ? 'rgba(212, 175, 55, 0.35)' : 'var(--adm-border)'}`,
+                border: `1px solid ${lead.tastingCommitment ? (lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(212, 175, 55, 0.35)') : 'var(--adm-border)'}`,
                 borderRadius: '10px',
                 padding: '10px 12px',
                 display: 'flex',
@@ -2560,7 +2602,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Utensils size={14} color="#D4AF37" />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                       Degustação
                     </span>
                   </div>
@@ -2584,7 +2626,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       border: `1px solid ${lead.tastingCommitment.status === 'completed' ? '#10B981' : lead.tastingCommitment.status === 'scheduled' ? '#D4AF37' : '#EF4444'}`,
                       textTransform: 'uppercase',
                     }}>
-                      {lead.tastingCommitment.status === 'completed' ? '✓ Realizada' : lead.tastingCommitment.status === 'scheduled' ? 'Agendada' : 'Cancelada'}
+                      {lead.tastingCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.tastingCommitment.status === 'scheduled' ? 'Agendada' : lead.tastingCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
                     </span>
                   ) : (
                     <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
@@ -2594,9 +2636,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {lead.tastingCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.70rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data:</span>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
                       <strong style={{ color: 'var(--adm-text-title)' }}>
                         {new Date(lead.tastingCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.tastingCommitment.time}
                       </strong>
@@ -2607,7 +2649,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         fontWeight: 900,
                         color: '#D4AF37',
                         background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 5px',
+                        padding: '1px 6px',
                         borderRadius: '4px',
                       }}>
                         {lead.tastingCommitment.pax} PAX
@@ -2627,37 +2669,66 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                           onClick={() => setCompletingCommitmentType('tasting')}
                           style={{
                             flex: 1,
-                            padding: '4px 8px',
-                            borderRadius: '5px',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
                             background: '#10B981',
                             border: 'none',
                             color: '#FFFFFF',
-                            fontSize: '0.66rem',
+                            fontSize: '0.68rem',
                             fontWeight: 800,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: '3px',
+                            gap: '4px',
                           }}
                         >
-                          <Check size={11} /> Concluir
+                          <Check size={12} /> Sucesso
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCancellingCommitmentType('tasting')}
+                          onClick={() => cancelCommercialCommitment(lead.id, 'tasting', 'Lead não compareceu à degustação', 'no_show')}
                           style={{
-                            padding: '4px 8px',
-                            borderRadius: '5px',
-                            background: 'transparent',
-                            border: '1px solid #EF4444',
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
                             color: '#EF4444',
-                            fontSize: '0.66rem',
+                            fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
                           }}
                         >
-                          Cancelar
+                          <X size={12} /> No-Show
+                        </button>
+                      </div>
+                    )}
+
+                    {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCommitmentType('tasting')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            border: '1px solid rgba(212, 175, 55, 0.4)',
+                            color: '#D4AF37',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Degustação
                         </button>
                       </div>
                     )}
@@ -2668,30 +2739,31 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       type="button"
                       onClick={() => setScheduleCommitmentType('tasting')}
                       style={{
-                        padding: '7px 10px',
+                        padding: '6px 14px',
                         borderRadius: '6px',
                         background: 'rgba(212, 175, 55, 0.1)',
                         border: '1px solid rgba(212, 175, 55, 0.35)',
                         color: '#D4AF37',
-                        fontSize: '0.72rem',
+                        fontSize: '0.74rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
+                        gap: '5px',
+                        width: 'fit-content',
                         transition: 'all 0.15s ease',
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
                     >
                       <Plus size={12} />
-                      <span>Agendar Degustação</span>
+                      <span>Agendar</span>
                     </button>
                   )
                 )}
               </div>
             </div>
+
 
             {/* ── SEÇÃO 2: 👤 ANIVERSARIANTE & CONTATOS VINCULADOS ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
@@ -2797,126 +2869,249 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* Data de Nascimento / Aniversário */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Aniversário</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="date"
-                    value={draftBirthday}
-                    disabled={effectiveReadOnly}
-                    onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                    onChange={(e) => {
-                      setDraftBirthday(e.target.value);
-                      handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
-                    }}
-                    style={{
-                      ...seamlessInputStyle,
-                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                      color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
+              {(draftBirthday || showBirthdayField) && (
+                <div style={cardRowStyle}>
+                  <span style={cardLabelStyle}>Aniversário</span>
+                  <div style={cardValueStyle}>
+                    <input
+                      type="date"
+                      value={draftBirthday}
+                      disabled={effectiveReadOnly}
+                      onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => {
+                        setDraftBirthday(e.target.value);
+                        handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
+                      }}
+                      style={{
+                        ...seamlessInputStyle,
+                        cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                        color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                      }}
+                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* E-mail */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>E-mail</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="email"
-                    value={draftEmail}
-                    disabled={effectiveReadOnly}
-                    onChange={(e) => setDraftEmail(e.target.value)}
-                    onBlur={() => {
-                      if (draftEmail !== (lead.email || '')) {
-                        handleUpdate({ email: draftEmail.trim() });
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    placeholder="aniversariante@gmail.com"
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
+              {(draftEmail || showEmailField) && (
+                <div style={cardRowStyle}>
+                  <span style={cardLabelStyle}>E-mail</span>
+                  <div style={cardValueStyle}>
+                    <input
+                      type="email"
+                      value={draftEmail}
+                      disabled={effectiveReadOnly}
+                      onChange={(e) => setDraftEmail(e.target.value)}
+                      onBlur={() => {
+                        if (draftEmail !== (lead.email || '')) {
+                          handleUpdate({ email: draftEmail.trim() });
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      placeholder="aniversariante@gmail.com"
+                      style={seamlessInputStyle}
+                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Se o aniversariante for o decisor, exibe CPF, Bairro e Endereço contratuais.
-                  Se houver um decisor vinculado, esses campos são irrelevantes para o aniversariante e ficam ocultos. */}
+              {/* Se o aniversariante for o decisor, exibe CPF, Bairro e Endereço contratuais sob demanda. */}
               {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && (
                 <>
                   {/* CPF Contratual do Aniversariante/Decisor */}
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>CPF Contratual</span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftCpf}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftCpf(e.target.value)}
-                        onBlur={() => {
-                          if (draftCpf !== (lead.cpf || '')) {
-                            handleUpdate({ cpf: draftCpf.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="000.000.000-00"
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
+                  {(draftCpf || showCpfField) && (
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>CPF Contratual</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="text"
+                          value={draftCpf}
+                          disabled={effectiveReadOnly}
+                          onChange={(e) => setDraftCpf(e.target.value)}
+                          onBlur={() => {
+                            if (draftCpf !== (lead.cpf || '')) {
+                              handleUpdate({ cpf: draftCpf.trim() });
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          placeholder="000.000.000-00"
+                          style={seamlessInputStyle}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Bairro */}
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>Bairro</span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftNeighborhood}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftNeighborhood(e.target.value)}
-                        onBlur={() => {
-                          if (draftNeighborhood !== (lead.neighborhood || '')) {
-                            handleUpdate({ neighborhood: draftNeighborhood.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="Ex: Recreio, Barra..."
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
+                  {(draftNeighborhood || showNeighborhoodField) && (
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Bairro</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="text"
+                          value={draftNeighborhood}
+                          disabled={effectiveReadOnly}
+                          onChange={(e) => setDraftNeighborhood(e.target.value)}
+                          onBlur={() => {
+                            if (draftNeighborhood !== (lead.neighborhood || '')) {
+                              handleUpdate({ neighborhood: draftNeighborhood.trim() });
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          placeholder="Ex: Recreio, Barra..."
+                          style={seamlessInputStyle}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Endereço */}
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>Endereço</span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftAddress}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftAddress(e.target.value)}
-                        onBlur={() => {
-                          if (draftAddress !== (lead.address || '')) {
-                            handleUpdate({ address: draftAddress.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="Rua, número..."
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
+                  {(draftAddress || showAddressField) && (
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Endereço</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="text"
+                          value={draftAddress}
+                          disabled={effectiveReadOnly}
+                          onChange={(e) => setDraftAddress(e.target.value)}
+                          onBlur={() => {
+                            if (draftAddress !== (lead.address || '')) {
+                              handleUpdate({ address: draftAddress.trim() });
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          placeholder="Rua, número..."
+                          style={seamlessInputStyle}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
+
+              {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos */}
+              {!effectiveReadOnly && (
+                (!draftBirthday && !showBirthdayField) ||
+                (!draftEmail && !showEmailField) ||
+                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftCpf && !showCpfField) ||
+                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftNeighborhood && !showNeighborhoodField) ||
+                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftAddress && !showAddressField)
+              ) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Adicionar dado:</span>
+                  {!draftBirthday && !showBirthdayField && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBirthdayField(true)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-title)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Plus size={10} /> Aniversário
+                    </button>
+                  )}
+                  {!draftEmail && !showEmailField && (
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailField(true)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-title)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Plus size={10} /> E-mail
+                    </button>
+                  )}
+                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftCpf && !showCpfField && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCpfField(true)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-title)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Plus size={10} /> CPF
+                    </button>
+                  )}
+                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftNeighborhood && !showNeighborhoodField && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNeighborhoodField(true)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-title)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Plus size={10} /> Bairro
+                    </button>
+                  )}
+                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftAddress && !showAddressField && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddressField(true)}
+                      style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-title)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Plus size={10} /> Endereço
+                    </button>
+                  )}
+                </div>
+              )}
+
 
               {/* Decisor (Checkbox Sim / Não para o Aniversariante) */}
               <div style={cardRowStyle}>
