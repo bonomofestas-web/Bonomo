@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, UserPlus, Phone, User, DollarSign, Building2, 
-  MessageSquare, Sparkles, ArrowRight, Loader2 
+  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { LeadSource, CrmStage } from '../../types/admin';
@@ -12,6 +12,7 @@ interface AdminNewLeadModalProps {
   defaultFunnelId?: string;
   defaultVenueId?: string;
   currentFunnelName?: string | null;
+  initialMode?: 'quick' | 'full';
   onLeadCreated?: (leadId: string) => void;
 }
 
@@ -21,6 +22,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   defaultFunnelId,
   defaultVenueId,
   currentFunnelName,
+  initialMode = 'quick',
   onLeadCreated,
 }) => {
   const { 
@@ -32,6 +34,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     createLead 
   } = useAdminState();
 
+  const [mode, setMode] = useState<'quick' | 'full'>('quick');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [venueId, setVenueId] = useState<string>('');
@@ -63,6 +66,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    setMode(initialMode || 'quick');
     setErrorMsg(null);
     setIsSubmitting(false);
     setName('');
@@ -82,7 +86,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
 
     setSource('cadastro_interno');
     setSourceId('');
-  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, isVenueFixedByFunnel]);
+  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, isVenueFixedByFunnel, initialMode]);
 
   // Lista de origens filtradas pela casa ou gerais, OBRIGATORIAMENTE excluindo canais automáticos/sistema
   const availableSources = useMemo(() => {
@@ -90,7 +94,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       if (s.status !== 'active') return false;
       if (s.venueId && s.venueId !== 'all' && s.venueId !== venueId) return false;
       const lowerName = s.name.toLowerCase();
-      // Regra do Áudio: Bloquear "Indicação Espaço F5 System" para evitar manipulação de comissões/indicações reais
+      // Bloquear canais internos de indicação direta no seletor
       if (lowerName.includes('espaço f5') || lowerName.includes('f5 system') || lowerName.includes('indicação app')) {
         return false;
       }
@@ -125,7 +129,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     const cleanPhoneDigits = phone.replace(/\D/g, '');
 
     if (!cleanName) {
-      setErrorMsg('Por favor, informe o nome completo do lead.');
+      setErrorMsg('Por favor, informe o nome do lead.');
       return;
     }
 
@@ -159,7 +163,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
 
       // Origem legível
       const selectedSourceObj = sources.find(s => s.id === sourceId);
-      const parsedBudget = estimatedBudget 
+      const parsedBudget = (mode === 'full' && estimatedBudget)
         ? parseFloat(estimatedBudget.replace(/\./g, '').replace(',', '.')) 
         : undefined;
 
@@ -169,11 +173,11 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         venueId: finalVenueId,
         funnelId: finalFunnelId,
         stage: initialStage as CrmStage,
-        source: source || 'cadastro_interno',
-        sourceId: sourceId || undefined,
-        sourceName: selectedSourceObj?.name || (source === 'cadastro_interno' ? 'Cadastro Manual' : undefined),
+        source: mode === 'full' ? (source || 'cadastro_interno') : 'cadastro_interno',
+        sourceId: mode === 'full' ? (sourceId || undefined) : undefined,
+        sourceName: mode === 'full' ? (selectedSourceObj?.name || (source === 'cadastro_interno' ? 'Cadastro Manual' : undefined)) : 'Cadastro Rápido',
         estimatedBudget: isNaN(parsedBudget as number) ? undefined : parsedBudget,
-        notes: notes.trim() || undefined,
+        notes: mode === 'full' ? (notes.trim() || undefined) : undefined,
         createdBy: currentUser?.id,
         createdByName: currentUser?.name || 'Cadastro Manual',
         createdByAvatar: currentUser?.avatarUrl,
@@ -228,7 +232,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── HEADER (MODO CLARO) ── */}
+        {/* ── HEADER ── */}
         <div 
           style={{
             display: 'flex',
@@ -245,22 +249,22 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 width: '36px',
                 height: '36px',
                 borderRadius: '10px',
-                background: 'rgba(20, 169, 215, 0.12)',
-                color: 'var(--adm-accent, #14A9D7)',
+                background: mode === 'quick' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(20, 169, 215, 0.12)',
+                color: mode === 'quick' ? '#10B981' : 'var(--adm-accent, #14A9D7)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <UserPlus size={18} />
+              {mode === 'quick' ? <Zap size={18} /> : <UserPlus size={18} />}
             </div>
             <div>
               <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
-                Adicionar Novo Lead
+                {mode === 'quick' ? 'Cadastro Rápido de Lead' : 'Cadastro Personalizado de Lead'}
               </h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                 <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                  Inserindo diretamente no:
+                  Inserindo no:
                 </span>
                 <span 
                   style={{
@@ -302,8 +306,68 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           </button>
         </div>
 
-        {/* ── FORM BODY (MODO CLARO) ── */}
-        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
+        {/* ── SELETOR DE MODO: RÁPIDO VS PERSONALIZADO ── */}
+        <div style={{ padding: '12px 20px 0 20px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
+          <div style={{
+            display: 'flex',
+            background: 'var(--adm-bg-input, #F1F5F9)',
+            padding: '3px',
+            borderRadius: '8px',
+            gap: '4px',
+          }}>
+            <button
+              type="button"
+              onClick={() => setMode('quick')}
+              style={{
+                flex: 1,
+                padding: '7px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                background: mode === 'quick' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                color: mode === 'quick' ? '#10B981' : 'var(--adm-text-muted, #64748B)',
+                boxShadow: mode === 'quick' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Zap size={14} />
+              <span>⚡ Cadastro Rápido</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('full')}
+              style={{
+                flex: 1,
+                padding: '7px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                background: mode === 'full' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                color: mode === 'full' ? 'var(--adm-accent, #14A9D7)' : 'var(--adm-text-muted, #64748B)',
+                boxShadow: mode === 'full' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Sliders size={14} />
+              <span>📋 Cadastro Personalizado</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── FORM BODY ── */}
+        <form onSubmit={handleSubmit} style={{ padding: '16px 20px 20px 20px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'var(--adm-bg-card, #FFFFFF)' }}>
           {errorMsg && (
             <div 
               style={{
@@ -324,7 +388,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           {/* Nome Completo */}
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-              Nome do Contato / Responsável <span style={{ color: '#EF4444' }}>*</span>
+              Nome do Lead <span style={{ color: '#EF4444' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
@@ -354,10 +418,46 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
             </div>
           </div>
 
+          {/* Casa de Festas Vinculada */}
+          {!isVenueFixedByFunnel && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
+                Casa de Festa Vinculada <span style={{ color: '#EF4444' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
+                  <Building2 size={14} />
+                </div>
+                <select
+                  value={venueId}
+                  onChange={(e) => setVenueId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    paddingLeft: '30px',
+                    paddingRight: '10px',
+                    backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    borderRadius: '8px',
+                    color: 'var(--adm-text-title, #0F172A)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           {/* WhatsApp / Telefone */}
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-              WhatsApp / Telefone com DDD <span style={{ color: '#EF4444' }}>*</span>
+              WhatsApp do Lead <span style={{ color: '#EF4444' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
@@ -386,21 +486,30 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
             </div>
           </div>
 
-          {/* Linha Dupla: Unidade + Origem */}
-          <div style={{ display: 'grid', gridTemplateColumns: isVenueFixedByFunnel ? '1fr' : '1fr 1fr', gap: '10px' }}>
-            {/* Casa de Festas */}
-            {!isVenueFixedByFunnel && (
+          {/* CAMPOS ADICIONAIS DO CADASTRO PERSONALIZADO */}
+          {mode === 'full' && (
+            <>
+              {/* Origem */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                  Unidade / Casa <span style={{ color: '#EF4444' }}>*</span>
+                  Canal de Origem
                 </label>
                 <div style={{ position: 'relative' }}>
                   <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                    <Building2 size={14} />
+                    <MessageSquare size={14} />
                   </div>
                   <select
-                    value={venueId}
-                    onChange={(e) => setVenueId(e.target.value)}
+                    value={sourceId ? `custom_${sourceId}` : source}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val.startsWith('custom_')) {
+                        setSourceId(val.replace('custom_', ''));
+                        setSource('outro');
+                      } else {
+                        setSourceId('');
+                        setSource(val as LeadSource);
+                      }
+                    }}
                     style={{
                       width: '100%',
                       height: '38px',
@@ -416,120 +525,77 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                       boxSizing: 'border-box',
                     }}
                   >
-                    {venues.map(v => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
+                    <option value="cadastro_interno">Cadastro Manual</option>
+                    <option value="whatsapp">WhatsApp Comercial</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="indicacao">Indicação</option>
+                    <option value="trafego_pago">Tráfego Pago (Ads)</option>
+                    <option value="google">Google</option>
+                    <option value="site">Site Oficial</option>
+                    {availableSources.map(s => (
+                      <option key={s.id} value={`custom_${s.id}`}>{s.name}</option>
                     ))}
                   </select>
                 </div>
               </div>
-            )}
 
-            {/* Origem Padrão: Cadastro Manual */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                Canal de Origem
-              </label>
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                  <MessageSquare size={14} />
+              {/* Valor Estimado / Orçamento Inicial */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
+                  Valor Estimado / Orçamento Inicial <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
+                    <DollarSign size={15} />
+                  </div>
+                  <input
+                    type="text"
+                    value={estimatedBudget ? `R$ ${estimatedBudget}` : ''}
+                    onChange={handleBudgetChange}
+                    placeholder="R$ 0,00"
+                    style={{
+                      width: '100%',
+                      height: '38px',
+                      paddingLeft: '34px',
+                      paddingRight: '12px',
+                      backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
+                      border: '1px solid var(--adm-border, #CBD5E1)',
+                      borderRadius: '8px',
+                      color: 'var(--adm-text-title, #0F172A)',
+                      fontSize: '0.82rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
                 </div>
-                <select
-                  value={sourceId ? `custom_${sourceId}` : source}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val.startsWith('custom_')) {
-                      setSourceId(val.replace('custom_', ''));
-                      setSource('outro');
-                    } else {
-                      setSourceId('');
-                      setSource(val as LeadSource);
-                    }
-                  }}
+              </div>
+
+              {/* Anotação Rápida */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
+                  Anotação Rápida <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Algum recado inicial do cliente (ex: procura data para nov/2026)..."
                   style={{
                     width: '100%',
-                    height: '38px',
-                    paddingLeft: '30px',
-                    paddingRight: '10px',
+                    padding: '8px 12px',
                     backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
                     border: '1px solid var(--adm-border, #CBD5E1)',
                     borderRadius: '8px',
                     color: 'var(--adm-text-title, #0F172A)',
                     fontSize: '0.8rem',
                     outline: 'none',
-                    cursor: 'pointer',
+                    resize: 'none',
                     boxSizing: 'border-box',
                   }}
-                >
-                  <option value="cadastro_interno">Cadastro Manual</option>
-                  <option value="whatsapp">WhatsApp Comercial</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="indicacao">Indicação</option>
-                  <option value="trafego_pago">Tráfego Pago (Ads)</option>
-                  <option value="google">Google</option>
-                  <option value="site">Site Oficial</option>
-                  {availableSources.map(s => (
-                    <option key={s.id} value={`custom_${s.id}`}>{s.name}</option>
-                  ))}
-                </select>
+                />
               </div>
-            </div>
-          </div>
-
-          {/* Valor Estimado / Orçamento Inicial */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-              Valor Estimado / Orçamento Inicial <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                <DollarSign size={15} />
-              </div>
-              <input
-                type="text"
-                value={estimatedBudget ? `R$ ${estimatedBudget}` : ''}
-                onChange={handleBudgetChange}
-                placeholder="R$ 0,00"
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  paddingLeft: '34px',
-                  paddingRight: '12px',
-                  backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                  border: '1px solid var(--adm-border, #CBD5E1)',
-                  borderRadius: '8px',
-                  color: 'var(--adm-text-title, #0F172A)',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Anotação Rápida */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-              Anotação Rápida <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>(opcional)</span>
-            </label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Algum recado inicial do cliente (ex: procura data para nov/2026)..."
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                border: '1px solid var(--adm-border, #CBD5E1)',
-                borderRadius: '8px',
-                color: 'var(--adm-text-title, #0F172A)',
-                fontSize: '0.8rem',
-                outline: 'none',
-                resize: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
+            </>
+          )}
 
           {/* Informativo de Automação */}
           <div 
@@ -545,7 +611,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           >
             <Sparkles size={14} style={{ color: 'var(--adm-accent, #14A9D7)', flexShrink: 0 }} />
             <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)', lineHeight: 1.3 }}>
-              Ao salvar, a <strong>Caixa de Entrada e Ficha Completa</strong> deste lead serão abertas imediatamente para você continuar o atendimento.
+              Ao salvar, a <strong>Caixa de Atendimento WhatsApp</strong> deste lead será aberta imediatamente.
             </span>
           </div>
 
@@ -583,7 +649,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               type="submit"
               disabled={isSubmitting}
               style={{
-                background: 'var(--adm-accent, #14A9D7)',
+                background: mode === 'quick' ? '#10B981' : 'var(--adm-accent, #14A9D7)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -594,7 +660,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '7px',
-                boxShadow: '0 2px 8px rgba(20, 169, 215, 0.35)',
+                boxShadow: mode === 'quick' ? '0 2px 8px rgba(16, 185, 129, 0.35)' : '0 2px 8px rgba(20, 169, 215, 0.35)',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -605,7 +671,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 </>
               ) : (
                 <>
-                  <span>Criar Lead e Abrir Atendimento</span>
+                  <span>{mode === 'quick' ? '⚡ Criar Lead Rápido' : 'Criar Lead Completo'}</span>
                   <ArrowRight size={15} />
                 </>
               )}

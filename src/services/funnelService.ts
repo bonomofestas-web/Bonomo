@@ -9,6 +9,7 @@ export const funnelService = {
       const { data, error } = await supabase
         .from('commercial_funnels')
         .select('*')
+        .order('order', { ascending: true })
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -46,6 +47,11 @@ export const funnelService = {
         packageOptions: Array.isArray(row.package_options) ? row.package_options : row.packageOptions,
         paymentOptions: Array.isArray(row.payment_options) ? row.payment_options : row.paymentOptions,
         predefinedTags: Array.isArray(row.predefined_tags) ? row.predefined_tags : row.predefinedTags,
+        allowCollaboratorsCreateTags: row.allow_collaborators_create_tags ?? row.duplicate_rule_config?._allowCollaboratorsCreateTags ?? false,
+        customFields: Array.isArray(row.custom_fields) ? row.custom_fields : (row.customFields || []),
+        defaultWhatsAppSourceId: row.default_whatsapp_source_id || row.duplicate_rule_config?._defaultWhatsAppSourceId || '',
+        priorityWhatsappPerVenue: row.priority_whatsapp_per_venue || row.duplicate_rule_config?._priorityWhatsappPerVenue || {},
+        venueDistributionConfig: row.venue_distribution_config || row.duplicate_rule_config?._venueDistributionConfig || {},
         isWonStageEnabled: row.is_won_stage_enabled ?? true,
         distributionMode: row.distribution_mode || 'manual',
         assignedSdrIds: Array.isArray(row.assigned_sdr_ids) ? row.assigned_sdr_ids : [],
@@ -83,7 +89,25 @@ export const funnelService = {
       if (funnel.stagesCount !== undefined) payload.stages_count = funnel.stagesCount;
       if (funnel.isEntryStageActive !== undefined) payload.is_entry_stage_active = funnel.isEntryStageActive;
       if (funnel.detectDuplicates !== undefined) payload.detect_duplicates = funnel.detectDuplicates;
-      if (funnel.duplicateRuleConfig !== undefined) payload.duplicate_rule_config = funnel.duplicateRuleConfig;
+      
+      // Fallback resiliente: guarda as configurações em duplicate_rule_config além das colunas diretas
+      const baseDuplicateConfig = funnel.duplicateRuleConfig || {
+        matchPhone: true,
+        matchEmail: false,
+        matchName: false,
+        action: 'keep_recent',
+      };
+      payload.duplicate_rule_config = {
+        ...baseDuplicateConfig,
+        ...(funnel.priorityWhatsappPerVenue !== undefined ? { _priorityWhatsappPerVenue: funnel.priorityWhatsappPerVenue } : {}),
+        ...(funnel.defaultWhatsAppSourceId !== undefined ? { _defaultWhatsAppSourceId: funnel.defaultWhatsAppSourceId } : {}),
+        ...(funnel.venueDistributionConfig !== undefined ? { _venueDistributionConfig: funnel.venueDistributionConfig } : {}),
+      };
+
+      if (funnel.priorityWhatsappPerVenue !== undefined) payload.priority_whatsapp_per_venue = funnel.priorityWhatsappPerVenue;
+      if (funnel.defaultWhatsAppSourceId !== undefined) payload.default_whatsapp_source_id = funnel.defaultWhatsAppSourceId;
+      if (funnel.venueDistributionConfig !== undefined) payload.venue_distribution_config = funnel.venueDistributionConfig;
+
       if (funnel.isPrimary !== undefined) payload.is_primary = funnel.isPrimary;
       if (funnel.isDemo !== undefined) payload.is_demo = funnel.isDemo;
       if (funnel.isPostSale !== undefined) payload.is_post_sale = funnel.isPostSale;
@@ -91,6 +115,10 @@ export const funnelService = {
       if (funnel.packageOptions !== undefined) payload.package_options = funnel.packageOptions;
       if (funnel.paymentOptions !== undefined) payload.payment_options = funnel.paymentOptions;
       if (funnel.predefinedTags !== undefined) payload.predefined_tags = funnel.predefinedTags;
+      if (funnel.allowCollaboratorsCreateTags !== undefined) {
+        payload.allow_collaborators_create_tags = funnel.allowCollaboratorsCreateTags;
+        payload.duplicate_rule_config._allowCollaboratorsCreateTags = funnel.allowCollaboratorsCreateTags;
+      }
       if (funnel.customFields !== undefined) payload.custom_fields = funnel.customFields;
       if (funnel.isWonStageEnabled !== undefined) payload.is_won_stage_enabled = funnel.isWonStageEnabled;
       if (funnel.distributionMode !== undefined) payload.distribution_mode = funnel.distributionMode;
@@ -125,6 +153,7 @@ export const funnelService = {
             pinned_at: funnel.pinnedAt,
             order: funnel.order,
             is_primary: funnel.isPrimary,
+            duplicate_rule_config: payload.duplicate_rule_config,
           };
           Object.keys(fallbackPayload).forEach(k => fallbackPayload[k] === undefined && delete fallbackPayload[k]);
 
@@ -239,6 +268,23 @@ export const funnelService = {
       return true;
     } catch (err) {
       console.error('Falha em funnelService.delete:', err);
+      return false;
+    }
+  },
+
+  async reorderFunnels(orderedFunnels: CommercialFunnel[]): Promise<boolean> {
+    if (!isSupabaseConfigured || !Array.isArray(orderedFunnels)) return false;
+    try {
+      const updates = orderedFunnels.map((funnel, index) => 
+        supabase
+          .from('commercial_funnels')
+          .update({ order: index })
+          .eq('id', funnel.id)
+      );
+      await Promise.all(updates);
+      return true;
+    } catch (err) {
+      console.error('Falha em funnelService.reorderFunnels:', err);
       return false;
     }
   }

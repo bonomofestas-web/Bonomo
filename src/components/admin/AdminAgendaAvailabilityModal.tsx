@@ -79,7 +79,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   const [isSaving, setIsSaving] = useState(false);
 
-  const canEdit = currentUser?.role === 'master' || currentUser?.role === 'dev' || currentUser?.role === 'admin';
+  const canEdit = currentUser?.role === 'master' || currentUser?.role === 'admin';
 
   const handleSave = async () => {
     if (!canEdit) {

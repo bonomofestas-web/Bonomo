@@ -11,6 +11,7 @@ import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import type { Lead, CrmStage, AdminTask, TaskStatus } from '../../types/admin';
 
 interface AdminCrmWorkspaceViewProps {
@@ -77,33 +78,39 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     }
   }, [initialLeadId]);
 
-  // Filtered leads for Column 1
-  const filteredLeads = leads.filter(l => {
-    const matchesVenue = !activeVenueId || l.venueId === activeVenueId;
-    
-    if (filterTab === 'all') {
-      // Aba "Abertas": leads sem responsável/SDR atribuído
-      const hasSdr = Boolean(l.sdrId || (l.assignedTo && l.assignedTo.trim() !== '' && l.assignedTo !== 'Sem responsável' && l.assignedTo !== 'Não atribuído'));
-      if (hasSdr) return false;
-    }
+  const collabIdSet = useMemo(() => new Set((collaborators || []).map(c => c.id)), [collaborators]);
 
-    if (filterTab === 'mine') {
-      // Aba "Minhas": leads atribuídos ao usuário logado
-      const isMine = (currentUser?.id && (l.sdrId === currentUser.id || l.closerId === currentUser.id)) ||
-        (currentUser?.name && l.assignedTo?.toLowerCase() === currentUser.name.toLowerCase());
-      if (!isMine) return false;
-    }
+  // Filtered leads for Column 1 ordenados prioritariamente por Tempo de Espera
+  const filteredLeads = useMemo(() => {
+    const matching = leads.filter(l => {
+      const matchesVenue = !activeVenueId || l.venueId === activeVenueId;
+      
+      if (filterTab === 'all') {
+        // Aba "Abertas": leads sem responsável/SDR atribuído
+        const hasSdr = Boolean(l.sdrId || (l.assignedTo && l.assignedTo.trim() !== '' && l.assignedTo !== 'Sem responsável' && l.assignedTo !== 'Não atribuído'));
+        if (hasSdr) return false;
+      }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = l.name.toLowerCase().includes(q) ||
-        l.phone.includes(q) ||
-        l.debutanteName.toLowerCase().includes(q);
-      if (!matchesSearch) return false;
-    }
+      if (filterTab === 'mine') {
+        // Aba "Minhas": leads atribuídos ao usuário logado
+        const isMine = (currentUser?.id && (l.sdrId === currentUser.id || l.closerId === currentUser.id)) ||
+          (currentUser?.name && l.assignedTo?.toLowerCase() === currentUser.name.toLowerCase());
+        if (!isMine) return false;
+      }
 
-    return matchesVenue;
-  });
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesSearch = l.name.toLowerCase().includes(q) ||
+          l.phone.includes(q) ||
+          l.debutanteName.toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
+
+      return matchesVenue;
+    });
+
+    return sortLeadsByCriteria(matching, 'waiting_time', collabIdSet);
+  }, [leads, activeVenueId, filterTab, currentUser, searchQuery, collabIdSet]);
 
   useEffect(() => {
     if (!selectedLeadId && filteredLeads.length > 0) {
@@ -130,10 +137,6 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     } else { 
       updateLeadStage(currentLead.id, newStage); 
     }
-  };
-
-  const handleConfirmSale = (leadId: string, dealValue: number, packageSold: string, contractDate: string, closerNotes?: string) => {
-    closeLeadSaleWithValue(leadId, dealValue, packageSold, contractDate, closerNotes);
   };
 
   const handleSendInternalNote = (e: React.FormEvent) => {
@@ -310,6 +313,17 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               const sdr = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
               const sdrAvatar = sdr?.avatarUrl;
               const lastActivity = lead.activities?.[0];
+              const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
+              const sla = getLeadWaitTimeSla(pendingWaitMs);
+              const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
+
+              const itemBg = hasSlaAlert
+                ? (isSelected ? (sla.level === 'red' ? 'rgba(239, 68, 68, 0.12)' : sla.level === 'orange' ? 'rgba(249, 115, 22, 0.10)' : 'rgba(234, 179, 8, 0.08)') : sla.cardBg)
+                : (isSelected ? 'var(--adm-accent-bg)' : 'transparent');
+
+              const itemBorderLeft = hasSlaAlert
+                ? (isSelected ? `4px solid ${sla.color}` : `3px solid ${sla.color}`)
+                : (isSelected ? '3px solid var(--adm-accent)' : '3px solid transparent');
 
               return (
                 <div
@@ -318,8 +332,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                   style={{
                     padding: '11px 14px',
                     borderBottom: '1px solid var(--adm-border)',
-                    background: isSelected ? 'var(--adm-accent-bg)' : 'transparent',
-                    borderLeft: isSelected ? '3px solid var(--adm-accent)' : '3px solid transparent',
+                    background: itemBg,
+                    borderLeft: itemBorderLeft,
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
@@ -327,10 +341,14 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                   onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                    if (!isSelected) {
+                      e.currentTarget.style.background = hasSlaAlert ? (sla.level === 'red' ? 'rgba(239, 68, 68, 0.09)' : sla.level === 'orange' ? 'rgba(249, 115, 22, 0.08)' : 'rgba(234, 179, 8, 0.06)') : 'var(--adm-bg-input)';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    if (!isSelected) {
+                      e.currentTarget.style.background = itemBg;
+                    }
                   }}
                 >
                   {/* Top Row: Avatar + Indicator + Name + Tag + Time */}
@@ -396,6 +414,27 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      {pendingWaitMs > 0 && (
+                        <span
+                          title={`Aguardando resposta da equipe há ${sla.formattedTime} (${sla.label})`}
+                          style={{
+                            fontSize: '0.60rem',
+                            fontWeight: 800,
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: sla.bg,
+                            color: sla.color,
+                            border: `1px solid ${sla.border}`,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Clock size={9} color={sla.color} strokeWidth={2.5} />
+                          <span>{sla.formattedTime}</span>
+                        </span>
+                      )}
                       <span style={{
                         fontSize: '0.62rem',
                         fontWeight: 800,
@@ -532,11 +571,23 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                 )}
 
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {[
-                    { id: 'whatsapp', label: 'WhatsApp (Sigiloso)' },
-                    { id: 'history', label: 'Histórico & Notas' },
-                    { id: 'tasks', label: `Tarefas (${leadTasks.length})` },
-                  ].map(tab => (
+                  {(() => {
+                    const notesCount = (currentLead?.activities || []).filter(a => 
+                      a.type === 'note' || 
+                      a.type === 'status_change' || 
+                      a.type === 'assignment' || 
+                      a.type === 'creation' || 
+                      a.type === 'deal_closed' || 
+                      a.type === 'validation' ||
+                      a.type === 'task_created' ||
+                      a.type === 'task_completed'
+                    ).length;
+                    return [
+                      { id: 'whatsapp', label: 'WhatsApp (Sigiloso)' },
+                      { id: 'history', label: `Histórico & Notas (${notesCount})` },
+                      { id: 'tasks', label: `Tarefas (${leadTasks.length})` },
+                    ];
+                  })().map(tab => (
                     <button
                       key={tab.id}
                       type="button"
@@ -1125,8 +1176,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
           isOpen={isCloseDealModalOpen}
           lead={currentLead}
           onClose={() => setIsCloseDealModalOpen(false)}
-          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, contractDate: string, closerNotes?: string) => {
-            handleConfirmSale(leadId, dealValue, packageSold, contractDate, closerNotes);
+          onConfirmSale={(leadId: string, dealValue: number, packageSold: string, closerNotes?: string, extraOptions?: any) => {
+            closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes, extraOptions);
             setIsCloseDealModalOpen(false);
           }}
         />

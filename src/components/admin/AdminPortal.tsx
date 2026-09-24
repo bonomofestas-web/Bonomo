@@ -130,7 +130,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const unreadSupportCount = React.useMemo(() => {
     if (!supportTickets || supportTickets.length === 0) return 0;
     let count = 0;
-    if (currentUser?.role === 'dev') {
+    if (currentUser?.isDev) {
       return supportTickets.filter(t => t.status !== 'resolved' && new Date(t.createdAt).getTime() > lastSupportReadAt).length;
     }
     const myTickets = supportTickets.filter(t => t.userId === currentUser?.id || t.userEmail === currentUser?.email);
@@ -194,7 +194,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Dynamic First Available Tab calculation (Audio 1 & 2)
   const getFirstAvailableTab = useCallback((): AdminTabType => {
-    if (currentUser?.role === 'dev') return 'home';
+    if (currentUser?.isDev) return 'home';
 
     const menuTabsInOrder: AdminTabType[] = [
       'home',
@@ -228,11 +228,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
     }
     return 'crm';
-  }, [currentUser?.role, getFeatureStatus]);
+  }, [currentUser?.role, currentUser?.isDev, getFeatureStatus]);
 
   // Audio 2: Redirecionamento automático se a aba ativa estiver desativada por feature flag
   useEffect(() => {
-    if (!isInitialSyncComplete || currentUser?.role === 'dev') return;
+    if (!isInitialSyncComplete || currentUser?.isDev) return;
     const flag = TAB_FEATURE_FLAG[activeTab];
     if (flag) {
       const status = getFeatureStatus(flag);
@@ -244,7 +244,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         }
       }
     }
-  }, [isInitialSyncComplete, activeTab, currentUser?.role, getFeatureStatus, getFirstAvailableTab]);
+  }, [isInitialSyncComplete, activeTab, currentUser?.isDev, getFeatureStatus, getFirstAvailableTab]);
 
   // Listener para troca de aba disparada por componentes filhos
   useEffect(() => {
@@ -264,7 +264,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Check for unread announcement directed at this user (Audio 6 & 7 + Audio 2 roles)
   const isUserTargetedByAnnouncement = useCallback((a: import('../../types/admin').SystemAnnouncement) => {
     if (!currentUser) return false;
-    if (currentUser.role === 'dev') return true;
+    if (currentUser.isDev) return true;
     if (a.targetRoles && a.targetRoles.length > 0) {
       return a.targetRoles.includes(currentUser.role);
     }
@@ -316,7 +316,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const renderContent = () => {
 
     // Se não há casas de festa cadastradas, a tela mandatória para Master é registrar a 1ª unidade (exceto Dev ou Configurações)
-    const isDevSession = currentUser?.role === 'dev' || activeTab.startsWith('dev-');
+    const isDevSession = Boolean(currentUser?.isDev) || activeTab.startsWith('dev-');
     if (venues.length === 0 && !isDevSession && activeTab !== 'settings' && currentUser?.role === 'master') {
       return (
         <AdminVenuesView
@@ -329,7 +329,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
 
     const flagId = TAB_FEATURE_FLAG[activeTab];
-    if (flagId && currentUser?.role !== 'dev') {
+    if (flagId && !currentUser?.isDev) {
       const status = getFeatureStatus(flagId);
       if (status === 'coming_soon') {
         const fallback = getFirstAvailableTab();
@@ -626,10 +626,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'whatsapp') { category = 'Comercial'; title = 'WhatsApp'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
               else if (activeTab === 'followups') { category = 'Comercial'; title = 'Follow-up'; }
-              else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Clientes'; }
-              else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'Aniversariantes'; }
+              else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Sucesso do Cliente'; }
+              else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'App Aniversariantes'; }
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
-              else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Visitas & Degustação'; }
+              else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Agendamentos'; }
               else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
               else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
               else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }
@@ -985,63 +985,65 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               )}
             </div>
-            {/* Support / Help Center Button (Audio 1, 2 & 3: Floating widget & unread badge) */}
-            <button
-              type="button"
-              onClick={handleToggleSupport}
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                background: isSupportModalOpen ? 'rgba(20, 169, 215, 0.2)' : '#141118',
-                border: `1px solid ${isSupportModalOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.25)'}`,
-                color: isSupportModalOpen ? '#14A9D7' : '#9E988D',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                position: 'relative',
-                transition: 'all 0.15s ease',
-              }}
-              title="Central de Suporte & Report de Bugs"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#14A9D7';
-                e.currentTarget.style.borderColor = '#14A9D7';
-              }}
-              onMouseLeave={(e) => {
-                if (!isSupportModalOpen) {
-                  e.currentTarget.style.color = '#9E988D';
-                  e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.25)';
-                }
-              }}
-            >
-              <Headset size={17} />
-              {unreadSupportCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '-3px',
-                    right: '-3px',
-                    minWidth: '17px',
-                    height: '17px',
-                    padding: '0 4px',
-                    borderRadius: '10px',
-                    background: '#EF4444',
-                    color: '#FFFFFF',
-                    fontSize: '0.62rem',
-                    fontWeight: 700,
-                    fontFamily: "'Poppins', sans-serif",
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
-                    border: '1.5px solid #090814',
-                  }}
-                >
-                  {unreadSupportCount}
-                </span>
-              )}
-            </button>
+            {/* Support / Help Center Button (Audio 1, 2 & 3: Floating widget & unread badge - Oculto para desenvolvedor) */}
+            {!currentUser?.isDev && (
+              <button
+                type="button"
+                onClick={handleToggleSupport}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: isSupportModalOpen ? 'rgba(20, 169, 215, 0.2)' : '#141118',
+                  border: `1px solid ${isSupportModalOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.25)'}`,
+                  color: isSupportModalOpen ? '#14A9D7' : '#9E988D',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Central de Suporte & Report de Bugs"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#14A9D7';
+                  e.currentTarget.style.borderColor = '#14A9D7';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSupportModalOpen) {
+                    e.currentTarget.style.color = '#9E988D';
+                    e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.25)';
+                  }
+                }}
+              >
+                <Headset size={17} />
+                {unreadSupportCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-3px',
+                      right: '-3px',
+                      minWidth: '17px',
+                      height: '17px',
+                      padding: '0 4px',
+                      borderRadius: '10px',
+                      background: '#EF4444',
+                      color: '#FFFFFF',
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      fontFamily: "'Poppins', sans-serif",
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                      border: '1.5px solid #090814',
+                    }}
+                  >
+                    {unreadSupportCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* 1. Notification Bell & Dropdown */}
             <div ref={notificationsMenuRef} style={{ position: 'relative' }}>
@@ -1172,7 +1174,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       >
                         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#EF4444', display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <Headset size={12} color="#EF4444" />
-                          <span>{currentUser?.role === 'dev' ? 'Novos Chamados de Suporte' : 'Nova Resposta no Suporte'}</span>
+                          <span>{currentUser?.isDev ? 'Novos Chamados de Suporte' : 'Nova Resposta no Suporte'}</span>
                         </div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)' }}>
                           Você possui {unreadSupportCount} mensagem(ns) não lida(s) no Suporte Técnico.
@@ -1470,17 +1472,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         onClose={() => setIsNewDebutanteModalOpen(false)}
       />
 
-      <AdminSupportWidget
-        isOpen={isSupportModalOpen}
-        onClose={() => setIsSupportModalOpen(false)}
-        onMarkRead={() => {
-          const now = Date.now();
-          setLastSupportReadAt(now);
-          try {
-            localStorage.setItem('bonomo_last_support_read_at', String(now));
-          } catch {}
-        }}
-      />
+      {!currentUser?.isDev && (
+        <AdminSupportWidget
+          isOpen={isSupportModalOpen}
+          onClose={() => setIsSupportModalOpen(false)}
+          onMarkRead={() => {
+            const now = Date.now();
+            setLastSupportReadAt(now);
+            try {
+              localStorage.setItem('bonomo_last_support_read_at', String(now));
+            } catch {}
+          }}
+        />
+      )}
 
       <style>{`
         @media (max-width: 900px) {

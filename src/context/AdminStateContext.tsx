@@ -43,11 +43,11 @@ import {
   mockVipRewards 
 } from '../data/mockData';
 import { mockClients } from '../data/mockClients';
-import { safeLocalStorageSet } from '../utils/mediaStorage';
+import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
-import { leadService } from '../services/leadService';
+import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
@@ -58,8 +58,12 @@ import { journeyTemplateService } from '../services/journeyTemplateService';
 import { mqlService } from '../services/mqlService';
 import { supportService } from '../services/supportService';
 import { clientService } from '../services/clientService';
+import { uazapiService } from '../services/uazapiService';
+import { whatsappMediaService } from '../services/whatsappMediaService';
+import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode } from '../utils/leadUtils';
+import { isUuid } from '../utils/uuid';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -158,6 +162,8 @@ const DEFAULT_COLLABORATORS: Collaborator[] = [];
 
 const DEFAULT_FEATURE_FLAGS: Record<FeatureFlagId, FeatureFlagStatus> = {
   master_dashboard: 'active',
+  commercial_dashboard: 'active',
+  goals: 'active',
 };
 
 const DEFAULT_ADMIN_USER: AdminUser | null = null;
@@ -189,6 +195,9 @@ export interface AdminContextType {
   benefitsCatalog: BenefitCatalogItem[];
   vipCatalog: VipRewardCatalogItem[];
   funnels: CommercialFunnel[];
+  userPinnedFunnelIds: string[];
+  togglePinFunnel: (funnelId: string) => void;
+  isFunnelPinned: (funnelId: string) => boolean;
   sources: Source[];
   activeVenueId: string | null;
   activeDebutanteId: string | null;
@@ -259,6 +268,9 @@ export interface AdminContextType {
   addClientNote: (id: string, noteText: string) => void;
   addClientDocument: (id: string, doc: Omit<ClientDocument, 'id' | 'uploadedAt'>) => void;
   linkClientDebutante: (clientId: string, debutanteId: string | null) => void;
+  addClientUpsellSale: (clientId: string, sale: Omit<import('../types/admin').ClientUpsellSale, 'id' | 'clientId' | 'createdAt'>) => void;
+  updateClientUpsellSale: (clientId: string, saleId: string, updates: Partial<import('../types/admin').ClientUpsellSale>) => void;
+  deleteClientUpsellSale: (clientId: string, saleId: string) => void;
 
   // Funnel Management
   addFunnel: (data: Omit<CommercialFunnel, 'id' | 'createdAt'>) => string;
@@ -270,6 +282,8 @@ export interface AdminContextType {
     stageMapping: Record<string, string>
   ) => Promise<{ success: boolean; migratedLeadsCount: number; updatedSourcesCount: number }>;
   duplicateFunnel: (funnelId: string, targetVenueId?: string) => string;
+  reorderFunnels: (orderedFunnels: CommercialFunnel[]) => Promise<void>;
+  markLeadAsRead: (leadId: string) => void;
 
   // CRM Leads — Stage & Assignment
   unindexedLeadsCount: number;
@@ -296,6 +310,12 @@ export interface AdminContextType {
     name?: string;
     firstMessage?: string;
     sourceId?: string;
+    avatarUrl?: string;
+    fromMe?: boolean;
+    mediaUrl?: string;
+    mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
+    initialFunnelId?: string;
+    initialStage?: CrmStage;
   }) => Promise<string>;
   createLead: (data: {
     name: string;
@@ -327,8 +347,32 @@ export interface AdminContextType {
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
+  mergeLeads: (primaryLeadId: string, secondaryLeadId: string) => Promise<boolean>;
+  consolidateAllDuplicateLeads: () => Promise<{ mergedCount: number }>;
+  syncWhatsAppHistoryGap: (options?: {
+    sourceId?: string;
+    instanceToken?: string;
+    timeWindowMinutes?: number;
+    startTimestamp?: number;
+    endTimestamp?: number;
+  }) => Promise<{ recoveredCount: number; newLeadsCount: number; updatedLeadsCount: number }>;
   closeLeadSale: (leadId: string) => void;
-  closeLeadSaleWithValue: (leadId: string, dealValue: number, packageSold: string, contractDate?: string, closerNotes?: string) => void;
+  closeLeadSaleWithValue: (
+    leadId: string,
+    dealValue: number,
+    packageSold: string,
+    contractDate?: string,
+    closerNotes?: string,
+    extraOptions?: {
+      downPayment?: number;
+      installmentsCount?: number;
+      hasCreditCard?: boolean;
+      contractSignedFileUrl?: string;
+      contractSignedFileName?: string;
+      guestCount?: number;
+      eventYear?: number | string;
+    }
+  ) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
   assignLead: (leadId: string, assigneeName: string) => void;
   claimLeadIfUnassigned: (leadId: string, claimantName?: string) => void;
@@ -405,7 +449,7 @@ export interface AdminContextType {
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
   addTaskComment: (taskId: string, text: string) => void;
-  completeTaskWithFeedback: (taskId: string, feedback: string) => void;
+  completeTaskWithFeedback: (taskId: string, feedback: string, customFinalStatus?: TaskStatus) => void;
 
   // MQL (Marketing Qualified Lead) System
   mqlQuestions: MqlQuestion[];
@@ -458,7 +502,16 @@ const AdminStateContext = createContext<AdminContextType | undefined>(undefined)
 export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_USER);
-    return saved ? JSON.parse(saved) : DEFAULT_ADMIN_USER;
+    if (saved) {
+      try {
+        const u = JSON.parse(saved);
+        if (u) {
+          const isUserDev = Boolean(u.isDev || u.email?.toLowerCase() === 'patrickcouto.oficial@gmail.com');
+          return { ...u, isDev: isUserDev };
+        }
+      } catch {}
+    }
+    return DEFAULT_ADMIN_USER;
   });
 
   const [collaborators, setCollaborators] = useState<Collaborator[]>(() => {
@@ -493,16 +546,73 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const deletedTaskIdsRef = React.useRef<Set<string>>(new Set());
   const deletedCollabIdsRef = React.useRef<Set<string>>(new Set());
 
+  // Refs para acesso ao vivo dentro de callbacks SSE sem re-registrar listeners
+  const leadsRef = React.useRef<Lead[]>([]);
+  const sourcesRef = React.useRef<Source[]>([]);
+  const venuesRef = React.useRef<Venue[]>([]);
+
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
     const parsed: Lead[] = saved ? JSON.parse(saved) : DEFAULT_LEADS;
-    return parsed.map(lead => {
+    const mapped = parsed.map(lead => {
       const code = lead.code || generateLeadCode();
       const name = (!lead.name || lead.name.trim() === '' || lead.name === 'Sem nome' || lead.name === 'Lead Sem Nome')
         ? code
         : lead.name;
-      return { ...lead, code, name };
+      let phone = lead.phone;
+      let avatarUrl = lead.avatarUrl;
+      if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
+        phone = '5521999723215';
+      }
+      return { ...lead, code, name, phone, avatarUrl };
     });
+
+    // ── Consolidação e merge automático de duplicados por telefone ──────────
+    // Unifica múltiplos leads do mesmo telefone, preservando e ordenando todas as mensagens
+    const groups: Lead[][] = [];
+    for (const lead of mapped) {
+      const cleanPhone = (lead.phone || '').replace(/\D/g, '');
+      if (cleanPhone.length < 8) {
+        groups.push([lead]);
+        continue;
+      }
+      const matchedGroup = groups.find(g => g.some(existing => isPhoneMatch(existing.phone, lead.phone)));
+      if (matchedGroup) {
+        matchedGroup.push(lead);
+      } else {
+        groups.push([lead]);
+      }
+    }
+
+    const consolidated: Lead[] = [];
+    for (const group of groups) {
+      if (group.length === 1) {
+        consolidated.push(group[0]);
+        continue;
+      }
+
+      // Eleger o lead Master
+      group.sort((a, b) => {
+        const scoreA = (a.name && !a.name.startsWith('LEAD-') && a.name !== 'Sem nome' ? 50 : 0) + (a.activities?.length || 0);
+        const scoreB = (b.name && !b.name.startsWith('LEAD-') && b.name !== 'Sem nome' ? 50 : 0) + (b.activities?.length || 0);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      });
+
+      const master = { ...group[0] };
+      for (const secondary of group.slice(1)) {
+        master.activities = mergeAndSortActivities(master.activities || [], secondary.activities || [], master.id);
+        if ((!master.name || master.name.startsWith('LEAD-') || master.name === 'Sem nome') && secondary.name && !secondary.name.startsWith('LEAD-')) {
+          master.name = secondary.name;
+        }
+        if (!master.avatarUrl && secondary.avatarUrl) master.avatarUrl = secondary.avatarUrl;
+        if (!master.email && secondary.email) master.email = secondary.email;
+        if (!master.eventDate && secondary.eventDate) master.eventDate = secondary.eventDate;
+      }
+      consolidated.push(master);
+    }
+    // ────────────────────────────────────────────────────────────────────
+    return consolidated;
   });
 
   const [mqlQuestions, setMqlQuestions] = useState<MqlQuestion[]>(() => {
@@ -794,8 +904,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const getFeatureStatus = (featureId: FeatureFlagId): FeatureFlagStatus => {
-    // DEV role ALWAYS sees and accesses every feature
-    if (currentUser?.role === 'dev') return 'active';
+    // Usuários com isDev = true possuem acesso a todas as features
+    if (currentUser?.isDev) return 'active';
     return featureFlags[featureId] || 'active';
   };
 
@@ -833,6 +943,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(venues));
+    venuesRef.current = venues;
   }, [venues]);
 
   useEffect(() => {
@@ -841,6 +952,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(leads));
+    leadsRef.current = leads;
   }, [leads]);
 
   useEffect(() => {
@@ -869,6 +981,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(sources));
+    sourcesRef.current = sources;
   }, [sources]);
 
   useEffect(() => {
@@ -882,6 +995,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.removeItem(STORAGE_KEY_USER);
     }
   }, [currentUser]);
+
+
 
   // ── Supabase Initial Fetch & Realtime Synchronizer ──────────────────────────
   useEffect(() => {
@@ -975,10 +1090,56 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (funnelId && funnelNameMap.has(funnelId.toLowerCase().trim())) {
                 funnelId = funnelNameMap.get(funnelId.toLowerCase().trim())!;
               }
-              return { ...l, code, name, funnelId };
+              const localMatch = leads.find(prev => prev.id === l.id || prev.code === code);
+              let phone = l.phone || localMatch?.phone || '';
+              let avatarUrl = l.avatarUrl || (l.customFieldValues as any)?.avatarUrl || localMatch?.avatarUrl;
+              if (code === 'LEAD-N4K9HT' || phone === '157221941944479') {
+                phone = '5521999723215';
+              }
+              return { ...l, code, name, funnelId, phone, avatarUrl };
             });
-            setLeads(enrichedLeads);
-            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(enrichedLeads));
+
+            // Auto-cura e consolidação de duplicados no Supabase e em memória
+            const { consolidatedLeads, mergedCount } = await leadService.consolidateDuplicatesInDatabase(enrichedLeads);
+            if (mergedCount > 0) {
+              console.log(`[Supabase Sync] ${mergedCount} lead(s) duplicado(s) foram consolidados e apagados com sucesso no banco de dados.`);
+            }
+            setLeads(consolidatedLeads);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(consolidatedLeads));
+
+            // Auto-cura assíncrona de leads que ainda possuam LID temporário no campo de telefone
+            setTimeout(() => {
+              const activeWa = sourcesRef.current.find(s => s.type === 'whatsapp_api' && s.status === 'active' && s.whatsappInstanceId);
+              const instToken = activeWa?.whatsappInstanceId;
+              if (instToken) {
+                const lidsToHeal = consolidatedLeads.filter(l => isLidIdentifier(l.phone));
+                for (const lead of lidsToHeal) {
+                  const lidClean = lead.phone.replace(/\D/g, '');
+                  uazapiService.resolveContactPhoneAndProfile(instToken, lidClean).then(async (resolved) => {
+                    if (resolved.phone && !isLidIdentifier(resolved.phone) && resolved.phone.length <= 13) {
+                      const cleanReal = resolved.phone.replace(/\D/g, '');
+                      console.log(`[Auto-Healing JID/LID] Lead ${lead.code} (${lead.name}) teve telefone real recuperado: ${cleanReal}`);
+                      const current = leadsRef.current;
+                      const matchedByPhone = current.filter(l => l.id !== lead.id && isPhoneMatch(l.phone, cleanReal));
+                      if (matchedByPhone.length > 0) {
+                        await leadService.consolidateDuplicatesInDatabase([...matchedByPhone, { ...lead, phone: cleanReal, whatsappLid: lidClean }]);
+                        await consolidateAllDuplicateLeads();
+                      } else {
+                        updateLeadData(lead.id, {
+                          phone: cleanReal,
+                          whatsappLid: lidClean,
+                          name: (!lead.name || isGenericOrFamilyNickname(lead.name) || lead.name.startsWith('LEAD-')) && resolved.name && !isGenericOrFamilyNickname(resolved.name) ? resolved.name : lead.name,
+                          avatarUrl: lead.avatarUrl || resolved.avatarUrl,
+                        });
+                        if (isSupabaseConfigured) {
+                          leadService.update(lead.id, { phone: cleanReal, whatsappLid: lidClean }).catch(() => {});
+                        }
+                      }
+                    }
+                  }).catch(() => {});
+                }
+              }
+            }, 3000);
           }
 
           if (results[10].status === 'fulfilled') {
@@ -1111,6 +1272,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // 1. Tenta localizar na lista local de colaboradores já carregada
       const local = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
       if (local && isMounted) {
+        const isUserDev = Boolean(local.isDev || cleanEmail === 'patrickcouto.oficial@gmail.com');
         const fullUser: AdminUser = {
           id: local.id,
           name: local.name,
@@ -1122,6 +1284,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           isFirstAccess: Boolean(local.isFirstAccess),
           lastLoginAt: local.lastLoginAt,
           masterId: local.masterId,
+          isDev: isUserDev,
         };
         setCurrentUser(fullUser);
         safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
@@ -1137,6 +1300,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .maybeSingle();
 
         if (dbRow && isMounted) {
+          const isUserDev = Boolean(dbRow.is_dev || cleanEmail === 'patrickcouto.oficial@gmail.com');
           const fullUser: AdminUser = {
             id: dbRow.id,
             name: dbRow.name || u.user_metadata?.name || cleanEmail.split('@')[0],
@@ -1148,6 +1312,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isFirstAccess: Boolean(dbRow.is_first_access),
             lastLoginAt: dbRow.last_login_at,
             masterId: dbRow.master_id,
+            isDev: isUserDev,
           };
           setCurrentUser(fullUser);
           safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
@@ -1160,7 +1325,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // 3. Fallback estrito apenas se não existir em collaborators (ex: super admin dev)
       if (isMounted) {
         setCurrentUser(prev => {
-          if (prev && prev.email.toLowerCase() === cleanEmail) return prev;
+          if (prev && prev.email.toLowerCase() === cleanEmail) {
+            const isUserDev = Boolean(prev.isDev || cleanEmail === 'patrickcouto.oficial@gmail.com');
+            if (prev.isDev !== isUserDev) return { ...prev, isDev: isUserDev };
+            return prev;
+          }
           const fallbackUser: AdminUser = {
             id: u.id,
             name: u.user_metadata?.name || u.email?.split('@')[0] || 'Usuário',
@@ -1169,6 +1338,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             avatarUrl: u.user_metadata?.avatar_url,
             venueIds: [],
             isFirstAccess: false,
+            isDev: cleanEmail === 'patrickcouto.oficial@gmail.com',
           };
           safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fallbackUser));
           return fallbackUser;
@@ -1567,6 +1737,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isFirstAccess: isFirst,
       lastLoginAt: nowIso,
       masterId: foundCollab.masterId,
+      isDev: Boolean(optUser?.isDev !== undefined ? optUser.isDev : foundCollab.isDev),
     };
 
     // Atualiza estado local de colaboradores para refletir imediatamente o último acesso
@@ -1757,26 +1928,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // ── Scoped Tenant Master ID & Isolation ─────────────────────────────────────
   // O Desenvolvedor usa seu próprio tenant isolado (currentUser.id) para testes.
   // O Master usa seu próprio tenant (currentUser.id).
-  // Colaboradores subordinados usam o tenant do seu master (currentUser.masterId).
+  // ── Scoped Tenant Master ID & Isolation (Estrito LGPD) ─────────────────────
+  // Todo Master (inclusive desenvolvedores com isDev = true) opera em seu próprio tenant isolado.
+  // Colaboradores subordinados operam estritamente no tenant do seu master proprietário.
   const scopedMasterId = useMemo(() => {
     if (!currentUser) return null;
-    if (currentUser.role === 'dev' || currentUser.role === 'master') {
-      return currentUser.id;
-    }
     return currentUser.masterId || currentUser.id;
   }, [currentUser]);
 
-  // Casas de Festa do Tenant Ativo
+  // Casas de Festa do Tenant Ativo (Estritamente isoladas por masterId)
   const scopedVenues = useMemo(() => {
-    if (!currentUser) return venues;
-    // O dev e o master veem as casas pertencentes ao seu próprio tenant (conta Master)
-    if (currentUser.role === 'dev' || currentUser.role === 'master') {
-      return venues.filter(v => v.masterId === currentUser.id);
+    if (!currentUser || !scopedMasterId) return venues;
+    
+    // Filtra as casas pertencentes ao tenant
+    const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
+    
+    // Se for o próprio master (ou master dev), vê todas as casas do seu tenant
+    if (currentUser.role === 'master' || !currentUser.masterId) {
+      return masterVenues;
     }
-    // Colaborador subordinado vê as casas do seu master atribuídas a ele
-    const masterVenues = venues.filter(v => 
-      (scopedMasterId && v.masterId === scopedMasterId)
-    );
+
+    // Colaborador subordinado vê as casas atribuídas a ele dentro do tenant do seu master
     if (!currentUser.venueIds || currentUser.venueIds.length === 0) return masterVenues;
     const assigned = masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
     return assigned.length > 0 ? assigned : masterVenues;
@@ -1800,41 +1972,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Colaboradores da Equipe do Tenant Ativo
   const scopedCollaborators = useMemo(() => {
-    if (!currentUser) return collaborators;
-    // O dev e o master veem a equipe do seu próprio tenant
+    if (!currentUser || !scopedMasterId) return collaborators;
     return collaborators.filter(c => 
-      c.id === currentUser.id ||
-      (scopedMasterId && c.masterId === scopedMasterId)
+      c.id === scopedMasterId ||
+      c.masterId === scopedMasterId
     );
   }, [collaborators, scopedMasterId, currentUser]);
 
-  // Leads do Tenant Ativo (inclui leads de casas ativas e histórico preservado de casas excluídas)
+  // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
-    if (!currentUser) return leads;
+    if (!currentUser || !scopedMasterId) return leads;
     if (activeVenueId && activeVenueId !== 'all') {
       return leads.filter(l => l.venueId === activeVenueId);
     }
-    // "Todas as Unidades": exibe os leads de todas as casas do tenant
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return leads.filter(l => 
-      (scopedMasterId && l.masterId === scopedMasterId) || 
+      l.masterId === scopedMasterId || 
       (l.venueId && masterVenueIds.has(l.venueId))
     );
   }, [leads, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
   // Funis do Tenant Ativo
   const scopedFunnels = useMemo(() => {
-    if (!currentUser) return funnels;
+    if (!currentUser || !scopedMasterId) return funnels;
     if (activeVenueId && activeVenueId !== 'all') {
-      return funnels.filter(f => f.venueId === activeVenueId || f.venueId === 'all');
+      return funnels.filter(f => f.venueId === activeVenueId || (f.venueId === 'all' && f.masterId === scopedMasterId));
     }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return funnels.filter(f => f.venueId === 'all' || masterVenueIds.has(f.venueId));
-  }, [funnels, scopedVenues, activeVenueId, currentUser]);
+    return funnels.filter(f => 
+      (f.venueId && masterVenueIds.has(f.venueId)) || 
+      (f.venueId === 'all' && (f.masterId === scopedMasterId || !f.masterId))
+    );
+  }, [funnels, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
-  // Debutantes do Tenant Ativo (pertencem estritamente à casa ativa ou às casas do tenant)
+  // Debutantes do Tenant Ativo
   const scopedDebutantes = useMemo(() => {
-    if (!currentUser) return debutantes;
+    if (!currentUser || !scopedMasterId) return debutantes;
     if (activeVenueId && activeVenueId !== 'all') {
       return debutantes.filter(d => d.venueId === activeVenueId);
     }
@@ -1844,17 +2017,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Clientes de Pós-Venda do Tenant Ativo
   const scopedClients = useMemo(() => {
-    if (!currentUser) return clients;
+    if (!currentUser || !scopedMasterId) return clients;
     if (activeVenueId && activeVenueId !== 'all') {
       return clients.filter(c => c.venueId === activeVenueId);
     }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return clients.filter(c => masterVenueIds.has(c.venueId));
-  }, [clients, scopedVenues, activeVenueId, currentUser]);
+    return clients.filter(c => (c.venueId && masterVenueIds.has(c.venueId)) || (c as any).masterId === scopedMasterId);
+  }, [clients, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
-  // Origens do Tenant Ativo (pertencem estritamente à casa ativa ou às casas do tenant)
+  // Origens do Tenant Ativo
   const scopedSources = useMemo(() => {
-    if (!currentUser) return sources;
+    if (!currentUser || !scopedMasterId) return sources;
     if (activeVenueId && activeVenueId !== 'all') {
       return sources.filter(s => s.venueId === activeVenueId);
     }
@@ -2608,6 +2781,47 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  // ── Funis Fixados por Usuário (Escopo Individual / Não Global) ─────────────
+  const [userPinnedFunnelIds, setUserPinnedFunnelIds] = useState<string[]>(() => {
+    const userId = currentUser?.id || 'default';
+    const stored = safeLocalStorageGet(`f5_pinned_funnels_${userId}`);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        return [];
+      }
+    }
+    return ['41d857a5-107e-4607-908c-7ebd5ba32cc9']; // Default SDR se não personalizado
+  });
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const stored = safeLocalStorageGet(`f5_pinned_funnels_${currentUser.id}`);
+    if (stored) {
+      try {
+        setUserPinnedFunnelIds(JSON.parse(stored));
+      } catch (e) {
+        setUserPinnedFunnelIds([]);
+      }
+    }
+  }, [currentUser?.id]);
+
+  const togglePinFunnel = (funnelId: string) => {
+    const userId = currentUser?.id || 'default';
+    setUserPinnedFunnelIds(prev => {
+      const next = prev.includes(funnelId)
+        ? prev.filter(id => id !== funnelId)
+        : [...prev, funnelId];
+      safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isFunnelPinned = (funnelId: string): boolean => {
+    return userPinnedFunnelIds.includes(funnelId);
+  };
+
   // ── Funnels CRUD ───────────────────────────────────────────────────────────
 
   const addFunnel = (data: Omit<CommercialFunnel, 'id' | 'createdAt'>): string => {
@@ -2888,6 +3102,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return newId;
   };
 
+  const reorderFunnels = async (orderedFunnels: CommercialFunnel[]): Promise<void> => {
+    const withUpdatedOrder = orderedFunnels.map((f, idx) => ({ ...f, order: idx }));
+    setFunnels(withUpdatedOrder);
+    safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(withUpdatedOrder));
+    await funnelService.reorderFunnels(withUpdatedOrder);
+  };
+
+  const markLeadAsRead = (leadId: string) => {
+    setLeads(prev => {
+      let changed = false;
+      const updated = prev.map(l => {
+        if (l.id === leadId && (l.unreadCount || 0) > 0) {
+          changed = true;
+          return { ...l, unreadCount: 0 };
+        }
+        return l;
+      });
+      if (changed) {
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
   // ── Leads Desindexados & Realocação de Funil ────────────────────────────────
   const unindexedLeadsCount = useMemo(() => {
     const validFunnelIds = new Set(funnels.map(f => f.id));
@@ -3024,8 +3262,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteDebutanteAccount = async (idOrSlug: string): Promise<void> => {
-    // Somente gerentes da casa (admin), diretoria master e desenvolvedor têm permissão para excluir aniversariantes
-    const canDelete = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
+    // Somente gerentes da casa (admin) e diretoria master têm permissão para excluir aniversariantes
+    const canDelete = currentUser?.role === 'master' || currentUser?.role === 'admin';
     if (!canDelete) {
       alert('Apenas gerentes e diretoria master possuem permissão para excluir aniversariantes.');
       return;
@@ -3331,7 +3569,112 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  // ── CRM Leads — Stage & Activity ────────────────────────────────────────────
+  const addClientUpsellSale = (clientId: string, sale: Omit<import('../types/admin').ClientUpsellSale, 'id' | 'clientId' | 'createdAt'>) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === clientId) {
+          const newUpsell: import('../types/admin').ClientUpsellSale = {
+            ...sale,
+            id: generateUuid(),
+            clientId,
+            createdAt: new Date().toISOString(),
+          };
+          const baseContract = c.baseContractValue !== undefined ? c.baseContractValue : (c.dealValue || 0);
+          const currentUpsells = c.upsellSales || [];
+          const newUpsells = [newUpsell, ...currentUpsells];
+          const totalUpsellValue = newUpsells.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+          const newTotalDealValue = baseContract + totalUpsellValue;
+
+          const formattedVal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(sale.value);
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'upsell_added',
+            description: `Venda adicional (Upsell) registrada: "${sale.title}" no valor de ${formattedVal}.`,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Equipe de Sucesso',
+          };
+
+          const mod: Client = {
+            ...c,
+            baseContractValue: baseContract,
+            upsellSales: newUpsells,
+            dealValue: newTotalDealValue,
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const updateClientUpsellSale = (clientId: string, saleId: string, updates: Partial<import('../types/admin').ClientUpsellSale>) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === clientId) {
+          const currentUpsells = c.upsellSales || [];
+          const newUpsells = currentUpsells.map(s => s.id === saleId ? { ...s, ...updates } : s);
+          const baseContract = c.baseContractValue !== undefined ? c.baseContractValue : (c.dealValue || 0);
+          const totalUpsellValue = newUpsells.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+          const newTotalDealValue = baseContract + totalUpsellValue;
+
+          const mod: Client = {
+            ...c,
+            baseContractValue: baseContract,
+            upsellSales: newUpsells,
+            dealValue: newTotalDealValue,
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const deleteClientUpsellSale = (clientId: string, saleId: string) => {
+    setClients(prev => {
+      const updated = prev.map(c => {
+        if (c.id === clientId) {
+          const currentUpsells = c.upsellSales || [];
+          const targetUpsell = currentUpsells.find(s => s.id === saleId);
+          const newUpsells = currentUpsells.filter(s => s.id !== saleId);
+          const baseContract = c.baseContractValue !== undefined ? c.baseContractValue : (c.dealValue || 0);
+          const totalUpsellValue = newUpsells.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+          const newTotalDealValue = baseContract + totalUpsellValue;
+
+          const newActivity: ClientActivity = {
+            id: generateUuid(),
+            type: 'upsell_removed',
+            description: `Venda adicional (Upsell) removida: "${targetUpsell?.title || 'Serviço'}".`,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Equipe de Sucesso',
+          };
+
+          const mod: Client = {
+            ...c,
+            baseContractValue: baseContract,
+            upsellSales: newUpsells,
+            dealValue: newTotalDealValue,
+            activities: [newActivity, ...c.activities],
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        }
+        return c;
+      });
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const addParticipantToLead = (
     lead: Lead,
@@ -3432,16 +3775,44 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
 
-    const stageLabels: Record<CrmStage, string> = {
+    const stageLabels: Record<string, string> = {
       new_lead: 'Novo Lead',
       in_analysis: 'Em Análise',
-      meeting_scheduled: 'Reunião Agendada',
+      in_negotiation: 'Em Negociação',
+      negotiation: 'Em Negociação',
+      meeting_scheduled: 'Visita / Reunião Agendada',
+      visit_scheduled: 'Visita Agendada',
+      proposal_sent: 'Proposta Enviada',
       contract_signed: 'Contrato Fechado',
+      deal_closed: 'Contrato Fechado',
+      contrato_fechado: 'Contrato Fechado',
       lost: 'Perdido / Recusado',
+      won: 'Ganho',
+      onboarding: 'Onboarding & Boas-Vindas',
+      planning: 'Planejamento & Cronograma',
+      suppliers: 'Definição de Fornecedores',
+      final_alignment: 'Alinhamento Final',
+      party_day: 'Semana da Festa',
+      completed: 'Festa Realizada',
+      festa_realizada: 'Festa Realizada',
+      archived: 'Arquivado',
     };
 
-    const oldStageLabel = targetLead ? (stageLabels[targetLead.stage] || targetLead.stage) : 'Etapa inicial';
-    const newStageLabel = stageLabels[newStage] || newStage;
+    const findStageName = (sId: string): string => {
+      if (targetLead?.funnelId) {
+        const leadFunnel = funnels.find(f => f.id === targetLead.funnelId || f.name === targetLead.funnelId);
+        const stageMatch = leadFunnel?.stages?.find(s => s.id === sId);
+        if (stageMatch?.name) return stageMatch.name;
+      }
+      for (const f of funnels) {
+        const stageMatch = f.stages?.find(s => s.id === sId);
+        if (stageMatch?.name) return stageMatch.name;
+      }
+      return stageLabels[sId] || sId;
+    };
+
+    const oldStageLabel = targetLead ? findStageName(targetLead.stage) : 'Etapa inicial';
+    const newStageLabel = findStageName(newStage);
 
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
@@ -3452,11 +3823,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       leadId,
       timestamp: new Date().toISOString(),
       type: 'status_change',
-      title: 'Ação do Sistema',
+      title: 'Etapa Alterada',
       text: `Status movido de "${oldStageLabel}" para "${newStageLabel}" por ${author}.`,
-      authorName: 'Bot FC5 System',
-      authorId: 'system_bot',
-      authorAvatarUrl: '/logo_f5.png',
+      authorName: author,
+      authorId: authorId || 'system_bot',
+      authorAvatarUrl: authorAvatar || '/logo_f5.png',
     };
 
     // Regra: Ao mover para qualquer estágio após "Novo Lead" (ex: Em Análise), se não tiver SDR, o usuário assume como SDR
@@ -3670,7 +4041,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       leadId,
       timestamp: new Date().toISOString(),
       type: 'note',
-      title: 'Observação registrada',
+      title: 'Nota Interna',
       text: noteText.trim(),
       authorName: author,
       authorId,
@@ -3842,15 +4213,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // Roleta Comercial de Distribuição Automática de Leads por Funil
-  const getRoundRobinAssignment = (funnelId?: string): Collaborator | null => {
+  // Roleta Comercial de Distribuição Automática de Leads por Casa de Festa / Funil
+  const getRoundRobinAssignment = (funnelId?: string, venueId?: string): Collaborator | null => {
     if (!funnelId) return null;
     const funnel = funnels.find(f => f.id === funnelId || f.name === funnelId);
-    if (!funnel || funnel.distributionMode !== 'round_robin' || !funnel.assignedSdrIds || funnel.assignedSdrIds.length === 0) {
+    if (!funnel) return null;
+
+    let targetSdrIds: string[] = [];
+    let isRoundRobinActive = false;
+
+    // 1. Prioridade: Configuração específica da Casa de Festa (Unidade)
+    if (venueId && funnel.venueDistributionConfig && funnel.venueDistributionConfig[venueId]) {
+      const venueCfg = funnel.venueDistributionConfig[venueId];
+      if (venueCfg.distributionMode === 'round_robin' && venueCfg.assignedSdrIds && venueCfg.assignedSdrIds.length > 0) {
+        targetSdrIds = venueCfg.assignedSdrIds;
+        isRoundRobinActive = true;
+      } else if (venueCfg.distributionMode === 'manual') {
+        return null;
+      }
+    }
+
+    // 2. Fallback: Configuração geral do funil se não houver unidade específica
+    if (!isRoundRobinActive && funnel.distributionMode === 'round_robin' && funnel.assignedSdrIds && funnel.assignedSdrIds.length > 0) {
+      targetSdrIds = funnel.assignedSdrIds;
+      isRoundRobinActive = true;
+    }
+
+    if (!isRoundRobinActive || targetSdrIds.length === 0) {
       return null;
     }
 
-    const eligibleSdrs = funnel.assignedSdrIds
+    const eligibleSdrs = targetSdrIds
       .map(id => collaborators.find(c => c.id === id && c.active !== false))
       .filter((c): c is Collaborator => Boolean(c));
 
@@ -3894,7 +4287,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const destinationFunnelId = venueReferralSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'indicacao';
 
     // Roleta Automática
-    const autoSdr = getRoundRobinAssignment(destinationFunnelId);
+    const autoSdr = getRoundRobinAssignment(destinationFunnelId, data.venueId);
     const initialParticipants: LeadParticipant[] = autoSdr ? [{
       id: generateUuid(),
       collaboratorId: autoSdr.id,
@@ -3966,12 +4359,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return newLeadId;
   };
 
+  const phoneExecutionQueueRef = React.useRef<Map<string, Promise<void>>>(new Map());
+
+  const enqueuePhoneAction = async (phone: string, action: () => Promise<void>) => {
+    const clean = phone.replace(/\D/g, '');
+    const lockKey = clean.slice(-8) || clean;
+    
+    const previousPromise = phoneExecutionQueueRef.current.get(lockKey) || Promise.resolve();
+    const currentPromise = previousPromise.then(async () => {
+      try {
+        await action();
+      } catch (err) {
+        console.warn('[Phone Queue Task Error]:', err);
+      }
+    });
+
+    phoneExecutionQueueRef.current.set(lockKey, currentPromise);
+    await currentPromise;
+    if (phoneExecutionQueueRef.current.get(lockKey) === currentPromise) {
+      phoneExecutionQueueRef.current.delete(lockKey);
+    }
+  };
+
   const createLeadFromWhatsApp = async (data: {
     venueId: string;
     phone: string;
     name?: string;
     firstMessage?: string;
     sourceId?: string;
+    avatarUrl?: string;
+    fromMe?: boolean;
+    mediaUrl?: string;
+    mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
+    initialFunnelId?: string;
+    initialStage?: CrmStage;
   }): Promise<string> => {
     const newLeadId = generateUuid();
     
@@ -3981,16 +4402,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
     
     let matchedSubSource: string | undefined = undefined;
-    let targetFunnelId = waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'comercial';
+    let targetFunnelId = data.initialFunnelId || waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'comercial';
 
-    if (waSource && data.firstMessage) {
+    if (waSource && data.firstMessage && !data.initialFunnelId) {
       const match = sourceService.matchWhatsAppSubSource(waSource, data.firstMessage);
       matchedSubSource = match.subSource;
       targetFunnelId = match.funnelId || targetFunnelId;
     }
 
     // Roleta Automática
-    const autoSdr = getRoundRobinAssignment(targetFunnelId);
+    const autoSdr = getRoundRobinAssignment(targetFunnelId, data.venueId);
     const initialParticipants: LeadParticipant[] = autoSdr ? [{
       id: generateUuid(),
       collaboratorId: autoSdr.id,
@@ -4011,10 +4432,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         timestamp: new Date().toISOString(),
         type: 'creation',
         title: matchedSubSource ? `Lead captado via WhatsApp / ${matchedSubSource}` : 'Lead captado via WhatsApp API',
-        text: data.firstMessage ? `Primeira mensagem: "${data.firstMessage}"` : undefined,
         authorName: 'WhatsApp API',
       }
     ];
+
+    if (data.firstMessage || data.mediaUrl) {
+      const isAudio = data.mediaType === 'audio' || data.firstMessage?.includes('🎵') || data.firstMessage?.toLowerCase().includes('voz');
+      activities.push({
+        id: generateUuid(),
+        leadId: newLeadId,
+        timestamp: new Date().toISOString(),
+        type: 'contact',
+        title: data.fromMe 
+          ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+          : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+        text: data.firstMessage,
+        mediaUrl: data.mediaUrl,
+        mediaType: data.mediaType,
+        authorName: data.fromMe ? 'WhatsApp App / Web' : (data.name || 'Cliente (WhatsApp)'),
+        authorId: data.fromMe ? 'whatsapp_mobile' : 'lead',
+        authorAvatarUrl: data.fromMe ? 'whatsapp_brand' : undefined,
+        status: data.fromMe ? 'sent' : 'delivered',
+      });
+    }
 
     if (autoSdr) {
       activities.unshift({
@@ -4030,6 +4470,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     }
 
+    const targetVenueId = (isUuid(data.venueId) ? data.venueId : null)
+      || (waSource?.venueId && isUuid(waSource.venueId) ? waSource.venueId : null)
+      || (isUuid(activeVenueId) ? activeVenueId : null)
+      || venues.find(v => isUuid(v.id))?.id
+      || 'b2222222-2222-2222-2222-222222222222';
+
+    const matchedFunnel = (data.initialFunnelId && isUuid(data.initialFunnelId) ? funnels.find(f => f.id === data.initialFunnelId) : null)
+      || funnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
+      || funnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
+      || funnels.find(f => isUuid(f.id));
+
+    const validFunnelId = (data.initialFunnelId && isUuid(data.initialFunnelId))
+      ? data.initialFunnelId
+      : (matchedFunnel?.id || '41d857a5-107e-4607-908c-7ebd5ba32cc9');
+
+    const isTargetPostSale = Boolean(
+      targetFunnelId === 'post_sale_default' ||
+      matchedFunnel?.isPostSale ||
+      matchedFunnel?.category === 'Pós-Venda' ||
+      waSource?.funnelId === 'post_sale_default'
+    );
+
     const newLead: Lead = {
       id: newLeadId,
       masterId: scopedMasterId || currentUser?.id,
@@ -4037,31 +4499,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       debutanteId: '',
       debutanteName: 'WhatsApp Direto',
       debutanteSlug: '',
-      venueId: data.venueId,
-      funnelId: targetFunnelId,
+      venueId: targetVenueId,
+      funnelId: validFunnelId,
       sourceId: waSource?.id,
       source: 'whatsapp',
       sourceName: waSource?.name || 'WhatsApp API',
       subSource: matchedSubSource,
       name: cleanName,
       phone: data.phone,
+      avatarUrl: data.avatarUrl,
       age: 15,
-      group: 'WhatsApp',
-      notes: data.firstMessage ? `Primeira mensagem: "${data.firstMessage}"` : undefined,
+      group: isTargetPostSale ? 'Pós-Venda' : 'WhatsApp',
+      notes: undefined,
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
       assignedTo: autoSdr ? autoSdr.name : undefined,
-      stage: 'new_lead',
+      stage: (data.initialStage || (isTargetPostSale ? 'onboarding' : 'new_lead')) as CrmStage,
+      isClient: isTargetPostSale ? true : undefined,
       isValidated: false,
       pointsGranted: 0,
       participants: initialParticipants,
       tasks: [],
       activities,
+      unreadCount: data.fromMe ? 0 : 1,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
 
     setLeads(prev => [newLead, ...prev]);
+    // Atualiza o ref IMEDIATAMENTE (sem esperar React re-renderizar)
+    // para que a próxima mensagem na fila já encontre este lead e não duplique
+    leadsRef.current = [newLead, ...leadsRef.current];
 
     if (isSupabaseConfigured) {
       await leadService.upsert(newLead);
@@ -4076,6 +4544,494 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     return newLeadId;
+  };
+
+  // ── UAZAPI Real-Time SSE Listener (Localhost & Browser Ao Vivo) ────
+  // Sincroniza refs a cada mudança de estado para uso dentro do callback SSE
+  useEffect(() => {
+    leadsRef.current = leads;
+  }, [leads]);
+
+  useEffect(() => {
+    venuesRef.current = venues;
+  }, [venues]);
+
+  useEffect(() => {
+    // 1. Sincroniza instâncias ativas do WhatsApp (re-executa só quando sources muda)
+    const activeWaTokens = sources
+      .filter(s => s.type === 'whatsapp_api' && s.status === 'active')
+      .map(s => {
+        const tok = s.whatsappInstanceId ||
+          (s.configuration as any)?.token ||
+          (s.configuration as any)?.instanceToken ||
+          (s.configuration as any)?.instanceKey ||
+          '';
+        return tok.trim();
+      })
+      .filter(Boolean);
+
+    uazapiSseService.syncActiveInstances(activeWaTokens);
+  }, [sources]);
+
+  // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
+  useEffect(() => {
+    const unsubscribe = uazapiSseService.onMessage(async (incoming) => {
+      const isFromMe = incoming.fromMe === true;
+
+      // 1. Resolve o número real de WhatsApp, nome de contato e avatar antes de qualquer processamento
+      let cleanPhone = incoming.senderPhone.replace(/\D/g, '');
+      let effectiveSenderName = incoming.senderName;
+      let effectiveAvatar = incoming.profilePicUrl;
+
+      // Apenas resolve nome/avatar do perfil do payload se for mensagem recebida do cliente (evita pegar dados do atendente no fromMe)
+      if (!isFromMe) {
+        const resolved = await uazapiService.resolveContactPhoneAndProfile(
+          incoming.instanceToken,
+          incoming.senderPhone,
+          incoming.rawPayload
+        );
+        cleanPhone = (resolved.phone || incoming.senderPhone).replace(/\D/g, '');
+        effectiveSenderName = resolved.name || incoming.senderName;
+        effectiveAvatar = resolved.avatarUrl || incoming.profilePicUrl;
+      }
+
+      if (!cleanPhone || cleanPhone.length < 8) return;
+
+      const rawJidClean = (incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || '').replace(/:\d+.*$/, '').replace(/:\d+@/, '@').replace(/@.*$/, '').replace(/\D/g, '');
+
+      // Execução sequencial com trava atômica por telefone
+      await enqueuePhoneAction(cleanPhone, async () => {
+        const currentLeads = leadsRef.current;
+        const currentSources = sourcesRef.current;
+        const currentVenues = venuesRef.current;
+
+        // Procura a Origem correspondente com precisão
+        const incomingToken = (incoming.instanceToken || '').trim();
+        const incomingOwner = (incoming.rawPayload?.owner || incoming.rawPayload?.phone || incoming.rawPayload?.fromMePhone || '').replace(/\D/g, '');
+        const incomingInstName = (incoming.rawPayload?.instance || incoming.rawPayload?.instanceName || '').toLowerCase();
+
+        const matchedSource = currentSources.find(s => {
+          const tok = (s.whatsappInstanceId || (s.configuration as any)?.token || (s.configuration as any)?.instanceToken || (s.configuration as any)?.instanceKey || '').trim();
+          if (tok && incomingToken && tok === incomingToken) return true;
+          const connectedPhone = ((s.configuration as any)?.connectedPhone || '').replace(/\D/g, '');
+          if (connectedPhone && incomingToken && connectedPhone === incomingToken.replace(/\D/g, '')) return true;
+          if (connectedPhone && incomingOwner && connectedPhone === incomingOwner) return true;
+          if (incomingInstName && s.name.toLowerCase().includes(incomingInstName)) return true;
+          return false;
+        }) || currentSources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
+
+        const rawJid = incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || incoming.rawPayload?.chatId || '';
+        const rawLid = (isLidIdentifier(incoming.senderPhone) ? incoming.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
+
+        // Procura se o Lead já existe usando a busca robusta em 2 etapas:
+        // 1ª Prioridade (90%+ dos casos): Telefone Real
+        // 2ª Prioridade (Fallback): JID / LID
+        const { matchedLead } = findMatchingLead(currentLeads, {
+          phone: cleanPhone,
+          jid: rawJid,
+          lid: rawLid,
+          rawPayload: incoming.rawPayload,
+        });
+
+        // Procura todos os leads equivalentes para auto-consolidação se houver duplicatas antigas
+        const matchingLeads = currentLeads.filter(l => {
+          if (cleanPhone && !isLidIdentifier(cleanPhone) && isPhoneMatch(l.phone, cleanPhone)) return true;
+          if (rawJidClean && !isLidIdentifier(rawJidClean) && isPhoneMatch(l.phone, rawJidClean)) return true;
+          if (rawLid && l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
+          if (rawLid && isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
+          return false;
+        });
+
+        let existingLead: Lead | null = matchedLead;
+        if (matchingLeads.length > 1) {
+          const { consolidatedLeads } = await leadService.consolidateDuplicatesInDatabase(matchingLeads);
+          existingLead = consolidatedLeads[0] || matchingLeads[0];
+          const deletedIds = matchingLeads.filter(m => m.id !== existingLead!.id).map(m => m.id);
+          setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
+        } else if (matchingLeads.length === 1 && !existingLead) {
+          existingLead = matchingLeads[0];
+        }
+
+        if (existingLead) {
+          const leadUpdates: Partial<Lead> = {};
+
+          // 1. Vincula e preserva JID e LID no Lead
+          if (rawJid && !existingLead.whatsappJid) leadUpdates.whatsappJid = rawJid;
+          if (rawLid && !existingLead.whatsappLid) leadUpdates.whatsappLid = rawLid;
+
+          // 2. Auto-cura de número de telefone (se anteriormente gravado como LID e agora temos o número real)
+          const isOldPhoneLid = isLidIdentifier(existingLead.phone);
+          if (isOldPhoneLid && !isLidIdentifier(cleanPhone) && cleanPhone.length <= 13) {
+            leadUpdates.phone = cleanPhone;
+          }
+
+          // 3. Auto-cura de nome: NUNCA sobrescreve com apelidos de agenda ("Mãe", "Pai", etc.)
+          if (
+            !isFromMe &&
+            effectiveSenderName &&
+            !isGenericOrFamilyNickname(effectiveSenderName) &&
+            (!existingLead.name || isGenericOrFamilyNickname(existingLead.name) || existingLead.name.startsWith('LEAD-') || existingLead.name === existingLead.code)
+          ) {
+            leadUpdates.name = effectiveSenderName;
+          }
+
+          // 4. Foto de perfil imediata (apenas para mensagens recebidas do cliente)
+          if (!isFromMe && effectiveAvatar && !existingLead.avatarUrl) {
+            leadUpdates.avatarUrl = effectiveAvatar;
+          }
+
+          // Adiciona atividade na timeline
+          const newActId = generateUuid();
+          const isAudio = incoming.mediaType === 'audio' || incoming.text?.includes('🎵') || incoming.text?.toLowerCase().includes('voz');
+          const newAct: LeadActivity = {
+            id: newActId,
+            leadId: existingLead.id,
+            timestamp: incoming.timestamp || new Date().toISOString(),
+            type: 'contact',
+            title: isFromMe 
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
+              : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+            text: incoming.text,
+            mediaUrl: incoming.mediaUrl,
+            mediaType: incoming.mediaType,
+            authorName: isFromMe ? 'WhatsApp App / Web' : (effectiveSenderName || existingLead.name || 'Cliente (WhatsApp)'),
+            authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
+            authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
+            status: isFromMe ? 'sent' : 'delivered',
+          };
+
+          const updatedActivities = mergeAndSortActivities(existingLead.activities || [], [newAct], existingLead.id);
+          leadUpdates.activities = updatedActivities;
+          leadUpdates.updatedAt = new Date().toISOString().split('T')[0];
+          
+          if (!isFromMe) {
+            leadUpdates.unreadCount = (existingLead.unreadCount || 0) + 1;
+          }
+
+          updateLeadData(existingLead.id, leadUpdates);
+
+          if (isSupabaseConfigured) {
+            leadService.addActivity(existingLead.id, newAct)
+              .catch(err => console.error('Erro ao salvar mensagem recebida no Supabase:', err));
+            leadService.update(existingLead.id, leadUpdates).catch(() => {});
+          }
+
+          // Ingestão assíncrona de mídia transitória recebida (áudios, imagens, docs) para o Cloudflare R2
+          if (incoming.messageId && incoming.instanceToken && incoming.mediaType && incoming.mediaType !== 'text') {
+            whatsappMediaService.ingestTransientMedia({
+              instanceToken: incoming.instanceToken,
+              messageId: incoming.messageId,
+              instanceId: incoming.instanceToken,
+              transcribeAudio: false,
+            }).then((ingestRes) => {
+              if (ingestRes.permanentR2Url) {
+                setLeads(prev => prev.map(l => {
+                  if (l.id !== existingLead.id) return l;
+                  return {
+                    ...l,
+                    activities: (l.activities || []).map(a => a.id === newActId ? { ...a, mediaUrl: ingestRes.permanentR2Url } : a),
+                  };
+                }));
+                if (isSupabaseConfigured) {
+                  leadService.updateActivity(newActId, { mediaUrl: ingestRes.permanentR2Url, mediaType: incoming.mediaType }).catch(() => {});
+                }
+              }
+            }).catch(() => {});
+          }
+
+          // Puxa informações atualizadas de contato e foto sob demanda via POST /chat/details
+          if (incoming.instanceToken && (!existingLead.avatarUrl || !existingLead.name || existingLead.name.startsWith('LEAD-') || isOldPhoneLid)) {
+            uazapiService.fetchChatDetails(incoming.instanceToken, cleanPhone)
+              .then(async (details) => {
+                if (!details) return;
+                const liveUpdates: Partial<Lead> = {};
+                const freshLeadState = leadsRef.current.find(l => l.id === existingLead.id) || existingLead;
+                
+                if (details.phone && !isLidIdentifier(details.phone) && isLidIdentifier(freshLeadState.phone)) {
+                  liveUpdates.phone = details.phone.replace(/\D/g, '');
+                }
+                if (details.name && (!freshLeadState.name || freshLeadState.name.startsWith('LEAD-'))) {
+                  liveUpdates.name = details.name;
+                }
+                if (details.image && !freshLeadState.avatarUrl) {
+                  liveUpdates.avatarUrl = details.image;
+                }
+                if (Object.keys(liveUpdates).length > 0) {
+                  updateLeadData(existingLead.id, liveUpdates);
+                  if (isSupabaseConfigured) {
+                    leadService.update(existingLead.id, liveUpdates).catch(() => {});
+                  }
+                }
+                if (details.image) {
+                  const permanentR2 = await whatsappMediaService.syncWhatsAppAvatarToR2(cleanPhone, details.image);
+                  if (permanentR2 && permanentR2 !== freshLeadState.avatarUrl) {
+                    updateLeadData(existingLead.id, { avatarUrl: permanentR2 });
+                    if (isSupabaseConfigured) {
+                      leadService.update(existingLead.id, { avatarUrl: permanentR2 }).catch(() => {});
+                    }
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+        } else {
+          // Cria um novo Lead automaticamente com telefone real e nome de contato resolvidos
+          const venueId = matchedSource?.venueId || activeVenueId || currentVenues[0]?.id || 'v1';
+          const newId = await createLeadFromWhatsApp({
+            venueId,
+            phone: cleanPhone,
+            name: isFromMe ? undefined : effectiveSenderName,
+            firstMessage: incoming.text,
+            sourceId: matchedSource?.id,
+            avatarUrl: effectiveAvatar || undefined,
+            fromMe: isFromMe,
+          });
+
+          if (newId && incoming.instanceToken) {
+            uazapiService.fetchChatDetails(incoming.instanceToken, cleanPhone)
+              .then(async (details) => {
+                if (!details) return;
+                const liveUpdates: Partial<Lead> = {};
+                if (details.phone && !isLidIdentifier(details.phone)) {
+                  liveUpdates.phone = details.phone.replace(/\D/g, '');
+                }
+                if (details.name) liveUpdates.name = details.name;
+                if (details.image) liveUpdates.avatarUrl = details.image;
+                if (Object.keys(liveUpdates).length > 0) {
+                  updateLeadData(newId, liveUpdates);
+                  if (isSupabaseConfigured) {
+                    leadService.update(newId, liveUpdates).catch(() => {});
+                  }
+                }
+                if (details.image) {
+                  const permanentR2 = await whatsappMediaService.syncWhatsAppAvatarToR2(cleanPhone, details.image);
+                  if (permanentR2) {
+                    updateLeadData(newId, { avatarUrl: permanentR2 });
+                    if (isSupabaseConfigured) {
+                      leadService.update(newId, { avatarUrl: permanentR2 }).catch(() => {});
+                    }
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const lastDisconnectTimestampRef = React.useRef<Map<string, number>>(new Map());
+
+  // ── Reconexão Automática & Recuperação de Gap de Histórico ──────────────
+  useEffect(() => {
+    const unsubConn = uazapiSseService.onConnectionChange((token, status) => {
+      console.log(`[SSE Connection Status]: Instância ${token.substring(0, 8)}... -> ${status}`);
+      const isDisconnected = status === 'disconnected' || status === 'hibernated' || status === 'close';
+      if (isDisconnected) {
+        if (!lastDisconnectTimestampRef.current.has(token)) {
+          lastDisconnectTimestampRef.current.set(token, Date.now());
+        }
+        // Atualiza a origem no estado para marcar como desconectada
+        const targetSrc = sourcesRef.current.find(s => {
+          const tok = (s.whatsappInstanceId || (s.configuration as any)?.token || (s.configuration as any)?.instanceToken || '').trim();
+          return tok === token;
+        });
+        if (targetSrc) {
+          updateSource(targetSrc.id, {
+            configuration: {
+              ...(targetSrc.configuration || {}),
+              isConnected: false,
+              connectionStatus: 'disconnected',
+            }
+          });
+        }
+      } else if (status === 'connected') {
+        const targetSrc = sourcesRef.current.find(s => {
+          const tok = (s.whatsappInstanceId || (s.configuration as any)?.token || (s.configuration as any)?.instanceToken || '').trim();
+          return tok === token;
+        });
+        if (targetSrc && (targetSrc.configuration as any)?.isConnected === false) {
+          updateSource(targetSrc.id, {
+            configuration: {
+              ...(targetSrc.configuration || {}),
+              isConnected: true,
+              connectionStatus: 'connected',
+            }
+          });
+        }
+        const lastDisc = lastDisconnectTimestampRef.current.get(token);
+        if (lastDisc) {
+          const gapMinutes = Math.max(5, Math.ceil((Date.now() - lastDisc) / (60 * 1000)));
+          console.log(`[Reconexão Detectada]: Instância ${token.substring(0, 8)}... reconectada após ${gapMinutes} min. Executando Catch-Up de mensagens...`);
+          lastDisconnectTimestampRef.current.delete(token);
+          syncWhatsAppHistoryGap({ instanceToken: token, timeWindowMinutes: gapMinutes + 10 });
+        }
+      }
+    });
+
+    return () => unsubConn();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const syncWhatsAppHistoryGap = async (options?: {
+    sourceId?: string;
+    instanceToken?: string;
+    timeWindowMinutes?: number;
+    startTimestamp?: number;
+    endTimestamp?: number;
+  }): Promise<{ recoveredCount: number; newLeadsCount: number; updatedLeadsCount: number }> => {
+    const currentSources = sourcesRef.current;
+    let targetToken = options?.instanceToken;
+    let targetSource = options?.sourceId ? currentSources.find(s => s.id === options.sourceId) : null;
+
+    if (!targetToken && targetSource?.whatsappInstanceId) {
+      targetToken = targetSource.whatsappInstanceId;
+    }
+
+    if (!targetToken) {
+      const activeWa = currentSources.find(s => s.type === 'whatsapp_api' && s.status === 'active' && s.whatsappInstanceId);
+      targetToken = activeWa?.whatsappInstanceId;
+      targetSource = activeWa || null;
+    }
+
+    if (!targetToken) {
+      console.warn('[Sync History Gap] Nenhuma instância ativa encontrada para sincronizar histórico.');
+      return { recoveredCount: 0, newLeadsCount: 0, updatedLeadsCount: 0 };
+    }
+
+    const now = Date.now();
+    const windowMs = (options?.timeWindowMinutes || 180) * 60 * 1000;
+    const startTimestamp = options?.startTimestamp || (now - windowMs);
+    const endTimestamp = options?.endTimestamp || now;
+
+    console.log(`[Sync History Gap] Iniciando recuperação de mensagens para a instância ${targetToken.substring(0, 8)}... (${new Date(startTimestamp).toLocaleTimeString()} até ${new Date(endTimestamp).toLocaleTimeString()})`);
+
+    const recovered = await uazapiService.recoverMessagesInInterval(targetToken, {
+      startTimestamp,
+      endTimestamp,
+      limitPerChat: 50,
+    });
+
+    if (recovered.length === 0) {
+      console.log('[Sync History Gap] Nenhuma mensagem pendente no intervalo selecionado.');
+      return { recoveredCount: 0, newLeadsCount: 0, updatedLeadsCount: 0 };
+    }
+
+    let newLeadsCount = 0;
+    let updatedLeadsCount = 0;
+
+    for (const msg of recovered) {
+      const cleanPhone = msg.senderPhone.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length < 8) continue;
+
+      await enqueuePhoneAction(cleanPhone, async () => {
+        const currentLeads = leadsRef.current;
+        const rawJid = msg.rawPayload?.key?.remoteJid || msg.rawPayload?.remoteJid || msg.rawPayload?.chatId || '';
+        const rawLid = (isLidIdentifier(msg.senderPhone) ? msg.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
+
+        // 1ª Prioridade: Telefone Real | 2ª Prioridade: JID/LID
+        const { matchedLead } = findMatchingLead(currentLeads, {
+          phone: cleanPhone,
+          jid: rawJid,
+          lid: rawLid,
+          rawPayload: msg.rawPayload,
+        });
+
+        const matchingLeads = currentLeads.filter(l => {
+          if (cleanPhone && !isLidIdentifier(cleanPhone) && isPhoneMatch(l.phone, cleanPhone)) return true;
+          if (rawLid && l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
+          if (rawLid && isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
+          return false;
+        });
+        
+        let existingLead: Lead | null = matchedLead;
+        if (matchingLeads.length > 1) {
+          const { consolidatedLeads } = await leadService.consolidateDuplicatesInDatabase(matchingLeads);
+          existingLead = consolidatedLeads[0] || matchingLeads[0];
+          const deletedIds = matchingLeads.filter(m => m.id !== existingLead!.id).map(m => m.id);
+          setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
+        } else if (matchingLeads.length === 1 && !existingLead) {
+          existingLead = matchingLeads[0];
+        }
+
+        const isFromMe = msg.fromMe === true;
+        const isAudio = msg.mediaType === 'audio' || msg.text?.includes('🎵') || msg.text?.toLowerCase().includes('voz');
+        const newAct: LeadActivity = {
+          id: generateUuid(),
+          leadId: existingLead ? existingLead.id : '',
+          timestamp: msg.timestamp || new Date().toISOString(),
+          type: 'contact',
+          title: isFromMe 
+            ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+            : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
+          text: msg.text,
+          mediaUrl: msg.mediaUrl,
+          mediaType: msg.mediaType,
+          authorName: isFromMe ? 'WhatsApp App / Web' : (msg.senderName || existingLead?.name || 'Cliente (WhatsApp)'),
+          authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
+          authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
+          status: isFromMe ? 'sent' : 'delivered',
+        };
+
+        if (existingLead) {
+          const updatedActivities = mergeAndSortActivities(existingLead.activities || [], [newAct], existingLead.id);
+          const leadUpdates: Partial<Lead> = {
+            activities: updatedActivities,
+            updatedAt: new Date().toISOString().split('T')[0],
+          };
+          if (rawJid && !existingLead.whatsappJid) leadUpdates.whatsappJid = rawJid;
+          if (rawLid && !existingLead.whatsappLid) leadUpdates.whatsappLid = rawLid;
+
+          if (isLidIdentifier(existingLead.phone) && !isLidIdentifier(cleanPhone) && cleanPhone.length <= 13) {
+            leadUpdates.phone = cleanPhone;
+          }
+
+          if (!existingLead.avatarUrl && msg.profilePicUrl) {
+            leadUpdates.avatarUrl = msg.profilePicUrl;
+          }
+          if (
+            !isFromMe &&
+            msg.senderName &&
+            !isGenericOrFamilyNickname(msg.senderName) &&
+            (!existingLead.name || isGenericOrFamilyNickname(existingLead.name) || existingLead.name.startsWith('LEAD-'))
+          ) {
+            leadUpdates.name = msg.senderName;
+          }
+
+          updateLeadData(existingLead.id, leadUpdates);
+          if (isSupabaseConfigured) {
+            leadService.addActivity(existingLead.id, newAct).catch(() => {});
+            leadService.update(existingLead.id, leadUpdates).catch(() => {});
+          }
+          updatedLeadsCount++;
+        } else {
+          const venueId = targetSource?.venueId || activeVenueId || venuesRef.current[0]?.id || 'v1';
+          const newId = await createLeadFromWhatsApp({
+            venueId,
+            phone: cleanPhone,
+            name: (isFromMe || isGenericOrFamilyNickname(msg.senderName)) ? undefined : msg.senderName,
+            firstMessage: msg.text,
+            sourceId: targetSource?.id,
+            avatarUrl: msg.profilePicUrl,
+            fromMe: isFromMe,
+            mediaUrl: msg.mediaUrl,
+            mediaType: msg.mediaType,
+          });
+          if (newId) newLeadsCount++;
+        }
+      });
+    }
+
+    // Auto-consolidação final de garantia
+    await consolidateAllDuplicateLeads();
+
+    console.log(`[Sync History Gap Concluído]: ${recovered.length} mensagens recuperadas (${newLeadsCount} novos leads, ${updatedLeadsCount} leads atualizados).`);
+    return { recoveredCount: recovered.length, newLeadsCount, updatedLeadsCount };
   };
 
   const createLead = async (data: {
@@ -4123,8 +5079,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (found) sdrName = found.name;
     }
 
-    // Roleta Automática: se não houver SDR previamente informado, consulta a roleta do funil
-    const autoSdr = (!data.sdrId && !sdrName) ? getRoundRobinAssignment(resolvedFunnelId) : null;
+    // Roleta Automática: se não houver SDR previamente informado, consulta a roleta do funil / unidade
+    const autoSdr = (!data.sdrId && !sdrName) ? getRoundRobinAssignment(resolvedFunnelId, data.venueId) : null;
     const finalSdrId = data.sdrId || autoSdr?.id;
     const finalSdrName = sdrName || autoSdr?.name;
 
@@ -4186,11 +5142,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       name: cleanName,
       phone: data.phone.trim(),
       email: data.email?.trim() || undefined,
-      eventType: data.eventType || '15 Anos',
+      eventType: data.eventType || undefined,
       eventDate: data.eventDate,
       estimatedGuests: data.estimatedGuests ? Number(data.estimatedGuests) : undefined,
       estimatedBudget: data.estimatedBudget ? Number(data.estimatedBudget) : undefined,
-      temperature: data.temperature || 'warm',
+      temperature: data.temperature || undefined,
       sdrId: finalSdrId,
       sdrName: finalSdrName,
       closerId: data.closerId,
@@ -4351,7 +5307,61 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const closeLeadSaleWithValue = (leadId: string, dealValue: number, packageSold: string, contractDate?: string, closerNotes?: string) => {
+  const mergeLeads = async (primaryLeadId: string, secondaryLeadId: string): Promise<boolean> => {
+    if (!primaryLeadId || !secondaryLeadId || primaryLeadId === secondaryLeadId) return false;
+
+    const currentLeads = leadsRef.current;
+    const primaryLead = currentLeads.find(l => l.id === primaryLeadId);
+    const secondaryLead = currentLeads.find(l => l.id === secondaryLeadId);
+
+    if (!primaryLead || !secondaryLead) {
+      console.error('[mergeLeads] Um dos leads não foi encontrado.', { primaryLeadId, secondaryLeadId });
+      return false;
+    }
+
+    try {
+      const authorName = currentUser?.name || 'Administrador';
+      const mergedLead = await leadService.mergeTwoLeads(primaryLead, secondaryLead, authorName);
+
+      // Atualiza o estado local de leads: atualiza o primário e remove o secundário
+      deletedLeadIdsRef.current.add(secondaryLeadId);
+      setLeads(prev => {
+        const next = prev.filter(l => l.id !== secondaryLeadId).map(l => l.id === primaryLeadId ? mergedLead : l);
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+        return next;
+      });
+
+      // Migra tarefas no estado local
+      setTasks(prev => {
+        const next = prev.map(t => t.leadId === secondaryLeadId ? { ...t, leadId: primaryLeadId } : t);
+        safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(next));
+        return next;
+      });
+
+      console.log(`[mergeLeads] Leads unificados com sucesso: ${secondaryLead.name} -> ${mergedLead.name}`);
+      return true;
+    } catch (err) {
+      console.error('[mergeLeads] Erro ao unificar leads:', err);
+      return false;
+    }
+  };
+
+  const closeLeadSaleWithValue = (
+    leadId: string, 
+    dealValue: number, 
+    packageSold: string, 
+    contractDate?: string, 
+    closerNotes?: string,
+    extraOptions?: {
+      downPayment?: number;
+      installmentsCount?: number;
+      hasCreditCard?: boolean;
+      contractSignedFileUrl?: string;
+      contractSignedFileName?: string;
+      guestCount?: number;
+      eventYear?: number | string;
+    }
+  ) => {
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
@@ -4406,6 +5416,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (currentLead) {
       setClients(prevClients => {
         const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === currentLead.phone));
+        const downPay = extraOptions?.downPayment ?? 0;
+        const installCount = extraOptions?.installmentsCount ?? 10;
+        const installRemaining = Math.max(0, dealValue - downPay);
+        const hasCard = extraOptions?.hasCreditCard ?? false;
+
+        const docList: ClientDocument[] = [];
+        if (extraOptions?.contractSignedFileUrl) {
+          docList.push({
+            id: generateUuid(),
+            clientId: existingIdx >= 0 ? prevClients[existingIdx].id : '',
+            title: extraOptions.contractSignedFileName || 'Contrato Assinado (Fechamento Comercial)',
+            type: 'contract',
+            fileUrl: extraOptions.contractSignedFileUrl,
+            uploadedAt: new Date().toISOString(),
+            fileSize: 'PDF',
+          });
+        }
+
         if (existingIdx >= 0) {
           // Já existe, atualiza com os novos dados de fechamento
           const updated = [...prevClients];
@@ -4422,8 +5450,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updated[existingIdx] = {
             ...updated[existingIdx],
             dealValue,
+            baseContractValue: dealValue,
             packageSold,
             contractDate: cDate,
+            contractDownPayment: downPay > 0 ? downPay : updated[existingIdx].contractDownPayment,
+            signalPaid: downPay > 0 || updated[existingIdx].signalPaid,
+            signalValue: downPay > 0 ? downPay : updated[existingIdx].signalValue,
+            contractInstallmentsCount: installCount || updated[existingIdx].contractInstallmentsCount,
+            contractInstallmentsRemaining: installRemaining,
+            hasCreditCard: hasCard || updated[existingIdx].hasCreditCard,
+            guestCount: extraOptions?.guestCount || updated[existingIdx].guestCount,
+            eventYear: extraOptions?.eventYear || updated[existingIdx].eventYear,
+            contacts: currentLead.contacts && currentLead.contacts.length > 0 ? currentLead.contacts : updated[existingIdx].contacts,
+            documents: [...docList, ...(updated[existingIdx].documents || [])],
             activities: [...handoverActs, ...(updated[existingIdx].activities || [])],
             updatedAt: new Date().toISOString().split('T')[0],
           };
@@ -4463,6 +5502,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             createdBy: author,
           });
 
+          // Ajusta clientID nos documentos criados
+          docList.forEach(d => { d.clientId = newCliId; });
+
           const newClient: Client = {
             id: newCliId,
             code: generateClientCode(),
@@ -4478,20 +5520,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             birthdayPersonName: birthdayName,
             birthdayPersonAge: (currentLead as any).birthdayPersonAge || 15,
             birthdayPersonBirthdate: (currentLead as any).debutanteBirthDate || '',
+            birthdayPersonPhone: (currentLead as any).birthdayPersonPhone || '',
             eventType: currentLead.eventType || '15_anos',
             eventDate: pDate,
             eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
-            guestCount: (currentLead as any).guestCount || (currentLead as any).estimatedGuests || 150,
+            eventYear: extraOptions?.eventYear || (currentLead as any).eventYear || new Date(pDate).getFullYear(),
+            guestCount: extraOptions?.guestCount || (currentLead as any).guestCount || (currentLead as any).estimatedGuests || 150,
             venueId: targetVenueId,
             venueName: venueObj?.name || 'Bonomo Festas',
             packageSold,
             dealValue,
+            baseContractValue: dealValue,
+            contractDownPayment: downPay,
+            signalPaid: downPay > 0,
+            signalValue: downPay,
+            contractInstallmentsCount: installCount,
+            contractInstallmentsRemaining: installRemaining,
+            hasCreditCard: hasCard,
             contractDate: cDate,
             contractStatus: 'aguardando_sinal',
-            contractSignedAt: null,
-            signalPaid: false,
-            paymentTerms: (currentLead as any).paymentTerms || 'Negociação comercial fechada',
-            paymentStatus: 'pending',
+            contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
+            paymentTerms: (currentLead as any).paymentTerms || `${downPay > 0 ? `Entrada R$ ${downPay.toLocaleString('pt-BR')} + ` : ''}${installCount}x`,
+            paymentStatus: downPay > 0 ? 'up_to_date' : 'pending',
             stage: 'onboarding',
             contacts: currentLead.contacts || [],
             assignedSuccessManagerId: undefined,
@@ -4508,7 +5558,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               closerReport: closerNotes || '',
             },
             notes: currentLead.notes || '',
-            documents: [],
+            documents: docList,
             activities: initialActivities,
             createdAt: new Date().toISOString().split('T')[0],
             updatedAt: new Date().toISOString().split('T')[0],
@@ -4899,8 +5949,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
 
     if (isSupabaseConfigured) {
-      leadService.upsert({
-        id: leadId,
+      leadService.update(leadId, {
         sdrId: null as any,
         sdrName: null as any,
         assignedTo: null as any,
@@ -4920,22 +5969,128 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateLeadData = (leadId: string, data: Partial<Lead>) => {
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const targetLead = leads.find(l => l.id === leadId);
+    const newAuditActivities: LeadActivity[] = [];
+
+    if (targetLead) {
+      // 1. Tipo do Evento
+      if (data.eventType && data.eventType !== targetLead.eventType) {
+        newAuditActivities.push({
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          title: 'Tipo de Evento Alterado',
+          text: `Alterou o tipo do evento de "${targetLead.eventType || 'Não definido'}" para "${data.eventType}".`,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        });
+      }
+
+      // 2. Urgência / Temperatura
+      if (data.temperature && data.temperature !== targetLead.temperature) {
+        const tempLabels: Record<string, string> = {
+          hot: 'Quente (Alta Probabilidade)',
+          warm: 'Morno (Em Negociação)',
+          cold: 'Frio (Inicial)',
+        };
+        newAuditActivities.push({
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          title: 'Urgência Alterada',
+          text: `Alterou a urgência para "${tempLabels[data.temperature] || data.temperature}".`,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        });
+      }
+
+      // 3. Valor de Venda / Contrato
+      if (data.dealValue !== undefined && data.dealValue !== targetLead.dealValue) {
+        const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+        newAuditActivities.push({
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          title: 'Valor de Venda Atualizado',
+          text: `Alterou o valor de venda para ${fmt.format(data.dealValue)} (anterior: ${targetLead.dealValue ? fmt.format(targetLead.dealValue) : 'R$ 0,00'}).`,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        });
+      }
+
+      // 4. Valor de Entrada
+      if (data.downPayment !== undefined && data.downPayment !== targetLead.downPayment) {
+        const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+        newAuditActivities.push({
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          title: 'Valor de Entrada Atualizado',
+          text: `Alterou o valor de entrada para ${fmt.format(data.downPayment)} (anterior: ${targetLead.downPayment ? fmt.format(targetLead.downPayment) : 'R$ 0,00'}).`,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        });
+      }
+
+      // 5. Data da Festa / Evento
+      const newPartyDate = data.partyDate || data.eventDate;
+      const oldPartyDate = targetLead.partyDate || targetLead.eventDate;
+      if (newPartyDate && newPartyDate !== oldPartyDate) {
+        newAuditActivities.push({
+          id: generateUuid(),
+          leadId,
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          title: 'Data do Evento Alterada',
+          text: `Alterou a data do evento para ${new Date(newPartyDate + 'T12:00:00').toLocaleDateString('pt-BR')} (anterior: ${oldPartyDate ? new Date(oldPartyDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Não definida'}).`,
+          authorName: author,
+          authorId,
+          authorAvatarUrl: authorAvatar,
+        });
+      }
+    }
+
     setLeads(prev => {
       const updated = prev.map(lead => {
         if (lead.id !== leadId) return lead;
+        const currentActivities = data.activities ? data.activities : (lead.activities || []);
+        const finalActivities = newAuditActivities.length > 0 
+          ? [...currentActivities, ...newAuditActivities] 
+          : currentActivities;
+
         return {
           ...lead,
           ...data,
+          activities: finalActivities,
           updatedAt: new Date().toISOString().split('T')[0],
         };
       });
+      // Atualiza o ref imediatamente para o SSE listener ter acesso síncrono
+      leadsRef.current = updated;
       return updated;
     });
 
     if (isSupabaseConfigured) {
-      leadService.upsert({ id: leadId, ...data } as any).catch(err => {
+      leadService.update(leadId, data).catch(err => {
         console.error('❌ Erro ao atualizar leadData no Supabase:', err);
       });
+      if (newAuditActivities.length > 0) {
+        newAuditActivities.forEach(act => {
+          leadService.addActivity(leadId, act).catch(err => console.error('Erro ao salvar auditoria de lead no Supabase:', err));
+        });
+      }
     }
   };
 
@@ -5436,14 +6591,38 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: new Date().toISOString(),
     };
 
+    const isReschedule = type === 'visit' ? Boolean(targetLead.visitCommitment) : Boolean(targetLead.tastingCommitment);
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const dateFormatted = new Date(commitmentData.date + 'T12:00:00').toLocaleDateString('pt-BR');
+    const actTitle = type === 'visit' 
+      ? (isReschedule ? 'Visita Reagendada' : 'Visita Comercial Agendada')
+      : (isReschedule ? 'Degustação Reagendada' : 'Degustação Gastronômica Agendada');
+    const actText = `${type === 'visit' ? 'Visita' : 'Degustação'} ${isReschedule ? 'reagendada' : 'agendada'} para ${dateFormatted} às ${commitmentData.time} (${commitmentData.pax || 2} PAX)${commitmentData.responsibleName ? ` com ${commitmentData.responsibleName}` : ''}.${commitmentData.notes ? ` Observações: "${commitmentData.notes}".` : ''} Registrado por ${author}.`;
+
+    const scheduleActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: actTitle,
+      text: actText,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     // Atualização otimista no Lead
     setLeads(prev => {
       const next = prev.map(l => {
         if (l.id === leadId) {
+          const currentActs = l.activities || [];
           if (type === 'visit') {
-            return { ...l, visitCommitment: newCommitment };
+            return { ...l, visitCommitment: newCommitment, activities: [...currentActs, scheduleActivity] };
           } else {
-            return { ...l, tastingCommitment: newCommitment };
+            return { ...l, tastingCommitment: newCommitment, activities: [...currentActs, scheduleActivity] };
           }
         }
         return l;
@@ -5477,6 +6656,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ? { visitCommitment: newCommitment }
         : { tastingCommitment: newCommitment };
       await leadService.update(leadId, updatePayload as any);
+      leadService.addActivity(leadId, scheduleActivity).catch(err => console.error('Erro ao salvar nota de agendamento:', err));
       return true;
     } catch (err) {
       console.error('Falha ao persistir compromisso comercial no lead:', err);
@@ -5495,6 +6675,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const currentCommitment = type === 'visit' ? targetLead.visitCommitment : targetLead.tastingCommitment;
     if (!currentCommitment) return false;
 
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
     const completedCommitment: CommercialCommitment = {
       ...currentCommitment,
       status: 'completed',
@@ -5502,13 +6686,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       notes: feedback ? `${currentCommitment.notes || ''} [Conclusão: ${feedback}]`.trim() : currentCommitment.notes,
     };
 
+    const actTitle = type === 'visit' ? 'Visita Realizada com Sucesso' : 'Degustação Realizada com Sucesso';
+    const actText = `${type === 'visit' ? 'Visita comercial' : 'Degustação gastronômica'} realizada com sucesso no dia ${new Date().toLocaleDateString('pt-BR')}.${feedback ? ` Parecer / Feedback da realização: "${feedback}".` : ''} Registrado por ${author}.`;
+
+    const completeActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: actTitle,
+      text: actText,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => {
       const next = prev.map(l => {
         if (l.id === leadId) {
+          const currentActs = l.activities || [];
           if (type === 'visit') {
-            return { ...l, visitCommitment: completedCommitment };
+            return { ...l, visitCommitment: completedCommitment, activities: [...currentActs, completeActivity] };
           } else {
-            return { ...l, tastingCommitment: completedCommitment };
+            return { ...l, tastingCommitment: completedCommitment, activities: [...currentActs, completeActivity] };
           }
         }
         return l;
@@ -5534,6 +6734,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ? { visitCommitment: completedCommitment }
         : { tastingCommitment: completedCommitment };
       await leadService.update(leadId, updatePayload as any);
+      leadService.addActivity(leadId, completeActivity).catch(err => console.error('Erro ao salvar nota de conclusão:', err));
       return true;
     } catch (err) {
       console.error('Falha ao concluir compromisso no Supabase:', err);
@@ -5554,6 +6755,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (!currentCommitment) return false;
 
     const finalStatus = statusOverride || 'cancelled';
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
 
     const cancelledCommitment: CommercialCommitment = {
       ...currentCommitment,
@@ -5562,13 +6766,32 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       notes: reason ? `${currentCommitment.notes || ''} [${finalStatus === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelamento'}: ${reason}]`.trim() : currentCommitment.notes,
     };
 
+    const isNoShow = finalStatus === 'no_show';
+    const actTitle = isNoShow 
+      ? (type === 'visit' ? 'Visita: Não Compareceu (No-Show)' : 'Degustação: Não Compareceu (No-Show)')
+      : (type === 'visit' ? 'Visita Comercial Cancelada' : 'Degustação Gastronômica Cancelada');
+    const actText = `${isNoShow ? 'Cliente/família não compareceu ao compromisso agendado (No-Show).' : 'Compromisso comercial cancelado.'}${reason ? ` Motivo informado: "${reason}".` : ''} Registrado por ${author}.`;
+
+    const cancelActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: actTitle,
+      text: actText,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => {
       const next = prev.map(l => {
         if (l.id === leadId) {
+          const currentActs = l.activities || [];
           if (type === 'visit') {
-            return { ...l, visitCommitment: cancelledCommitment };
+            return { ...l, visitCommitment: cancelledCommitment, activities: [...currentActs, cancelActivity] };
           } else {
-            return { ...l, tastingCommitment: cancelledCommitment };
+            return { ...l, tastingCommitment: cancelledCommitment, activities: [...currentActs, cancelActivity] };
           }
         }
         return l;
@@ -5881,7 +7104,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  const completeTaskWithFeedback = (taskId: string, feedback: string) => {
+  const completeTaskWithFeedback = (taskId: string, feedback: string, customFinalStatus: TaskStatus = 'completed') => {
     let targetTask: AdminTask | undefined;
     const cleanFeedback = feedback.trim();
     const nowIso = new Date().toISOString();
@@ -5891,7 +7114,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (t.id === taskId) {
           targetTask = {
             ...t,
-            status: 'completed' as const,
+            status: customFinalStatus,
             resolution: cleanFeedback,
             mandatoryFeedback: cleanFeedback,
             completedAt: nowIso,
@@ -5911,9 +7134,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (targetTask) {
       taskService.upsert(targetTask);
 
-      const author = currentUser?.name || 'Administrador';
+      const author = currentUser?.name || 'Equipe';
       const effectiveLeadId = (targetTask as AdminTask).leadId || (targetTask as AdminTask).customProperties?.leadId;
       const effectiveClientId = (targetTask as AdminTask).debutanteId || (targetTask as AdminTask).customProperties?.clientId;
+
+      const dueDateStr = (targetTask as AdminTask).dueDate
+        ? new Date((targetTask as AdminTask).dueDate + 'T12:00:00').toLocaleDateString('pt-BR')
+        : 'Sem data';
+      const isFollowUp = (targetTask as AdminTask).isFollowUp || (targetTask as AdminTask).type === 'followup' || (targetTask as AdminTask).type === 'call';
+      const labelType = isFollowUp ? 'O follow-up previsto' : 'A tarefa prevista';
+      const summaryText = cleanFeedback 
+        ? `${labelType} para ${dueDateStr} foi concluído(a) por ${author}, cujo resumo foi: "${cleanFeedback}".`
+        : `${labelType} para ${dueDateStr} foi marcado(a) como concluído(a) por ${author}.`;
 
       // 1. Atualizar Lead
       if (effectiveLeadId) {
@@ -5922,12 +7154,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           leadId: effectiveLeadId,
           timestamp: nowIso,
           type: 'task_completed',
-          title: `Tarefa concluída: ${(targetTask as AdminTask).title}`,
-          text: cleanFeedback ? `Resumo: "${cleanFeedback}"` : 'Tarefa marcada como concluída.',
+          title: `Follow-up Concluído: ${(targetTask as AdminTask).title}`,
+          text: summaryText,
           authorName: author,
           authorId: currentUser?.id,
           authorAvatarUrl: currentUser?.avatarUrl,
-        };
+          customProperties: {
+            taskId: (targetTask as AdminTask).id,
+            isFollowUp: true,
+          },
+        } as any;
 
         setLeads(prev => {
           const updated = prev.map(lead => {
@@ -5936,7 +7172,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               ...lead,
               tasks: (lead.tasks || []).map(t => t.id === taskId ? {
                 ...t,
-                status: 'completed' as const,
+                status: customFinalStatus as any,
                 completedAt: nowIso,
               } : t),
               activities: [newActivity, ...(lead.activities || [])],
@@ -5959,10 +7195,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           clientId: effectiveClientId,
           timestamp: nowIso,
           type: 'task_completed',
-          description: `✅ Tarefa concluída: "${(targetTask as AdminTask).title}"${cleanFeedback ? ` • Resultado: "${cleanFeedback}"` : ''}`,
+          description: `📋 ${summaryText}`,
           createdAt: nowIso,
           createdBy: author,
-        };
+          customProperties: {
+            taskId: (targetTask as AdminTask).id,
+          },
+        } as any;
 
         setClients(prev => {
           let changed = false;
@@ -5982,6 +7221,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       }
     }
+  };
+
+  const consolidateAllDuplicateLeads = async (): Promise<{ mergedCount: number }> => {
+    const current = leadsRef.current;
+    const { consolidatedLeads, mergedCount } = await leadService.consolidateDuplicatesInDatabase(current);
+    if (mergedCount > 0) {
+      setLeads(consolidatedLeads);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(consolidatedLeads));
+    }
+    return { mergedCount };
   };
 
   // ── Provider ────────────────────────────────────────────────────────────────
@@ -6038,11 +7287,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addClientNote,
       addClientDocument,
       linkClientDebutante,
+      addClientUpsellSale,
+      updateClientUpsellSale,
+      deleteClientUpsellSale,
       addFunnel,
       updateFunnel,
       deleteFunnel,
       deleteFunnelWithLeadMigration,
       duplicateFunnel,
+      reorderFunnels,
+      markLeadAsRead,
       unindexedLeadsCount,
       reassignLeadFunnel,
       reassignMultipleLeadsFunnel,
@@ -6063,6 +7317,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createLead,
       rejectLead,
       deleteLead,
+      mergeLeads,
+      consolidateAllDuplicateLeads,
+      syncWhatsAppHistoryGap,
       closeLeadSale,
       closeLeadSaleWithValue,
       updateLeadData,
@@ -6144,6 +7401,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       toggleMasterAccountStatus,
       isInitialSyncComplete,
       sendCollaboratorInvite,
+      userPinnedFunnelIds,
+      togglePinFunnel,
+      isFunnelPinned,
       forceLogout: (reason?: string) => {
         logout();
         if (reason) alert(reason);

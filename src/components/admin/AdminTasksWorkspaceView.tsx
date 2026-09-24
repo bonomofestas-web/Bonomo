@@ -58,6 +58,49 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [sectorFilter, setSectorFilter] = useState<'all' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'>('all');
+
+  const getTaskSector = useCallback((task: AdminTask): 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' => {
+    const directSector = (task as any).sector;
+    if (directSector && ['comercial', 'pos_venda', 'gerencia', 'financeiro'].includes(directSector)) {
+      return directSector as any;
+    }
+    if (task.customProperties?.sector && ['comercial', 'pos_venda', 'gerencia', 'financeiro'].includes(task.customProperties.sector)) {
+      return task.customProperties.sector as any;
+    }
+    if (task.databaseId === 'db_followup') return 'comercial';
+    if (task.databaseId === 'db_visits_tastings') return 'comercial';
+    if (task.databaseId === 'db_appointments' || Boolean(task.debutanteId)) return 'pos_venda';
+
+    const str = `${task.customType || ''} ${task.type || ''} ${task.title || ''}`.toLowerCase();
+    if (str.includes('follow') || str.includes('visita') || str.includes('lead') || str.includes('proposta') || str.includes('closer') || str.includes('sdr')) {
+      return 'comercial';
+    }
+    if (str.includes('pos_venda') || str.includes('pós-venda') || str.includes('aniversariante') || str.includes('debutante') || str.includes('sucesso') || str.includes('cliente')) {
+      return 'pos_venda';
+    }
+    if (str.includes('financeiro') || str.includes('pagamento') || str.includes('cobrança') || str.includes('faturamento')) {
+      return 'financeiro';
+    }
+    if (str.includes('gerencia') || str.includes('gerência') || str.includes('meta') || str.includes('alinhamento')) {
+      return 'gerencia';
+    }
+
+    if (task.assignedToIds && task.assignedToIds.length > 0) {
+      const assignedCollab = collaborators.find(c => task.assignedToIds?.includes(c.id));
+      if (assignedCollab?.sectors && assignedCollab.sectors.length > 0) {
+        const first = assignedCollab.sectors[0];
+        if (['comercial', 'pos_venda', 'gerencia', 'financeiro'].includes(first)) return first as any;
+      }
+      if (assignedCollab?.role) {
+        if (['comercial', 'sdr', 'closer', 'crm'].includes(assignedCollab.role)) return 'comercial';
+        if (['pos_venda'].includes(assignedCollab.role)) return 'pos_venda';
+        if (['financeiro'].includes(assignedCollab.role)) return 'financeiro';
+      }
+    }
+
+    return 'gerencia';
+  }, [collaborators]);
 
   // Bloco de Notas Inteligente Modal State
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -135,7 +178,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     }
   }, [workspaceContext, visitsSubFilter]);
 
-  // Base Scoped Tasks for this context: in 'all' (Minhas Tarefas), scope to currentUser if present
+  // Base Scoped Tasks for this context: in 'all' (Gerência Tarefas), displays all tasks for current houses
   const baseScopedTasks = useMemo(() => {
     return contextTasks.filter(task => {
       // 0. Context filter
@@ -165,17 +208,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         const typeStr = (task.customType || task.type || '').toLowerCase();
         const isAppointmentType = typeStr.includes('compromisso') || typeStr.includes('reuni') || task.type === 'meeting' || (task.type as string) === 'client_appointment';
         if (!isDirectAppointment && !isAppointmentType) return false;
-      } else if (workspaceContext === 'all') {
-        // Workspace Minhas Tarefas: strictly scoped to logged user if available
-        if (currentUser?.id) {
-          const isAssigned = (task.assignedToIds || []).includes(currentUser.id) ||
-                             task.createdById === currentUser.id;
-          if (!isAssigned) return false;
-        }
       }
       return true;
     });
-  }, [contextTasks, workspaceContext, visitsSubFilter, currentUser]);
+  }, [contextTasks, workspaceContext, visitsSubFilter]);
 
   // Filter tasks based on context, search, database, assignee, type, priority, and status
   const filteredTasks = useMemo(() => {
@@ -231,9 +267,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         if ((task.priority || 'medium') !== priorityFilter) return false;
       }
 
+      // 7. Sector filter
+      if (sectorFilter !== 'all') {
+        if (getTaskSector(task) !== sectorFilter) return false;
+      }
+
       return true;
     });
-  }, [baseScopedTasks, selectedDatabaseId, databases, searchTerm, assigneeFilter, typeFilter, statusFilter, priorityFilter, collaborators, todayStr]);
+  }, [baseScopedTasks, selectedDatabaseId, databases, searchTerm, assigneeFilter, typeFilter, statusFilter, priorityFilter, sectorFilter, getTaskSector, collaborators, todayStr]);
 
   // Open detail modal with dynamically resolved database context
   const handleOpenTask = (task: AdminTask) => {
@@ -303,7 +344,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     }
   };
 
-  const hasActiveFilters = assigneeFilter !== 'all' || typeFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || selectedDatabaseId !== 'all';
+  const hasActiveFilters = assigneeFilter !== 'all' || typeFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || selectedDatabaseId !== 'all' || sectorFilter !== 'all';
 
   const resetFilters = () => {
     setAssigneeFilter('all');
@@ -311,6 +352,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setStatusFilter('all');
     setPriorityFilter('all');
     setSelectedDatabaseId('all');
+    setSectorFilter('all');
     setSearchTerm('');
   };
 
@@ -460,6 +502,47 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             MÊS
           </button>
         </div>
+
+        {/* Sector Quick Switcher (Gerência Tarefas) */}
+        {workspaceContext === 'all' && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+            background: '#F1F5F9',
+            padding: '3px',
+            borderRadius: '8px',
+            border: '1px solid #E2E8F0',
+          }}>
+            {[
+              { id: 'all', label: 'Todos' },
+              { id: 'comercial', label: 'Comercial' },
+              { id: 'pos_venda', label: 'Pós-Venda' },
+              { id: 'gerencia', label: 'Gerência' },
+              { id: 'financeiro', label: 'Financeiro' },
+            ].map(sec => (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => setSectorFilter(sec.id as any)}
+                style={{
+                  padding: '4px 9px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: sectorFilter === sec.id ? '#FFFFFF' : 'transparent',
+                  color: sectorFilter === sec.id ? '#0284C7' : '#64748B',
+                  fontWeight: 700,
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  boxShadow: sectorFilter === sec.id ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {sec.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Visitas & Degustações Sub-filter Toggles (if in visits_tastings context) */}
         {workspaceContext === 'visits_tastings' && (
@@ -695,6 +778,33 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 </select>
               </div>
 
+              {/* Setor */}
+              <div>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                  Setor da Empresa
+                </label>
+                <select
+                  value={sectorFilter}
+                  onChange={(e) => setSectorFilter(e.target.value as any)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    fontSize: '0.78rem',
+                    color: '#0F172A',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="all">Todos os setores</option>
+                  <option value="comercial">💼 Comercial (SDR / Closer / CRM)</option>
+                  <option value="pos_venda">🎉 Pós-Venda (Sucesso do Cliente)</option>
+                  <option value="gerencia">🛡️ Gerência / Gestão</option>
+                  <option value="financeiro">💰 Financeiro</option>
+                </select>
+              </div>
+
               {/* Status */}
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
@@ -724,15 +834,15 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           )}
         </div>
 
-        {/* Right Actions: Counter, More Menu, Sync, + Nova Tarefa */}
+        {/* Right Actions: Counter, Availability, + Nova Tarefa */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Task Counter */}
           <span style={{ fontSize: '0.80rem', fontWeight: 700, color: '#64748B' }}>
             {filteredTasks.length} {filteredTasks.length === 1 ? 'item' : 'itens'}
           </span>
 
-          {/* Grade & Disponibilidade Semanal (Visitas & Degustações - Exclusivo Gerência, visível apenas no modo Mês e quando filtrado por Visitas ou Degustações) */}
-          {workspaceContext === 'visits_tastings' && viewMode === 'month' && (visitsSubFilter === 'visit' || visitsSubFilter === 'tasting') && (currentUser?.role === 'master' || currentUser?.role === 'dev' || currentUser?.role === 'admin') && (
+          {/* Grade & Disponibilidade Semanal (Visitas & Degustações - Exclusivo Gerência / Admin) */}
+          {workspaceContext === 'visits_tastings' && (currentUser?.role === 'master' || currentUser?.role === 'admin') && (
             <button
               type="button"
               onClick={() => setIsAgendaModalOpen(true)}
@@ -750,10 +860,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 gap: '6px',
                 transition: 'all 0.15s ease',
               }}
-              title={`Configurar regras semanais e bloqueios de grade para ${visitsSubFilter === 'tasting' ? 'Degustações' : 'Visitas'}`}
+              title="Configurar regras semanais e disponibilidade da agenda"
             >
               <Sliders size={13} />
-              <span>{visitsSubFilter === 'tasting' ? 'Grade de Degustação' : 'Grade de Visitas'}</span>
+              <span>Configurar Disponibilidade</span>
             </button>
           )}
 

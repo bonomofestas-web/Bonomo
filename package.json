@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "backup:db": "node scripts/backup-prod-data.mjs",
     "restore:local": "node scripts/restore-local-data.mjs",
+    "sync:local": "node scripts/sync-cloud-to-local.mjs",
     "cleanup:r2": "node scripts/cleanup-r2-local.mjs"
   },
   "dependencies": {

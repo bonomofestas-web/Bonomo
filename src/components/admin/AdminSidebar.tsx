@@ -4,12 +4,12 @@ import {
   CheckSquare, Home,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
-  Sparkles, Flame, Zap, DollarSign, Rocket, Heart,
-  Trophy, Radio, PhoneCall, MessageSquare, Compass,
-  ShieldCheck, Star, ShoppingBag, Music, Camera, X, AlertTriangle, Sliders, Headset,
+  Sparkles, Radio, PhoneCall, Compass,
+  ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
   Eye, RotateCcw, Gift, Calendar
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION, type FeatureFlagId } from '../../types/admin';
 import type { Venue } from '../../types/admin';
@@ -88,6 +88,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     impersonatingMaster,
     startImpersonation,
     stopImpersonation,
+    userPinnedFunnelIds,
   } = useAdminState();
 
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
@@ -104,26 +105,28 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const isDevUser = Boolean(currentUser?.isDev);
   const userRole = currentUser?.role || 'master';
   const activeVenue = venues.find(v => v.id === activeVenueId) || null;
 
   // Map each tab to its controlling feature flag (if applicable)
   const TAB_FEATURE_FLAG: Partial<Record<AdminTabType, FeatureFlagId>> = {
     'master-dashboard': 'master_dashboard',
+    'dashboard': 'commercial_dashboard',
+    'venue-goals': 'goals',
   };
 
   const devItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={15} />, roles: ['dev'] },
-    { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={15} />, roles: ['dev'] },
-    { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={15} />, roles: ['dev'] },
-    { id: 'dev-support', label: 'Suporte', icon: <Headset size={15} />, roles: ['dev'] },
+    { id: 'dev-features', label: 'Feature Flags', icon: <Sliders size={15} />, roles: ['master'] },
+    { id: 'dev-users', label: 'Gestão de Usuários', icon: <Users size={15} />, roles: ['master'] },
+    { id: 'dev-announcements', label: 'Broadcast', icon: <Radio size={15} />, roles: ['master'] },
+    { id: 'dev-support', label: 'Suporte', icon: <Headset size={15} />, roles: ['master'] },
   ];
 
   // 1. Workspace
   const workspaceItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'home', label: 'Início', icon: <Home size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
-    { id: 'team', label: 'Equipe', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'home', label: 'Início', icon: <Home size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'team', label: 'Equipe', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
 // WhatsApp Official Brand SVG Icon
@@ -134,83 +137,61 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   </svg>
 );
 
-  // 2. Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Visitas & Degustação
+  // 2. Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Agendamentos
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
-    { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'post-sale-visits-tastings', label: 'Visitas & Degustação', icon: <Calendar size={15} />, roles: ['dev', 'master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
+    { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Clientes, Aplicativo (com Jornada VIP Integrada), Compromissos
+  // 3. Pós-Venda: Sucesso do Cliente, App Aniversariantes, Compromissos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'post-sale-crm', label: 'Clientes', icon: <Users size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
-    { id: 'debutantes', label: 'Aplicativo', icon: <Gift size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
-    { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['dev', 'master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-crm', label: 'Sucesso do Cliente', icon: <Users size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
 
-  // 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa
+  // 4. Gerência: Tarefas, Qualificação ICP, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['dev', 'master', 'admin'] },
-    { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['dev', 'master', 'admin'], alertBadge: hasUnconfiguredSources },
-    { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['dev', 'master', 'admin'] },
-    { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['dev', 'master', 'admin'] },
-    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={15} />, roles: ['dev', 'master', 'admin'] },
-    { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={15} />, roles: ['dev', 'master', 'admin'] },
+    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin'] },
+    { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['master', 'admin'] },
+    { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
+    { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
+    { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin'] },
+    { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={15} />, roles: ['master', 'admin'] },
+    { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={15} />, roles: ['master', 'admin'] },
   ];
 
   const allowedVenues = useMemo(() => {
-    if (userRole === 'dev' || userRole === 'master') return venues;
+    if (userRole === 'master') return venues;
     if (!currentUser?.venueIds || currentUser.venueIds.length === 0) return venues;
     return venues.filter(v => currentUser.venueIds?.includes(v.id));
   }, [venues, currentUser, userRole]);
 
-  // Colaboradores subordinados disponíveis para o Master ou Dev impersonar
+  // Colaboradores subordinados disponíveis para o Master impersonar
   const impersonatableCollaborators = useMemo(() => {
     return (collaborators || []).filter(c => {
       if (c.id === currentUser?.id) return false;
-      if (c.role === 'master' || c.role === 'dev') return false;
+      if (c.role === 'master') return false;
       return true;
     });
   }, [collaborators, currentUser]);
 
-  const visibleFunnels = useMemo(() => {
+  const visiblePinnedFunnels = useMemo(() => {
+    const pinnedIds = userPinnedFunnelIds || [];
     return funnels.filter(funnel => {
-      if (!funnel.isPinned) return false;
+      if (!pinnedIds.includes(funnel.id)) return false;
+      if (funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda') || funnel.name?.toLowerCase().includes('pos venda')) return false;
       if (!activeVenueId) return true;
       return funnel.venueId === activeVenueId || funnel.venueId === 'all';
-    }).sort((a, b) => {
-      if (a.pinnedAt && b.pinnedAt) {
-        return a.pinnedAt.localeCompare(b.pinnedAt);
-      }
-      if (a.pinnedAt) return -1;
-      if (b.pinnedAt) return 1;
-      return 0;
     });
-  }, [funnels, activeVenueId]);
+  }, [funnels, userPinnedFunnelIds, activeVenueId]);
 
   const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
-    switch (iconName) {
-      case 'sparkles': return <Sparkles size={size} color={color} />;
-      case 'flame': return <Flame size={size} color={color} />;
-      case 'zap': return <Zap size={size} color={color} />;
-      case 'dollar-sign': return <DollarSign size={size} color={color} />;
-      case 'rocket': return <Rocket size={size} color={color} />;
-      case 'heart': return <Heart size={size} color={color} />;
-      case 'trophy': return <Trophy size={size} color={color} />;
-      case 'radio': return <Radio size={size} color={color} />;
-      case 'phone-call': return <PhoneCall size={size} color={color} />;
-      case 'message-square': return <MessageSquare size={size} color={color} />;
-      case 'compass': return <Compass size={size} color={color} />;
-      case 'shield-check': return <ShieldCheck size={size} color={color} />;
-      case 'star': return <Star size={size} color={color} />;
-      case 'shopping-bag': return <ShoppingBag size={size} color={color} />;
-      case 'music': return <Music size={size} color={color} />;
-      case 'camera': return <Camera size={size} color={color} />;
-      default: return <Target size={size} color={color} />;
-    }
+    return renderFunnelOrStageIcon(iconName, size, color, 'target');
   };
 
   // Helper to render Venue Logo / Icon with Square Background
@@ -301,13 +282,13 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     const featureStatus = featureId ? getFeatureStatus(featureId) : 'active';
 
     // If disabled and not dev, hide completely
-    if (featureStatus === 'disabled' && userRole !== 'dev') {
+    if (featureStatus === 'disabled' && !isDevUser) {
       return null;
     }
 
     // Check Role & Sector Access for this item
     const itemRoles = (item as any).roles as string[] | undefined;
-    if (itemRoles && userRole !== 'dev' && userRole !== 'master') {
+    if (itemRoles && !isDevUser && userRole !== 'master') {
       const userSectors = currentUser?.sectors;
       const hasRole = itemRoles.includes(userRole);
       const hasSectorMatch = userSectors && (
@@ -320,7 +301,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       }
     }
 
-    const isComingSoon = featureStatus === 'coming_soon' && userRole !== 'dev';
+    const isComingSoon = featureStatus === 'coming_soon' && !isDevUser;
     const isDev = item.id.startsWith('dev-');
 
     if (isCollapsed && !isMobileOverlay) {
@@ -906,14 +887,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       )}
 
       {/* Se não há casas de festa registradas para esta conta Master/Dev, foca exclusivamente no registro da 1ª casa */}
-      {(venues.length === 0 && (userRole === 'master' || userRole === 'dev')) ? (
+      {(venues.length === 0 && userRole === 'master') ? (
         <div style={{
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
           gap: '12px',
         }}>
-          {userRole === 'dev' && (
+          {isDevUser && (
             <div style={{
               background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%)',
               border: '1.5px solid rgba(56, 189, 248, 0.45)',
@@ -1026,7 +1007,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           flex: 1,
         }}>
           {/* 0. Exclusive Developer Group: Destaque no Topo com Estilo Tech-Blue */}
-          {userRole === 'dev' && (
+          {isDevUser && (
             <div style={{
               background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(15, 23, 42, 0.75) 100%)',
               border: '1.5px solid rgba(56, 189, 248, 0.45)',
@@ -1073,7 +1054,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           )}
 
-          {/* 1. Setor Workspace: Início & Equipe */}
+          {/* 1. Setor Workspace: Início, Tarefas, Equipe & Funis Fixados do Usuário */}
           <div>
             {!isCollapsed && (
               <div style={{
@@ -1089,10 +1070,111 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {workspaceItems.map(item => renderNavButton(item))}
+
+              {/* Funis Fixados no Workspace deste Usuário */}
+              {visiblePinnedFunnels.map(f => {
+                const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
+                const funnelColor = f.badgeColor || '#D4AF37';
+                
+                if (isCollapsed && !isMobileOverlay) {
+                  return (
+                    <button
+                      key={`pinned-${f.id}`}
+                      type="button"
+                      onClick={() => handleTabClick('crm', f.id)}
+                      title={`Funil: ${f.name}`}
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        margin: '0 auto',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '10px',
+                        background: isFunnelActive ? `${funnelColor}22` : 'transparent',
+                        border: isFunnelActive ? `1.5px solid ${funnelColor}` : '1px solid transparent',
+                        color: isFunnelActive ? funnelColor : '#8096A8',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        position: 'relative',
+                      }}
+                    >
+                      {renderSidebarFunnelIcon(f.icon, 15, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
+                      {isFunnelActive && (
+                        <span style={{
+                          position: 'absolute',
+                          right: '-5px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          width: '3px',
+                          height: '14px',
+                          borderRadius: '2px',
+                          background: funnelColor,
+                          boxShadow: `0 0 8px ${funnelColor}AA`,
+                        }} />
+                      )}
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    key={`pinned-${f.id}`}
+                    type="button"
+                    onClick={() => handleTabClick('crm', f.id)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '9px',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      background: isFunnelActive ? `${funnelColor}18` : 'transparent',
+                      border: isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
+                      color: isFunnelActive ? funnelColor : 'rgba(255, 255, 255, 0.75)',
+                      fontSize: '0.74rem',
+                      fontWeight: isFunnelActive ? 700 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isFunnelActive) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isFunnelActive) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)';
+                      }
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center' }}>
+                      {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#9E988D'))}
+                    </span>
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {f.name}
+                    </span>
+                    <span style={{
+                      fontSize: '9px',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)',
+                      color: isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)'),
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                    }}>
+                      FUNIL
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* 2. Setor Comercial: Funis, Follow-ups, WhatsApp, Dashboard, Metas */}
+          {/* 2. Setor Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Agendamentos */}
           <div>
             {!isCollapsed && (
               <div style={{
@@ -1107,53 +1189,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {commercialItems.map(item => {
-                const btn = renderNavButton(item);
-                if (item.id === 'crm') {
-                  return (
-                    <React.Fragment key={item.id}>
-                      {btn}
-                      {/* Pinned Funnels List directly below Funis de Vendas */}
-                      {!isCollapsed && visibleFunnels.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', paddingLeft: '10px', marginTop: '1px', marginBottom: '3px' }}>
-                          {visibleFunnels.map(f => {
-                            const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
-                            return (
-                              <button
-                                key={f.id}
-                                type="button"
-                                onClick={() => handleTabClick('crm', f.id)}
-                                style={{
-                                  width: '100%',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '4px 6px',
-                                  borderRadius: '6px',
-                                  background: isFunnelActive ? 'rgba(212, 175, 55, 0.14)' : 'transparent',
-                                  border: isFunnelActive ? '1px solid #D4AF37' : '1px solid transparent',
-                                  color: isFunnelActive ? '#D4AF37' : 'rgba(255, 255, 255, 0.75)',
-                                  fontSize: '0.68rem',
-                                  fontWeight: isFunnelActive ? 700 : 400,
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  transition: 'all 0.15s ease',
-                                }}
-                              >
-                                <span>{renderSidebarFunnelIcon(f.icon, 11, isFunnelActive ? '#D4AF37' : '#9E988D')}</span>
-                                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {f.name}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </React.Fragment>
-                  );
-                }
-                return btn;
-              })}
+              {commercialItems.map(item => renderNavButton(item))}
             </div>
           </div>
 
@@ -1177,7 +1213,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           </div>
 
           {/* 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa */}
-          {(userRole === 'dev' || userRole === 'master' || userRole === 'admin') && (
+          {(isDevUser || userRole === 'master' || userRole === 'admin') && (
             <div>
               {!isCollapsed && (
                 <div style={{

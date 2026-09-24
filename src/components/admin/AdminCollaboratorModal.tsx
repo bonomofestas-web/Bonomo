@@ -25,6 +25,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [role, setRole] = useState<AdminRole>('crm');
   const [customJobTitle, setCustomJobTitle] = useState('');
   const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | ''>('');
+  const [primarySector, setPrimarySector] = useState<'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | ''>('');
   const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [active, setActive] = useState(true);
@@ -38,6 +39,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setRole(collaboratorToEdit.role);
       setCustomJobTitle(collaboratorToEdit.customJobTitle || '');
       setDepartment(collaboratorToEdit.department || '');
+      setPrimarySector(collaboratorToEdit.primarySector || (collaboratorToEdit.department === 'pos_venda' ? 'pos_venda' : ''));
       const vIds = collaboratorToEdit.venueIds || (collaboratorToEdit.venueId && collaboratorToEdit.venueId !== 'all' ? [collaboratorToEdit.venueId] : venues.map(v => v.id));
       setSelectedVenueIds(vIds);
       setAvatarUrl(collaboratorToEdit.avatarUrl || '');
@@ -50,6 +52,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setRole('crm');
       setCustomJobTitle('');
       setDepartment('');
+      setPrimarySector('');
       setSelectedVenueIds(venues.map(v => v.id));
       setAvatarUrl('');
       setActive(true);
@@ -74,6 +77,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         role,
         customJobTitle: customJobTitle.trim() || undefined,
         department: finalDepartment,
+        primarySector: (primarySector || undefined) as any,
         venueId: role === 'master' ? 'all' : primaryVenueId,
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
@@ -88,6 +92,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         role,
         customJobTitle: customJobTitle.trim() || undefined,
         department: finalDepartment,
+        primarySector: (primarySector || undefined) as any,
         venueId: role === 'master' ? 'all' : primaryVenueId,
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
@@ -298,6 +303,30 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
                 <option value="pos_venda">Pós-Venda & Sucesso</option>
                 <option value="financeiro">Financeiro & Contratos</option>
               </select>
+            </div>
+          </div>
+
+          {/* Setor Prioritário de Atendimento / Caixa de Entrada */}
+          <div>
+            <label style={labelStyle}>
+              Setor Prioritário (Abertura Padrão no WhatsApp)
+            </label>
+            <select
+              value={primarySector}
+              onChange={(e) => setPrimarySector(e.target.value as any)}
+              style={{
+                ...inputStyle,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">Padrão (Automático de acordo com a função)</option>
+              <option value="comercial">🎯 Comercial (Funis de Vendas)</option>
+              <option value="pos_venda">👑 Pós-Venda (Sucesso do Cliente)</option>
+              <option value="gerencia">📊 Gestão / Gerência</option>
+              <option value="financeiro">💰 Financeiro</option>
+            </select>
+            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
+              Determina se o colaborador acessa prioritariamente o Comercial ou Sucesso do Cliente (Pós-Venda) no WhatsApp.
             </div>
           </div>
 

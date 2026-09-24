@@ -98,7 +98,7 @@ export const AdminCollaboratorsView: React.FC = () => {
   }, [collaborators]);
 
   const isPendingFirstAccess = (c: Collaborator): boolean => {
-    if (c.role === 'master' || c.role === 'dev') return false;
+    if (c.role === 'master') return false;
     return Boolean(c.isFirstAccess);
   };
 
@@ -132,7 +132,7 @@ export const AdminCollaboratorsView: React.FC = () => {
   const handleOpenCreate = handleOpenAdd;
 
   const handleOpenEdit = (collab: Collaborator) => {
-    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
     const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
     if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
       alert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de gerência ou superior.');
@@ -165,7 +165,7 @@ export const AdminCollaboratorsView: React.FC = () => {
       return;
     }
 
-    const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'dev' || collaboratorToEdit?.role === 'gerencia';
+    const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'gerencia';
     if (isCurrentUserManager && (formSectors.includes('gerencia') || isTargetManagerOrAbove)) {
       alert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de gerência nem alterar perfis superiores.');
       return;
@@ -214,7 +214,7 @@ export const AdminCollaboratorsView: React.FC = () => {
   };
 
   const handleOpenDelete = (collab: Collaborator) => {
-    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+    const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
     const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
     if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
       alert('Acesso restrito: gerentes não podem excluir o próprio perfil nem colaboradores com função de gerência ou superior.');
@@ -1000,7 +1000,7 @@ export const AdminCollaboratorsView: React.FC = () => {
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
           const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
           const isMasterRole = collab.role === 'master';
-          const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'dev' || collab.role === 'gerencia';
+          const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
           const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
@@ -1293,7 +1293,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                 borderTop: '1px solid var(--adm-border)',
                 paddingTop: '12px',
               }}>
-                {collab.role === 'dev' ? (
+                {collab.isDev ? (
                   <span style={{
                     fontSize: '0.72rem',
                     fontWeight: 800,

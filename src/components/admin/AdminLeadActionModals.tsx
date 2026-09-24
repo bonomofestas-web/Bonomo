@@ -235,6 +235,234 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
 };
 
 
+// ── 1.1 MODAL DE MUDAR DE FUNIL EM MASSA ────────────────────────────────────
+interface AdminBulkMoveFunnelModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  count: number;
+  funnels: CommercialFunnel[];
+  currentFunnelId?: string;
+  onConfirm: (destinationFunnelId: string, stageId?: string) => Promise<void> | void;
+}
+
+export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> = ({
+  isOpen,
+  onClose,
+  count,
+  funnels,
+  currentFunnelId,
+  onConfirm,
+}) => {
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string>('');
+  const [selectedStageId, setSelectedStageId] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setErrorMsg(null);
+    setIsSubmitting(false);
+
+    // Seleciona o primeiro funil diferente do atual, ou o primeiro disponível
+    const otherFunnels = funnels.filter(f => f.id !== currentFunnelId);
+    const initialFunnel = otherFunnels[0] || funnels[0];
+    if (initialFunnel) {
+      setSelectedFunnelId(initialFunnel.id);
+      setSelectedStageId(initialFunnel.stages?.[0]?.id || 'new_lead');
+    }
+  }, [isOpen, currentFunnelId, funnels]);
+
+  if (!isOpen) return null;
+
+  const currentFunnelObj = funnels.find(f => f.id === selectedFunnelId);
+  const stages = currentFunnelObj?.stages || [];
+
+  const handleFunnelChange = (funnelId: string) => {
+    setSelectedFunnelId(funnelId);
+    const target = funnels.find(f => f.id === funnelId);
+    setSelectedStageId(target?.stages?.[0]?.id || 'new_lead');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFunnelId) {
+      setErrorMsg('Selecione o funil de destino.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await onConfirm(selectedFunnelId, selectedStageId || undefined);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Erro ao transferir leads para o novo funil.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div 
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        backdropFilter: 'blur(4px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting) onClose();
+      }}
+    >
+      <div 
+        style={{
+          width: '100%',
+          maxWidth: '440px',
+          background: 'var(--adm-bg-card, #ffffff)',
+          border: '1px solid var(--adm-border, #E2E8F0)',
+          borderRadius: '12px',
+          boxShadow: '0 20px 40px -10px rgba(0,0,0,0.3)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '14px 18px',
+          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+          background: 'var(--adm-bg-app, #F8FAFC)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <GitBranch size={16} color="#F59E0B" />
+            <h3 style={{ margin: 0, fontSize: '0.90rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+              Mudar Funil ({count} Leads Selecionados)
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--adm-text-muted, #94A3B8)', padding: '4px' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {errorMsg && (
+            <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', fontSize: '0.76rem' }}>
+              {errorMsg}
+            </div>
+          )}
+
+          <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-secondary, #475569)' }}>
+            Você está transferindo <strong>{count}</strong> leads simultaneamente para outro funil.
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
+              Funil de Destino
+            </label>
+            <select
+              value={selectedFunnelId}
+              onChange={(e) => handleFunnelChange(e.target.value)}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 10px',
+                borderRadius: '6px',
+                border: '1px solid var(--adm-border, #CBD5E1)',
+                background: 'var(--adm-bg-input, #F8FAFC)',
+                color: 'var(--adm-text-title, #0F172A)',
+                fontSize: '0.80rem',
+                outline: 'none',
+              }}
+            >
+              {funnels.map(f => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {stages.length > 0 && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-secondary, #475569)', marginBottom: '4px' }}>
+                Etapa Inicial no Destino
+              </label>
+              <select
+                value={selectedStageId}
+                onChange={(e) => setSelectedStageId(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  background: 'var(--adm-bg-input, #F8FAFC)',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.80rem',
+                  outline: 'none',
+                }}
+              >
+                {stages.map(s => (
+                  <option key={s.id} value={s.id}>{(s as any).name || (s as any).title || s.id}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              style={{
+                padding: '7px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--adm-border, #CBD5E1)',
+                background: 'transparent',
+                color: 'var(--adm-text-muted, #64748B)',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              style={{
+                padding: '7px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                color: '#ffffff',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <span>{isSubmitting ? 'Transferindo...' : 'Transferir Todos'}</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+
 // ── 2. MODAL DE CRIAR TAREFA RÁPIDA ──────────────────────────────────────────
 interface AdminQuickTaskModalProps {
   isOpen: boolean;
@@ -639,7 +867,7 @@ interface AdminBulkMoveStageModalProps {
   isOpen: boolean;
   onClose: () => void;
   count: number;
-  stages: Array<{ id: string; title: string; headerColor?: string }>;
+  stages: Array<{ id: string; title?: string; name?: string; headerColor?: string; color?: string }>;
   onConfirm: (stageId: CrmStage) => void;
 }
 
@@ -711,6 +939,8 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '240px', overflowY: 'auto' }}>
             {stages.map((st) => {
               const isSelected = selectedStage === st.id;
+              const stageLabel = st.title || st.name || st.id;
+              const stageColor = st.headerColor || st.color || '#3B82F6';
               return (
                 <div
                   key={st.id}
@@ -728,9 +958,9 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: st.headerColor || '#3B82F6' }} />
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stageColor }} />
                     <span style={{ fontSize: '0.80rem', fontWeight: isSelected ? 700 : 500, color: 'var(--adm-text-title, #0F172A)' }}>
-                      {st.title}
+                      {stageLabel}
                     </span>
                   </div>
                   {isSelected && <Check size={14} color="#3B82F6" />}

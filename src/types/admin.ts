@@ -1,27 +1,29 @@
-import type { 
-  Milestone, 
-  VipReward, 
-  Guest, 
-  Referral, 
-  Appointment, 
-  JourneyCycleState 
+import type {
+  Milestone,
+  VipReward,
+  Guest,
+  Referral,
+  Appointment,
+  JourneyCycleState
 } from './index';
 
 // All roles in the system (dev is the exclusive root developer super-role)
-export type AdminRole = 
-  | 'dev' 
-  | 'master' 
-  | 'admin' 
-  | 'gerencia' 
-  | 'comercial' 
-  | 'crm' 
-  | 'sdr' 
-  | 'closer' 
-  | 'pos_venda' 
+export type AdminRole =
+  | 'dev'
+  | 'master'
+  | 'admin'
+  | 'gerencia'
+  | 'comercial'
+  | 'crm'
+  | 'sdr'
+  | 'closer'
+  | 'pos_venda'
   | 'financeiro';
 
-export type FeatureFlagId = 
-  | 'master_dashboard';
+export type FeatureFlagId =
+  | 'master_dashboard'
+  | 'commercial_dashboard'
+  | 'goals';
 
 export type FeatureFlagStatus = 'active' | 'coming_soon' | 'disabled';
 
@@ -65,6 +67,7 @@ export interface AdminUser {
   name: string;
   email: string;
   role: AdminRole;
+  isDev?: boolean; // Flag booleana que habilita acesso ao setor Desenvolvedor
   avatarUrl?: string;
   venueIds?: string[]; // IDs das casas que tem acesso (vazio ou master = todas)
   phone?: string;
@@ -74,6 +77,7 @@ export interface AdminUser {
   lastLoginAt?: string;
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
   sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[];
+  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro';
 }
 
 export interface Collaborator {
@@ -81,6 +85,7 @@ export interface Collaborator {
   name: string;
   email: string;
   role: AdminRole; // 'master' | 'admin' | 'crm' | 'sdr' | 'closer'
+  isDev?: boolean; // Flag de acesso ao setor de desenvolvedor
   venueId: string; // 'all' ou ID principal da casa
   venueIds?: string[]; // IDs das múltiplas casas de festa atribuídas
   avatarUrl?: string;
@@ -93,6 +98,7 @@ export interface Collaborator {
   customJobTitle?: string; // Cargo/Título executivo customizado (ex: 'Coordenador Geral', 'Líder Comercial')
   department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
   sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]; // Setores que o colaborador participa
+  primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'; // Setor prioritário de abertura
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;
@@ -152,7 +158,7 @@ export interface CollaboratorTimeLog {
   lastActiveTimestamp: number;
 }
 
-export type LeadSource = 
+export type LeadSource =
   | 'indicacao'        // Indicação da Debutante / App
   | 'instagram'        // Redes Sociais / Instagram Direct
   | 'trafego_pago'     // Anúncios Meta Ads / Google Ads
@@ -168,7 +174,7 @@ export interface LeadGoal {
   title?: string;
 }
 
-export type CrmStage = 
+export type CrmStage =
   | 'new_lead'          // Novo Lead (Indicação enviada)
   | 'in_analysis'       // Em Análise / Contato Inicial
   | 'meeting_scheduled' // Reunião / Degustação Agendada
@@ -185,7 +191,7 @@ export interface LeadParticipant {
   timestamp: string; // ISO String
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'completed';
+export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'completed' | 'no_result' | 'no_show' | 'cancelled';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent' | 'none';
 export type TaskType = 'call' | 'meeting' | 'tasting' | 'followup' | 'document' | 'general';
 
@@ -222,7 +228,7 @@ export interface TaskCustomType {
   createdAt?: string;
 }
 
-export type CustomPropertyType = 
+export type CustomPropertyType =
   | 'text'
   | 'number'
   | 'select'
@@ -318,18 +324,22 @@ export interface LeadActivity {
   authorName: string;
   authorId?: string;
   authorAvatarUrl?: string;
+  mediaUrl?: string;
+  mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  errorMessage?: string;
 }
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';
 export type LeadEventType = '15 Anos' | 'Casamento' | 'Infantil' | 'Formatura' | 'Corporativo' | 'Outro';
-export type LeadContactRole = 
-  | 'aniversariante' 
-  | 'debutante' 
-  | 'mae' 
-  | 'pai' 
-  | 'tio' 
-  | 'noivo' 
-  | 'responsavel' 
+export type LeadContactRole =
+  | 'aniversariante'
+  | 'debutante'
+  | 'mae'
+  | 'pai'
+  | 'tio'
+  | 'noivo'
+  | 'responsavel'
   | 'outro'
   | string;
 
@@ -381,14 +391,15 @@ export interface FunnelStageConfig {
   triggers?: FunnelStageTrigger[]; // Gatilhos de automação da etapa
 }
 
-export type FunnelCustomFieldSection = 'commercial' | 'contact' | 'event';
+export type FunnelCustomFieldSection = 'commercial' | 'contact' | 'event' | 'priority' | 'party_data' | 'contractor' | 'custom';
 export type FunnelFieldType = 'text' | 'date' | 'number' | 'todo' | 'select' | 'multi_select';
 
 export interface FunnelCustomField {
   id: string;
   label: string;
   type: FunnelFieldType;
-  section?: FunnelCustomFieldSection; // 'commercial' (Dados Comerciais), 'contact' (Aniversariante & Contatos), 'event' (Dados do Evento)
+  section?: FunnelCustomFieldSection; // 'priority' (Prioritárias), 'party_data' (Dados da Festa), 'contractor' (Contratante & Aniversariante), 'custom' (Personalizada)
+  customSectionName?: string; // Nome customizado se section === 'custom'
   options?: string[]; // Para campos tipo 'select' ou 'multi_select'
   required?: boolean;
   placeholder?: string;
@@ -449,7 +460,10 @@ export interface Lead {
   subSource?: string;    // Nome da Sub-origem (ex: "Instagram", "Google Ads", "Bio")
   name: string;
   phone: string;
+  whatsappJid?: string;      // Identificador JID do WhatsApp (ex: 5521999999999@s.whatsapp.net)
+  whatsappLid?: string;      // Identificador LID multi-dispositivo (ex: 152063344606275@lid ou 152063344606275)
   email?: string;
+  avatarUrl?: string;        // URL da foto de perfil sincronizada com R2 / WhatsApp
   cpf?: string;              // CPF do lead / decisor
   birthday?: string;         // Data de nascimento / aniversário do aniversariante
   source?: LeadSource;       // Origem do Lead (Indicação, Instagram, Tráfego Pago, WhatsApp, etc)
@@ -464,15 +478,23 @@ export interface Lead {
   // Dados do Evento
   eventType?: LeadEventType;      // Padrão '15 Anos' para indicação
   eventDate?: string;             // Data do evento
+  eventYear?: number | string;    // Ano do evento (ex: 2026, 2027)
   debutanteBirthDate?: string;    // Data de aniversário da debutante
   estimatedGuests?: number;       // Quantidade estimada de convidados
   desiredPeriod?: string;         // Data desejada / período (caso sem data exata)
+  urgencyLevel?: 'baixa' | 'media' | 'alta' | 'imediata' | 'urgente'; // Nível de urgência
 
   // Dados Comerciais & Qualificação
   interestService?: string;       // Qual espaço/pacote/serviço despertou interesse
   estimatedBudget?: number;       // Investimento / orçamento
   paymentMethod?: string;         // Forma de pagamento
-  temperature?: LeadTemperature;  // 'hot' (🔥 Quente) | 'warm' (🟡 Morno) | 'cold' (🔵 Frio)
+  downPayment?: number;           // Valor de entrada R$
+  installments?: number;          // Quantidade de parcelas
+  installmentValue?: number;      // Valor de cada parcela R$
+  hasCreditCard?: boolean;        // Cartão de crédito (sim/não)
+  profession?: string;            // Profissão do cliente
+  decisionMakers?: string;        // Decisores da compra
+  temperature?: LeadTemperature;  // 'hot' (🔥 Quente) | 'warm' (🟡 Morno) | 'cold' (🔵 Frio) | undefined (Sem temperatura)
   tags?: string[];                // Tags específicas do funil
 
   // Qualificação MQL (Marketing Qualified Lead)
@@ -482,6 +504,9 @@ export interface Lead {
 
   // Campos Customizados definidos pelo Funil
   customFieldValues?: Record<string, any>;
+
+  // Unread messages
+  unreadCount?: number;
 
   age: number;
   group: string;
@@ -521,6 +546,7 @@ export interface Lead {
   createdBy?: string;         // ID do usuário/colaborador que realizou o cadastro manual
   createdByName?: string;     // Nome legível do autor do cadastro manual
   createdByAvatar?: string;   // Foto/avatar do autor do cadastro manual
+  isClient?: boolean;         // Flag que indica se o registro se origina do módulo de clientes (Pós-Venda)
   createdAt: string;
   updatedAt: string;
 }
@@ -578,6 +604,7 @@ export interface VenueAgendaConfig {
 // ── Entidade Cliente & Pós-Venda (F5 System) ──────────────────────────────────
 export interface ClientDocument {
   id: string;
+  clientId?: string;
   title: string;
   name?: string;
   type: 'contract' | 'amendment' | 'receipt' | 'id_document' | 'other';
@@ -588,11 +615,28 @@ export interface ClientDocument {
   sizeBytes?: number;
 }
 
+export interface ClientUpsellSale {
+  id: string;
+  clientId: string;
+  title: string;
+  category: 'foto_video' | 'decoracao' | 'atracoes' | 'bar_bebidas' | 'estrutura' | 'alimentacao' | 'outro' | string;
+  value: number;
+  saleDate: string;
+  paymentMethod?: string;
+  paymentType?: 'a_vista' | 'parcelado' | 'sinal';
+  installmentsCount?: number;
+  paymentStatus?: 'pago' | 'pendente' | 'parcelado';
+  responsibleId?: string;
+  responsibleName?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
 export interface ClientActivity {
   id: string;
   clientId?: string;
   timestamp?: string;
-  type: 'status_change' | 'note' | 'document_uploaded' | 'meeting' | 'debutante_linked' | 'contact' | 'creation' | 'assignment' | 'task_created' | 'task_completed';
+  type: 'status_change' | 'note' | 'document_uploaded' | 'meeting' | 'debutante_linked' | 'contact' | 'creation' | 'assignment' | 'task_created' | 'task_completed' | 'upsell_added' | 'upsell_removed';
   title?: string;
   text?: string;
   description: string;
@@ -601,7 +645,7 @@ export interface ClientActivity {
   createdBy: string;
 }
 
-export type ClientStage = 
+export type ClientStage =
   | 'onboarding'       // Boas-vindas & Onboarding
   | 'planning'         // Planejamento & Cronograma
   | 'suppliers'        // Definição de Fornecedores / Degustação
@@ -643,11 +687,18 @@ export interface Client {
 
   packageSold: string;                   // Pacote fechado (ex: Pacote Imperial Ouro)
   dealValue: number;                     // Valor total do contrato (R$)
+  baseContractValue?: number;            // Valor base original do contrato
   contractDate: string;                  // Data de fechamento do contrato
   contractStatus?: 'aguardando_sinal' | 'sinal_pago' | 'contrato_enviado' | 'contrato_assinado'; // Status contratual no Pós-Venda
   contractSignedAt?: string | null;      // Data em que o contrato foi assinado (definida pelo Pós-Venda)
   signalPaid?: boolean;                  // Se o sinal da entrada foi pago
   signalValue?: number;                  // Valor do sinal pago
+  contractDownPayment?: number;          // Valor de Entrada / Sinal contratual
+  contractInstallmentsRemaining?: number;// Valor restante parcelado do contrato
+  contractInstallmentsCount?: number;    // Quantidade de parcelas do saldo restante
+  hasCreditCard?: boolean;               // Se o cliente possui cartão de crédito (Sim / Não)
+  birthdayPersonPhone?: string;          // Telefone direto da aniversariante
+  eventYear?: number | string;           // Ano previsto da festa
   signalPaidAt?: string | null;          // Data do pagamento do sinal
   paymentTerms?: string;                 // Condições de pagamento (Entrada, parcelas, etc.)
   paymentStatus?: 'up_to_date' | 'pending' | 'overdue' | 'paid_in_full';
@@ -682,6 +733,7 @@ export interface Client {
   notes?: string;
   documents?: ClientDocument[];
   activities: ClientActivity[];
+  upsellSales?: ClientUpsellSale[];
   tags?: string[];
   funnelEnteredAt?: string; // Data de entrada do cliente no funil de pós-venda
   createdAt: string;
@@ -716,12 +768,21 @@ export interface CommercialFunnel {
   stagesCount?: number;
   stages?: FunnelStageConfig[]; // Etapas customizadas do funil
   customFields?: FunnelCustomField[]; // Campos extras personalizados para os leads deste funil
-  packageOptions?: string[]; // Lista de pacotes de venda deste funil
-  paymentOptions?: string[]; // Lista de condições/formatos de pagamento deste funil
+  packageOptions?: string[]; // Lista de pacotes de venda deste funil (legado)
+  paymentOptions?: string[]; // Lista de condições/formatos de pagamento deste funil (legado)
   predefinedTags?: string[]; // Tags pré-configuradas e recomendadas para leads deste funil
+  allowCollaboratorsCreateTags?: boolean; // Se colaboradores podem criar novas tags no lead ou apenas selecionar predefinidas
   distributionMode?: 'manual' | 'round_robin'; // Modo de distribuição dos novos leads (manual ou roleta)
   assignedSdrIds?: string[]; // IDs dos SDRs que participam da distribuição automática deste funil
   roundRobinNextIndex?: number; // Índice do próximo SDR na roleta
+  defaultWhatsAppSourceId?: string; // ID da origem WhatsApp padrão legada
+  priorityWhatsappPerVenue?: Record<string, string>; // Mapeamento: venueId -> sourceId de WhatsApp prioritário por unidade
+  venueDistributionConfig?: Record<string, {
+    distributionMode?: 'manual' | 'round_robin' | 'inherit';
+    assignedSdrIds?: string[];
+    roundRobinNextIndex?: number;
+    priorityWhatsappSourceId?: string;
+  }>; // Configuração individual de roleta e WhatsApp por Casa de Festa
   isPrimary?: boolean;
   isDemo?: boolean;
   createdAt?: string;
@@ -765,14 +826,14 @@ export interface JourneyTemplate {
   createdAt: string;
 }
 
-export type EventType = 
-  | 'debutante_15' 
-  | 'birthday_kids' 
-  | 'birthday_adult' 
-  | 'baby_shower' 
-  | 'wedding_anniversary' 
-  | 'graduation' 
-  | 'corporate' 
+export type EventType =
+  | 'debutante_15'
+  | 'birthday_kids'
+  | 'birthday_adult'
+  | 'baby_shower'
+  | 'wedding_anniversary'
+  | 'graduation'
+  | 'corporate'
   | 'other';
 
 export interface DebutanteAccount {
@@ -865,13 +926,13 @@ export interface AdminAppState {
 // ── Support Tickets & Bug Reports (Audio 3) ──────────────────────────────────
 export type SupportTicketStatus = 'new' | 'in_progress' | 'resolved';
 
-export type SupportTicketModule = 
-  | 'home' 
-  | 'crm' 
-  | 'debutantes' 
-  | 'venues' 
-  | 'collaborators' 
-  | 'whatsapp' 
+export type SupportTicketModule =
+  | 'home'
+  | 'crm'
+  | 'debutantes'
+  | 'venues'
+  | 'collaborators'
+  | 'whatsapp'
   | 'other';
 
 export interface SupportTicketMessage {

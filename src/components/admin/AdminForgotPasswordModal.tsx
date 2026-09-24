@@ -95,14 +95,14 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
       // 1. Identify user account
       let matchedUser: { id: string; name: string; email: string; role: string } | null = null;
 
-      if (cleanEmail === 'bonomofestas@gmail.com') {
+      if (cleanEmail === 'bonomofestas@gmail.com' || cleanEmail === 'patrickcouto.oficial@gmail.com') {
         matchedUser = {
           id: 'd0000000-0000-0000-0000-000000000001',
           name: 'F5 Developer',
           email: cleanEmail,
           role: 'dev',
         };
-      } else if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'master@bonomofestas.com' || cleanEmail === 'master@f5system.com') {
+      } else if (cleanEmail === 'dev@bonomoapp.com' || cleanEmail === 'master@bonomofestas.com' || cleanEmail === 'master@f5system.com' || cleanEmail === 'contato@f5system.com.br') {
         matchedUser = {
           id: 'a0000000-0000-0000-0000-000000000001',
           name: 'F5 Master',
@@ -135,7 +135,7 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
       // 3. Attempt Supabase Auth Password Reset and OTP table record
       if (isSupabaseConfigured) {
         try {
-          // Save OTP to password_reset_codes table
+          // 3. Salva OTP na tabela password_reset_codes
           await supabase.from('password_reset_codes').insert({
             email: cleanEmail,
             code: otp,
@@ -143,22 +143,10 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
             used: false,
           });
 
-          // Dispara o e-mail real do Supabase
-          const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          fetch('/api/invite-collaborator', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: cleanEmail,
-              name: matchedUser.name,
-              role: matchedUser.role,
-              invitedByName: 'Administração Bonomo Festas',
-              redirectTo: `${origin}/?admin=true&type=recovery`,
-            })
-          }).catch(err => console.warn('Erro ao chamar /api/invite-collaborator:', err));
-
+          // 4. Dispara o e-mail de recuperação de senha oficial do Supabase Auth (Template: reset_password.html)
+          const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.f5system.com.br';
           const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}&mode=reset`
+            redirectTo: `${origin}/?admin=true&type=recovery&email=${encodeURIComponent(cleanEmail)}`
           });
 
           if (resetErr) {

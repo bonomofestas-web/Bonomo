@@ -616,7 +616,7 @@ export const AdminUserSettingsView: React.FC<AdminUserSettingsViewProps> = ({ on
           </div>
 
           {/* Card 3: Modo de Visualização da Equipe (Audio 3: Dentro da configuração do Master) */}
-          {(currentUser?.role === 'master' || impersonatingMaster || currentUser?.role === 'dev') && (
+          {(currentUser?.role === 'master' || impersonatingMaster) && (
             <div style={{
               background: 'var(--adm-bg-card)',
               border: '1.5px solid rgba(212, 175, 55, 0.35)',

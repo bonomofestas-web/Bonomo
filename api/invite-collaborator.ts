@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const inviter = (invitedByName && typeof invitedByName === 'string') ? invitedByName.trim() : 'Administração F5 System';
 
     // Determina URL de redirecionamento para o nosso app
-    const origin = req.headers.origin || req.headers.referer || 'https://bonomo-festas.vercel.app';
+    const origin = req.headers.origin || req.headers.referer || 'https://app.f5system.com.br';
     const finalRedirectTo = redirectTo || `${origin}/?admin=true&type=recovery`;
 
     let inviteSuccess = false;

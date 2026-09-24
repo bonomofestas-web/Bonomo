@@ -44,7 +44,7 @@ export const AdminDebutanteModal: React.FC<AdminDebutanteModalProps> = ({
     activeVenueId 
   } = useAdminState();
 
-  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
+  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin';
 
   const getEffectiveInitialVenueId = () => {
     if (activeVenueId && activeVenueId !== 'all' && venues.some(v => v.id === activeVenueId)) {

@@ -45,6 +45,9 @@ export const clientService = {
         contractSignedAt: row.contract_signed_at,
         signalPaid: Boolean(row.signal_paid),
         signalValue: row.signal_value ? Number(row.signal_value) : undefined,
+        contractDownPayment: row.contract_down_payment ? Number(row.contract_down_payment) : (row.signal_value ? Number(row.signal_value) : undefined),
+        contractInstallmentsRemaining: row.contract_installments_remaining ? Number(row.contract_installments_remaining) : undefined,
+        contractInstallmentsCount: row.contract_installments_count ? Number(row.contract_installments_count) : undefined,
         signalPaidAt: row.signal_paid_at,
         paymentTerms: row.payment_terms,
         paymentStatus: row.payment_status,
@@ -60,6 +63,10 @@ export const clientService = {
         notes: row.notes || '',
         documents: (row.documents as ClientDocument[]) || [],
         activities: (row.activities as ClientActivity[]) || [],
+        upsellSales: (row.upsell_sales as any) || [],
+        baseContractValue: row.base_contract_value ? Number(row.base_contract_value) : Number(row.deal_value || 0),
+        funnelEnteredAt: row.funnel_entered_at || (row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+        tags: (row.tags as string[]) || [],
         createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         updatedAt: row.updated_at ? new Date(row.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       }));
@@ -99,11 +106,15 @@ export const clientService = {
       if (client.venueName !== undefined) payload.venue_name = client.venueName;
       if (client.packageSold !== undefined) payload.package_sold = client.packageSold;
       if (client.dealValue !== undefined) payload.deal_value = client.dealValue;
+      if (client.baseContractValue !== undefined) payload.base_contract_value = client.baseContractValue;
       if (client.contractDate !== undefined) payload.contract_date = client.contractDate;
       if (client.contractStatus !== undefined) payload.contract_status = client.contractStatus;
       if (client.contractSignedAt !== undefined) payload.contract_signed_at = client.contractSignedAt;
       if (client.signalPaid !== undefined) payload.signal_paid = client.signalPaid;
       if (client.signalValue !== undefined) payload.signal_value = client.signalValue;
+      if (client.contractDownPayment !== undefined) payload.contract_down_payment = client.contractDownPayment;
+      if (client.contractInstallmentsRemaining !== undefined) payload.contract_installments_remaining = client.contractInstallmentsRemaining;
+      if (client.contractInstallmentsCount !== undefined) payload.contract_installments_count = client.contractInstallmentsCount;
       if (client.signalPaidAt !== undefined) payload.signal_paid_at = client.signalPaidAt;
       if (client.paymentTerms !== undefined) payload.payment_terms = client.paymentTerms;
       if (client.paymentStatus !== undefined) payload.payment_status = client.paymentStatus;
@@ -119,6 +130,9 @@ export const clientService = {
       if (client.notes !== undefined) payload.notes = client.notes;
       if (client.documents !== undefined) payload.documents = client.documents;
       if (client.activities !== undefined) payload.activities = client.activities;
+      if (client.upsellSales !== undefined) payload.upsell_sales = client.upsellSales;
+      if (client.tags !== undefined) payload.tags = client.tags;
+      if (client.funnelEnteredAt !== undefined) payload.funnel_entered_at = client.funnelEnteredAt;
       if (client.createdAt !== undefined) payload.created_at = client.createdAt;
 
       const { error } = await supabase

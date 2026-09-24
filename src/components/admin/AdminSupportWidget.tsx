@@ -55,7 +55,7 @@ export const AdminSupportWidget: React.FC<AdminSupportWidgetProps> = ({ isOpen, 
   // Filtro de chamados do usuário logado
   const userTickets = useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.role === 'dev') return supportTickets;
+    if (currentUser.isDev) return supportTickets;
     return supportTickets.filter(t => t.userId === currentUser.id || t.userEmail === currentUser.email);
   }, [supportTickets, currentUser]);
 

@@ -31,7 +31,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
     templates,
   } = useAdminState();
 
-  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
+  const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin';
 
   // Selected Debutante for In-Page Detail View
   const [selectedDebutanteId, setSelectedDebutanteId] = useState<string | null>(null);

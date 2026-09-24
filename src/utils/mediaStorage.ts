@@ -132,3 +132,11 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
     return false;
   }
 }
+
+export function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch (err) {
+    return null;
+  }
+}

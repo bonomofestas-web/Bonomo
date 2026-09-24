@@ -29,6 +29,20 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
       category: 'Administrativo',
       status: featureFlags.master_dashboard || 'active',
     },
+    {
+      id: 'commercial_dashboard',
+      name: 'Dashboard Comercial',
+      description: 'Visão detalhada de conversão de funil, leads recebidos, agendamentos e ticket médio da unidade.',
+      category: 'Comercial & CRM',
+      status: featureFlags.commercial_dashboard || 'active',
+    },
+    {
+      id: 'goals',
+      name: 'Metas Comerciais',
+      description: 'Definição e acompanhamento de metas de vendas, contratos e faturamento por casa e colaborador.',
+      category: 'Comercial & CRM',
+      status: featureFlags.goals || 'active',
+    },
   ];
 
   const handleStatusChange = (id: FeatureFlagId, status: FeatureFlagStatus, name: string) => {
@@ -40,6 +54,8 @@ export const AdminDevFeatureFlagsView: React.FC = () => {
   const getFeatureIcon = (id: FeatureFlagId) => {
     switch (id) {
       case 'master_dashboard': return <Crown size={20} color="#14A9D7" />;
+      case 'commercial_dashboard': return <Sliders size={20} color="#10B981" />;
+      case 'goals': return <Sliders size={20} color="#F59E0B" />;
       default: return <Sliders size={20} color="#14A9D7" />;
     }
   };

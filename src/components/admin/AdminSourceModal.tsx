@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   X, Compass, PhoneCall, FileText, Gift,
-  AlertCircle, Plus, Trash2, KeyRound, Tag, Target
+  AlertCircle, Plus, Trash2, KeyRound, Tag, Target,
+  QrCode, RefreshCw, CheckCircle2, Smartphone, Key, Copy, Check
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { uazapiService } from '../../services/uazapiService';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { Source, SourceType, FormField, FormFieldType, WhatsAppSubSource } from '../../types/sources';
 
 interface AdminSourceModalProps {
@@ -35,6 +38,19 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
   const [slug, setSlug] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
+  // WhatsApp Live Connection State (QR Code + Pairing Code)
+  const [connectionMode, setConnectionMode] = useState<'qrcode' | 'pairing_code'>('qrcode');
+  const [pairingPhone, setPairingPhone] = useState('');
+  const [pairingCodeData, setPairingCodeData] = useState<string | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [copiedPairingCode, setCopiedPairingCode] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [connectedPhone, setConnectedPhone] = useState<string>('');
+  const [connectedProfileName, setConnectedProfileName] = useState<string>('');
+  const [connectedAvatar, setConnectedAvatar] = useState<string>('');
+  const pollIntervalRef = useRef<any>(null);
+
   // WhatsApp Sub-sources
   const [subSources, setSubSources] = useState<WhatsAppSubSource[]>([]);
   const [newSubName, setNewSubName] = useState('');
@@ -48,59 +64,212 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
   const [successMessage, setSuccessMessage] = useState('Obrigado! Recebemos sua solicitação e entraremos em contato via WhatsApp.');
   const [buttonText, setButtonText] = useState('Enviar Solicitação');
 
-  // Error State
+  // Error & Submit State
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Limpa intervalo de polling ao desmontar
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
   // Initialize or populate form
   useEffect(() => {
-    if (sourceToEdit) {
-      setName(sourceToEdit.name || '');
-      setVenueId(sourceToEdit.venueId || (venues[0]?.id || ''));
-      setType((sourceToEdit.type === 'tracking_link' ? 'whatsapp_api' : sourceToEdit.type) || 'form');
-      setFunnelId(sourceToEdit.funnelId || '');
-      setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
-      setSlug(sourceToEdit.slug || '');
-      setStatus(sourceToEdit.status || 'active');
+    if (isOpen) {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      setQrCodeData(null);
+      setPairingCodeData(null);
+      setIsConnecting(false);
 
-      const config = sourceToEdit.configuration || {};
-      setSubSources(config.subSources || []);
-      setFormTitle(config.title || 'Solicite seu Orçamento');
-      setFormDescription(config.description || '');
-      setFormFields(config.fields && config.fields.length > 0 ? config.fields : DEFAULT_FORM_FIELDS);
-      setSuccessMessage(config.successMessage || 'Obrigado! Entraremos em contato.');
-      setButtonText(config.buttonText || 'Enviar Solicitação');
-    } else {
-      const defaultVenue = (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') 
-        ? activeVenueId 
-        : (venues[0]?.id || '');
-      
-      const availableFunnels = funnels.filter(f => !defaultVenue || f.venueId === defaultVenue || f.venueId === 'all');
+      if (sourceToEdit) {
+        setName(sourceToEdit.name || '');
+        setVenueId(sourceToEdit.venueId || (venues[0]?.id || ''));
+        setType(sourceToEdit.type || 'form');
+        setFunnelId(sourceToEdit.funnelId || '');
+        setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
+        setSlug(sourceToEdit.slug || '');
+        setStatus(sourceToEdit.status || 'active');
 
-      setName('');
-      setVenueId(defaultVenue);
-      setType('form');
-      setFunnelId(availableFunnels[0]?.id || 'comercial');
-      setWhatsappInstanceId('');
-      setSlug('');
-      setStatus('active');
-      setSubSources([]);
-      setNewSubName('');
-      setNewSubKeyword('');
-      setNewSubFunnelId('');
-      setFormTitle('Solicite seu Orçamento');
-      setFormDescription('Preencha os dados abaixo e nossa equipe entrará em contato rapidamente.');
-      setFormFields(DEFAULT_FORM_FIELDS);
-      setSuccessMessage('Obrigado! Recebemos sua solicitação e entraremos em contato via WhatsApp.');
-      setButtonText('Enviar Solicitação');
+        const config = (sourceToEdit.configuration as any) || {};
+        setSubSources(config.subSources || []);
+        setConnectedPhone(config.connectedPhone || '');
+        setConnectedProfileName(config.connectedProfileName || '');
+        setConnectedAvatar(config.connectedAvatar || '');
+        if (config.connectedPhone || sourceToEdit.whatsappInstanceId) {
+          setConnectionStatus('connected');
+        } else {
+          setConnectionStatus('disconnected');
+        }
+
+        setFormTitle(config.title || 'Solicite seu Orçamento');
+        setFormDescription(config.description || '');
+        setFormFields(config.fields && config.fields.length > 0 ? config.fields : DEFAULT_FORM_FIELDS);
+        setSuccessMessage(config.successMessage || 'Obrigado! Entraremos em contato.');
+        setButtonText(config.buttonText || 'Enviar Solicitação');
+      } else {
+        const defaultVenue = (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') 
+          ? activeVenueId 
+          : (venues[0]?.id || '');
+        
+        const availableFunnels = funnels.filter(f => !defaultVenue || f.venueId === defaultVenue || f.venueId === 'all');
+
+        setName('');
+        setVenueId(defaultVenue);
+        setType('whatsapp_api');
+        setFunnelId(availableFunnels[0]?.id || 'comercial');
+        setWhatsappInstanceId('');
+        setSlug('');
+        setStatus('active');
+        setSubSources([]);
+        setConnectedPhone('');
+        setConnectedProfileName('');
+        setConnectedAvatar('');
+        setConnectionStatus('disconnected');
+        setNewSubName('');
+        setNewSubKeyword('');
+        setNewSubFunnelId('');
+        setFormTitle('Solicite seu Orçamento');
+        setFormDescription('Preencha os dados abaixo e nossa equipe entrará em contato rapidamente.');
+        setFormFields(DEFAULT_FORM_FIELDS);
+        setSuccessMessage('Obrigado! Recebemos sua solicitação e entraremos em contato via WhatsApp.');
+        setButtonText('Enviar Solicitação');
+      }
+      setErrorMsg('');
     }
-    setErrorMsg('');
-  }, [sourceToEdit, isOpen, activeVenueId, venues, funnels]);
+  }, [isOpen, sourceToEdit, activeVenueId, venues, funnels]);
 
-  // All account funnels available for routing
-  const scopedFunnels = useMemo(() => {
-    return funnels;
+  // Agrupamento de Funis Comerciais e Pós-Venda
+  const commercialFunnels = useMemo(() => {
+    return funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && !f.name?.toLowerCase().includes('pós-venda'));
   }, [funnels]);
+
+  const postSaleFunnels = useMemo(() => {
+    return funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda' || f.name?.toLowerCase().includes('pós-venda'));
+  }, [funnels]);
+
+  // Handler para iniciar Conexão (QR Code ou Pairing Code) via UAZAPI
+  const handleStartConnection = async (mode: 'qrcode' | 'pairing_code') => {
+    if (!name.trim()) {
+      setErrorMsg('Por favor, informe primeiro o Nome da Origem antes de conectar.');
+      return;
+    }
+
+    if (mode === 'pairing_code') {
+      const cleanPhone = pairingPhone.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length < 10) {
+        setErrorMsg('Informe o número de telefone com DDD para gerar o código de pareamento (ex: 21988459201).');
+        return;
+      }
+    }
+
+    setIsConnecting(true);
+    setErrorMsg('');
+    setPairingCodeData(null);
+    setQrCodeData(null);
+
+    try {
+      let token = whatsappInstanceId.trim();
+
+      // Se ainda não tem token de instância, cria no servidor UAZAPI
+      if (!token && uazapiService.getAdminToken()) {
+        const instanceName = `f5_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+        const created = await uazapiService.createInstance(instanceName);
+        if (created.token) {
+          token = created.token;
+          setWhatsappInstanceId(token);
+        }
+      }
+
+      if (!token) {
+        token = `inst_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        setWhatsappInstanceId(token);
+      }
+
+      // Prepara payload
+      let cleanPhone = '';
+      if (mode === 'pairing_code') {
+        let rawPhone = pairingPhone.replace(/\D/g, '');
+        if (rawPhone.length === 10 || rawPhone.length === 11) {
+          rawPhone = `55${rawPhone}`;
+        }
+        cleanPhone = rawPhone;
+      }
+
+      // Inicia a conexão
+      const connectRes = await uazapiService.connectInstance(token, {
+        phone: cleanPhone || undefined,
+        browser: 'auto',
+        systemName: name || 'F5 System',
+      });
+
+      if (connectRes.status === 'connected' || connectRes.loggedIn) {
+        setConnectionStatus('connected');
+        setQrCodeData(null);
+        setPairingCodeData(null);
+        if (connectRes.instance?.owner) setConnectedPhone(connectRes.instance.owner);
+        if (connectRes.instance?.profileName) setConnectedProfileName(connectRes.instance.profileName);
+        if (connectRes.instance?.profilePicUrl) setConnectedAvatar(connectRes.instance.profilePicUrl);
+        return;
+      }
+
+      if (connectRes.pairingCode) {
+        setPairingCodeData(connectRes.pairingCode);
+        setConnectionStatus('connecting');
+      } else if (connectRes.qrcode) {
+        setQrCodeData(connectRes.qrcode);
+        setConnectionStatus('connecting');
+      } else {
+        setConnectionStatus('connecting');
+      }
+
+      // Polling de verificação de status a cada 2s
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const statusRes = await uazapiService.getInstanceStatus(token);
+          if (statusRes.status === 'connected' || statusRes.loggedIn) {
+            clearInterval(pollIntervalRef.current);
+            setConnectionStatus('connected');
+            setQrCodeData(null);
+            setPairingCodeData(null);
+            if (statusRes.phone) setConnectedPhone(statusRes.phone);
+            if (statusRes.profileName) setConnectedProfileName(statusRes.profileName);
+            if (statusRes.profilePictureUrl) setConnectedAvatar(statusRes.profilePictureUrl);
+          }
+        } catch {
+          // Ignora falhas transitórias
+        }
+      }, 2000);
+
+    } catch (err: any) {
+      console.warn('Conexão UAZAPI:', err);
+      setErrorMsg(err.message || 'Falha ao iniciar conexão com a UAZAPI.');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleCopyPairingCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedPairingCode(true);
+    setTimeout(() => setCopiedPairingCode(false), 2000);
+  };
+
+  const handleDisconnect = async () => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (whatsappInstanceId) {
+      await uazapiService.disconnectInstance(whatsappInstanceId).catch(() => {});
+    }
+    setConnectionStatus('disconnected');
+    setQrCodeData(null);
+    setPairingCodeData(null);
+    setConnectedPhone('');
+    setConnectedProfileName('');
+    setConnectedAvatar('');
+  };
 
   // Auto-generate slug when typing name for forms
   const handleNameChange = (val: string) => {
@@ -176,7 +345,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
       return;
     }
     if (!funnelId) {
-      setErrorMsg('Selecione o Funil de Destino padrão para onde os leads serão enviados.');
+      setErrorMsg('Selecione o Funil de Destino padrão para onde as mensagens/leads serão enviados.');
       return;
     }
 
@@ -191,7 +360,13 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
       const formattedSlug = slug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
       const configuration = {
-        ...(type === 'whatsapp_api' ? { instanceName: whatsappInstanceId, subSources } : {}),
+        ...(type === 'whatsapp_api' ? {
+          instanceName: whatsappInstanceId,
+          connectedPhone,
+          connectedProfileName,
+          connectedAvatar,
+          subSources
+        } : {}),
         ...(type === 'form' ? { title: formTitle, description: formDescription, fields: formFields, successMessage, buttonText } : {}),
         ...(type === 'referral' ? { systemManaged: true } : {}),
       };
@@ -247,10 +422,11 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
         border: '1px solid var(--adm-border)',
         borderRadius: '24px',
         width: '100%',
-        maxWidth: '720px',
-        maxHeight: '92vh',
+        maxWidth: '740px',
+        maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 24px 60px rgba(0, 0, 0, 0.4)',
+        position: 'relative',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -258,16 +434,16 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
         
         {/* Modal Header */}
         <div style={{
-          padding: '20px 24px',
+          padding: '24px 24px 18px 24px',
           borderBottom: '1px solid var(--adm-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '40px',
-              height: '40px',
+              width: '42px',
+              height: '42px',
               borderRadius: '12px',
               background: 'var(--adm-accent-bg)',
               color: 'var(--adm-accent)',
@@ -278,12 +454,12 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               <Compass size={22} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                {sourceToEdit ? 'Editar Origem' : 'Nova Origem de Leads'}
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                {sourceToEdit ? 'Configurar Origem de Entrada' : 'Nova Origem de Leads'}
               </h2>
-              <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                Configure a porta de entrada comercial e o roteamento por funil
-              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
+                Conecte WhatsApp via QR Code ou crie formulários com roteamento para Funil Comercial ou Pós-Venda.
+              </p>
             </div>
           </div>
 
@@ -329,7 +505,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               Tipo de Origem
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              {/* Formulário Público (Ativo) */}
+              {/* Formulário Público */}
               <div
                 onClick={() => setType('form')}
                 style={{
@@ -350,7 +526,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                     <span>Formulário Público</span>
                   </div>
                   <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                    Ativo
+                    Landing Page
                   </span>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
@@ -358,33 +534,32 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 </div>
               </div>
 
-              {/* WhatsApp API (Em breve) */}
+              {/* WhatsApp API (UAZAPI Conexão Direta) */}
               <div
+                onClick={() => setType('whatsapp_api')}
                 style={{
                   padding: '16px 14px',
                   borderRadius: '14px',
-                  border: '1px dashed var(--adm-border)',
-                  background: 'var(--adm-bg-input)',
-                  opacity: 0.6,
-                  cursor: 'not-allowed',
+                  border: type === 'whatsapp_api' ? '2px solid #10B981' : '1px solid var(--adm-border)',
+                  background: type === 'whatsapp_api' ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
+                  cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '6px',
-                  position: 'relative',
+                  transition: 'all 0.15s ease',
                 }}
-                title="Integração oficial WhatsApp API em desenvolvimento"
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--adm-text-muted)', fontWeight: 800, fontSize: '0.86rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'whatsapp_api' ? '#10B981' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
                     <PhoneCall size={18} />
-                    <span>WhatsApp API</span>
+                    <span>WhatsApp API (UAZAPI)</span>
                   </div>
-                  <span style={{ fontSize: '0.64rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(234, 179, 8, 0.12)', color: '#EAB308', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
-                    Em breve
+                  <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                    QR Code Live
                   </span>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
-                  Conexão direta com número comercial, palavras-chave e sub-origens por campanha.
+                  Conexão direta de número comercial via QR Code, mensagens e rastreio automático.
                 </div>
               </div>
             </div>
@@ -427,9 +602,22 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 required
               >
                 <option value="" disabled>-- Selecione o Funil de Destino --</option>
-                {scopedFunnels.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
+                {commercialFunnels.length > 0 && (
+                  <optgroup label="💼 Funis Comerciais (Vendas)">
+                    {commercialFunnels.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="🌟 Pós-Venda (Sucesso do Cliente)">
+                  {postSaleFunnels.length > 0 ? (
+                    postSaleFunnels.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))
+                  ) : (
+                    <option value="post_sale_default">👑 Sucesso do Cliente (Pós-Venda Padrão)</option>
+                  )}
+                </optgroup>
               </select>
             </div>
           </div>
@@ -444,7 +632,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder={type === 'whatsapp_api' ? 'Ex: WhatsApp Comercial Principal' : 'Ex: Formulário Site Oficial'}
+                placeholder={type === 'whatsapp_api' ? 'Ex: WhatsApp Comercial Barra' : 'Ex: Formulário Site Oficial'}
                 className="adm-input"
                 style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
                 required
@@ -467,7 +655,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
           </div>
 
-          {/* 4. Configuração Específica: WhatsApp API com Sub-origens Inteligentes */}
+          {/* 4. Configuração Específica: WhatsApp API com Pareamento por QR Code */}
           {type === 'whatsapp_api' && (
             <div style={{
               background: 'var(--adm-bg-input)',
@@ -480,27 +668,329 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <PhoneCall size={16} color="var(--adm-accent)" />
-                  <span>Conexão WhatsApp & Sub-origens Inteligentes</span>
+                  <PhoneCall size={16} color="#10B981" />
+                  <span>Conexão WhatsApp (UAZAPI)</span>
                 </div>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                  Rastreio Automático
-                </span>
+                {connectionStatus === 'connected' ? (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 10px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.4)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle2 size={13} />
+                    <span>Conectado</span>
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 10px', borderRadius: '8px', background: 'rgba(234, 179, 8, 0.15)', color: '#EAB308', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
+                    Desconectado
+                  </span>
+                )}
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px' }}>
-                  Número ou Identificador da Instância
-                </label>
-                <input
-                  type="text"
-                  value={whatsappInstanceId}
-                  onChange={(e) => setWhatsappInstanceId(e.target.value)}
-                  placeholder="Ex: 5521999999999 ou WhatsApp 01 - Comercial"
-                  className="adm-input"
-                  style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.8rem' }}
-                />
-              </div>
+              {/* CARD DE CONEXÃO / QR CODE */}
+              {connectionStatus === 'connected' ? (
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '14px',
+                  padding: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    {connectedAvatar ? (
+                      <img 
+                        src={connectedAvatar} 
+                        alt="WhatsApp Avatar" 
+                        style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #10B981' }} 
+                      />
+                    ) : (
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Smartphone size={24} />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        {connectedProfileName || name || 'Sessão WhatsApp Ativa'}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#10B981', fontWeight: 700, marginTop: '2px' }}>
+                        📱 {formatPhone(connectedPhone || whatsappInstanceId) || 'Número Conectado'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDisconnect}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      color: '#EF4444',
+                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Desconectar
+                  </button>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px dashed var(--adm-border)',
+                  borderRadius: '14px',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '16px',
+                  textAlign: 'center',
+                }}>
+                  {/* Seletor de Modo */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionMode('qrcode');
+                        setPairingCodeData(null);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        border: connectionMode === 'qrcode' ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                        background: connectionMode === 'qrcode' ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
+                        color: connectionMode === 'qrcode' ? '#10B981' : 'var(--adm-text-body)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <QrCode size={14} />
+                      <span>QR Code</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConnectionMode('pairing_code');
+                        setQrCodeData(null);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        border: connectionMode === 'pairing_code' ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                        background: connectionMode === 'pairing_code' ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
+                        color: connectionMode === 'pairing_code' ? '#10B981' : 'var(--adm-text-body)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Key size={14} />
+                      <span>Código de Pareamento</span>
+                    </button>
+                  </div>
+
+                  {/* QR Code */}
+                  {connectionMode === 'qrcode' && (
+                    qrCodeData ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          background: '#FFFFFF',
+                          padding: '12px',
+                          borderRadius: '12px',
+                          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+                        }}>
+                          <img 
+                            src={qrCodeData.startsWith('data:') || qrCodeData.startsWith('http') ? qrCodeData : `data:image/png;base64,${qrCodeData}`} 
+                            alt="QR Code WhatsApp" 
+                            style={{ width: '180px', height: '180px', display: 'block' }} 
+                          />
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 700 }}>
+                          Abra o WhatsApp no seu celular &gt; Aparelhos Conectados &gt; Conectar Aparelho
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <RefreshCw size={12} className="spin" />
+                          <span>Aguardando leitura da câmera...</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartConnection('qrcode')}
+                          disabled={isConnecting}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--adm-text-muted)',
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Atualizar QR Code
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{
+                          width: '52px',
+                          height: '52px',
+                          borderRadius: '16px',
+                          background: 'rgba(16, 185, 129, 0.12)',
+                          color: '#10B981',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          <QrCode size={26} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                            Parear WhatsApp via QR Code
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', maxWidth: '420px', marginTop: '3px' }}>
+                            Clique no botão abaixo para gerar o QR Code oficial de autenticação.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartConnection('qrcode')}
+                          disabled={isConnecting}
+                          className="adm-btn-primary"
+                          style={{
+                            height: '38px',
+                            padding: '0 18px',
+                            borderRadius: '10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: '#10B981',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {isConnecting ? <RefreshCw size={14} className="spin" /> : <QrCode size={16} />}
+                          <span>{isConnecting ? 'Gerando QR Code...' : 'Gerar QR Code de Conexão'}</span>
+                        </button>
+                      </>
+                    )
+                  )}
+
+                  {/* Pairing Code */}
+                  {connectionMode === 'pairing_code' && (
+                    pairingCodeData ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%', maxWidth: '380px' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>
+                          CÓDIGO DE PAREAMENTO DE 8 DÍGITOS
+                        </div>
+                        <div style={{
+                          fontSize: '1.8rem',
+                          fontWeight: 900,
+                          letterSpacing: '4px',
+                          fontFamily: 'monospace',
+                          color: '#10B981',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          padding: '10px 20px',
+                          borderRadius: '12px',
+                          border: '2px dashed #10B981',
+                        }}>
+                          {pairingCodeData}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPairingCode(pairingCodeData)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--adm-border)',
+                            background: copiedPairingCode ? '#10B981' : 'var(--adm-bg-input)',
+                            color: copiedPairingCode ? '#FFF' : 'var(--adm-text-body)',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {copiedPairingCode ? <Check size={13} /> : <Copy size={13} />}
+                          <span>{copiedPairingCode ? 'Copiado!' : 'Copiar Código'}</span>
+                        </button>
+                        <div style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <RefreshCw size={12} className="spin" />
+                          <span>No WhatsApp: Aparelhos conectados &gt; Conectar com número de telefone.</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{
+                          width: '52px',
+                          height: '52px',
+                          borderRadius: '16px',
+                          background: 'rgba(16, 185, 129, 0.12)',
+                          color: '#10B981',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                          <Key size={26} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                            Parear por Código (Telefone)
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', maxWidth: '420px', marginTop: '3px' }}>
+                            Digite o número com DDD para receber o código numérico de 8 dígitos.
+                          </div>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={pairingPhone}
+                          onChange={(e) => setPairingPhone(e.target.value)}
+                          placeholder="Ex: (21) 98845-9201"
+                          className="adm-input"
+                          style={{ width: '220px', height: '38px', borderRadius: '8px', fontSize: '0.82rem', textAlign: 'center', fontWeight: 700 }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handleStartConnection('pairing_code')}
+                          disabled={isConnecting}
+                          className="adm-btn-primary"
+                          style={{
+                            height: '38px',
+                            padding: '0 18px',
+                            borderRadius: '10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: '#10B981',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {isConnecting ? <RefreshCw size={14} className="spin" /> : <Key size={16} />}
+                          <span>{isConnecting ? 'Gerando Código...' : 'Gerar Código de Pareamento'}</span>
+                        </button>
+                      </>
+                    )
+                  )}
+                </div>
+              )}
 
               {/* Sub-origens Manager */}
               <div style={{
@@ -636,10 +1126,23 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                       className="adm-input"
                       style={{ height: '34px', fontSize: '0.74rem', borderRadius: '6px' }}
                     >
-                      <option value="">Funil Padrão ({scopedFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
-                      {scopedFunnels.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                      ))}
+                      <option value="">Funil Padrão ({commercialFunnels.find(f => f.id === funnelId)?.name || postSaleFunnels.find(f => f.id === funnelId)?.name || 'Padrão'})</option>
+                      {commercialFunnels.length > 0 && (
+                        <optgroup label="💼 Funis Comerciais">
+                          {commercialFunnels.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="🌟 Pós-Venda (Sucesso do Cliente)">
+                        {postSaleFunnels.length > 0 ? (
+                          postSaleFunnels.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))
+                        ) : (
+                          <option value="post_sale_default">👑 Sucesso do Cliente</option>
+                        )}
+                      </optgroup>
                     </select>
                     <button
                       type="button"

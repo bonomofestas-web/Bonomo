@@ -2171,7 +2171,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
           </div>
 
           {/* ── 9. LINK DISCRETO DE EXCLUSÃO (NO FINAL DA PÁGINA) ──────── */}
-          {(currentUser?.role === 'master' || currentUser?.role === 'dev') && (
+          {currentUser?.role === 'master' && (
             <div style={{ textAlign: 'center', padding: '16px 0 8px 0' }}>
               <button
                 type="button"

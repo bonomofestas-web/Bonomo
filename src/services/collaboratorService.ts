@@ -32,6 +32,7 @@ export const collaboratorService = {
         customJobTitle: row.custom_job_title || row.job_title || undefined,
         department: row.department || undefined,
         sectors: row.sectors || (row.department ? [row.department] : undefined),
+        isDev: Boolean(row.is_dev),
         masterId: row.master_id || undefined,
         theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
@@ -51,6 +52,7 @@ export const collaboratorService = {
       if (collab.name !== undefined) payload.name = collab.name;
       if (collab.email !== undefined) payload.email = collab.email.trim().toLowerCase();
       if (collab.role !== undefined) payload.role = collab.role;
+      if (collab.isDev !== undefined) payload.is_dev = collab.isDev;
       if (collab.customJobTitle !== undefined) payload.custom_job_title = collab.customJobTitle;
       if (collab.department !== undefined) payload.department = collab.department;
       if (collab.sectors !== undefined) payload.sectors = collab.sectors;

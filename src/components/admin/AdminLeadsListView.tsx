@@ -14,7 +14,11 @@ import {
   CheckSquare, 
   Trophy,
   Flame,
-  RefreshCw
+  RefreshCw,
+  Flag,
+  Sparkles,
+  Calendar,
+  Utensils
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
@@ -716,7 +720,151 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                               {lead.temperature === 'hot' && (
                                 <span title="Lead Quente" style={{ color: '#EF4444' }}>🔥</span>
                               )}
+                              {lead.urgencyLevel && (
+                                <span
+                                  title={`Urgência: ${lead.urgencyLevel}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                    color: lead.urgencyLevel === 'urgente' || lead.urgencyLevel === 'imediata' ? '#EF4444' : lead.urgencyLevel === 'alta' ? '#EA580C' : lead.urgencyLevel === 'media' ? '#F59E0B' : '#10B981',
+                                  }}
+                                >
+                                  <Flag size={10} fill="currentColor" />
+                                </span>
+                              )}
+
+                              {/* Indicadores de Visita e Degustação */}
+                              {lead.visitCommitment && (
+                                <span
+                                  title={lead.visitCommitment.status === 'completed' ? `Visita Realizada (${lead.visitCommitment.date})` : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'Visita: Não Compareceu' : `Visita Agendada: ${lead.visitCommitment.date}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '1px 4px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.60rem',
+                                    fontWeight: 800,
+                                    background: lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                    color: lead.visitCommitment.status === 'completed' ? '#10B981' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? '#EF4444' : '#F59E0B',
+                                    border: `1px solid ${lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                                    gap: '2px',
+                                  }}
+                                >
+                                  <Building2 size={9} />
+                                  <span>Visita</span>
+                                </span>
+                              )}
+
+                              {lead.tastingCommitment && (
+                                <span
+                                  title={lead.tastingCommitment.status === 'completed' ? `Degustação Realizada (${lead.tastingCommitment.date})` : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'Degustação: Não Compareceu' : `Degustação Agendada: ${lead.tastingCommitment.date}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '1px 4px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.60rem',
+                                    fontWeight: 800,
+                                    background: lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                    color: lead.tastingCommitment.status === 'completed' ? '#10B981' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? '#EF4444' : '#F59E0B',
+                                    border: `1px solid ${lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                                    gap: '2px',
+                                  }}
+                                >
+                                  <Utensils size={9} />
+                                  <span>Degustação</span>
+                                </span>
+                              )}
                             </div>
+
+                            {/* Chips de Tipo de Evento, Ano e Valor com Tooltip */}
+                            {(() => {
+                              const downPayment = lead.downPayment || 0;
+                              const installments = lead.installments || 0;
+                              const installmentVal = lead.installmentValue || (installments > 0 && lead.dealValue ? Math.max(0, (lead.dealValue - downPayment) / installments) : 0);
+                              const potentialValue = (lead.dealValue && lead.dealValue > 0)
+                                ? lead.dealValue
+                                : (downPayment > 0 || installments > 0)
+                                ? (downPayment + (installments * installmentVal))
+                                : (lead.estimatedBudget && lead.estimatedBudget > 0 ? lead.estimatedBudget : null);
+
+                              let valueTooltip = `Valor da Venda: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(potentialValue || 0)}`;
+                              if (downPayment > 0 || installments > 0) {
+                                const parts: string[] = [];
+                                if (downPayment > 0) parts.push(`Entrada: R$ ${downPayment.toLocaleString('pt-BR')}`);
+                                if (installments > 0) {
+                                  if (installmentVal > 0) {
+                                    parts.push(`Parcelas: ${installments}x de R$ ${Math.round(installmentVal).toLocaleString('pt-BR')}`);
+                                  } else {
+                                    parts.push(`Parcelas: ${installments}x`);
+                                  }
+                                }
+                                parts.push(`Total: R$ ${Math.round(potentialValue || 0).toLocaleString('pt-BR')}`);
+                                valueTooltip = parts.join(' | ');
+                              }
+
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                  {lead.eventType && (
+                                    <span style={{
+                                      fontSize: '0.62rem',
+                                      fontWeight: 700,
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      color: '#9333EA',
+                                      border: '1px solid rgba(168, 85, 247, 0.25)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}>
+                                      <Sparkles size={8} />
+                                      <span>{lead.eventType}</span>
+                                    </span>
+                                  )}
+                                  {(lead.eventYear || lead.partyDate) && (
+                                    <span style={{
+                                      fontSize: '0.62rem',
+                                      fontWeight: 700,
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      color: '#2563EB',
+                                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}>
+                                      <Calendar size={8} />
+                                      <span>{lead.eventYear || new Date(lead.partyDate!).getFullYear()}</span>
+                                    </span>
+                                  )}
+                                  {potentialValue && (
+                                    <span 
+                                      title={valueTooltip}
+                                      style={{
+                                        fontSize: '0.64rem',
+                                        fontWeight: 800,
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(16, 185, 129, 0.12)',
+                                        color: '#059669',
+                                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        cursor: 'help',
+                                        gap: '2px',
+                                      }}
+                                    >
+                                      <span>R$</span>
+                                      <span>{new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(potentialValue)}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '3px', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
                               {lead.phone && (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -830,8 +978,8 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                                   borderRadius: '50%',
                                   background: currentStage.color || '#10B981',
                                 }} />
-                                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                                  {currentStage.name}
+                                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                  {currentStage.name.toUpperCase()}
                                 </span>
                               </div>
                             )}

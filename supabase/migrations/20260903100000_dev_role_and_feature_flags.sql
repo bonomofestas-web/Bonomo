@@ -41,18 +41,19 @@ INSERT INTO public.collaborators (
     id, email, name, role, venue_id, venue_ids, active, avatar_url, password
 ) VALUES (
     'd0000000-0000-0000-0000-000000000001',
-    'bonomofestas@gmail.com',
-    'F5 Developer',
+    'patrickcouto.oficial@gmail.com',
+    'Patrick Couto',
     'dev',
     NULL,
     ARRAY[]::uuid[],
     true,
     '/f5_mark.png',
-    'Bonomo#2026'
-) ON CONFLICT (email) DO UPDATE SET
+    '123456'
+) ON CONFLICT (id) DO UPDATE SET
     role = 'dev',
-    name = 'F5 Developer',
-    password = 'Bonomo#2026',
+    email = EXCLUDED.email,
+    name = 'Patrick Couto',
+    password = '123456',
     active = true;
 
 -- 4. Inserir ou Atualizar Conta Master Oficial
@@ -60,18 +61,19 @@ INSERT INTO public.collaborators (
     id, email, name, role, venue_id, venue_ids, active, avatar_url, password
 ) VALUES (
     'a0000000-0000-0000-0000-000000000001',
-    'dev@bonomoapp.com',
-    'F5 Master',
+    'bonomo1989@gmail.com',
+    'Yuri Bonomo',
     'master',
     NULL,
     ARRAY[]::uuid[],
     true,
     'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-    'Bonomo#2026'
-) ON CONFLICT (email) DO UPDATE SET
+    '123456'
+) ON CONFLICT (id) DO UPDATE SET
     role = 'master',
-    name = 'F5 Master',
-    password = 'Bonomo#2026',
+    email = EXCLUDED.email,
+    name = 'Yuri Bonomo',
+    password = '123456',
     active = true;
 
 -- 5. Seed inicial das Feature Flags

@@ -936,7 +936,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
   const sdrCollaborators = useMemo(() => {
     return collaborators.filter(c => {
       if (!c.active) return false;
-      if (c.role === 'master' || c.role === 'dev') return true;
+      if (c.role === 'master') return true;
       if (c.sectors && c.sectors.length > 0) {
         return c.sectors.includes('comercial');
       }

@@ -34,7 +34,7 @@ export const AdminTeamView: React.FC = () => {
       .filter(c => {
         if (!c.active) return false;
         if (selectedVenueFilter === 'all') return true;
-        if (c.role === 'master' || c.role === 'dev') return true;
+        if (c.role === 'master') return true;
         return c.venueIds && c.venueIds.includes(selectedVenueFilter);
       })
       .sort((a, b) => {

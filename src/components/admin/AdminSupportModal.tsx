@@ -55,7 +55,7 @@ export const AdminSupportModal: React.FC<AdminSupportModalProps> = ({ isOpen, on
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     // Se for Dev, vê tudo; caso contrário, tickets criados por este usuário
-    const filtered = currentUser.role === 'dev' 
+    const filtered = currentUser.isDev 
       ? supportTickets 
       : supportTickets.filter(t => t.userId === currentUser.id || t.userEmail === currentUser.email);
 

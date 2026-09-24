@@ -21,9 +21,17 @@ export interface FormField {
 
 export interface SourceConfiguration {
   // WhatsApp API specifics
+  whatsappDisplayName?: string;
   instanceName?: string;
+  connectedPhone?: string;
+  connectedProfileName?: string;
+  connectedAvatar?: string;
   defaultStageId?: string;
   subSources?: WhatsAppSubSource[]; // Sub-origens inteligentes mapeadas por palavra-chave
+  isConnected?: boolean;
+  connectionStatus?: 'connected' | 'disconnected' | 'connecting';
+  token?: string;
+  instanceToken?: string;
 
   // Form specifics
   title?: string;

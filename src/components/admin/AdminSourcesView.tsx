@@ -1,24 +1,196 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Compass, Plus, FileText, PhoneCall, Gift,
-  Copy, Check, Code, Edit3, Trash2,
+  Copy, Check, Code,
   CheckCircle2, XCircle, Search, Building2,
-  Target, Zap, Tag, Crown, AlertTriangle
+  Target, Zap, Crown, AlertTriangle, QrCode,
+  RefreshCw, X
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminSourceModal } from './AdminSourceModal';
+import { AdminSourceEditorView } from './AdminSourceEditorView';
 import { AdminSourceEmbedModal } from './AdminSourceEmbedModal';
+import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
+import { AdminWhatsAppHistoryTriageModal } from './AdminWhatsAppHistoryTriageModal';
+import { formatPhone } from '../../utils/phoneFormatter';
+import { uazapiService } from '../../services/uazapiService';
 import type { Source } from '../../types/sources';
 
 export const AdminSourcesView: React.FC = () => {
-  const { sources, venues, funnels, activeVenueId, toggleSourceStatus, deleteSource } = useAdminState();
+  const { sources, venues, funnels, leads, activeVenueId, toggleSourceStatus, updateSource } = useAdminState();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [sourceToEdit, setSourceToEdit] = useState<Source | null>(null);
   const [embedModalSource, setEmbedModalSource] = useState<Source | null>(null);
+  const [connectModalSource, setConnectModalSource] = useState<Source | null>(null);
+  const [historyTriageSource, setHistoryTriageSource] = useState<Source | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Status em tempo real consultado diretamente na UAZAPI
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, {
+    status: 'connected' | 'disconnected' | 'checking';
+    phone?: string;
+    profileName?: string;
+    avatar?: string;
+    lastChecked?: number;
+  }>>({});
+  const [isCheckingInstances, setIsCheckingInstances] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const isCheckingRef = useRef(false);
+
+  const handleDirectDisconnect = async (source: Source, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Deseja realmente desconectar a sessão do WhatsApp "${source.name}"?`)) {
+      return;
+    }
+    const token = source.whatsappInstanceId || (source.configuration as any)?.token || (source.configuration as any)?.instanceToken;
+    setDisconnectingId(source.id);
+    try {
+      if (token) {
+        await uazapiService.disconnectInstance(token).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Erro ao desconectar instância:', err);
+    }
+
+    setLiveStatuses(prev => ({
+      ...prev,
+      [source.id]: { status: 'disconnected', lastChecked: Date.now() },
+    }));
+
+    updateSource(source.id, {
+      status: 'inactive',
+      configuration: {
+        ...(source.configuration as any),
+        connectedPhone: undefined,
+        connectedProfileName: undefined,
+        connectedAvatar: undefined,
+        isConnected: false,
+        connectionStatus: 'disconnected',
+        disconnectedAt: new Date().toISOString(),
+      },
+    });
+    setDisconnectingId(null);
+  };
+
+  // Verificação ativa de conexões com a UAZAPI para todas as instâncias de WhatsApp
+  const checkAllWhatsAppInstances = async () => {
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    setIsCheckingInstances(true);
+
+    try {
+      const waSources = sources.filter(s => s.type === 'whatsapp_api');
+      for (const src of waSources) {
+        const config = (src.configuration as any) || {};
+        const token = (src.whatsappInstanceId || config.instanceToken || config.token || config.instanceKey || '').trim();
+        
+        if (!token) {
+          setLiveStatuses(prev => ({
+            ...prev,
+            [src.id]: { status: 'disconnected', lastChecked: Date.now() }
+          }));
+          continue;
+        }
+
+        setLiveStatuses(prev => ({
+          ...prev,
+          [src.id]: { ...(prev[src.id] || {}), status: 'checking' }
+        }));
+
+        try {
+          const res = await uazapiService.getInstanceStatus(token);
+          const isConnected = res.connected === true || res.status === 'connected' || res.loggedIn === true;
+          const newStatus: 'connected' | 'disconnected' = isConnected ? 'connected' : 'disconnected';
+
+          setLiveStatuses(prev => ({
+            ...prev,
+            [src.id]: {
+              status: newStatus,
+              phone: res.phone || config.connectedPhone,
+              profileName: res.profileName || config.connectedProfileName,
+              avatar: res.profilePictureUrl || config.connectedAvatar,
+              lastChecked: Date.now(),
+            }
+          }));
+
+          // Se o status retornado diferir do persistido no banco, atualiza no Supabase
+          if (config.connectionStatus !== newStatus || config.isConnected !== isConnected) {
+            updateSource(src.id, {
+              configuration: {
+                ...config,
+                connectionStatus: newStatus,
+                isConnected,
+                connectedPhone: res.phone || config.connectedPhone,
+                connectedProfileName: res.profileName || config.connectedProfileName,
+                connectedAvatar: res.profilePictureUrl || config.connectedAvatar,
+              }
+            }).catch(() => {});
+          }
+        } catch (err) {
+          console.warn(`[AdminSourcesView] Falha ao consultar status da instância ${src.name}:`, err);
+          setLiveStatuses(prev => ({
+            ...prev,
+            [src.id]: { status: 'disconnected', lastChecked: Date.now() }
+          }));
+          if (config.connectionStatus !== 'disconnected' || config.isConnected !== false) {
+            updateSource(src.id, {
+              configuration: {
+                ...config,
+                connectionStatus: 'disconnected',
+                isConnected: false,
+              }
+            }).catch(() => {});
+          }
+        }
+      }
+    } finally {
+      setIsCheckingInstances(false);
+      isCheckingRef.current = false;
+    }
+  };
+
+  // Eliminação de polling contínuo para não extrapolar limites do Supabase/API.
+  // As atualizações de desconexão/conexão ocorrem de forma passiva via Webhook Push da UAZAPI.
+  useEffect(() => {
+    // Checagem pontual única na montagem da tela se houver instâncias sem status
+    checkAllWhatsAppInstances();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Função para contagem precisa e dinâmica de leads captados por origem
+  const getSourceLeadCount = (src: Source): number => {
+    const config = (src.configuration as any) || {};
+    const rawConnectedPhone = (config.connectedPhone || src.whatsappInstanceId || '').replace(/\D/g, '');
+    const cleanToken = (src.whatsappInstanceId || config.token || config.instanceToken || '').trim();
+
+    const matchingLeads = (leads || []).filter(l => {
+      // 1. Vínculo primário por ID da Origem
+      if (l.sourceId === src.id) return true;
+
+      // 2. Vínculo secundário inteligente por telefone do WhatsApp ou suborigem
+      if (src.type === 'whatsapp_api') {
+        const sub = (l.subSource || '').replace(/\D/g, '');
+        if (rawConnectedPhone && sub && sub === rawConnectedPhone) return true;
+
+        const waSender = ((l as any).whatsappSenderPhone || '').replace(/\D/g, '');
+        if (rawConnectedPhone && waSender && waSender === rawConnectedPhone) return true;
+
+        // Se nas anotações ou título consta explicitamente a instância
+        const acts = l.activities || [];
+        const hasAct = acts.some(a => {
+          if (cleanToken && (a as any).instanceToken === cleanToken) return true;
+          return false;
+        });
+        if (hasAct) return true;
+      }
+
+      return false;
+    });
+
+    return Math.max(matchingLeads.length, src.totalLeads || 0);
+  };
 
   // Filter sources by active venue (from global switcher) or specific selection
   const activeVenue = useMemo(() => {
@@ -49,12 +221,17 @@ export const AdminSourcesView: React.FC = () => {
     });
   }, [sources, activeVenueId, selectedTypeFilter, searchTerm, venues]);
 
-  // Aggregate Metrics
+  // Aggregate Metrics (Dinâmicas e fiéis à realidade da pipeline)
   const totalSourcesCount = filteredSources.length;
   const activeSourcesCount = filteredSources.filter(s => s.status === 'active').length;
-  const totalEntriesCount = filteredSources.reduce((acc, s) => acc + (s.totalEvents || s.totalClicks || s.totalViews || 0), 0);
-  const totalLeadsGenerated = filteredSources.reduce((acc, s) => acc + (s.totalLeads || s.totalSubmits || 0), 0);
-  const avgConversionRate = totalEntriesCount > 0 ? Math.round((totalLeadsGenerated / totalEntriesCount) * 100) : 0;
+  const totalLeadsGenerated = filteredSources.reduce((acc, s) => acc + getSourceLeadCount(s), 0);
+  const connectedWhatsAppCount = filteredSources.filter(s => {
+    if (s.type !== 'whatsapp_api') return false;
+    const live = liveStatuses[s.id];
+    if (live) return live.status === 'connected';
+    const conf = (s.configuration as any) || {};
+    return conf.connectionStatus === 'connected' || (conf.connectedPhone && conf.isConnected !== false && conf.connectionStatus !== 'disconnected');
+  }).length;
 
   const handleCopyLink = (source: Source) => {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://app.bonomofestas.com.br';
@@ -63,16 +240,6 @@ export const AdminSourcesView: React.FC = () => {
     navigator.clipboard.writeText(link);
     setCopiedId(source.id);
     setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleDelete = async (source: Source) => {
-    if (source.type === 'referral') {
-      alert('A Origem de Indicação é nativa do sistema e não pode ser excluída, apenas reconfigurada.');
-      return;
-    }
-    if (confirm(`Tem certeza que deseja excluir a origem "${source.name}"?`)) {
-      await deleteSource(source.id);
-    }
   };
 
   const renderTypeBadge = (type: Source['type']) => {
@@ -107,6 +274,23 @@ export const AdminSourcesView: React.FC = () => {
         );
     }
   };
+
+  // Se estiver em modo de edição/criação, renderiza a tela completa na Área de Conteúdo
+  if (isEditing) {
+    return (
+      <AdminSourceEditorView
+        sourceToEdit={sourceToEdit}
+        onBack={() => {
+          setIsEditing(false);
+          setSourceToEdit(null);
+        }}
+        onSaved={() => {
+          setIsEditing(false);
+          setSourceToEdit(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{
@@ -155,7 +339,7 @@ export const AdminSourcesView: React.FC = () => {
               )}
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-              Portas de entrada do CRM: Links de WhatsApp, Formulários, APIs e Indicações com roteamento por funil
+              Portas de entrada do CRM: Canais de WhatsApp Oficial, Formulários Públicos e Indicações de Debutantes
             </div>
           </div>
         </div>
@@ -164,7 +348,7 @@ export const AdminSourcesView: React.FC = () => {
           type="button"
           onClick={() => {
             setSourceToEdit(null);
-            setIsModalOpen(true);
+            setIsEditing(true);
           }}
           className="adm-btn-primary"
           style={{
@@ -182,10 +366,10 @@ export const AdminSourcesView: React.FC = () => {
         </button>
       </div>
 
-      {/* ── 4 KPI Metric Cards ───────────────────────────────────────────── */}
+      {/* ── 3 KPI Metric Cards (Focados exclusivamente em Resultados Reais) ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: '16px',
       }}>
         <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', padding: '18px' }}>
@@ -199,28 +383,19 @@ export const AdminSourcesView: React.FC = () => {
 
         <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', padding: '18px' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-            Entradas / Acessos Registrados
-          </div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#3B82F6', marginTop: '4px' }}>
-            {totalEntriesCount} <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>cliques & views</span>
-          </div>
-        </div>
-
-        <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', padding: '18px' }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-            Leads Criados / Inseridos
+            Total de Leads Captados
           </div>
           <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--adm-accent)', marginTop: '4px' }}>
-            {totalLeadsGenerated} <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>oportunidades</span>
+            {totalLeadsGenerated} <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>oportunidades geradas</span>
           </div>
         </div>
 
         <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', padding: '18px' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-            Taxa Média de Conversão
+            WhatsApp API Pareados
           </div>
           <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#10B981', marginTop: '4px' }}>
-            {avgConversionRate}% <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>eficiência</span>
+            {connectedWhatsAppCount} <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>instâncias online</span>
           </div>
         </div>
       </div>
@@ -250,8 +425,8 @@ export const AdminSourcesView: React.FC = () => {
           />
         </div>
 
-        {/* Type Filter Tabs */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto' }}>
+        {/* Type Filter Tabs & Verificação de Conexão */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', flexWrap: 'wrap' }}>
           {[
             { id: 'all', label: 'Todas' },
             { id: 'whatsapp_api', label: 'WhatsApp API' },
@@ -277,6 +452,30 @@ export const AdminSourcesView: React.FC = () => {
               {f.label}
             </button>
           ))}
+
+          <button
+            type="button"
+            onClick={checkAllWhatsAppInstances}
+            disabled={isCheckingInstances}
+            title="Consultar status de conexão em tempo real diretamente na UAZAPI"
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              background: 'rgba(16, 185, 129, 0.1)',
+              color: '#10B981',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              cursor: isCheckingInstances ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <RefreshCw size={12} style={{ animation: isCheckingInstances ? 'spin 1s linear infinite' : 'none' }} />
+            <span>{isCheckingInstances ? 'Verificando...' : 'Verificar Conexões'}</span>
+          </button>
         </div>
       </div>
 
@@ -300,7 +499,7 @@ export const AdminSourcesView: React.FC = () => {
               type="button"
               onClick={() => {
                 setSourceToEdit(null);
-                setIsModalOpen(true);
+                setIsEditing(true);
               }}
               style={{
                 marginTop: '16px',
@@ -331,39 +530,89 @@ export const AdminSourcesView: React.FC = () => {
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Tipo</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Casa de Festa</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Funil Padrão</th>
-                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Configuração / Sub-origens</th>
+                  <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Configuração</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Status</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Leads Captados</th>
                   <th style={{ padding: '14px 18px', fontWeight: 800, color: 'var(--adm-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', textAlign: 'right' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredSources.map((source) => {
+                {filteredSources.map((source: Source) => {
                   const venue = venues.find(v => v.id === source.venueId);
                   const funnel = funnels.find(f => f.id === source.funnelId);
                   const isCopied = copiedId === source.id;
-                  const subSources = source.configuration?.subSources || [];
+
+                  // Estado de Conexão WhatsApp
+                  const config = (source.configuration as any) || {};
+                  const live = liveStatuses[source.id];
+                  const rawPhone = live?.phone || config.connectedPhone || source.whatsappInstanceId || '';
+                  const isExplicitlyDisconnected = config.isConnected === false || source.status === 'inactive' || config.connectionStatus === 'disconnected';
+                  const effectiveStatus = live ? live.status : (isExplicitlyDisconnected ? 'disconnected' : (config.connectedPhone ? 'connected' : 'disconnected'));
+                  const isConnected = effectiveStatus === 'connected' && source.status === 'active';
+                  const isChecking = effectiveStatus === 'checking';
+                  const isDisconnected = effectiveStatus === 'disconnected' || !isConnected;
+                  const displayName = live?.profileName || config.connectedProfileName || config.whatsappDisplayName || source.name;
+                  const avatar = live?.avatar || config.connectedAvatar;
+                  const hasNeverConnected = !config.connectedPhone && !source.whatsappInstanceId && !isConnected;
+
+                  // Alertas de Pendência (Desconectada ou Sem Funil Padrão)
+                  const hasMissingFunnel = !source.funnelId || !funnel;
+                  const hasDisconnectionAlert = source.type === 'whatsapp_api' && (isDisconnected || !isConnected);
+                  const hasAlert = hasMissingFunnel || hasDisconnectionAlert;
+
+                  // Condição estrita de Status Ativado: Funil vinculado e WhatsApp 100% conectado
+                  const isFullyActive = source.status === 'active' && !hasMissingFunnel && (source.type !== 'whatsapp_api' || isConnected);
 
                   return (
                     <tr
                       key={source.id}
+                      onClick={() => {
+                        setSourceToEdit(source);
+                        setIsEditing(true);
+                      }}
                       style={{
                         borderBottom: '1px solid var(--adm-border)',
                         transition: 'background 0.15s ease',
+                        cursor: 'pointer',
                       }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      title="Clique na origem para abrir a tela de edição e configurações"
                     >
-                      {/* Nome & Slug */}
+                      {/* Nome & Slug com Símbolo de Alerta */}
                       <td style={{ padding: '14px 18px' }}>
-                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          {source.name}
-                        </div>
-                        {source.slug && source.type === 'form' && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
-                            /f/{source.slug}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {hasAlert && (
+                            <span 
+                              title={
+                                hasMissingFunnel && hasDisconnectionAlert
+                                  ? "Atenção: Origem desconectada e sem funil comercial vinculado!"
+                                  : hasMissingFunnel
+                                    ? "Atenção: Origem sem funil comercial padrão vinculado!"
+                                    : "Atenção: WhatsApp desconectado ou com falha de conexão!"
+                              }
+                              style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                animation: 'pulsePendingAlert 2s infinite ease-in-out',
+                              }}
+                            >
+                              <AlertTriangle size={16} color="#EF4444" />
+                            </span>
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              {source.name}
+                            </div>
+                            {source.slug && source.type === 'form' && (
+                              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
+                                /f/{source.slug}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </td>
 
                       {/* Tipo */}
@@ -399,9 +648,10 @@ export const AdminSourcesView: React.FC = () => {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSourceToEdit(source);
-                              setIsModalOpen(true);
+                              setIsEditing(true);
                             }}
                             style={{
                               display: 'inline-flex',
@@ -428,38 +678,56 @@ export const AdminSourcesView: React.FC = () => {
                       {/* Configuração & Sub-origens */}
                       <td style={{ padding: '14px 18px' }}>
                         {source.type === 'whatsapp_api' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <Zap size={12} color="#F59E0B" /> {source.whatsappInstanceId || 'Instância Ativa'}
-                            </div>
-                            {subSources.length > 0 ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                                {subSources.map(sub => (
-                                  <span
-                                    key={sub.id}
-                                    title={`Palavra-chave: "${sub.keyword}"`}
-                                    style={{
-                                      fontSize: '0.64rem',
-                                      fontWeight: 600,
-                                      padding: '1px 6px',
-                                      borderRadius: '6px',
-                                      background: 'rgba(16, 185, 129, 0.12)',
-                                      color: '#10B981',
-                                      border: '1px solid rgba(16, 185, 129, 0.25)',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '3px',
-                                    }}
-                                  >
-                                    <Tag size={10} /> {sub.name}
-                                  </span>
-                                ))}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {isChecking ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
+                                <RefreshCw size={13} color="#F59E0B" style={{ animation: 'spin 1s linear infinite' }} />
+                                <span style={{ fontSize: '0.72rem', color: '#F59E0B', fontWeight: 700 }}>
+                                  Verificando status com WhatsApp...
+                                </span>
+                              </div>
+                            ) : isConnected ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {avatar ? (
+                                  <img 
+                                    src={avatar} 
+                                    alt="WhatsApp" 
+                                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #10B981' }} 
+                                  />
+                                ) : (
+                                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Zap size={14} color="#10B981" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 6px #10B981' }} />
+                                    {formatPhone(rawPhone) || rawPhone}
+                                  </div>
+                                  {displayName && (
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                                      {displayName}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             ) : (
-                              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                                Sem sub-origens (Rastreio Direto)
-                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <AlertTriangle size={14} color="#EF4444" />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: '0.74rem', color: '#EF4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
+                                    Desconectado
+                                  </div>
+                                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                    {rawPhone ? (formatPhone(rawPhone) || rawPhone) : 'Sem número pareado'}
+                                  </div>
+                                </div>
+                              </div>
                             )}
+
                           </div>
                         )}
                         {source.type === 'form' && (
@@ -476,47 +744,152 @@ export const AdminSourcesView: React.FC = () => {
 
                       {/* Status */}
                       <td style={{ padding: '14px 18px' }}>
-                        <button
-                          type="button"
-                          onClick={() => toggleSourceStatus(source.id, source.status !== 'active')}
-                          style={{
-                            border: 'none',
-                            background: source.status === 'active' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-                            color: source.status === 'active' ? '#10B981' : '#64748B',
-                            padding: '4px 10px',
-                            borderRadius: '12px',
-                            fontSize: '0.7rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          {source.status === 'active' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                          <span>{source.status === 'active' ? 'Ativa' : 'Inativa'}</span>
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSourceStatus(source.id, !isFullyActive);
+                            }}
+                            style={{
+                              border: 'none',
+                              background: isFullyActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                              color: isFullyActive ? '#10B981' : '#64748B',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.7rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              width: 'fit-content',
+                            }}
+                          >
+                            {isFullyActive ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                            <span>{isFullyActive ? 'Ativado' : 'Desativado'}</span>
+                          </button>
+                        </div>
                       </td>
 
-                      {/* Entradas & Leads */}
+                      {/* Leads Captados (Dinâmico em tempo real) */}
                       <td style={{ padding: '14px 18px' }}>
-                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          {source.totalLeads || 0} leads
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                          {source.totalEvents || 0} acessos
+                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.85rem' }}>
+                          {getSourceLeadCount(source)} leads
                         </div>
                       </td>
 
                       {/* Ações */}
                       <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                          {/* Copiar Link (Apenas Formulários) */}
+                          {/* Botão de Conexão/Desconexão para WhatsApp */}
+                          {source.type === 'whatsapp_api' && (() => {
+                            // Estado 1: Primeira Conexão (Verde com QR Code "Conectar")
+                            if (hasNeverConnected) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConnectModalSource(source);
+                                  }}
+                                  title="Primeira conexão: Ler QR Code ou Gerar Código de Pareamento"
+                                  style={{
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '1px solid #10B981',
+                                    color: '#10B981',
+                                    cursor: 'pointer',
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'}
+                                >
+                                  <QrCode size={13} />
+                                  <span>Conectar</span>
+                                </button>
+                              );
+                            }
+
+                            // Estado 2: Desconectado / Queda de Sessão (Vermelho com QR Code "Reconectar")
+                            if (isDisconnected) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConnectModalSource(source);
+                                  }}
+                                  title="WhatsApp desconectado: Clique para ler QR Code e reconectar"
+                                  style={{
+                                    background: '#EF4444',
+                                    border: '1px solid #DC2626',
+                                    color: '#FFFFFF',
+                                    cursor: 'pointer',
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                >
+                                  <QrCode size={13} />
+                                  <span>Reconectar</span>
+                                </button>
+                              );
+                            }
+
+                            // Estado 3: Conectado (Desconectar com ícone X)
+                            return (
+                              <button
+                                type="button"
+                                disabled={disconnectingId === source.id}
+                                onClick={(e) => handleDirectDisconnect(source, e)}
+                                title="WhatsApp conectado: Clique para desconectar sessão"
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.08)',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  color: '#EF4444',
+                                  cursor: 'pointer',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.18)'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                              >
+                                <X size={13} color="#EF4444" />
+                                <span>{disconnectingId === source.id ? 'Desconectando...' : 'Desconectar'}</span>
+                              </button>
+                            );
+                          })()}
+
+                          {/* Copiar Link & Embed (Apenas Formulários) */}
                           {source.type === 'form' && (
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleCopyLink(source)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopyLink(source);
+                                }}
                                 title="Copiar link do formulário público"
                                 className="adm-btn-secondary"
                                 style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -527,7 +900,10 @@ export const AdminSourcesView: React.FC = () => {
 
                               <button
                                 type="button"
-                                onClick={() => setEmbedModalSource(source)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEmbedModalSource(source);
+                                }}
                                 title="Gerar código Embed"
                                 className="adm-btn-secondary"
                                 style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -536,31 +912,6 @@ export const AdminSourcesView: React.FC = () => {
                                 <span>Embed</span>
                               </button>
                             </>
-                          )}
-
-                          {/* Editar */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSourceToEdit(source);
-                              setIsModalOpen(true);
-                            }}
-                            title="Editar origem e sub-origens"
-                            style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-body)', cursor: 'pointer', padding: '6px', borderRadius: '6px' }}
-                          >
-                            <Edit3 size={15} />
-                          </button>
-
-                          {/* Excluir */}
-                          {source.type !== 'referral' && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(source)}
-                              title="Excluir origem"
-                              style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '6px', borderRadius: '6px' }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
                           )}
                         </div>
                       </td>
@@ -573,14 +924,19 @@ export const AdminSourcesView: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de Criação / Edição */}
-      <AdminSourceModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSourceToEdit(null);
-        }}
-        sourceToEdit={sourceToEdit}
+      {/* Modal de Conexão WhatsApp */}
+      <AdminWhatsAppConnectModal
+        isOpen={!!connectModalSource}
+        onClose={() => setConnectModalSource(null)}
+        source={connectModalSource}
+        onOpenHistoryTriage={() => setHistoryTriageSource(connectModalSource)}
+      />
+
+      {/* Modal de Triagem Pré-CRM de Histórico */}
+      <AdminWhatsAppHistoryTriageModal
+        isOpen={!!historyTriageSource}
+        onClose={() => setHistoryTriageSource(null)}
+        source={historyTriageSource}
       />
 
       {/* Modal de Código Embed */}
@@ -592,3 +948,4 @@ export const AdminSourcesView: React.FC = () => {
     </div>
   );
 };
+

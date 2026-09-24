@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, MessageSquare, 
-  ShieldAlert, Sparkles, AlertTriangle, Building2, Radio, Link2, FileText, Settings,
-  Inbox, Clock, Calendar, DollarSign, XCircle, Users, Award, Trophy, PhoneCall,
-  PartyPopper, CheckCircle2, Target, Layers, Package, CreditCard, Tag, Sliders,
-  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter, RefreshCw
+  ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, 
+  ShieldAlert, Sparkles, AlertTriangle, Building2, FileText, Settings,
+  Calendar, Tag, Sliders,
+  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { AdminFunnelDeleteModal } from './AdminFunnelDeleteModal';
+import { SafeAvatar } from './SafeAvatar';
+import { formatPhone } from '../../utils/phoneFormatter';
+import { 
+  FUNNEL_AND_STAGE_ICONS, 
+  renderFunnelOrStageIcon, 
+  FunnelIconPicker 
+} from '../../utils/funnelIconLibrary';
 import type { 
   FunnelStageConfig, 
   FunnelDuplicateRuleConfig,
@@ -38,41 +44,10 @@ const STAGE_COLORS = [
   '#EF4444', // Red
 ];
 
-export const STAGE_ICON_OPTIONS = [
-  { id: 'inbox', label: 'Entrada / Novo', icon: Inbox },
-  { id: 'clock', label: 'Negociação / Espera', icon: Clock },
-  { id: 'calendar', label: 'Agendamento / Reunião', icon: Calendar },
-  { id: 'users', label: 'Atendimento / Equipe', icon: Users },
-  { id: 'award', label: 'Degustação / Análise', icon: Award },
-  { id: 'sparkles', label: 'Destaque / Especial', icon: Sparkles },
-  { id: 'dollar', label: 'Ganho / Fechamento', icon: DollarSign },
-  { id: 'party', label: 'Festa / Evento', icon: PartyPopper },
-  { id: 'phone', label: 'Ligação / Contato', icon: PhoneCall },
-  { id: 'message', label: 'WhatsApp / Conversa', icon: MessageSquare },
-  { id: 'zap', label: 'Prioridade / Rápido', icon: Zap },
-  { id: 'check', label: 'Validado / Sucesso', icon: CheckCircle2 },
-  { id: 'x-circle', label: 'Perdido / Cancelado', icon: XCircle },
-];
+export const STAGE_ICON_OPTIONS = FUNNEL_AND_STAGE_ICONS;
 
 export const renderStageIcon = (iconName?: string, size = 14, color = 'currentColor') => {
-  switch (iconName) {
-    case 'inbox': return <Inbox size={size} color={color} />;
-    case 'clock': return <Clock size={size} color={color} />;
-    case 'calendar': return <Calendar size={size} color={color} />;
-    case 'users': return <Users size={size} color={color} />;
-    case 'award': return <Award size={size} color={color} />;
-    case 'trophy': return <Trophy size={size} color={color} />;
-    case 'target': return <Target size={size} color={color} />;
-    case 'sparkles': return <Sparkles size={size} color={color} />;
-    case 'dollar': return <DollarSign size={size} color={color} />;
-    case 'party': return <PartyPopper size={size} color={color} />;
-    case 'phone': return <PhoneCall size={size} color={color} />;
-    case 'message': return <MessageSquare size={size} color={color} />;
-    case 'zap': return <Zap size={size} color={color} />;
-    case 'check': return <CheckCircle2 size={size} color={color} />;
-    case 'x-circle': return <XCircle size={size} color={color} />;
-    default: return <Layers size={size} color={color} />;
-  }
+  return renderFunnelOrStageIcon(iconName, size, color, 'layers');
 };
 
 const ENTRY_STAGE_DEF: FunnelStageConfig = {
@@ -125,16 +100,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     return found || funnels[0];
   }, [funnels, selectedFunnelId]);
 
-  // Origens Vinculadas a este funil
-  const linkedSources = useMemo(() => {
-    if (!activeFunnel) return [];
-    return sources.filter(s => s.funnelId === activeFunnel.id);
-  }, [sources, activeFunnel]);
-
-  // Role / Permission Control: Master, Dev, or Venue Admin
+  // Role / Permission Control: Master or Venue Admin
   const canConfigure = useMemo(() => {
     if (!currentUser) return false;
-    if (currentUser.role === 'master' || currentUser.role === 'dev') return true;
+    if (currentUser.role === 'master') return true;
     if (currentUser.role === 'admin') {
       if (!activeFunnel?.venueId || activeFunnel.venueId === 'all') return true;
       return currentUser.venueIds?.includes(activeFunnel.venueId) ?? false;
@@ -144,10 +113,19 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
   // Local Form states (Only saved when clicking "Salvar")
   const [funnelName, setFunnelName] = useState('');
+  const [funnelIcon, setFunnelIcon] = useState('target');
+  const [funnelBadgeColor, setFunnelBadgeColor] = useState('#3B82F6');
+  const [funnelDescription, setFunnelDescription] = useState('');
+  const [isFunnelIconPickerOpen, setIsFunnelIconPickerOpen] = useState(false);
   const [isEntryStageActive, setIsEntryStageActive] = useState(false);
   const [isWonStageEnabled, setIsWonStageEnabled] = useState(true);
   const [distributionMode, setDistributionMode] = useState<'manual' | 'round_robin'>('manual');
   const [assignedSdrIds, setAssignedSdrIds] = useState<string[]>([]);
+  const [venueDistributionConfig, setVenueDistributionConfig] = useState<Record<string, {
+    distributionMode?: 'manual' | 'round_robin' | 'inherit';
+    assignedSdrIds?: string[];
+    priorityWhatsappSourceId?: string;
+  }>>({});
   const [detectDuplicates, setDetectDuplicates] = useState(true);
   const [duplicateRuleConfig, setDuplicateRuleConfig] = useState<FunnelDuplicateRuleConfig>({
     matchPhone: true,
@@ -163,21 +141,23 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [activeTriggerStageId, setActiveTriggerStageId] = useState<string | null>(null);
   const [selectedTargetFunnelId, setSelectedTargetFunnelId] = useState<string>('');
   const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
+  const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
+  const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
   const [paymentOptions, setPaymentOptions] = useState<string[]>([]);
   const [predefinedTags, setPredefinedTags] = useState<string[]>([]);
+  const [allowCollaboratorsCreateTags, setAllowCollaboratorsCreateTags] = useState<boolean>(false);
   const [customFields, setCustomFields] = useState<FunnelCustomField[]>([]);
   const [isCustomDataModalOpen, setIsCustomDataModalOpen] = useState(false);
-  const [customDataModalView, setCustomDataModalView] = useState<'hub' | 'packages' | 'payments' | 'tags' | 'add_field' | 'edit_field'>('hub');
+  const [customDataModalView, setCustomDataModalView] = useState<'hub' | 'tags' | 'add_field' | 'edit_field'>('hub');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
-  const [newPackageInput, setNewPackageInput] = useState('');
-  const [newPaymentInput, setNewPaymentInput] = useState('');
   const [newTagInput, setNewTagInput] = useState('');
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [newFieldType, setNewFieldType] = useState<FunnelFieldType>('text');
-  const [newFieldSection, setNewFieldSection] = useState<FunnelCustomFieldSection>('commercial');
+  const [newFieldSection, setNewFieldSection] = useState<FunnelCustomFieldSection>('priority');
+  const [newCustomSectionName, setNewCustomSectionName] = useState('');
   const [newFieldOptions, setNewFieldOptions] = useState('');
 
   // Modals state
@@ -192,6 +172,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [questionTitleInput, setQuestionTitleInput] = useState('');
   const [questionDescInput, setQuestionDescInput] = useState('');
+  const [questionVenueIdInput, setQuestionVenueIdInput] = useState<string>('all');
   const [questionOptionsInput, setQuestionOptionsInput] = useState<Array<{ situation: MqlOptionSituation; label: string }>>([
     { situation: 'ideal', label: '' },
     { situation: 'good', label: '' },
@@ -261,6 +242,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   useEffect(() => {
     if (!activeFunnel) return;
     setFunnelName(activeFunnel.name || '');
+    setFunnelIcon(activeFunnel.icon || (isPostSale ? 'shield-check' : 'target'));
+    setFunnelBadgeColor(activeFunnel.badgeColor || '#3B82F6');
+    setFunnelDescription(activeFunnel.description || '');
     const entryActive = Boolean(activeFunnel.isEntryStageActive);
     setIsEntryStageActive(entryActive);
     setIsWonStageEnabled(activeFunnel.isWonStageEnabled !== false);
@@ -276,7 +260,21 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setPackageOptions(activeFunnel.packageOptions || []);
     setPaymentOptions(activeFunnel.paymentOptions || []);
     setPredefinedTags(activeFunnel.predefinedTags || []);
+    setAllowCollaboratorsCreateTags(Boolean(activeFunnel.allowCollaboratorsCreateTags));
     setCustomFields(activeFunnel.customFields || []);
+    setDefaultWhatsAppSourceId((activeFunnel as any)?.defaultWhatsAppSourceId || '');
+    const initialPriorities: Record<string, string> = {
+      ...((activeFunnel as any)?.priorityWhatsappPerVenue || {}),
+    };
+    if (activeFunnel.venueDistributionConfig) {
+      Object.entries(activeFunnel.venueDistributionConfig).forEach(([vId, vConf]) => {
+        if (vConf?.priorityWhatsappSourceId) {
+          initialPriorities[vId] = vConf.priorityWhatsappSourceId;
+        }
+      });
+    }
+    setPriorityWhatsappPerVenue(initialPriorities);
+    setVenueDistributionConfig(activeFunnel.venueDistributionConfig || {});
     
     if (activeFunnel.stages && activeFunnel.stages.length > 0) {
       let loadedStages = [...activeFunnel.stages];
@@ -291,7 +289,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     } else {
       setStages(defaultStages);
     }
-  }, [activeFunnel, defaultStages]);
+  }, [activeFunnel, defaultStages, isPostSale]);
 
   // Leads in entry stage for this specific funnel
   const leadsInEntryStage = useMemo(() => {
@@ -342,14 +340,22 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     } else {
       finalStages = finalStages.filter(s => s.id !== 'new_lead' && s.id !== 'onboarding' && !s.name.toLowerCase().includes('entrada'));
     }
-    finalStages = finalStages.map((s, idx) => ({ ...s, order: idx }));
+    finalStages = finalStages.map((s, idx) => ({
+      ...s,
+      name: (s.name || '').trim().toUpperCase(),
+      order: idx,
+    }));
 
     updateFunnel(activeFunnel.id, {
       name: funnelName.trim() || activeFunnel.name,
+      icon: funnelIcon,
+      badgeColor: funnelBadgeColor,
+      description: funnelDescription,
       isEntryStageActive,
       isWonStageEnabled,
       distributionMode,
       assignedSdrIds,
+      venueDistributionConfig,
       detectDuplicates,
       duplicateRuleConfig,
       stages: finalStages,
@@ -357,8 +363,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       packageOptions,
       paymentOptions,
       predefinedTags,
+      allowCollaboratorsCreateTags,
       customFields,
-    });
+      defaultWhatsAppSourceId,
+      priorityWhatsappPerVenue,
+    } as any);
     if (onSaved) onSaved();
     onClose();
   };
@@ -445,6 +454,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setActiveEditingHintStageId(null);
   };
 
+  // Verifica se uma instância de WhatsApp está efetivamente conectada/online
+  const isSourceOnline = (src?: any): boolean => {
+    if (!src) return false;
+    const config = (src.configuration as any) || {};
+    if (src.status === 'inactive') return false;
+    if (config.connectionStatus === 'disconnected' || config.isConnected === false) return false;
+    if (config.connectionStatus === 'connected' || config.isConnected === true) return true;
+    return Boolean(config.connectedPhone && config.connectionStatus !== 'disconnected');
+  };
+
   // Qualification Questions for this Funnel
   const displayedQualificationQuestions = useMemo(() => {
     if (!activeFunnel) return [];
@@ -459,6 +478,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setEditingQuestionId(null);
     setQuestionTitleInput('');
     setQuestionDescInput('');
+    setQuestionVenueIdInput(activeFunnel?.venueId && activeFunnel.venueId !== 'all' ? activeFunnel.venueId : 'all');
     setQuestionOptionsInput([
       { situation: 'ideal', label: '' },
       { situation: 'good', label: '' },
@@ -472,6 +492,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setEditingQuestionId(q.id);
     setQuestionTitleInput(q.title);
     setQuestionDescInput(q.description || '');
+    setQuestionVenueIdInput(q.venueId || (q.venueIds && q.venueIds[0]) || 'all');
     setQuestionOptionsInput([
       { situation: 'ideal', label: q.options.find(o => o.situation === 'ideal' || o.points >= 90)?.label || '' },
       { situation: 'good', label: q.options.find(o => o.situation === 'good' || (o.points >= 65 && o.points < 90))?.label || '' },
@@ -509,12 +530,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         options: finalOptions,
         funnelId: activeFunnel?.id,
         funnelIds: activeFunnel ? [activeFunnel.id] : [],
+        venueId: questionVenueIdInput,
+        venueIds: questionVenueIdInput === 'all' ? [] : [questionVenueIdInput],
         profileName: `Qualificação - ${activeFunnel?.name || 'Funil'}`,
       });
     } else {
       addMqlQuestion({
         funnelId: activeFunnel?.id,
         funnelIds: activeFunnel ? [activeFunnel.id] : [],
+        venueId: questionVenueIdInput,
+        venueIds: questionVenueIdInput === 'all' ? [] : [questionVenueIdInput],
         profileName: `Qualificação - ${activeFunnel?.name || 'Funil'}`,
         title: questionTitleInput.trim(),
         description: questionDescInput.trim() || undefined,
@@ -647,9 +672,54 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         flexShrink: 0,
         zIndex: 20,
       }}>
-        {/* Left: Funnel Title Editable Input & Switcher */}
+        {/* Left: Funnel Icon + Funnel Title Editable Input & Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Funnel Icon Picker Trigger */}
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setIsFunnelIconPickerOpen(!isFunnelIconPickerOpen)}
+                title="Clique para alterar o ícone do funil"
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: `${funnelBadgeColor || '#3B82F6'}18`,
+                  border: `1.5px solid ${funnelBadgeColor || '#3B82F6'}55`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: funnelBadgeColor || '#3B82F6',
+                  cursor: 'pointer',
+                  padding: 0,
+                  boxShadow: `0 2px 10px ${funnelBadgeColor || '#3B82F6'}25`,
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.06)';
+                  e.currentTarget.style.borderColor = funnelBadgeColor || '#3B82F6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.borderColor = `${funnelBadgeColor || '#3B82F6'}55`;
+                }}
+              >
+                {renderFunnelOrStageIcon(funnelIcon, 18, funnelBadgeColor || '#3B82F6')}
+              </button>
+
+              {isFunnelIconPickerOpen && (
+                <FunnelIconPicker
+                  selectedIcon={funnelIcon}
+                  onSelectIcon={(iconId) => setFunnelIcon(iconId)}
+                  onClose={() => setIsFunnelIconPickerOpen(false)}
+                  accentColor={funnelBadgeColor || 'var(--adm-accent, #3B82F6)'}
+                  title="Ícone Principal do Funil"
+                />
+              )}
+            </div>
+
             <input
               type="text"
               value={funnelName}
@@ -666,7 +736,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 padding: '4px 8px',
                 borderRadius: '6px',
                 outline: 'none',
-                minWidth: '220px',
+                minWidth: '200px',
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}
               onFocus={(e) => {
@@ -679,6 +749,31 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 e.currentTarget.style.background = 'transparent';
               }}
             />
+
+            {/* Quick Color Palette Trigger */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+              {['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899', '#EF4444', '#06B6D4', '#D4AF37'].map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  title={`Definir cor do funil: ${color}`}
+                  onClick={() => setFunnelBadgeColor(color)}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: color,
+                    border: funnelBadgeColor === color ? '2px solid #FFFFFF' : '1px solid rgba(255,255,255,0.2)',
+                    boxShadow: funnelBadgeColor === color ? `0 0 6px ${color}` : 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'transform 0.12s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                />
+              ))}
+            </div>
           </div>
 
           {!isPostSale && (
@@ -787,9 +882,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       {/* ── BODY: LEFT CONFIG PANEL + RIGHT PIPELINE GRID ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         
-        {/* ── LEFT PANEL (KOMMO STYLE: ORIGENS VINCULADAS, DUPLICADOS, WHATSAPP & QUALIFICAÇÃO) ── */}
+        {/* ── LEFT PANEL (REORDENADO: 1. OPERACIONAIS -> 2. QUALIFICAÇÃO/CAMPOS -> 3. DISTRIBUIÇÃO) ── */}
         <div style={{
-          width: '290px',
+          width: '300px',
           borderRight: '1px solid var(--adm-border)',
           background: 'var(--adm-bg-card)',
           overflowY: 'auto',
@@ -799,130 +894,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           gap: '20px',
           flexShrink: 0,
         }}>
-          {/* Section 1: ORIGENS VINCULADAS (Fontes de Lead caindo neste funil) */}
-          {!isPostSale && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                  ORIGENS VINCULADAS
-                </div>
-                <span style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  background: linkedSources.length > 0 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                  color: linkedSources.length > 0 ? '#3B82F6' : '#F59E0B',
-                }}>
-                  {linkedSources.length} {linkedSources.length === 1 ? 'Origem' : 'Origens'}
-                </span>
-              </div>
-
-              {/* Lista das Origens configuradas para este funil (Compacta & Elegante) */}
-              {linkedSources.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {linkedSources.map(src => {
-                    const srcVenue = venues.find(v => v.id === src.venueId);
-                    const isReferral = src.type === 'referral';
-                    const isWhatsapp = src.type === 'whatsapp_api';
-                    const isForm = src.type === 'form';
-
-                    let displayName = src.name;
-                    if (displayName.toLowerCase().includes('indicações') || isReferral) {
-                      displayName = 'Indicação no App';
-                    }
-
-                    return (
-                      <div
-                        key={src.id}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '8px',
-                          padding: '7px 10px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px',
-                          transition: 'border-color 0.15s ease',
-                        }}
-                      >
-                        {/* Top Line: Icon + Clean Title + Channel Badge */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                            {isReferral ? (
-                              <Sparkles size={12} color="#D4AF37" style={{ flexShrink: 0 }} />
-                            ) : isWhatsapp ? (
-                              <MessageSquare size={12} color="#10B981" style={{ flexShrink: 0 }} />
-                            ) : isForm ? (
-                              <FileText size={12} color="#3B82F6" style={{ flexShrink: 0 }} />
-                            ) : (
-                              <Radio size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                            )}
-                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {displayName}
-                            </span>
-                          </div>
-
-                          <span style={{
-                            fontSize: '0.58rem',
-                            fontWeight: 800,
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: isReferral ? 'rgba(212, 175, 55, 0.15)' : 'rgba(59, 130, 246, 0.12)',
-                            color: isReferral ? '#D4AF37' : 'var(--adm-accent)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.3px',
-                            flexShrink: 0,
-                          }}>
-                            {isReferral ? 'Indicação' : isWhatsapp ? 'WhatsApp' : isForm ? 'Formulário' : 'Link'}
-                          </span>
-                        </div>
-
-                        {/* Bottom Line: Venue chip */}
-                        {srcVenue && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{
-                              fontSize: '0.64rem',
-                              fontWeight: 600,
-                              color: 'var(--adm-text-muted)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}>
-                              <Building2 size={10} style={{ opacity: 0.7 }} />
-                              <span>{srcVenue.name}</span>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px dashed var(--adm-border)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
-                  <Link2 size={16} color="var(--adm-text-muted)" />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: 1.35 }}>
-                    Nenhuma origem vinculada ainda. Configure em <strong>Origens de Leads</strong> para direcionar leads para este funil.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Section 2: CONFIGURAÇÕES OPERACIONAIS */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: isPostSale ? 'none' : '1px solid var(--adm-border)', paddingTop: isPostSale ? 0 : '16px' }}>
+          
+          {/* ── 1. CONFIGURAÇÕES OPERACIONAIS ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              CONFIGURAÇÕES
+              1. CONFIGURAÇÕES OPERACIONAIS
             </div>
 
             {/* Etapa de leads de entrada Toggle */}
@@ -964,166 +940,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               </p>
             </div>
 
-            {/* Distribuição de Leads no Funil (Fila Livre vs Roleta Automática) */}
-            <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Users size={15} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Distribuição de Leads</span>
-                </div>
-                <span style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  background: distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                  color: distributionMode === 'round_robin' ? '#10B981' : '#3B82F6',
-                  border: `1px solid ${distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                }}>
-                  {distributionMode === 'round_robin' ? 'Roleta Ativa' : 'Fila Livre'}
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setDistributionMode('manual')}
-                  style={{
-                    padding: '8px 6px',
-                    borderRadius: '8px',
-                    border: `1px solid ${distributionMode === 'manual' ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-border)'}`,
-                    background: distributionMode === 'manual' ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                    color: distributionMode === 'manual' ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-text-muted)',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '4px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <span>Fila Livre (Manual)</span>
-                  <span style={{ fontSize: '0.62rem', fontWeight: 400, opacity: 0.8 }}>SDRs puxam</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDistributionMode('round_robin')}
-                  style={{
-                    padding: '8px 6px',
-                    borderRadius: '8px',
-                    border: `1px solid ${distributionMode === 'round_robin' ? '#10B981' : 'var(--adm-border)'}`,
-                    background: distributionMode === 'round_robin' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                    color: distributionMode === 'round_robin' ? '#10B981' : 'var(--adm-text-muted)',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '4px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><RefreshCw size={11} /> Roleta Automática</span>
-                  <span style={{ fontSize: '0.62rem', fontWeight: 400, opacity: 0.8 }}>Divisão igual</span>
-                </button>
-              </div>
-
-              {distributionMode === 'round_robin' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '2px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                      SDRs Participantes ({assignedSdrIds.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const commercialCollabs = collaborators.filter(c => c.active !== false);
-                        if (assignedSdrIds.length === commercialCollabs.length) {
-                          setAssignedSdrIds([]);
-                        } else {
-                          setAssignedSdrIds(commercialCollabs.map(c => c.id));
-                        }
-                      }}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--adm-accent, #3B82F6)',
-                        fontSize: '0.65rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      {assignedSdrIds.length === collaborators.filter(c => c.active !== false).length ? 'Desmarcar todos' : 'Marcar todos'}
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '160px', overflowY: 'auto' }}>
-                    {collaborators.filter(c => c.active !== false).map(collab => {
-                      const isSelected = assignedSdrIds.includes(collab.id);
-                      return (
-                        <label
-                          key={collab.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                            border: `1px solid ${isSelected ? 'rgba(59, 130, 246, 0.25)' : 'transparent'}`,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setAssignedSdrIds(prev => [...prev, collab.id]);
-                              } else {
-                                setAssignedSdrIds(prev => prev.filter(id => id !== collab.id));
-                              }
-                            }}
-                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#10B981' }}
-                          />
-                          {collab.avatarUrl ? (
-                            <img src={collab.avatarUrl} alt={collab.name} style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--adm-accent, #3B82F6)', color: '#fff', fontSize: '0.65rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {collab.name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {collab.name}
-                            </span>
-                            <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', textTransform: 'capitalize' }}>
-                              {collab.role || 'Comercial'}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  {assignedSdrIds.length === 0 && (
-                    <div style={{ fontSize: '0.68rem', color: '#F59E0B', fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '6px 8px' }}>
-                      ⚠️ Selecione ao menos 1 SDR para que a roleta distribua os novos leads.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
-                  Novos leads entram em "Novo Lead" sem responsável definido. Qualquer SDR da equipe comercial pode assumir.
-                </p>
-              )}
-            </div>
-
             {/* Controle duplicado */}
             <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -1147,81 +963,95 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 <ChevronDown size={12} style={{ transform: 'rotate(-90deg)' }} />
               </button>
             </div>
-
-            {/* WhatsApp Oficial com status Em breve */}
-            <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(37, 211, 102, 0.15)', border: '1px solid rgba(37, 211, 102, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#25D366', flexShrink: 0 }}>
-                <MessageSquare size={16} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>WhatsApp Oficial</span>
-                  <span style={{
-                    fontSize: '0.62rem',
-                    fontWeight: 800,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: 'rgba(59, 130, 246, 0.15)',
-                    color: '#3B82F6',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
-                  }}>
-                    Em breve
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>Meta Cloud API Integrada</div>
-              </div>
-            </div>
           </div>
 
-          {/* Section 3: QUALIFICAÇÃO (Renomeado de Pontuação e atrelado a Funis) */}
-          {!isPostSale && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
+          {/* ── 2. QUALIFICAÇÃO / ICP & CAMPOS ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              2. QUALIFICAÇÃO & CAMPOS
+            </div>
+
+            {/* Qualificação / ICP */}
+            {!isPostSale && (
+              <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                    Perfil ICP por Unidade
+                  </span>
+                  <span style={{
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    background: displayedQualificationQuestions.length > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: displayedQualificationQuestions.length > 0 ? '#10B981' : '#EF4444',
+                  }}>
+                    {displayedQualificationQuestions.length > 0 ? `${displayedQualificationQuestions.length} Perguntas` : 'Desativado'}
+                  </span>
+                </div>
+                
+                <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
+                  Perguntas de qualificação e cálculo de pontuação ICP específicas por casa de festas.
+                </p>
+
+                <button 
+                  type="button" 
+                  onClick={() => setIsQualificationModalOpen(true)} 
+                  style={{ 
+                    background: 'var(--adm-accent-bg, rgba(59, 130, 246, 0.1))', 
+                    border: '1px solid var(--adm-accent, #3B82F6)', 
+                    color: 'var(--adm-accent, #3B82F6)', 
+                    fontSize: '0.74rem', 
+                    fontWeight: 700, 
+                    cursor: 'pointer', 
+                    padding: '7px 10px', 
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    marginTop: '2px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Sliders size={13} />
+                  <span>Configurar ICP do Funil</span>
+                </button>
+              </div>
+            )}
+
+            {/* Custom Data, Fields & Tags */}
+            <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                  QUALIFICAÇÃO
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span style={{
-                    fontSize: '0.62rem',
-                    fontWeight: 800,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: displayedQualificationQuestions.length > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
-                    color: displayedQualificationQuestions.length > 0 ? '#10B981' : '#94A3B8',
-                    border: `1px solid ${displayedQualificationQuestions.length > 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`,
-                  }}>
-                    {displayedQualificationQuestions.length > 0 ? 'Ativa' : 'Inativa'}
-                  </span>
-                  <span style={{
-                    fontSize: '0.62rem',
-                    fontWeight: 800,
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: 'var(--adm-bg-card)',
-                    color: 'var(--adm-text-muted)',
-                    border: '1px solid var(--adm-border)',
-                  }}>
-                    {displayedQualificationQuestions.length} Perguntas
-                  </span>
-                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Campos & Tags
+                </span>
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: 'rgba(212, 175, 55, 0.15)',
+                  color: '#D4AF37',
+                }}>
+                  {customFields.length + predefinedTags.length} Itens
+                </span>
               </div>
               
               <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
-                Atribui uma probabilidade de conversão baseada nas ações do lead.
+                Configure tags recomendadas e campos personalizados para este funil.
               </p>
 
               <button 
                 type="button" 
                 onClick={() => {
-                  onClose();
-                  window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'mql' } }));
+                  setCustomDataModalView('hub');
+                  setIsCustomDataModalOpen(true);
                 }} 
                 style={{ 
-                  background: 'var(--adm-accent-bg, rgba(59, 130, 246, 0.1))', 
-                  border: '1px solid var(--adm-accent, #3B82F6)', 
-                  color: 'var(--adm-accent, #3B82F6)', 
+                  background: 'var(--adm-bg-card)', 
+                  border: '1px solid var(--adm-border)', 
+                  color: 'var(--adm-text-title)', 
                   fontSize: '0.74rem', 
                   fontWeight: 700, 
                   cursor: 'pointer', 
@@ -1231,74 +1061,479 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
-                  marginTop: '4px',
+                  marginTop: '2px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <Settings size={13} />
-                <span>Configurações</span>
+                <Tag size={13} color="var(--adm-accent)" />
+                <span>Gerenciar Campos & Tags</span>
               </button>
             </div>
-          )}
-
-          {/* Section 4: CAMPOS PERSONALIZADOS E TAGS (Configuração de dados exclusivos deste funil) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                CAMPOS PERSONALIZADOS E TAGS
-              </div>
-              <span style={{
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                padding: '2px 6px',
-                borderRadius: '6px',
-                background: 'rgba(212, 175, 55, 0.15)',
-                color: '#D4AF37',
-                border: '1px solid rgba(212, 175, 55, 0.3)',
-              }}>
-                {packageOptions.length + paymentOptions.length + predefinedTags.length} Itens
-              </span>
-            </div>
-            
-            <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
-              Configure pacotes comerciais, opções de pagamento e tags deste funil.
-            </p>
-
-            <button 
-              type="button" 
-              onClick={() => {
-                setCustomDataModalView('hub');
-                setIsCustomDataModalOpen(true);
-              }} 
-              style={{ 
-                background: 'var(--adm-bg-input)', 
-                border: '1px solid var(--adm-border)', 
-                color: 'var(--adm-text-title)', 
-                fontSize: '0.74rem', 
-                fontWeight: 700, 
-                cursor: 'pointer', 
-                padding: '7px 10px', 
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                marginTop: '4px',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--adm-accent)';
-                e.currentTarget.style.color = 'var(--adm-accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--adm-border)';
-                e.currentTarget.style.color = 'var(--adm-text-title)';
-              }}
-            >
-              <Sliders size={13} />
-              <span>Configurar Campos & Tags</span>
-            </button>
           </div>
+
+          {/* ── 3. UNIDADES ── */}
+          {!isPostSale && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Building2 size={14} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
+                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                    3. UNIDADES
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  color: 'var(--adm-accent)',
+                }}>
+                  {(() => {
+                    const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
+                      ? venues.filter(v => v.active !== false)
+                      : venues.filter(v => v.id === activeFunnel.venueId);
+                    return `${targetVenues.length} ${targetVenues.length === 1 ? 'Unidade' : 'Unidades'}`;
+                  })()}
+                </span>
+              </div>
+
+              {(() => {
+                const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
+                  ? venues.filter(v => v.active !== false)
+                  : venues.filter(v => v.id === activeFunnel.venueId);
+
+                if (targetVenues.length === 0) {
+                  return (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px dashed var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '12px',
+                      textAlign: 'center',
+                      fontSize: '0.72rem',
+                      color: 'var(--adm-text-muted)',
+                    }}>
+                      Nenhuma casa vinculada.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {targetVenues.map(venue => {
+                      const venueSources = (sources || []).filter(s => s.venueId === venue.id);
+                      const venueWhatsappSources = venueSources.filter(
+                        s => s.type === 'whatsapp_api' || (s as any).channelType === 'whatsapp' || s.name.toLowerCase().includes('whatsapp')
+                      );
+
+                      const venueConfig = venueDistributionConfig[venue.id] || {};
+                      const venueDistMode = venueConfig.distributionMode || 'manual';
+                      const venueSdrIds = venueConfig.assignedSdrIds || [];
+                      const displayCollaborators = collaborators.filter(c => c.active !== false);
+
+                      return (
+                        <div
+                          key={venue.id}
+                          style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '10px',
+                            padding: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Building2 size={13} color="var(--adm-accent)" />
+                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                {venue.name}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                              {venueSources.length} {venueSources.length === 1 ? 'origem' : 'origens'}
+                            </span>
+                          </div>
+
+                          {/* Origens Vinculadas */}
+                          {venueSources.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                Origens da Casa
+                              </span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {venueSources.map(s => (
+                                  <span
+                                    key={s.id}
+                                    style={{
+                                      fontSize: '0.62rem',
+                                      fontWeight: 600,
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      background: 'var(--adm-bg-card)',
+                                      border: '1px solid var(--adm-border)',
+                                      color: 'var(--adm-text-title)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: s.type === 'whatsapp_api' ? '#10B981' : '#3B82F6' }} />
+                                    <span>{s.name}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* WhatsApp da Unidade */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                              WhatsApp da Casa
+                            </span>
+                            {venueWhatsappSources.length > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {(() => {
+                                  const onlineWhatsappSources = venueWhatsappSources.filter(s => isSourceOnline(s));
+                                  const storedPriorityId = priorityWhatsappPerVenue[venue.id] || venueConfig.priorityWhatsappSourceId;
+                                  const isStoredOnline = onlineWhatsappSources.some(s => s.id === storedPriorityId);
+                                  const effectivePriorityId = isStoredOnline ? storedPriorityId : (onlineWhatsappSources[0]?.id || null);
+
+                                  return venueWhatsappSources.map(src => {
+                                    const isOnline = isSourceOnline(src);
+                                    const isPriority = isOnline && effectivePriorityId === src.id;
+                                    const rawPhone = src.whatsappInstanceId || (src.configuration && (src.configuration.connectedPhone || src.configuration.targetPhone)) || '';
+                                    const phoneDisplay = rawPhone ? formatPhone(rawPhone) : null;
+
+                                    return (
+                                      <div
+                                        key={src.id}
+                                        onClick={() => {
+                                          if (!isOnline) {
+                                            alert(`A instância "${src.name}" está desconectada. Acesse o menu lateral em Origens para reconectar o WhatsApp.`);
+                                            return;
+                                          }
+                                          setPriorityWhatsappPerVenue(prev => ({
+                                            ...prev,
+                                            [venue.id]: src.id,
+                                          }));
+                                          setVenueDistributionConfig(prev => ({
+                                            ...prev,
+                                            [venue.id]: {
+                                              ...(prev[venue.id] || {}),
+                                              priorityWhatsappSourceId: src.id,
+                                            },
+                                          }));
+                                        }}
+                                        style={{
+                                          background: !isOnline 
+                                            ? 'rgba(239, 68, 68, 0.12)' 
+                                            : isPriority 
+                                              ? 'rgba(16, 185, 129, 0.12)' 
+                                              : 'var(--adm-bg-card)',
+                                          border: !isOnline 
+                                            ? '1.5px solid #EF4444' 
+                                            : isPriority 
+                                              ? '1.5px solid #10B981' 
+                                              : '1px solid var(--adm-border)',
+                                          borderRadius: '8px',
+                                          padding: '6px 8px',
+                                          cursor: isOnline ? 'pointer' : 'default',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          gap: '6px',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                          <SafeAvatar name={src.name || 'WhatsApp'} src={(src as any).avatarUrl || (src.configuration && src.configuration.connectedAvatar)} size={24} />
+                                          <div style={{ minWidth: 0 }}>
+                                            <div style={{ 
+                                              fontSize: '0.70rem', 
+                                              fontWeight: 700, 
+                                              color: !isOnline ? '#EF4444' : 'var(--adm-text-title)', 
+                                              whiteSpace: 'nowrap', 
+                                              overflow: 'hidden', 
+                                              textOverflow: 'ellipsis' 
+                                            }}>
+                                              {src.name}
+                                            </div>
+                                            {phoneDisplay && (
+                                              <div style={{ fontSize: '0.62rem', color: !isOnline ? '#EF4444' : 'var(--adm-text-muted)', opacity: !isOnline ? 0.9 : 1 }}>
+                                                {phoneDisplay}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {!isOnline ? (
+                                          <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444' }}>
+                                            🔴 Desconectado
+                                          </span>
+                                        ) : isPriority ? (
+                                          <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#FFF' }}>
+                                            Principal
+                                          </span>
+                                        ) : (
+                                          <span style={{ fontSize: '0.55rem', fontWeight: 600, color: 'var(--adm-text-muted)' }}>
+                                            Definir
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
+                                Sem WhatsApp conectado.
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Distribuição: Manual vs Rodízio */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--adm-border)', paddingTop: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                Modo de Distribuição
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVenueDistributionConfig(prev => ({
+                                    ...prev,
+                                    [venue.id]: {
+                                      ...(prev[venue.id] || {}),
+                                      distributionMode: 'manual',
+                                    },
+                                  }));
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: venueDistMode === 'manual' ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                                  background: venueDistMode === 'manual' ? 'rgba(59, 130, 246, 0.15)' : 'var(--adm-bg-card)',
+                                  color: venueDistMode === 'manual' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                Manual
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVenueDistributionConfig(prev => ({
+                                    ...prev,
+                                    [venue.id]: {
+                                      ...(prev[venue.id] || {}),
+                                      distributionMode: 'round_robin',
+                                    },
+                                  }));
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  border: venueDistMode === 'round_robin' ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                                  background: venueDistMode === 'round_robin' ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-card)',
+                                  color: venueDistMode === 'round_robin' ? '#10B981' : 'var(--adm-text-muted)',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                Rodízio
+                              </button>
+                            </div>
+
+                            {/* Letras miúdas explicativas */}
+                            <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', lineHeight: 1.35, padding: '2px 2px' }}>
+                              {venueDistMode === 'manual' 
+                                ? 'No modo manual, os novos leads entram na Caixa de Entrada e qualquer SDR disponível pode puxar para atendimento.'
+                                : 'No modo rodízio, os novos leads são distribuídos de forma sequencial na ordem definida na lista de entrega.'}
+                            </div>
+
+                            {/* Quando Rodízio: Monte a lista de entrega com ordem e duplicação */}
+                            {venueDistMode === 'round_robin' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', background: 'var(--adm-bg-card)', padding: '8px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                    Monte a lista de entrega ({venueSdrIds.length})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const firstCollab = displayCollaborators[0]?.id;
+                                      if (firstCollab) {
+                                        setVenueDistributionConfig(prev => ({
+                                          ...prev,
+                                          [venue.id]: {
+                                            ...(prev[venue.id] || {}),
+                                            assignedSdrIds: [...venueSdrIds, firstCollab],
+                                          },
+                                        }));
+                                      }
+                                    }}
+                                    style={{
+                                      background: 'var(--adm-accent-bg, rgba(59, 130, 246, 0.15))',
+                                      border: '1px solid var(--adm-accent, #3B82F6)',
+                                      color: 'var(--adm-accent, #3B82F6)',
+                                      borderRadius: '4px',
+                                      padding: '2px 6px',
+                                      fontSize: '0.60rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    <Plus size={10} />
+                                    <span>Adicionar</span>
+                                  </button>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
+                                  {venueSdrIds.map((collabId, idx) => {
+                                    const collab = displayCollaborators.find(c => c.id === collabId);
+                                    return (
+                                      <div
+                                        key={`${collabId}-${idx}`}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          gap: '6px',
+                                          padding: '4px 6px',
+                                          borderRadius: '6px',
+                                          background: 'var(--adm-bg-input)',
+                                          border: '1px solid var(--adm-border)',
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                          <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#10B981', minWidth: '18px' }}>
+                                            #{idx + 1}
+                                          </span>
+                                          <SafeAvatar name={collab?.name || 'Colaborador'} src={collab?.avatarUrl} size={18} />
+                                          <select
+                                            value={collabId}
+                                            onChange={(e) => {
+                                              const newId = e.target.value;
+                                              const updated = [...venueSdrIds];
+                                              updated[idx] = newId;
+                                              setVenueDistributionConfig(prev => ({
+                                                ...prev,
+                                                [venue.id]: {
+                                                  ...(prev[venue.id] || {}),
+                                                  assignedSdrIds: updated,
+                                                },
+                                              }));
+                                            }}
+                                            style={{
+                                              background: 'transparent',
+                                              border: 'none',
+                                              color: 'var(--adm-text-title)',
+                                              fontSize: '0.68rem',
+                                              fontWeight: 700,
+                                              outline: 'none',
+                                              cursor: 'pointer',
+                                              maxWidth: '130px',
+                                            }}
+                                          >
+                                            {displayCollaborators.map(c => (
+                                              <option key={c.id} value={c.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
+                                                {c.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <button
+                                            type="button"
+                                            title="Duplicar no rodízio"
+                                            onClick={() => {
+                                              const updated = [...venueSdrIds];
+                                              updated.splice(idx + 1, 0, collabId);
+                                              setVenueDistributionConfig(prev => ({
+                                                ...prev,
+                                                [venue.id]: {
+                                                  ...(prev[venue.id] || {}),
+                                                  assignedSdrIds: updated,
+                                                },
+                                              }));
+                                            }}
+                                            style={{
+                                              background: 'transparent',
+                                              border: 'none',
+                                              color: 'var(--adm-text-muted)',
+                                              cursor: 'pointer',
+                                              padding: '2px 4px',
+                                              fontSize: '0.58rem',
+                                              borderRadius: '4px',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                            }}
+                                          >
+                                            <Copy size={11} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            title="Remover do rodízio"
+                                            onClick={() => {
+                                              const updated = venueSdrIds.filter((_, i) => i !== idx);
+                                              setVenueDistributionConfig(prev => ({
+                                                ...prev,
+                                                [venue.id]: {
+                                                  ...(prev[venue.id] || {}),
+                                                  assignedSdrIds: updated,
+                                                },
+                                              }));
+                                            }}
+                                            style={{
+                                              background: 'transparent',
+                                              border: 'none',
+                                              color: '#EF4444',
+                                              cursor: 'pointer',
+                                              padding: '2px 4px',
+                                              fontSize: '0.58rem',
+                                              borderRadius: '4px',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                            }}
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                  {venueSdrIds.length === 0 && (
+                                    <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '6px' }}>
+                                      Nenhum colaborador no rodízio. Clique em "+ Adicionar".
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
 
         {/* ── RIGHT MAIN PIPELINE GRID (KOMMO REPLICA + HORIZONTAL PAN/DRAG) ── */}
@@ -1379,55 +1614,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
                           {/* Popover Icon Picker */}
                           {activeIconPickerStageId === stage.id && (
-                            <div 
-                              data-no-drag
-                              style={{
-                                position: 'absolute',
-                                top: '30px',
-                                left: '0',
-                                zIndex: 120,
-                                background: 'var(--adm-bg-card)',
-                                border: '1px solid var(--adm-border)',
-                                borderRadius: '10px',
-                                padding: '10px',
-                                boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(4, 1fr)',
-                                gap: '6px',
-                                width: '160px',
+                            <FunnelIconPicker
+                              selectedIcon={stage.icon}
+                              onSelectIcon={(iconId) => {
+                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, icon: iconId } : s));
+                                setActiveIconPickerStageId(null);
                               }}
-                            >
-                              {STAGE_ICON_OPTIONS.map(opt => {
-                                const IconComp = opt.icon;
-                                const isSelected = stage.icon === opt.id;
-                                return (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setStages(prev => prev.map(s => s.id === stage.id ? { ...s, icon: opt.id } : s));
-                                      setActiveIconPickerStageId(null);
-                                    }}
-                                    title={opt.label}
-                                    style={{
-                                      width: '32px',
-                                      height: '32px',
-                                      borderRadius: '6px',
-                                      background: isSelected ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                                      border: isSelected ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                                      color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-body)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      cursor: 'pointer',
-                                      padding: 0,
-                                    }}
-                                  >
-                                    <IconComp size={15} />
-                                  </button>
-                                );
-                              })}
-                            </div>
+                              onClose={() => setActiveIconPickerStageId(null)}
+                              accentColor={stage.color || 'var(--adm-accent, #3B82F6)'}
+                              title={`Ícone da Etapa: ${stage.name}`}
+                            />
                           )}
                         </div>
 
@@ -1436,7 +1632,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           type="text"
                           value={stage.name}
                           onChange={(e) => {
-                            const newName = e.target.value;
+                            const newName = e.target.value.toUpperCase();
                             setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
                           }}
                           title={stage.name}
@@ -2258,6 +2454,25 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
+                  Casa de Festas (Unidade) *
+                </label>
+                <select
+                  value={questionVenueIdInput}
+                  onChange={(e) => setQuestionVenueIdInput(e.target.value)}
+                  className="adm-input"
+                  style={{ width: '100%', height: '38px', borderRadius: '8px', fontSize: '0.80rem', cursor: 'pointer' }}
+                >
+                  <option value="all">Todas as Casas / Unidades</option>
+                  {venues.filter(v => v.active !== false).map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
                   Descrição / Objetivo (Opcional)
                 </label>
                 <input
@@ -2468,18 +2683,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
-                    {customDataModalView === 'hub' && 'Hub de Campos, Pacotes & Tags'}
-                    {customDataModalView === 'packages' && 'Pacotes do Funil'}
-                    {customDataModalView === 'payments' && 'Formas de Pagamento'}
-                    {customDataModalView === 'tags' && 'Tags Recomendadas'}
+                    {customDataModalView === 'hub' && 'Gerenciador de Campos & Tags'}
+                    {customDataModalView === 'tags' && 'Tags Recomendadas & Permissões'}
                     {customDataModalView === 'add_field' && 'Novo Campo Personalizado'}
                     {customDataModalView === 'edit_field' && 'Editar Campo Personalizado'}
                   </h3>
                   <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                    {customDataModalView === 'hub' && 'Gerencie os dados nativos e campos customizados exclusivos para este funil.'}
-                    {customDataModalView === 'packages' && 'Cadastre os pacotes e propostas que podem ser selecionados nos leads.'}
-                    {customDataModalView === 'payments' && 'Cadastre condições e formas de pagamento aceitas.'}
-                    {customDataModalView === 'tags' && 'Tags pré-configuradas para etiquetagem rápida dos leads.'}
+                    {customDataModalView === 'hub' && 'Gerencie as tags recomendadas e campos customizados exclusivos para este funil.'}
+                    {customDataModalView === 'tags' && 'Tags pré-configuradas e permissões de etiquetagem dos leads.'}
                     {(customDataModalView === 'add_field' || customDataModalView === 'edit_field') && 'Defina o nome, seção de exibição e tipo do campo.'}
                   </p>
                 </div>
@@ -2534,138 +2745,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               {customDataModalView === 'hub' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   
-                  {/* Seção 1: Campos do Sistema (Fixos) */}
+                  {/* Seção 1: Tags Recomendadas do Funil */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Dados & Seleções Nativas
+                        Tags do Funil
                       </span>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Fixos do Sistema</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>Classificação</span>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                      {/* Card Pacotes */}
-                      <div style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '12px',
-                        padding: '14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
-                            background: 'rgba(20, 169, 215, 0.15)',
-                            color: '#14A9D7',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            <Package size={16} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              Pacotes do Funil
-                            </div>
-                            <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                              {packageOptions.length} opções cadastradas
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setCustomDataModalView('packages')}
-                          style={{
-                            background: 'var(--adm-bg-card)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-accent)',
-                            borderRadius: '7px',
-                            padding: '6px 12px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '5px',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--adm-accent)'}
-                          onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--adm-border)'}
-                        >
-                          <Settings size={12} />
-                          <span>Configurar</span>
-                        </button>
-                      </div>
-
-                      {/* Card Formas de Pagamento */}
-                      <div style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '12px',
-                        padding: '14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
-                            background: 'rgba(16, 185, 129, 0.15)',
-                            color: '#10B981',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            <CreditCard size={16} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              Formas de Pagamento
-                            </div>
-                            <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                              {paymentOptions.length} opções cadastradas
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setCustomDataModalView('payments')}
-                          style={{
-                            background: 'var(--adm-bg-card)',
-                            border: '1px solid var(--adm-border)',
-                            color: '#10B981',
-                            borderRadius: '7px',
-                            padding: '6px 12px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '5px',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#10B981'}
-                          onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--adm-border)'}
-                        >
-                          <Settings size={12} />
-                          <span>Configurar</span>
-                        </button>
-                      </div>
-
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
                       {/* Card Tags Recomendadas */}
                       <div style={{
                         background: 'var(--adm-bg-input)',
@@ -2673,14 +2762,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         borderRadius: '12px',
                         padding: '14px',
                         display: 'flex',
-                        flexDirection: 'column',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '12px',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{
-                            width: '32px',
-                            height: '32px',
+                            width: '36px',
+                            height: '36px',
                             borderRadius: '8px',
                             background: 'rgba(212, 175, 55, 0.15)',
                             color: '#D4AF37',
@@ -2689,14 +2778,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             justifyContent: 'center',
                             flexShrink: 0,
                           }}>
-                            <Tag size={16} />
+                            <Tag size={18} />
                           </div>
                           <div>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              Tags Recomendadas
+                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              Tags Recomendadas & Permissões
                             </div>
-                            <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                              {predefinedTags.length} tags ativas
+                            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                              {predefinedTags.length} tags ativas • {allowCollaboratorsCreateTags ? 'Criação livre permitida' : 'Apenas tags predefinidas'}
                             </div>
                           </div>
                         </div>
@@ -2709,7 +2798,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             border: '1px solid var(--adm-border)',
                             color: '#D4AF37',
                             borderRadius: '7px',
-                            padding: '6px 12px',
+                            padding: '7px 14px',
                             fontSize: '0.74rem',
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -2722,8 +2811,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           onMouseEnter={(e) => e.currentTarget.style.borderColor = '#D4AF37'}
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--adm-border)'}
                         >
-                          <Settings size={12} />
-                          <span>Configurar</span>
+                          <Settings size={13} />
+                          <span>Configurar Tags</span>
                         </button>
                       </div>
                     </div>
@@ -2737,7 +2826,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           Campos Personalizados do Lead
                         </div>
                         <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                          Renderizados diretamente dentro das seções correspondentes da ficha do lead.
+                          Organizados em seções prioritárias, festa, contratante ou seções personalizadas.
                         </div>
                       </div>
 
@@ -2746,7 +2835,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         onClick={() => {
                           setNewFieldLabel('');
                           setNewFieldType('text');
-                          setNewFieldSection('commercial');
+                          setNewFieldSection('priority');
+                          setNewCustomSectionName('');
                           setNewFieldOptions('');
                           setEditingFieldId(null);
                           setCustomDataModalView('add_field');
@@ -2793,9 +2883,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {customFields.map((field) => {
                           const sectionName = 
-                            field.section === 'event' ? 'Dados do Evento' :
-                            field.section === 'contact' ? 'Aniversariante & Contatos' :
-                            'Dados Comerciais';
+                            field.section === 'party_data' || field.section === 'event' ? 'Dados da Festa / Evento' :
+                            field.section === 'contractor' || field.section === 'contact' ? 'Contratante & Aniversariante' :
+                            field.section === 'custom' ? (field.customSectionName || 'Seção Personalizada') :
+                            'Campos Prioritários';
 
                           const typeName = 
                             field.type === 'todo' ? 'Checklist' :
@@ -2880,7 +2971,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                     setEditingFieldId(field.id);
                                     setNewFieldLabel(field.label);
                                     setNewFieldType(field.type);
-                                    setNewFieldSection(field.section || 'commercial');
+                                    setNewFieldSection(field.section || 'priority');
+                                    setNewCustomSectionName(field.customSectionName || '');
                                     setNewFieldOptions(field.options ? field.options.join(', ') : '');
                                     setCustomDataModalView('edit_field');
                                   }}
@@ -2928,191 +3020,37 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 </div>
               )}
 
-              {/* ── VIEW: PACOTES DO FUNIL ── */}
-              {customDataModalView === 'packages' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder="Nome do pacote (ex: Pacote Platinum 15 Anos)..."
-                      value={newPackageInput}
-                      onChange={(e) => setNewPackageInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newPackageInput.trim()) {
-                          setPackageOptions(prev => [...prev, newPackageInput.trim()]);
-                          setNewPackageInput('');
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        color: 'var(--adm-text-title)',
-                        fontSize: '0.80rem',
-                        outline: 'none',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newPackageInput.trim()) {
-                          setPackageOptions(prev => [...prev, newPackageInput.trim()]);
-                          setNewPackageInput('');
-                        }
-                      }}
-                      style={{
-                        background: 'var(--adm-accent)',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 16px',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <Plus size={14} />
-                      <span>Adicionar</span>
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {packageOptions.map((pkg, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '8px',
-                          padding: '10px 14px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Package size={15} color="var(--adm-accent)" />
-                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{pkg}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setPackageOptions(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
-                          title="Remover pacote"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    {packageOptions.length === 0 && (
-                      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                        Nenhum pacote cadastrado para este funil.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── VIEW: FORMAS DE PAGAMENTO ── */}
-              {customDataModalView === 'payments' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder="Condição de pagamento (ex: Entrada 30% + Saldo 10x)..."
-                      value={newPaymentInput}
-                      onChange={(e) => setNewPaymentInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newPaymentInput.trim()) {
-                          setPaymentOptions(prev => [...prev, newPaymentInput.trim()]);
-                          setNewPaymentInput('');
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '8px',
-                        padding: '8px 12px',
-                        color: 'var(--adm-text-title)',
-                        fontSize: '0.80rem',
-                        outline: 'none',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newPaymentInput.trim()) {
-                          setPaymentOptions(prev => [...prev, newPaymentInput.trim()]);
-                          setNewPaymentInput('');
-                        }
-                      }}
-                      style={{
-                        background: 'var(--adm-accent)',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 16px',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <Plus size={14} />
-                      <span>Adicionar</span>
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {paymentOptions.map((pmt, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '8px',
-                          padding: '10px 14px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <CreditCard size={15} color="#10B981" />
-                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{pmt}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentOptions(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
-                          title="Remover forma de pagamento"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    {paymentOptions.length === 0 && (
-                      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
-                        Nenhuma forma de pagamento cadastrada para este funil.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* ── VIEW: TAGS RECOMENDADAS ── */}
               {customDataModalView === 'tags' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Permissão de criação livre de tags */}
+                  <div style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Permitir que colaboradores criem novas tags livres
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                        Se desativado, os colaboradores só poderão vincular as tags cadastradas nesta lista de configuração.
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={allowCollaboratorsCreateTags}
+                      onChange={(e) => setAllowCollaboratorsCreateTags(e.target.checked)}
+                      style={{ width: '16px', height: '16px', accentColor: '#10B981', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Input de Adicionar Tag */}
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
@@ -3260,9 +3198,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           cursor: 'pointer',
                         }}
                       >
-                        <option value="commercial">Dados Comerciais (Seção 1)</option>
-                        <option value="contact">Aniversariante & Contatos (Seção 2)</option>
-                        <option value="event">Dados do Evento (Seção 3)</option>
+                        <option value="priority">1. Campos Prioritários (Seção 1)</option>
+                        <option value="party_data">2. Dados da Festa / Evento</option>
+                        <option value="contractor">3. Contratante & Aniversariante</option>
+                        <option value="custom">4. Seção Personalizada...</option>
                       </select>
                     </div>
 
@@ -3293,6 +3232,30 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       </select>
                     </div>
                   </div>
+
+                  {/* Nome da Seção Personalizada se custom */}
+                  {newFieldSection === 'custom' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                        Nome da Seção Personalizada *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Cerimonial & Assessoria, Fornecedores Extras..."
+                        value={newCustomSectionName}
+                        onChange={(e) => setNewCustomSectionName(e.target.value)}
+                        style={{
+                          background: 'var(--adm-bg-card)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.78rem',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  )}
 
                   {/* Opções de Seleção */}
                   {(newFieldType === 'select' || newFieldType === 'multi_select') && (
@@ -3326,6 +3289,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         setEditingFieldId(null);
                         setNewFieldLabel('');
                         setNewFieldOptions('');
+                        setNewCustomSectionName('');
                       }}
                       style={{
                         background: 'transparent',
@@ -3356,6 +3320,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 label: newFieldLabel.trim(),
                                 type: newFieldType,
                                 section: newFieldSection,
+                                customSectionName: newFieldSection === 'custom' ? newCustomSectionName.trim() : undefined,
                                 options: parsedOptions,
                               };
                             }
@@ -3367,6 +3332,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             label: newFieldLabel.trim(),
                             type: newFieldType,
                             section: newFieldSection,
+                            customSectionName: newFieldSection === 'custom' ? newCustomSectionName.trim() : undefined,
                             options: parsedOptions,
                           };
                           setCustomFields(prev => [...prev, createdField]);
@@ -3375,6 +3341,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         setEditingFieldId(null);
                         setNewFieldLabel('');
                         setNewFieldOptions('');
+                        setNewCustomSectionName('');
                         setCustomDataModalView('hub');
                       }}
                       style={{

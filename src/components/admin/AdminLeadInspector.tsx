@@ -2,23 +2,26 @@ import React, { useState, useMemo } from 'react';
 import { 
   ChevronDown, Trash2, Check,
   ChevronLeft, ChevronRight, Plus,
-  Shield, PartyPopper, DollarSign, Users,
+  Shield, PartyPopper, Users,
   CheckCircle2, Clock, X, Sparkles,
   Globe, ExternalLink, FileText, Copy, Tag,
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
-  Lock, Unlock, AlertTriangle
+  Lock, Unlock, AlertTriangle, Send
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
+import { generateUuid } from '../../utils/uuid';
 import type { 
   Lead, 
   CrmStage, 
   LeadContactRole,
   LeadContact,
+  LeadActivity,
   LeadEventType,
   LeadTemperature,
   LeadMqlLevel,
@@ -33,6 +36,8 @@ interface AdminLeadInspectorProps {
   isCollapsed?: boolean;
   readOnly?: boolean;
   isPostSale?: boolean;
+  selectedRecipientPhone?: string;
+  onSelectRecipientPhone?: (phone: string) => void;
 }
 
 const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string; border: string }> = {
@@ -58,6 +63,14 @@ const CONTACT_ROLE_LABELS: Record<string, string> = {
 
 const EVENT_TYPE_OPTIONS: LeadEventType[] = ['15 Anos', 'Casamento', 'Infantil', 'Formatura', 'Corporativo', 'Outro'];
 
+const URGENCY_OPTIONS: { key: string; label: string; color: string }[] = [
+  { key: '', label: 'Não Definida', color: 'var(--adm-text-muted)' },
+  { key: 'baixa', label: 'Baixa', color: '#10B981' },
+  { key: 'media', label: 'Média', color: '#F59E0B' },
+  { key: 'alta', label: 'Alta', color: '#F97316' },
+  { key: 'imediata', label: 'Imediata / Crítica', color: '#EF4444' },
+];
+
 export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   lead,
   onStageChange,
@@ -65,6 +78,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   isCollapsed,
   readOnly = false,
   isPostSale = false,
+  selectedRecipientPhone,
+  onSelectRecipientPhone,
 }) => {
   const { 
     currentUser, 
@@ -72,11 +87,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     venues,
     funnels,
     sources,
-    leads,
     mqlQuestions,
+    updateLeadStage,
     updateLeadData, 
+    deleteLead,
     validateLead, 
-    invalidateLead,
     assignLeadSdr,
     assignLeadCloser,
     removeLeadSdr,
@@ -88,6 +103,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [scheduleCommitmentType, setScheduleCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completingCommitmentType, setCompletingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completionFeedback, setCompletionFeedback] = useState<string>('');
@@ -96,10 +112,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isTempDropdownOpen, setIsTempDropdownOpen] = useState(false);
-  const [isPackageDropdownOpen, setIsPackageDropdownOpen] = useState(false);
-  const [isPaymentDropdownOpen, setIsPaymentDropdownOpen] = useState(false);
+  const [isCreditCardDropdownOpen, setIsCreditCardDropdownOpen] = useState(false);
   const [isEventTypeDropdownOpen, setIsEventTypeDropdownOpen] = useState(false);
-  const [isHoveringRevoke, setIsHoveringRevoke] = useState(false);
+  const [isUrgencyDropdownOpen, setIsUrgencyDropdownOpen] = useState(false);
 
   // Trava de segurança para leads com resultado final (Ganho/Perdido)
   const [isOutcomeUnlocked, setIsOutcomeUnlocked] = useState(false);
@@ -123,36 +138,24 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [isSdrDropdownOpen, setIsSdrDropdownOpen] = useState(false);
   const [isCloserDropdownOpen, setIsCloserDropdownOpen] = useState(false);
 
-
-  const leadFunnel = useMemo(() => funnels.find(f => f.id === lead.funnelId || f.name === lead.funnelId) || funnels[0], [funnels, lead.funnelId]);
+  const leadFunnel = useMemo(() => {
+    return funnels.find(f => f.id === lead.funnelId || f.name === lead.funnelId) ||
+      funnels.find(f => (f.venueId === 'all' || f.venueId === lead.venueId) && !f.isPostSale) ||
+      funnels[0];
+  }, [funnels, lead.funnelId, lead.venueId]);
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
     (leadFunnel?.predefinedTags || []).forEach(t => { if (t) set.add(t.trim()); });
-    funnels.forEach(f => (f.predefinedTags || []).forEach(t => { if (t) set.add(t.trim()); }));
-    (leads || []).forEach(l => (l.tags || []).forEach(t => { if (t) set.add(t.trim()); }));
-    if (set.size === 0) {
-      ['VIP', 'Prioridade Alta', 'Degustação Pendente', 'Orçamento Enviado', 'Visita Agendada'].forEach(t => set.add(t));
-    }
     const currentTags = (lead.tags || []).map(t => t.toLowerCase());
     return Array.from(set).filter(t => !currentTags.includes(t.toLowerCase()) && t.toLowerCase() !== 'indicação');
-  }, [leadFunnel, funnels, leads, lead.tags]);
-
-  const availablePackageOptions = useMemo(() => {
-    const opts = leadFunnel?.packageOptions || [];
-    return [...opts, 'Personalizado...'];
-  }, [leadFunnel]);
-
-  const availablePaymentOptions = useMemo(() => {
-    const opts = leadFunnel?.paymentOptions || [];
-    return [...opts, 'Personalizado...'];
-  }, [leadFunnel]);
+  }, [leadFunnel, lead.tags]);
 
   const closeAllDropdowns = () => {
     setIsTempDropdownOpen(false);
-    setIsPackageDropdownOpen(false);
-    setIsPaymentDropdownOpen(false);
+    setIsCreditCardDropdownOpen(false);
     setIsEventTypeDropdownOpen(false);
+    setIsUrgencyDropdownOpen(false);
     setIsStageDropdownOpen(false);
     setIsSdrDropdownOpen(false);
     setIsCloserDropdownOpen(false);
@@ -196,16 +199,21 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [draftBirthday, setDraftBirthday] = useState(lead.birthday || lead.debutanteBirthDate || '');
   const [draftCpf, setDraftCpf] = useState(lead.cpf || '');
   const [draftEstimatedGuests, setDraftEstimatedGuests] = useState<string>(lead.estimatedGuests ? String(lead.estimatedGuests) : '');
-  const [draftDesiredPeriod, setDraftDesiredPeriod] = useState(lead.desiredPeriod || '');
   const [draftDealValue, setDraftDealValue] = useState<string>(() => {
     const val = lead.dealValue || lead.estimatedBudget || 0;
     return val > 0 ? formatCurrency(val) : '';
   });
-  const [draftPackageSold, setDraftPackageSold] = useState(lead.packageSold || lead.interestService || '');
-  const [draftPaymentMethod, setDraftPaymentMethod] = useState(lead.paymentMethod || '');
+  const [draftEventYear, setDraftEventYear] = useState<string>(() => {
+    if (lead.eventYear) return String(lead.eventYear);
+    if (lead.eventDate) return String(new Date(lead.eventDate + 'T12:00:00').getFullYear());
+    return '';
+  });
+  const [draftDecisionMakers, setDraftDecisionMakers] = useState<string>(lead.decisionMakers || '');
+  const [draftDownPayment, setDraftDownPayment] = useState<string>(() => lead.downPayment ? formatCurrency(lead.downPayment) : '');
+  const [draftInstallments, setDraftInstallments] = useState<string>(() => lead.installments ? String(lead.installments) : '');
+  const [draftProfession, setDraftProfession] = useState<string>(lead.profession || '');
 
   // Dynamic optional fields toggle
-  const [showBirthdayField, setShowBirthdayField] = useState(false);
   const [showEmailField, setShowEmailField] = useState(false);
   const [showCpfField, setShowCpfField] = useState(false);
   const [showNeighborhoodField, setShowNeighborhoodField] = useState(false);
@@ -220,18 +228,19 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     setDraftBirthday(lead.birthday || lead.debutanteBirthDate || '');
     setDraftCpf(lead.cpf || '');
     setDraftEstimatedGuests(lead.estimatedGuests ? String(lead.estimatedGuests) : '');
-    setDraftDesiredPeriod(lead.desiredPeriod || '');
     const val = lead.dealValue || lead.estimatedBudget || 0;
     setDraftDealValue(val > 0 ? formatCurrency(val) : '');
-    setDraftPackageSold(lead.packageSold || lead.interestService || '');
-    setDraftPaymentMethod(lead.paymentMethod || '');
+    setDraftEventYear(lead.eventYear ? String(lead.eventYear) : (lead.eventDate ? String(new Date(lead.eventDate + 'T12:00:00').getFullYear()) : ''));
+    setDraftDecisionMakers(lead.decisionMakers || '');
+    setDraftDownPayment(lead.downPayment ? formatCurrency(lead.downPayment) : '');
+    setDraftInstallments(lead.installments ? String(lead.installments) : '');
+    setDraftProfession(lead.profession || '');
     setIsOutcomeUnlocked(false);
-    setShowBirthdayField(false);
     setShowEmailField(false);
     setShowCpfField(false);
     setShowNeighborhoodField(false);
     setShowAddressField(false);
-  }, [lead.id, lead.name, lead.phone, lead.email, lead.neighborhood, lead.address, lead.birthday, lead.debutanteBirthDate, lead.cpf, lead.estimatedGuests, lead.desiredPeriod, lead.dealValue, lead.estimatedBudget, lead.packageSold, lead.interestService, lead.paymentMethod]);
+  }, [lead.id, lead.name, lead.phone, lead.email, lead.neighborhood, lead.address, lead.birthday, lead.debutanteBirthDate, lead.cpf, lead.estimatedGuests, lead.dealValue, lead.estimatedBudget, lead.eventYear, lead.decisionMakers, lead.downPayment, lead.installments, lead.profession]);
 
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
@@ -239,12 +248,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
   const isManagerOrMaster = currentUser?.role === 'master' || currentUser?.role === 'admin';
-  const canAccessPostSale = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev' || currentUser?.role === 'pos_venda' || (currentUser as any)?.sectors?.includes('pos_venda');
+  const canAccessPostSale = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'pos_venda' || (currentUser as any)?.sectors?.includes('pos_venda');
   
   const commercialCollaborators = useMemo(() => {
     return collaborators.filter(c => {
       if (!c.active) return false;
-      if (c.role === 'master' || c.role === 'dev') return true;
+      if (c.role === 'master') return true;
       if (c.sectors && c.sectors.length > 0) {
         return c.sectors.includes('comercial');
       }
@@ -276,11 +285,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     let rawStages = leadFunnel?.stages || [];
     if (rawStages.length === 0) {
       rawStages = [
-        { id: 'new_lead', name: 'Novo Lead', color: '#60A5FA' },
-        { id: 'in_analysis', name: 'Em Análise', color: '#FBBF24' },
-        { id: 'meeting_scheduled', name: 'Reunião Agendada', color: '#A78BFA' },
-        { id: 'contract_signed', name: 'Ganho', color: '#10B981', isWon: true },
-        { id: 'lost', name: 'Perdido', color: '#EF4444', isLoss: true },
+        { id: 'new_lead', name: 'NOVO LEAD', color: '#60A5FA', icon: 'inbox' },
+        { id: 'in_analysis', name: 'EM ANÁLISE', color: '#FBBF24', icon: 'clock' },
+        { id: 'meeting_scheduled', name: 'VISITA AGENDADA', color: '#A78BFA', icon: 'calendar' },
+        { id: 'contract_signed', name: 'GANHO', color: '#10B981', isWon: true, icon: 'dollar' },
+        { id: 'lost', name: 'PERDIDO', color: '#EF4444', isLoss: true, icon: 'x-circle' },
       ];
     }
     if (leadFunnel?.isWonStageEnabled === false) {
@@ -295,41 +304,49 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       const color = matched.color || '#3B82F6';
       return {
         label: matched.name,
+        icon: matched.icon || matched.id,
         color,
         bg: `${color}18`,
         border: `${color}55`,
       };
     }
     const fallback = STAGE_CONFIGS[lead.stage] || { label: lead.stage, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', border: '#3B82F6' };
-    return fallback;
+    return {
+      ...fallback,
+      icon: (lead.stage as string) || 'layers',
+    };
   }, [funnelStages, lead.stage]);
+
+  const handleSelectStage = (newStageId: string) => {
+    if (readOnly) return;
+    const isBlockedEntry = (newStageId === 'new_lead' || newStageId === 'onboarding') && lead.stage !== 'new_lead' && (lead.stage as string) !== 'onboarding';
+    if (isBlockedEntry) {
+      alert('Regra do CRM: A etapa "NOVO LEAD" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
+      return;
+    }
+    if (onStageChange) {
+      onStageChange(newStageId as CrmStage);
+    }
+    updateLeadStage(lead.id, newStageId as CrmStage);
+    setIsStageDropdownOpen(false);
+  };
 
   const currentStageIndex = useMemo(() => {
     const idx = funnelStages.findIndex(s => s.id === lead.stage);
     return idx >= 0 ? idx : 0;
   }, [funnelStages, lead.stage]);
 
-  // MQL Questions for this funnel / venue (supporting funnel-based, venue-based and full fallback)
+  // ICP / MQL Questions específicas vinculadas a este Funil + Casa de Festas (Unidade)
   const venueMqlQuestions = useMemo(() => {
-    // 1. If lead has a funnelId, check for questions directly linked to this funnel
-    if (lead.funnelId) {
-      const funnelMatched = mqlQuestions.filter(q =>
-        (q.funnelIds && q.funnelIds.includes(lead.funnelId!)) ||
-        q.funnelId === lead.funnelId
-      );
-      if (funnelMatched.length > 0) return funnelMatched;
-    }
-
-    // 2. Fallback to venue-based matching
-    const venueMatched = mqlQuestions.filter(q => 
-      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(lead.venueId)) ||
-      q.venueId === lead.venueId || 
-      q.venueId === 'all'
-    );
-    if (venueMatched.length > 0) return venueMatched;
-
-    // 3. Global fallback to all configured MQL questions
-    return mqlQuestions;
+    if (!mqlQuestions || mqlQuestions.length === 0) return [];
+    
+    // Pergunta deve estar vinculada à casa deste lead (ou all) E ao funil deste lead (ou all)
+    return mqlQuestions.filter(q => {
+      const matchesFunnel = !lead.funnelId || !q.funnelId || q.funnelId === lead.funnelId || (q.funnelIds && q.funnelIds.includes(lead.funnelId));
+      const matchesVenue = (q.venueId && (q.venueId === lead.venueId || (q.venueId === 'all' && (!q.venueIds || q.venueIds.length === 0)))) ||
+                           (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(lead.venueId));
+      return matchesFunnel && matchesVenue;
+    });
   }, [mqlQuestions, lead.funnelId, lead.venueId]);
 
   // Current MQL state
@@ -433,7 +450,26 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       isPrimaryDecisionMaker: false,
     };
 
-    handleUpdate({ contacts: [...(lead.contacts || []), contact] });
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const newContactActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId: lead.id,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: 'Contato Vinculado Adicionado',
+      text: `Contato vinculado adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${newContactName.trim()}" (${newContactRole}) e telefone ${newContactPhone.trim()} por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
+    handleUpdate({ 
+      contacts: [...(lead.contacts || []), contact],
+      activities: [...(lead.activities || []), newContactActivity],
+    });
     setNewContactName('');
     setNewContactPhone('');
     setNewContactEmail('');
@@ -449,9 +485,26 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       isPrimaryDecisionMaker: c.id === contact.id,
     }));
 
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const decisorActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId: lead.id,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: 'Decisor Principal Definido',
+      text: `Decisor adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${contact.name}" (${contact.role}) e número de telefone ${contact.phone} por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     handleUpdate({
       contacts: updatedContacts,
       primaryContactRole: contact.role,
+      activities: [...(lead.activities || []), decisorActivity],
     });
   };
 
@@ -461,14 +514,51 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       isPrimaryDecisionMaker: false,
     }));
 
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const decisorActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId: lead.id,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: 'Decisor Principal Definido',
+      text: `Lead / Aniversariante "${lead.name}" definido como decisor principal no dia ${new Date().toLocaleDateString('pt-BR')}, telefone ${lead.phone || 'não informado'} por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     handleUpdate({
       contacts: updatedContacts,
       primaryContactRole: 'aniversariante',
+      activities: [...(lead.activities || []), decisorActivity],
     });
   };
 
   const handleRemoveSubContact = (contactId: string) => {
-    handleUpdate({ contacts: (lead.contacts || []).filter(c => c.id !== contactId) });
+    const removedContact = (lead.contacts || []).find(c => c.id === contactId);
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const removeActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId: lead.id,
+      timestamp: new Date().toISOString(),
+      type: 'note',
+      title: 'Contato Vinculado Removido',
+      text: `Contato "${removedContact?.name || 'Contato'}" removido por ${author}.`,
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
+    handleUpdate({ 
+      contacts: (lead.contacts || []).filter(c => c.id !== contactId),
+      activities: [...(lead.activities || []), removeActivity],
+    });
   };
 
   const handleAddTag = () => {
@@ -761,17 +851,34 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       overflow: 'hidden',
     }}>
       
-      {/* ── 1. CABEÇALHO DARK & F5 SYSTEM CIANO ──────────────────────────────────── */}
+      {/* ── 1. CABEÇALHO DARK & F5 SYSTEM CIANO (COM ESPAÇAMENTO REFINADO) ──────── */}
       <div style={{
-        padding: '6px 10px 4px',
+        padding: '12px 14px 10px',
         borderBottom: '1px solid rgba(20, 169, 215, 0.25)',
         background: 'linear-gradient(180deg, #0B111A 0%, #0F1724 100%)',
         color: '#FFFFFF',
         flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
       }}>
         {/* Title row + Collapse Button (< / >) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+            {lead.avatarUrl ? (
+              <img
+                src={lead.avatarUrl}
+                alt={lead.name}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '1.5px solid rgba(20, 169, 215, 0.5)',
+                  flexShrink: 0,
+                }}
+              />
+            ) : null}
             <input
               type="text"
               value={lead.name}
@@ -779,9 +886,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               onChange={(e) => handleUpdate({ name: e.target.value })}
               style={{
                 ...inlineInputStyle,
-                fontSize: '0.90rem',
+                fontSize: '0.92rem',
                 fontWeight: 900,
-                padding: '1px 3px',
+                padding: '2px 4px',
                 color: '#FFFFFF',
                 cursor: effectiveReadOnly ? 'default' : 'text',
               }}
@@ -792,6 +899,30 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirmModal(true)}
+                  title="Excluir este Lead"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#EF4444',
+                    borderRadius: '6px',
+                    padding: '4px 6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </>
+            )}
+
             {onToggleCollapse && (
               <button
                 type="button"
@@ -817,21 +948,21 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         </div>
 
         {/* Tag Oficial de Código Único (LEAD-XXXXXX ou CLI-XXXXXX) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '4px',
+            gap: '5px',
             background: isPostSale ? 'rgba(6, 182, 212, 0.15)' : 'rgba(20, 169, 215, 0.12)',
             border: `1px solid ${isPostSale ? 'rgba(6, 182, 212, 0.4)' : 'rgba(20, 169, 215, 0.35)'}`,
-            borderRadius: '5px',
-            padding: '1px 5px',
+            borderRadius: '6px',
+            padding: '2px 7px',
           }}>
-            <Tag size={10} color={isPostSale ? '#06B6D4' : '#14A9D7'} />
-            <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase' }}>
+            <Tag size={11} color={isPostSale ? '#06B6D4' : '#14A9D7'} />
+            <span style={{ fontSize: '0.60rem', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase' }}>
               {isPostSale ? 'CLIENTE:' : 'CÓDIGO:'}
             </span>
-            <span style={{ fontSize: '0.68rem', fontWeight: 900, color: isPostSale ? '#06B6D4' : '#14A9D7', letterSpacing: '0.6px', fontFamily: "'Poppins', monospace" }}>
+            <span style={{ fontSize: '0.70rem', fontWeight: 900, color: isPostSale ? '#06B6D4' : '#14A9D7', letterSpacing: '0.6px', fontFamily: "'Poppins', monospace" }}>
               {isPostSale ? (lead.code ? (lead.code.startsWith('LEAD-') ? `CLI-${lead.code.replace('LEAD-', '')}` : lead.code) : 'CLI-NOVO') : (lead.code || 'LEAD-NOVO')}
             </span>
             <button
@@ -851,14 +982,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 padding: '1px 2px',
                 display: 'flex',
                 alignItems: 'center',
-                marginLeft: '2px',
+                marginLeft: '3px',
               }}
             >
-              {copiedCode ? <Check size={10} /> : <Copy size={10} />}
+              {copiedCode ? <Check size={11} /> : <Copy size={11} />}
             </button>
           </div>
           {copiedCode && (
-            <span style={{ fontSize: '0.60rem', color: '#10B981', fontWeight: 700 }}>
+            <span style={{ fontSize: '0.62rem', color: '#10B981', fontWeight: 700 }}>
               Copiado!
             </span>
           )}
@@ -866,7 +997,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
         {/* Event date if post-sale */}
         {isPostSale && (lead.eventDate || lead.partyDate) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.68rem', color: '#06B6D4', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
               <PartyPopper size={11} color="#06B6D4" /> {new Date((lead.eventDate || lead.partyDate) + 'T12:00:00').toLocaleDateString('pt-BR')}
             </span>
@@ -875,20 +1006,20 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
         {/* Badge de Pós-Venda (apenas se for pós-venda) */}
         {isPostSale && (
-          <div style={{ marginBottom: '4px' }}>
+          <div>
             <span style={{
               fontSize: '0.62rem',
               fontWeight: 700,
-              padding: '1px 6px',
+              padding: '2px 7px',
               borderRadius: '6px',
               background: 'rgba(6, 182, 212, 0.15)',
               color: '#06B6D4',
               border: '1px solid rgba(6, 182, 212, 0.35)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '3px',
+              gap: '4px',
             }}>
-              <Shield size={10} /> Cliente Ativo
+              <Shield size={11} /> Cliente Ativo
             </span>
           </div>
         )}
@@ -900,7 +1031,6 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             border: '1px solid rgba(6, 182, 212, 0.35)',
             borderRadius: '8px',
             padding: '6px 8px',
-            marginBottom: '6px',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -914,30 +1044,53 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
         )}
 
-        {/* Pipeline Stage Dropdown with Colored Indicator */}
-        <div style={{ position: 'relative', marginBottom: '6px' }}>
+        {/* Pipeline Stage Dropdown with Colored Indicator & Stage Icon */}
+        <div data-inspector-dropdown="stage-container" style={{ position: 'relative', marginTop: '2px', zIndex: 70 }}>
           <div
-            onClick={() => !readOnly && setIsStageDropdownOpen(!isStageDropdownOpen)}
+            data-inspector-dropdown="stage-toggle"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!readOnly) setIsStageDropdownOpen(prev => !prev);
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '4px 8px',
+              padding: '7px 10px',
               background: currentStageConfig.bg,
               border: `1px solid ${currentStageConfig.border}`,
-              borderRadius: '6px',
+              borderLeft: `3.5px solid ${currentStageConfig.color}`,
+              borderRadius: '8px',
               cursor: readOnly ? 'default' : 'pointer',
-              fontSize: '0.72rem',
+              fontSize: '0.74rem',
               fontWeight: 800,
               color: currentStageConfig.color,
+              transition: 'all 0.15s ease',
+              userSelect: 'none',
             }}
           >
-            <span>Funil: {currentStageConfig.label}</span>
-            {!readOnly && <ChevronDown size={12} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+              {renderFunnelOrStageIcon(currentStageConfig.icon, 14, currentStageConfig.color)}
+              <span style={{ textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {String(currentStageConfig.label || '').toUpperCase()}
+              </span>
+            </div>
+            {!readOnly && (
+              <ChevronDown 
+                size={14} 
+                style={{ 
+                  transform: isStageDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', 
+                  transition: 'transform 0.15s ease',
+                  flexShrink: 0,
+                  opacity: 0.85,
+                }} 
+              />
+            )}
           </div>
 
           {/* Multi-Stage Color Progress Bar */}
-          <div style={{ display: 'flex', gap: '3px', marginTop: '6px' }}>
+          <div data-inspector-dropdown="stage-progress" style={{ display: 'flex', gap: '3px', marginTop: '6px' }}>
             {funnelStages.map((stg, idx) => {
               const color = stg.color || '#3B82F6';
               const isLost = stg.id === 'lost' || stg.isLoss;
@@ -948,23 +1101,30 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               return (
                 <div
                   key={stg.id}
-                  onClick={() => {
+                  data-inspector-dropdown="stage-progress-tick"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (readOnly) return;
-                    if (isBlockedEntry) {
-                      alert('Regra do CRM: A etapa "Novo Lead" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
-                      return;
-                    }
-                    onStageChange(stg.id as CrmStage);
+                    handleSelectStage(stg.id);
                   }}
-                  title={isBlockedEntry ? `${stg.name} (Bloqueado: etapa exclusiva de entrada)` : stg.name}
+                  title={isBlockedEntry ? `${stg.name.toUpperCase()} (BLOQUEADO: ETAPA EXCLUSIVA DE ENTRADA)` : `Mudar para: ${stg.name.toUpperCase()}`}
                   style={{
                     flex: 1,
-                    height: '4px',
-                    borderRadius: '2px',
+                    height: '6px',
+                    borderRadius: '3px',
                     background: isCurrentLost && isLost ? '#EF4444' : isFilled ? color : 'rgba(255,255,255,0.15)',
                     cursor: readOnly || isBlockedEntry ? 'not-allowed' : 'pointer',
                     opacity: isBlockedEntry ? 0.35 : 1,
-                    transition: 'all 0.2s ease',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!readOnly && !isBlockedEntry) {
+                      e.currentTarget.style.transform = 'scaleY(1.3)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scaleY(1)';
                   }}
                 />
               );
@@ -973,19 +1133,26 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
           {/* Stage Dropdown Menu */}
           {isStageDropdownOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              right: 0,
-              marginTop: '4px',
-              background: '#0F1724',
-              border: '1px solid rgba(20, 169, 215, 0.4)',
-              borderRadius: '8px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              zIndex: 60,
-              overflow: 'hidden',
-            }}>
+            <div 
+              data-inspector-dropdown="stage-menu"
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 5px)',
+                left: 0,
+                right: 0,
+                background: '#0F1724',
+                border: '1px solid rgba(20, 169, 215, 0.4)',
+                borderRadius: '10px',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.85)',
+                zIndex: 99999,
+                overflow: 'hidden',
+                padding: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+              }}
+            >
               {funnelStages.map(stg => {
                 const color = stg.color || '#3B82F6';
                 const isSelected = lead.stage === stg.id;
@@ -995,55 +1162,85 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   return (
                     <div
                       key={stg.id}
-                      onClick={() => {
-                        alert('Regra do CRM: Não é permitido retornar para "Novo Lead" após o lead já ter avançado no funil.');
+                      data-inspector-dropdown="stage-menu-item-blocked"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        alert('Regra do CRM: Não é permitido retornar para "NOVO LEAD" após o lead já ter avançado no funil.');
                       }}
                       style={{
-                        padding: '9px 14px',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         cursor: 'not-allowed',
-                        fontSize: '0.78rem',
-                        fontWeight: 500,
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
                         color: 'var(--adm-text-muted)',
                         background: 'transparent',
                         opacity: 0.45,
+                        textTransform: 'uppercase',
+                        userSelect: 'none',
                       }}
                       title="Etapa bloqueada: apenas para entrada de leads"
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {stg.name}
-                        <span style={{ fontSize: '0.62rem', color: '#EF4444', fontWeight: 700 }}>(Bloqueado)</span>
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        {renderFunnelOrStageIcon(stg.icon || stg.id, 13, 'var(--adm-text-muted)')}
+                        <span>{stg.name.toUpperCase()}</span>
+                        <span style={{ fontSize: '0.60rem', color: '#EF4444', fontWeight: 700 }}>(BLOQUEADO)</span>
+                      </div>
                     </div>
                   );
                 }
 
                 return (
-                  <div
+                  <button
                     key={stg.id}
-                    onClick={() => {
-                      onStageChange(stg.id as CrmStage);
-                      setIsStageDropdownOpen(false);
+                    type="button"
+                    data-inspector-dropdown="stage-menu-item"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectStage(stg.id);
                     }}
                     style={{
-                      padding: '9px 14px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: isSelected ? `1px solid ${color}60` : '1px solid transparent',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       cursor: 'pointer',
-                      fontSize: '0.78rem',
-                      fontWeight: isSelected ? 800 : 500,
-                      color: isSelected ? color : '#FFFFFF',
+                      fontSize: '0.74rem',
+                      fontWeight: isSelected ? 800 : 600,
+                      color: isSelected ? color : '#E2E8F0',
                       background: isSelected ? `${color}25` : 'transparent',
+                      textTransform: 'uppercase',
+                      textAlign: 'left',
+                      transition: 'all 0.12s ease',
+                      width: '100%',
+                      userSelect: 'none',
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? `${color}25` : 'transparent'}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#E2E8F0';
+                      }
+                    }}
                   >
-                    <span>{stg.name}</span>
-                    {isSelected && <Check size={14} />}
-                  </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      {renderFunnelOrStageIcon(stg.icon || stg.id, 14, color)}
+                      <span>{stg.name.toUpperCase()}</span>
+                    </div>
+                    {isSelected && <Check size={14} color={color} />}
+                  </button>
                 );
               })}
             </div>
@@ -1391,37 +1588,39 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <span>Origem</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('mql')}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: activeTab === 'mql' ? '2px solid #14A9D7' : '2px solid transparent',
-                padding: '3px 8px',
-                color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
-                fontSize: '0.70rem',
-                fontWeight: activeTab === 'mql' ? 800 : 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <IcpTargetUserIcon size={13} color={activeTab === 'mql' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
-              <span>ICP</span>
-              <span style={{
-                fontSize: '0.58rem',
-                background: !mqlResult.isDefined ? 'rgba(148,163,184,0.18)' : mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
-                color: !mqlResult.isDefined ? '#94A3B8' : mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
-                padding: '1px 5px',
-                borderRadius: '4px',
-                fontWeight: 800
-              }}>
-                {!mqlResult.isDefined ? 'Indefinido' : `${mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} (${mqlResult.score}%)`}
-              </span>
-            </button>
+            {venueMqlQuestions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('mql')}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: activeTab === 'mql' ? '2px solid #14A9D7' : '2px solid transparent',
+                  padding: '3px 8px',
+                  color: activeTab === 'mql' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
+                  fontSize: '0.70rem',
+                  fontWeight: activeTab === 'mql' ? 800 : 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <IcpTargetUserIcon size={13} color={activeTab === 'mql' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
+                <span>ICP</span>
+                <span style={{
+                  fontSize: '0.58rem',
+                  background: !mqlResult.isDefined ? 'rgba(148,163,184,0.18)' : mqlResult.level === 'top' ? 'rgba(16,185,129,0.2)' : mqlResult.level === 'qualified' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                  color: !mqlResult.isDefined ? '#94A3B8' : mqlResult.level === 'top' ? '#10B981' : mqlResult.level === 'qualified' ? '#F59E0B' : '#EF4444',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  fontWeight: 800
+                }}>
+                  {!mqlResult.isDefined ? 'Indefinido' : `${mqlResult.level === 'top' ? 'ICP A' : mqlResult.level === 'qualified' ? 'ICP B' : 'ICP C'} (${mqlResult.score}%)`}
+                </span>
+              </button>
+            )}
           </div>
         )}
 
@@ -1624,14 +1823,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         {activeTab === 'principal' && (
           <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
-            {/* ── SEÇÃO 1: 🛡️ DADOS COMERCIAIS & RESPONSÁVEIS ── */}
+            {/* ── SEÇÃO 1: ⭐ DADOS PRIORITÁRIOS UNIFICADOS (16 CAMPOS ESSENCIAIS) ── */}
             <div style={sectionTitleStyle}>
-              <DollarSign size={13} color="var(--adm-accent)" />
-              <span>Dados Comerciais</span>
+              <Sparkles size={13} color="var(--adm-accent)" />
+              <span>Dados Prioritários</span>
             </div>
 
             <div style={cardStyle}>
-              {/* Usuário Responsável / SDR (Custom Dropdown com Foto, Nome Completo e Estilo Unificado) */}
+              {/* 1. SDR (Responsável Pré-Vendas) */}
               <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
                 <span style={cardLabelStyle}>SDR</span>
                 <div style={cardValueStyle}>
@@ -1649,7 +1848,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       justifyContent: 'space-between',
                       width: '100%',
                       cursor: !readOnly ? 'pointer' : 'default',
-                      padding: '3px 6px',
+                      padding: '2px 4px',
                       borderRadius: '6px',
                       background: isSdrDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
                       transition: 'background 0.15s ease',
@@ -1660,13 +1859,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     {lead.sdrId ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                         <div style={{
-                          width: '22px',
-                          height: '22px',
+                          width: '20px',
+                          height: '20px',
                           borderRadius: '50%',
                           background: 'rgba(20, 169, 215, 0.15)',
                           border: '1px solid rgba(20, 169, 215, 0.35)',
                           color: 'var(--adm-accent)',
-                          fontSize: '0.66rem',
+                          fontSize: '0.64rem',
                           fontWeight: 800,
                           display: 'flex',
                           alignItems: 'center',
@@ -1680,12 +1879,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                             (sdrCollab?.name || lead.assignedTo || 'S').charAt(0).toUpperCase()
                           )}
                         </div>
-                        <span style={{ fontSize: '0.80rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {sdrCollab?.name || lead.assignedTo || 'SDR'}
                         </span>
                       </div>
                     ) : (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                      <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
                         Atribuir SDR...
                       </span>
                     )}
@@ -1725,7 +1924,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     <div style={{
                       position: 'absolute',
                       top: '100%',
-                      left: '105px',
+                      left: 0,
                       right: 0,
                       marginTop: '4px',
                       background: 'var(--adm-bg-card)',
@@ -1782,8 +1981,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                             onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? 'var(--adm-bg-hover)' : 'transparent'}
                           >
                             <div style={{
-                              width: '22px',
-                              height: '22px',
+                              width: '20px',
+                              height: '20px',
                               borderRadius: '50%',
                               background: 'rgba(20, 169, 215, 0.15)',
                               border: '1px solid rgba(20, 169, 215, 0.35)',
@@ -1803,7 +2002,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                               )}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.78rem', fontWeight: isSelected ? 800 : 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div style={{ fontSize: '0.76rem', fontWeight: isSelected ? 800 : 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {collab.name}
                               </div>
                             </div>
@@ -1816,7 +2015,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               </div>
 
-              {/* Closer / Vendedor (Custom Dropdown com Foto, Nome Completo e Estilo Unificado) */}
+              {/* 2. Closer (Responsável Fechamento) */}
               {!isPostSale && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
                   <span style={cardLabelStyle}>Closer</span>
@@ -1835,7 +2034,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         justifyContent: 'space-between',
                         width: '100%',
                         cursor: !readOnly ? 'pointer' : 'default',
-                        padding: '3px 6px',
+                        padding: '2px 4px',
                         borderRadius: '6px',
                         background: isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
                         transition: 'background 0.15s ease',
@@ -1846,13 +2045,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       {lead.closerId ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                           <div style={{
-                            width: '22px',
-                            height: '22px',
+                            width: '20px',
+                            height: '20px',
                             borderRadius: '50%',
                             background: 'rgba(249, 115, 22, 0.15)',
                             border: '1px solid rgba(249, 115, 22, 0.35)',
                             color: '#F97316',
-                            fontSize: '0.66rem',
+                            fontSize: '0.64rem',
                             fontWeight: 800,
                             display: 'flex',
                             alignItems: 'center',
@@ -1866,12 +2065,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                               (closerList.find(c => c.id === lead.closerId)?.name || lead.closerName || 'C').charAt(0).toUpperCase()
                             )}
                           </div>
-                          <span style={{ fontSize: '0.80rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {closerList.find(c => c.id === lead.closerId)?.name || lead.closerName || 'Closer'}
                           </span>
                         </div>
                       ) : (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
                           Atribuir Closer...
                         </span>
                       )}
@@ -1911,7 +2110,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       <div style={{
                         position: 'absolute',
                         top: '100%',
-                        left: '105px',
+                        left: 0,
                         right: 0,
                         marginTop: '4px',
                         background: 'var(--adm-bg-card)',
@@ -1968,8 +2167,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                               onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? 'var(--adm-bg-hover)' : 'transparent'}
                             >
                               <div style={{
-                                width: '22px',
-                                height: '22px',
+                                width: '20px',
+                                height: '20px',
                                 borderRadius: '50%',
                                 background: 'rgba(249, 115, 22, 0.15)',
                                 border: '1px solid rgba(249, 115, 22, 0.35)',
@@ -1989,7 +2188,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                                 )}
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: isSelected ? 800 : 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div style={{ fontSize: '0.76rem', fontWeight: isSelected ? 800 : 600, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {collab.name}
                                 </div>
                               </div>
@@ -2003,231 +2202,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               )}
 
-              {/* Venda / Orçamento (Formatação Monetária com Salvamento onBlur & Sem Quebra de Linha do R$) */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Venda</span>
-                <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px' }}>
-                  <span style={{ color: '#10B981', fontWeight: 900, fontSize: '0.82rem', flexShrink: 0 }}>R$</span>
-                  <input
-                    type="text"
-                    placeholder="1.200"
-                    value={draftDealValue}
-                    onChange={(e) => {
-                      setDraftDealValue(maskCurrencyInput(e.target.value));
-                    }}
-                    onBlur={() => {
-                      const cleaned = draftDealValue.replace(/\./g, '').replace(',', '.');
-                      const num = parseFloat(cleaned) || 0;
-                      handleUpdate({ dealValue: num, estimatedBudget: num });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    style={{
-                      ...seamlessInputStyle,
-                      color: '#10B981',
-                      fontWeight: 800,
-                      fontSize: '0.86rem',
-                      width: '100%',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = '#10B981'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              {/* Pacote (Custom Dropdown com Opções Pré-configuradas do Funil + Digitação) */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Pacote</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    placeholder="Selecione ou digite o pacote..."
-                    value={draftPackageSold}
-                    onChange={(e) => setDraftPackageSold(e.target.value)}
-                    onBlur={() => {
-                      if (draftPackageSold !== (lead.packageSold || lead.interestService || '')) {
-                        handleUpdate({ packageSold: draftPackageSold.trim(), interestService: draftPackageSold.trim() });
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    style={{
-                      ...seamlessInputStyle,
-                      fontWeight: 600,
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!readOnly) {
-                        const next = !isPackageDropdownOpen;
-                        closeAllDropdowns();
-                        setIsPackageDropdownOpen(next);
-                      }
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-text-muted)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <ChevronDown size={12} />
-                  </button>
-
-                  {isPackageDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: '120px',
-                      right: 0,
-                      marginTop: '4px',
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                      zIndex: 60,
-                      maxHeight: '180px',
-                      overflowY: 'auto',
-                    }}>
-                      {availablePackageOptions.map((pkg) => (
-                        <div
-                          key={pkg}
-                          onClick={() => {
-                            if (pkg !== 'Personalizado...') {
-                              setDraftPackageSold(pkg);
-                              handleUpdate({ packageSold: pkg, interestService: pkg });
-                            }
-                            setIsPackageDropdownOpen(false);
-                          }}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            fontSize: '0.78rem',
-                            fontWeight: draftPackageSold === pkg ? 800 : 500,
-                            color: 'var(--adm-text-title)',
-                            background: draftPackageSold === pkg ? 'var(--adm-bg-hover)' : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = draftPackageSold === pkg ? 'var(--adm-bg-hover)' : 'transparent'}
-                        >
-                          <span>{pkg}</span>
-                          {draftPackageSold === pkg && <Check size={12} />}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Pagamento (Custom Dropdown com Opções Pré-configuradas do Funil + Digitação) */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Pagamento</span>
-                <div style={cardValueStyle}>
-                  <textarea
-                    rows={2}
-                    placeholder="Selecione ou digite a forma..."
-                    value={draftPaymentMethod}
-                    onChange={(e) => setDraftPaymentMethod(e.target.value)}
-                    onBlur={() => {
-                      if (draftPaymentMethod !== (lead.paymentMethod || '')) {
-                        handleUpdate({ paymentMethod: draftPaymentMethod.trim() });
-                      }
-                    }}
-                    style={{
-                      ...seamlessInputStyle,
-                      fontWeight: 600,
-                      resize: 'none',
-                      height: 'auto',
-                      minHeight: '34px',
-                      lineHeight: '1.25',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!readOnly) {
-                        const next = !isPaymentDropdownOpen;
-                        closeAllDropdowns();
-                        setIsPaymentDropdownOpen(next);
-                      }
-                    }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-text-muted)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <ChevronDown size={12} />
-                  </button>
-
-                  {isPaymentDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: '120px',
-                      right: 0,
-                      marginTop: '4px',
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                      zIndex: 60,
-                      maxHeight: '180px',
-                      overflowY: 'auto',
-                    }}>
-                      {availablePaymentOptions.map((pay) => (
-                        <div
-                          key={pay}
-                          onClick={() => {
-                            if (pay !== 'Personalizado...') {
-                              setDraftPaymentMethod(pay);
-                              handleUpdate({ paymentMethod: pay });
-                            }
-                            setIsPaymentDropdownOpen(false);
-                          }}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            fontSize: '0.78rem',
-                            fontWeight: draftPaymentMethod === pay ? 800 : 500,
-                            color: 'var(--adm-text-title)',
-                            background: draftPaymentMethod === pay ? 'var(--adm-bg-hover)' : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = draftPaymentMethod === pay ? 'var(--adm-bg-hover)' : 'transparent'}
-                        >
-                          <span>{pay}</span>
-                          {draftPaymentMethod === pay && <Check size={12} />}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Temperatura (Custom Dropdown com Bolinhas de Status e Sem Emojis) */}
+              {/* 3. Temperatura */}
               {!isPostSale && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
                   <span style={cardLabelStyle}>Temperatura</span>
@@ -2243,52 +2218,51 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
+                        justifyContent: 'space-between',
+                        width: '100%',
                         cursor: readOnly ? 'default' : 'pointer',
-                        padding: '2px 6px',
-                        borderRadius: '6px',
-                        background: 'transparent',
-                        transition: 'background 0.15s ease',
+                        padding: '2px 0',
                       }}
-                      onMouseEnter={(e) => { if (!readOnly) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                     >
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%',
-                        background: (lead.temperature === 'hot') ? '#EF4444' : (lead.temperature === 'cold') ? '#3B82F6' : '#F59E0B',
-                      }} />
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                        {lead.temperature === 'hot' ? 'Quente' : lead.temperature === 'cold' ? 'Frio' : 'Morno'}
-                      </span>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: (lead.temperature === 'hot') ? '#EF4444' : (lead.temperature === 'cold') ? '#3B82F6' : (lead.temperature === 'warm') ? '#F59E0B' : '#94A3B8',
+                        }} />
+                        <span style={{ fontSize: '0.80rem', fontWeight: 700, color: lead.temperature ? 'var(--adm-text-title)' : 'var(--adm-text-muted)' }}>
+                          {lead.temperature === 'hot' ? 'Quente' : lead.temperature === 'cold' ? 'Frio' : lead.temperature === 'warm' ? 'Morno' : 'Sem Temperatura'}
+                        </span>
+                      </div>
                       {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                     </div>
 
-                    {/* Custom Popover */}
+                    {/* Custom Popover Temperatura */}
                     {isTempDropdownOpen && (
                       <div style={{
                         position: 'absolute',
                         top: '100%',
-                        left: '120px',
+                        left: 0,
+                        right: 0,
                         marginTop: '4px',
                         background: 'var(--adm-bg-card)',
                         border: '1px solid var(--adm-border)',
                         borderRadius: '8px',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                         zIndex: 60,
-                        minWidth: '130px',
                         overflow: 'hidden',
                       }}>
                         {[
                           { key: 'hot', label: 'Quente', color: '#EF4444' },
                           { key: 'warm', label: 'Morno', color: '#F59E0B' },
                           { key: 'cold', label: 'Frio', color: '#3B82F6' },
+                          { key: 'none', label: 'Sem Temperatura (Limpar)', color: '#94A3B8' },
                         ].map((t) => (
                           <div
                             key={t.key}
                             onClick={() => {
-                              handleUpdate({ temperature: t.key as LeadTemperature });
+                              handleUpdate({ temperature: t.key === 'none' ? undefined : (t.key as LeadTemperature) });
                               setIsTempDropdownOpen(false);
                             }}
                             style={{
@@ -2297,17 +2271,17 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                               gap: '8px',
                               padding: '8px 12px',
                               cursor: 'pointer',
-                              fontSize: '0.78rem',
-                              fontWeight: lead.temperature === t.key ? 800 : 500,
+                              fontSize: '0.76rem',
+                              fontWeight: ((!lead.temperature && t.key === 'none') || lead.temperature === t.key) ? 800 : 500,
                               color: 'var(--adm-text-title)',
-                              background: lead.temperature === t.key ? 'var(--adm-bg-hover)' : 'transparent',
+                              background: ((!lead.temperature && t.key === 'none') || lead.temperature === t.key) ? 'var(--adm-bg-hover)' : 'transparent',
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = lead.temperature === t.key ? 'var(--adm-bg-hover)' : 'transparent'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = ((!lead.temperature && t.key === 'none') || lead.temperature === t.key) ? 'var(--adm-bg-hover)' : 'transparent'}
                           >
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: t.color }} />
                             <span>{t.label}</span>
-                            {lead.temperature === t.key && <Check size={12} style={{ marginLeft: 'auto' }} />}
+                            {((!lead.temperature && t.key === 'none') || lead.temperature === t.key) && <Check size={12} style={{ marginLeft: 'auto' }} />}
                           </div>
                         ))}
                       </div>
@@ -2316,454 +2290,400 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               )}
 
-              {/* Indicação (Botão Sério Único com Largura Fixa e Hover Revogar) */}
-              {!isPostSale && isReferralLead && (
-                <div style={{ ...cardRowStyle, paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
-                  <span style={cardLabelStyle}>Indicação</span>
-                  <div style={cardValueStyle}>
-                    {lead.isValidated ? (
-                      <button
-                        type="button"
-                        onClick={() => invalidateLead(lead.id)}
-                        onMouseEnter={() => setIsHoveringRevoke(true)}
-                        onMouseLeave={() => setIsHoveringRevoke(false)}
-                        style={{
-                          minWidth: '140px',
-                          height: '28px',
-                          boxSizing: 'border-box',
-                          background: isHoveringRevoke ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                          border: `1px solid ${isHoveringRevoke ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.35)'}`,
-                          color: isHoveringRevoke ? '#EF4444' : '#10B981',
-                          borderRadius: '6px',
-                          padding: '4px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          transition: 'all 0.15s ease',
-                        }}
-                        title={isHoveringRevoke ? "Clique para revogar contato validado" : "Contato validado"}
-                      >
-                        {isHoveringRevoke ? (
-                          <>
-                            <X size={12} />
-                            <span>Revogar Contato</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 size={12} />
-                            <span>Contato Validado</span>
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsValidateModalOpen(true)}
-                        style={{
-                          minWidth: '140px',
-                          height: '28px',
-                          boxSizing: 'border-box',
-                          background: 'rgba(20, 169, 215, 0.08)',
-                          border: '1px solid rgba(20, 169, 215, 0.35)',
-                          borderRadius: '6px',
-                          padding: '4px 12px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          color: 'var(--adm-accent)',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(20, 169, 215, 0.18)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(20, 169, 215, 0.08)'; }}
-                      >
-                        <Clock size={12} />
-                        <span>Validar Contato</span>
-                      </button>
-                    )}
-                  </div>
+              {/* 4. Valor Venda R$ */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Valor Venda</span>
+                <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px' }}>
+                  <span style={{ color: '#10B981', fontWeight: 900, fontSize: '0.82rem', flexShrink: 0 }}>R$</span>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="0,00"
+                    value={draftDealValue}
+                    onChange={(e) => setDraftDealValue(maskCurrencyInput(e.target.value))}
+                    onBlur={() => {
+                      const cleaned = draftDealValue.replace(/\./g, '').replace(',', '.');
+                      const num = parseFloat(cleaned) || 0;
+                      handleUpdate({ dealValue: num || undefined, estimatedBudget: num || undefined });
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    style={{ ...seamlessInputStyle, fontWeight: 800, color: '#10B981', fontSize: '0.86rem' }}
+                    onFocus={(e) => { e.target.style.borderBottomColor = '#10B981'; }}
+                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                  />
                 </div>
-              )}
+              </div>
 
-              {/* Campos Personalizados: Seção Comercial */}
+              {/* 5. Entrada R$ */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Entrada</span>
+                <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-muted)', flexShrink: 0 }}>R$</span>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="0,00"
+                    value={draftDownPayment}
+                    onChange={(e) => setDraftDownPayment(maskCurrencyInput(e.target.value))}
+                    onBlur={() => {
+                      const num = draftDownPayment ? parseFloat(draftDownPayment.replace(/\./g, '').replace(',', '.')) : 0;
+                      handleUpdate({ downPayment: num || undefined });
+                    }}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 6. Parcelas */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Parcelas</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="number"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: 10, 12, 24"
+                    value={draftInstallments}
+                    onChange={(e) => setDraftInstallments(e.target.value)}
+                    onBlur={() => {
+                      const num = draftInstallments ? parseInt(draftInstallments, 10) : undefined;
+                      handleUpdate({ installments: num });
+                    }}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 7. Cartão de Crédito */}
+              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
+                <span style={cardLabelStyle}>Cartão Crédito</span>
+                <div style={cardValueStyle}>
+                  <div
+                    onClick={() => {
+                      if (!readOnly) {
+                        const next = !isCreditCardDropdownOpen;
+                        closeAllDropdowns();
+                        setIsCreditCardDropdownOpen(next);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      cursor: readOnly ? 'default' : 'pointer',
+                      padding: '2px 0',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: '0.80rem',
+                      fontWeight: 700,
+                      color: lead.hasCreditCard === true ? '#10B981' : lead.hasCreditCard === false ? '#EF4444' : 'var(--adm-text-muted)',
+                    }}>
+                      {lead.hasCreditCard === true ? 'Sim' : lead.hasCreditCard === false ? 'Não' : 'Não informado'}
+                    </span>
+                    {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
+                  </div>
+
+                  {/* Popover Cartão de Crédito */}
+                  {isCreditCardDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                      zIndex: 60,
+                      overflow: 'hidden',
+                    }}>
+                      {[
+                        { val: true, label: 'Sim', color: '#10B981', icon: CheckCircle2 },
+                        { val: false, label: 'Não', color: '#EF4444', icon: X },
+                        { val: undefined, label: 'Não informado', color: 'var(--adm-text-muted)', icon: Clock },
+                      ].map(opt => {
+                        const isSelected = lead.hasCreditCard === opt.val;
+                        const Icon = opt.icon;
+                        return (
+                          <div
+                            key={String(opt.val)}
+                            onClick={() => {
+                              handleUpdate({ hasCreditCard: opt.val });
+                              setIsCreditCardDropdownOpen(false);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '0.76rem',
+                              fontWeight: isSelected ? 800 : 500,
+                              color: 'var(--adm-text-title)',
+                              background: isSelected ? 'var(--adm-bg-hover)' : 'transparent',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? 'var(--adm-bg-hover)' : 'transparent'}
+                          >
+                            <Icon size={12} color={opt.color} />
+                            <span>{opt.label}</span>
+                            {isSelected && <Check size={12} style={{ marginLeft: 'auto' }} />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 8. Tipo de Evento (Dropdown Popover Integrado) */}
+              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
+                <span style={cardLabelStyle}>Tipo Evento</span>
+                <div style={cardValueStyle}>
+                  <div
+                    onClick={() => {
+                      if (!readOnly) {
+                        const next = !isEventTypeDropdownOpen;
+                        closeAllDropdowns();
+                        setIsEventTypeDropdownOpen(next);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      cursor: readOnly ? 'default' : 'pointer',
+                      padding: '2px 0',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: '0.80rem',
+                      fontWeight: 700,
+                      color: lead.eventType ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                    }}>
+                      {lead.eventType || '15 Anos'}
+                    </span>
+                    {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
+                  </div>
+
+                  {isEventTypeDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                      zIndex: 60,
+                      overflow: 'hidden',
+                    }}>
+                      {EVENT_TYPE_OPTIONS.map((opt) => (
+                        <div
+                          key={opt}
+                          onClick={() => {
+                            handleUpdate({ eventType: opt });
+                            setIsEventTypeDropdownOpen(false);
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '0.78rem',
+                            fontWeight: (lead.eventType || '15 Anos') === opt ? 800 : 500,
+                            color: 'var(--adm-text-title)',
+                            background: (lead.eventType || '15 Anos') === opt ? 'var(--adm-bg-hover)' : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = (lead.eventType || '15 Anos') === opt ? 'var(--adm-bg-hover)' : 'transparent'}
+                        >
+                          <span>{opt}</span>
+                          {(lead.eventType || '15 Anos') === opt && <Check size={12} color="var(--adm-accent)" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 9. N° Pessoas */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>N° Pessoas</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="number"
+                    disabled={effectiveReadOnly}
+                    placeholder="0 convidados"
+                    value={draftEstimatedGuests}
+                    onChange={(e) => setDraftEstimatedGuests(e.target.value)}
+                    onBlur={() => {
+                      const num = draftEstimatedGuests ? parseInt(draftEstimatedGuests, 10) : undefined;
+                      handleUpdate({ estimatedGuests: num });
+                    }}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 10. Ano Evento */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Ano Evento</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: 2026, 2027"
+                    value={draftEventYear}
+                    onChange={(e) => setDraftEventYear(e.target.value)}
+                    onBlur={() => {
+                      handleUpdate({ eventYear: draftEventYear.trim() || undefined });
+                    }}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 11. Nível Urgência */}
+              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
+                <span style={cardLabelStyle}>Urgência</span>
+                <div style={cardValueStyle}>
+                  <div
+                    onClick={() => {
+                      if (!readOnly) {
+                        const next = !isUrgencyDropdownOpen;
+                        closeAllDropdowns();
+                        setIsUrgencyDropdownOpen(next);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      cursor: readOnly ? 'default' : 'pointer',
+                      padding: '2px 0',
+                    }}
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: lead.urgencyLevel === 'baixa' ? '#10B981' : lead.urgencyLevel === 'media' ? '#F59E0B' : lead.urgencyLevel === 'alta' ? '#F97316' : lead.urgencyLevel === 'imediata' ? '#EF4444' : '#94A3B8',
+                      }} />
+                      <span style={{ fontSize: '0.80rem', fontWeight: 700, color: lead.urgencyLevel ? 'var(--adm-text-title)' : 'var(--adm-text-muted)' }}>
+                        {lead.urgencyLevel === 'baixa' ? 'Baixa' : lead.urgencyLevel === 'media' ? 'Média' : lead.urgencyLevel === 'alta' ? 'Alta' : lead.urgencyLevel === 'imediata' ? 'Imediata / Crítica' : 'Não Definida'}
+                      </span>
+                    </div>
+                    {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
+                  </div>
+
+                  {isUrgencyDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                      zIndex: 60,
+                      overflow: 'hidden',
+                    }}>
+                      {URGENCY_OPTIONS.map((opt) => (
+                        <div
+                          key={opt.key}
+                          onClick={() => {
+                            handleUpdate({ urgencyLevel: (opt.key as any) || undefined });
+                            setIsUrgencyDropdownOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            fontSize: '0.76rem',
+                            fontWeight: ((!lead.urgencyLevel && !opt.key) || lead.urgencyLevel === opt.key) ? 800 : 500,
+                            color: 'var(--adm-text-title)',
+                            background: ((!lead.urgencyLevel && !opt.key) || lead.urgencyLevel === opt.key) ? 'var(--adm-bg-hover)' : 'transparent',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = ((!lead.urgencyLevel && !opt.key) || lead.urgencyLevel === opt.key) ? 'var(--adm-bg-hover)' : 'transparent'}
+                        >
+                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: opt.color }} />
+                          <span>{opt.label}</span>
+                          {((!lead.urgencyLevel && !opt.key) || lead.urgencyLevel === opt.key) && <Check size={12} style={{ marginLeft: 'auto' }} />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 14. Decisores */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Decisores</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: Pais, Noivos, Debutante"
+                    value={draftDecisionMakers}
+                    onChange={(e) => setDraftDecisionMakers(e.target.value)}
+                    onBlur={() => {
+                      handleUpdate({ decisionMakers: draftDecisionMakers.trim() || undefined });
+                    }}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 15. Bairro */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Bairro</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Bairro do cliente"
+                    value={draftNeighborhood}
+                    onChange={(e) => setDraftNeighborhood(e.target.value)}
+                    onBlur={() => handleUpdate({ neighborhood: draftNeighborhood.trim() || undefined })}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 16. Profissão */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Profissão</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Profissão do contratante"
+                    value={draftProfession}
+                    onChange={(e) => setDraftProfession(e.target.value)}
+                    onBlur={() => handleUpdate({ profession: draftProfession.trim() || undefined })}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* Campos Personalizados: Seções Comercial e Evento */}
               {renderCustomFieldsForSection('commercial')}
+              {renderCustomFieldsForSection('event')}
             </div>
-
-            {/* ── SEÇÃO: 📅 COMPROMISSOS COMERCIAIS (VISITA & DEGUSTAÇÃO) ── */}
-            <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
-              <CalendarIcon size={13} color="var(--adm-accent)" />
-              <span>Compromissos Comerciais</span>
-              <span style={{
-                fontSize: '0.60rem',
-                fontWeight: 800,
-                color: '#D4AF37',
-                background: 'rgba(212, 175, 55, 0.12)',
-                padding: '1px 6px',
-                borderRadius: '4px',
-                marginLeft: 'auto',
-                border: '1px solid rgba(212, 175, 55, 0.3)',
-              }}>
-                1 Visita & 1 Degustação máx.
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* CARD 1: VISITA */}
-              <div style={{
-                background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.visitCommitment ? (lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)') : 'var(--adm-border)'}`,
-                borderRadius: '10px',
-                padding: '10px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CalendarIcon size={14} color="#38BDF8" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Visita
-                    </span>
-                  </div>
-
-                  {lead.visitCommitment ? (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: lead.visitCommitment.status === 'completed'
-                        ? 'rgba(16, 185, 129, 0.15)'
-                        : lead.visitCommitment.status === 'scheduled'
-                        ? 'rgba(56, 189, 248, 0.15)'
-                        : 'rgba(239, 68, 68, 0.15)',
-                      color: lead.visitCommitment.status === 'completed'
-                        ? '#10B981'
-                        : lead.visitCommitment.status === 'scheduled'
-                        ? '#38BDF8'
-                        : '#EF4444',
-                      border: `1px solid ${lead.visitCommitment.status === 'completed' ? '#10B981' : lead.visitCommitment.status === 'scheduled' ? '#38BDF8' : '#EF4444'}`,
-                      textTransform: 'uppercase',
-                    }}>
-                      {lead.visitCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.visitCommitment.status === 'scheduled' ? 'Agendada' : lead.visitCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                      Não agendada
-                    </span>
-                  )}
-                </div>
-
-                {lead.visitCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
-                      <strong style={{ color: 'var(--adm-text-title)' }}>
-                        {new Date(lead.visitCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.visitCommitment.time}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
-                      <span style={{
-                        fontWeight: 900,
-                        color: '#D4AF37',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}>
-                        {lead.visitCommitment.pax} PAX
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
-                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
-                        {lead.visitCommitment.responsibleName || 'Equipe Comercial'}
-                      </span>
-                    </div>
-
-                    {!effectiveReadOnly && lead.visitCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setCompletingCommitmentType('visit')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: '#10B981',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Check size={12} /> Sucesso
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => cancelCommercialCommitment(lead.id, 'visit', 'Lead não compareceu à visita', 'no_show')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            border: '1px solid rgba(239, 68, 68, 0.35)',
-                            color: '#EF4444',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <X size={12} /> No-Show
-                        </button>
-                      </div>
-                    )}
-
-                    {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setScheduleCommitmentType('visit')}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(56, 189, 248, 0.12)',
-                            border: '1px solid rgba(56, 189, 248, 0.4)',
-                            color: '#38BDF8',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Plus size={11} /> Reagendar Visita
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setScheduleCommitmentType('visit')}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '6px',
-                        background: 'rgba(56, 189, 248, 0.1)',
-                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                        color: '#38BDF8',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar</span>
-                    </button>
-                  )
-                )}
-              </div>
-
-              {/* CARD 2: DEGUSTAÇÃO */}
-              <div style={{
-                background: 'var(--adm-bg-card)',
-                border: `1px solid ${lead.tastingCommitment ? (lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(212, 175, 55, 0.35)') : 'var(--adm-border)'}`,
-                borderRadius: '10px',
-                padding: '10px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Utensils size={14} color="#D4AF37" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Degustação
-                    </span>
-                  </div>
-
-                  {lead.tastingCommitment ? (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: lead.tastingCommitment.status === 'completed'
-                        ? 'rgba(16, 185, 129, 0.15)'
-                        : lead.tastingCommitment.status === 'scheduled'
-                        ? 'rgba(212, 175, 55, 0.15)'
-                        : 'rgba(239, 68, 68, 0.15)',
-                      color: lead.tastingCommitment.status === 'completed'
-                        ? '#10B981'
-                        : lead.tastingCommitment.status === 'scheduled'
-                        ? '#D4AF37'
-                        : '#EF4444',
-                      border: `1px solid ${lead.tastingCommitment.status === 'completed' ? '#10B981' : lead.tastingCommitment.status === 'scheduled' ? '#D4AF37' : '#EF4444'}`,
-                      textTransform: 'uppercase',
-                    }}>
-                      {lead.tastingCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.tastingCommitment.status === 'scheduled' ? 'Agendada' : lead.tastingCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                      Não agendada
-                    </span>
-                  )}
-                </div>
-
-                {lead.tastingCommitment ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
-                      <strong style={{ color: 'var(--adm-text-title)' }}>
-                        {new Date(lead.tastingCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.tastingCommitment.time}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
-                      <span style={{
-                        fontWeight: 900,
-                        color: '#D4AF37',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                      }}>
-                        {lead.tastingCommitment.pax} PAX
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
-                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
-                        {lead.tastingCommitment.responsibleName || 'Equipe Comercial'}
-                      </span>
-                    </div>
-
-                    {!effectiveReadOnly && lead.tastingCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setCompletingCommitmentType('tasting')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: '#10B981',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Check size={12} /> Sucesso
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => cancelCommercialCommitment(lead.id, 'tasting', 'Lead não compareceu à degustação', 'no_show')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            border: '1px solid rgba(239, 68, 68, 0.35)',
-                            color: '#EF4444',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <X size={12} /> No-Show
-                        </button>
-                      </div>
-                    )}
-
-                    {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setScheduleCommitmentType('tasting')}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(212, 175, 55, 0.12)',
-                            border: '1px solid rgba(212, 175, 55, 0.4)',
-                            color: '#D4AF37',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Plus size={11} /> Reagendar Degustação
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setScheduleCommitmentType('tasting')}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '6px',
-                        background: 'rgba(212, 175, 55, 0.1)',
-                        border: '1px solid rgba(212, 175, 55, 0.35)',
-                        color: '#D4AF37',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar</span>
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-
 
             {/* ── SEÇÃO 2: 👤 ANIVERSARIANTE & CONTATOS VINCULADOS ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
@@ -2865,64 +2785,108 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
                     onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
                   />
+                  {lead.phone && onSelectRecipientPhone && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectRecipientPhone(lead.phone!)}
+                      title={selectedRecipientPhone === lead.phone ? "Destinatário ativo no chat" : "Definir este número como destinatário para envio"}
+                      style={{
+                        background: selectedRecipientPhone === lead.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
+                        border: `1px solid ${selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-border)'}`,
+                        color: selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)',
+                        borderRadius: '6px',
+                        padding: '3px 7px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Send size={10} color={selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)'} />
+                      <span>{selectedRecipientPhone === lead.phone ? 'Ativo' : 'Enviar'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Data de Nascimento / Aniversário */}
-              {(draftBirthday || showBirthdayField) && (
-                <div style={cardRowStyle}>
-                  <span style={cardLabelStyle}>Aniversário</span>
-                  <div style={cardValueStyle}>
-                    <input
-                      type="date"
-                      value={draftBirthday}
-                      disabled={effectiveReadOnly}
-                      onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                      onChange={(e) => {
-                        setDraftBirthday(e.target.value);
-                        handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
-                      }}
-                      style={{
-                        ...seamlessInputStyle,
-                        cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                        color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                      }}
-                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                    />
-                  </div>
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Aniversário</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="date"
+                    value={draftBirthday}
+                    disabled={effectiveReadOnly}
+                    onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                    onChange={(e) => {
+                      setDraftBirthday(e.target.value);
+                      handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
+                    }}
+                    style={{
+                      ...seamlessInputStyle,
+                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                      color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                    }}
+                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                  />
                 </div>
-              )}
+              </div>
 
-              {/* E-mail */}
-              {(draftEmail || showEmailField) && (
-                <div style={cardRowStyle}>
-                  <span style={cardLabelStyle}>E-mail</span>
-                  <div style={cardValueStyle}>
-                    <input
-                      type="email"
-                      value={draftEmail}
-                      disabled={effectiveReadOnly}
-                      onChange={(e) => setDraftEmail(e.target.value)}
-                      onBlur={() => {
-                        if (draftEmail !== (lead.email || '')) {
-                          handleUpdate({ email: draftEmail.trim() });
-                        }
-                      }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                      placeholder="aniversariante@gmail.com"
-                      style={seamlessInputStyle}
-                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                    />
-                  </div>
+              {/* Data do Evento */}
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Data Evento</span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="date"
+                    value={lead.eventDate || lead.partyDate || ''}
+                    disabled={effectiveReadOnly}
+                    onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                    onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
+                    style={{
+                      ...seamlessInputStyle,
+                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                      color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                    }}
+                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                  />
                 </div>
-              )}
+              </div>
 
-              {/* Se o aniversariante for o decisor, exibe CPF, Bairro e Endereço contratuais sob demanda. */}
-              {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && (
+              {/* Se o aniversariante for o decisor, exibe E-mail, CPF, Bairro e Endereço contratuais sob demanda */}
+              {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none' && (
                 <>
-                  {/* CPF Contratual do Aniversariante/Decisor */}
+                  {/* E-mail */}
+                  {(draftEmail || showEmailField) && (
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>E-mail</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="email"
+                          value={draftEmail}
+                          disabled={effectiveReadOnly}
+                          onChange={(e) => setDraftEmail(e.target.value)}
+                          onBlur={() => {
+                            if (draftEmail !== (lead.email || '')) {
+                              handleUpdate({ email: draftEmail.trim() });
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          placeholder="aniversariante@gmail.com"
+                          style={seamlessInputStyle}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CPF Contratual */}
                   {(draftCpf || showCpfField) && (
                     <div style={cardRowStyle}>
                       <span style={cardLabelStyle}>CPF Contratual</span>
@@ -2996,122 +2960,100 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Decisor */}
+                  {!effectiveReadOnly && (
+                    (!draftEmail && !showEmailField) ||
+                    (!draftCpf && !showCpfField) ||
+                    (!draftNeighborhood && !showNeighborhoodField) ||
+                    (!draftAddress && !showAddressField)
+                  ) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Adicionar dado:</span>
+                      {!draftEmail && !showEmailField && (
+                        <button
+                          type="button"
+                          onClick={() => setShowEmailField(true)}
+                          style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            color: 'var(--adm-text-title)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Plus size={10} /> E-mail
+                        </button>
+                      )}
+                      {!draftCpf && !showCpfField && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCpfField(true)}
+                          style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            color: 'var(--adm-text-title)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Plus size={10} /> CPF
+                        </button>
+                      )}
+                      {!draftNeighborhood && !showNeighborhoodField && (
+                        <button
+                          type="button"
+                          onClick={() => setShowNeighborhoodField(true)}
+                          style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            color: 'var(--adm-text-title)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Plus size={10} /> Bairro
+                        </button>
+                      )}
+                      {!draftAddress && !showAddressField && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddressField(true)}
+                          style={{
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            color: 'var(--adm-text-title)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Plus size={10} /> Endereço
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
-
-              {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos */}
-              {!effectiveReadOnly && (
-                (!draftBirthday && !showBirthdayField) ||
-                (!draftEmail && !showEmailField) ||
-                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftCpf && !showCpfField) ||
-                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftNeighborhood && !showNeighborhoodField) ||
-                (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftAddress && !showAddressField)
-              ) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Adicionar dado:</span>
-                  {!draftBirthday && !showBirthdayField && (
-                    <button
-                      type="button"
-                      onClick={() => setShowBirthdayField(true)}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
-                        padding: '2px 8px',
-                        fontSize: '0.68rem',
-                        color: 'var(--adm-text-title)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}
-                    >
-                      <Plus size={10} /> Aniversário
-                    </button>
-                  )}
-                  {!draftEmail && !showEmailField && (
-                    <button
-                      type="button"
-                      onClick={() => setShowEmailField(true)}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
-                        padding: '2px 8px',
-                        fontSize: '0.68rem',
-                        color: 'var(--adm-text-title)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}
-                    >
-                      <Plus size={10} /> E-mail
-                    </button>
-                  )}
-                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftCpf && !showCpfField && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCpfField(true)}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
-                        padding: '2px 8px',
-                        fontSize: '0.68rem',
-                        color: 'var(--adm-text-title)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}
-                    >
-                      <Plus size={10} /> CPF
-                    </button>
-                  )}
-                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftNeighborhood && !showNeighborhoodField && (
-                    <button
-                      type="button"
-                      onClick={() => setShowNeighborhoodField(true)}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
-                        padding: '2px 8px',
-                        fontSize: '0.68rem',
-                        color: 'var(--adm-text-title)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}
-                    >
-                      <Plus size={10} /> Bairro
-                    </button>
-                  )}
-                  {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !draftAddress && !showAddressField && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddressField(true)}
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
-                        padding: '2px 8px',
-                        fontSize: '0.68rem',
-                        color: 'var(--adm-text-title)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                      }}
-                    >
-                      <Plus size={10} /> Endereço
-                    </button>
-                  )}
-                </div>
-              )}
-
 
               {/* Decisor (Checkbox Sim / Não para o Aniversariante) */}
               <div style={cardRowStyle}>
@@ -3128,12 +3070,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     <input
                       type="checkbox"
                       disabled={effectiveReadOnly}
-                      checked={!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker)}
+                      checked={!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none'}
                       onChange={(e) => {
                         if (e.target.checked) {
                           handleSetLeadAsDecisor();
-                        } else if ((lead.contacts || []).length > 0) {
-                          handleSetPrimaryDecisor(lead.contacts![0]);
+                        } else {
+                          const updatedContacts = (lead.contacts || []).map(c => ({ ...c, isPrimaryDecisionMaker: false }));
+                          handleUpdate({ contacts: updatedContacts, primaryContactRole: 'none' });
                         }
                       }}
                       style={{
@@ -3146,12 +3089,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     <span style={{
                       fontSize: '0.76rem',
                       fontWeight: 700,
-                      color: !(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) ? '#10B981' : 'var(--adm-text-muted)',
+                      color: (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none') ? '#10B981' : 'var(--adm-text-muted)',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
                     }}>
-                      {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) ? (
+                      {(!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none') ? (
                         <>
                           <CheckCircle2 size={13} color="#10B981" />
                           <span>Sim (Aniversariante é o Decisor)</span>
@@ -3221,11 +3164,36 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                             {formatPhone(contact.phone)}
                           </span>
 
+                          {contact.phone && onSelectRecipientPhone && (
+                            <button
+                              type="button"
+                              onClick={() => onSelectRecipientPhone(contact.phone)}
+                              title={selectedRecipientPhone === contact.phone ? "Destinatário ativo no chat" : "Definir este contato como destinatário para envio"}
+                              style={{
+                                background: selectedRecipientPhone === contact.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-card)',
+                                border: `1px solid ${selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-border)'}`,
+                                color: selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)',
+                                borderRadius: '5px',
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Send size={9} color={selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)'} />
+                              <span>{selectedRecipientPhone === contact.phone ? 'Ativo' : 'Enviar'}</span>
+                            </button>
+                          )}
+
                           {contact.phone && (
                             <button
                               type="button"
                               onClick={() => handleDirectWhatsApp(contact.phone)}
-                              title="Abrir WhatsApp"
+                              title="Abrir WhatsApp Externo"
                               style={{
                                 background: 'transparent',
                                 border: 'none',
@@ -3613,165 +3581,366 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               {renderCustomFieldsForSection('contact')}
             </div>
 
-            {/* ── SEÇÃO 3: 🎉 DADOS DO EVENTO ── */}
+            {/* ── SEÇÃO 3: 📅 COMPROMISSOS COMERCIAIS (VISITA & DEGUSTAÇÃO) ── */}
             <div style={{ ...sectionTitleStyle, marginTop: '6px' }}>
-              <PartyPopper size={13} color="var(--adm-accent)" />
-              <span>Dados do Evento</span>
+              <CalendarIcon size={13} color="var(--adm-accent)" />
+              <span>Compromissos Comerciais</span>
             </div>
 
-            <div style={cardStyle}>
-              {/* Tipo de Evento (Custom Popover Dropdown) */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Tipo de evento</span>
-                <div style={cardValueStyle}>
-                  <div
-                    onClick={() => {
-                      if (!readOnly) {
-                        const next = !isEventTypeDropdownOpen;
-                        closeAllDropdowns();
-                        setIsEventTypeDropdownOpen(next);
-                      }
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      width: '100%',
-                      cursor: readOnly ? 'default' : 'pointer',
-                      padding: '2px 0',
-                    }}
-                  >
-                    <span style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      color: lead.eventType ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    }}>
-                      {lead.eventType || 'Selecione o tipo de evento...'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* CARD 1: VISITA */}
+              <div style={{
+                background: 'var(--adm-bg-card)',
+                border: `1px solid ${lead.visitCommitment ? (lead.visitCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.35)') : 'var(--adm-border)'}`,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CalendarIcon size={14} color="#38BDF8" />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      Visita
                     </span>
-                    {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                   </div>
 
-                  {isEventTypeDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: '120px',
-                      right: 0,
-                      marginTop: '4px',
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                      zIndex: 60,
-                      overflow: 'hidden',
+                  {lead.visitCommitment ? (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: lead.visitCommitment.status === 'completed'
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : lead.visitCommitment.status === 'scheduled'
+                        ? 'rgba(56, 189, 248, 0.15)'
+                        : 'rgba(239, 68, 68, 0.15)',
+                      color: lead.visitCommitment.status === 'completed'
+                        ? '#10B981'
+                        : lead.visitCommitment.status === 'scheduled'
+                        ? '#38BDF8'
+                        : '#EF4444',
+                      border: `1px solid ${lead.visitCommitment.status === 'completed' ? '#10B981' : lead.visitCommitment.status === 'scheduled' ? '#38BDF8' : '#EF4444'}`,
+                      textTransform: 'uppercase',
                     }}>
-                      {EVENT_TYPE_OPTIONS.map((opt) => (
-                        <div
-                          key={opt}
-                          onClick={() => {
-                            handleUpdate({ eventType: opt });
-                            setIsEventTypeDropdownOpen(false);
-                          }}
-                          style={{
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            fontSize: '0.78rem',
-                            fontWeight: lead.eventType === opt ? 800 : 500,
-                            color: 'var(--adm-text-title)',
-                            background: lead.eventType === opt ? 'var(--adm-bg-hover)' : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = lead.eventType === opt ? 'var(--adm-bg-hover)' : 'transparent'}
-                        >
-                          <span>{opt}</span>
-                          {lead.eventType === opt && <Check size={12} />}
-                        </div>
-                      ))}
-                    </div>
+                      {lead.visitCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.visitCommitment.status === 'scheduled' ? 'Agendada' : lead.visitCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                      Não agendada
+                    </span>
                   )}
                 </div>
+
+                {lead.visitCommitment ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
+                      <strong style={{ color: 'var(--adm-text-title)' }}>
+                        {new Date(lead.visitCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.visitCommitment.time}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
+                      <span style={{
+                        fontWeight: 900,
+                        color: '#D4AF37',
+                        background: 'rgba(212, 175, 55, 0.15)',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                      }}>
+                        {lead.visitCommitment.pax} PAX
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
+                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
+                        {lead.visitCommitment.responsibleName || 'Equipe Comercial'}
+                      </span>
+                    </div>
+
+                    {!effectiveReadOnly && lead.visitCommitment.status === 'scheduled' && (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setCompletingCommitmentType('visit')}
+                          style={{
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: '#10B981',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <CheckCircle2 size={12} />
+                          <span>Concluir</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCancellingCommitmentType('visit')}
+                          style={{
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#EF4444',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <X size={12} />
+                          <span>Não Compareceu</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCommitmentType('visit')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38BDF8',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Visita
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  !effectiveReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => setScheduleCommitmentType('visit')}
+                      style={{
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        border: '1px dashed rgba(56, 189, 248, 0.4)',
+                        color: '#38BDF8',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        width: 'fit-content',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
+                    >
+                      <Plus size={12} />
+                      <span>Agendar Visita</span>
+                    </button>
+                  )
+                )}
               </div>
 
-              {/* Data do Evento (Click anywhere to trigger date picker) */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Data do evento</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="date"
-                    value={lead.eventDate || lead.partyDate || ''}
-                    disabled={effectiveReadOnly}
-                    onClick={(e) => {
-                      try { (e.target as any).showPicker?.(); } catch {}
-                    }}
-                    onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
-                    style={{
-                      ...seamlessInputStyle,
-                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                      color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
+              {/* CARD 2: DEGUSTAÇÃO */}
+              <div style={{
+                background: 'var(--adm-bg-card)',
+                border: `1px solid ${lead.tastingCommitment ? (lead.tastingCommitment.status === 'completed' ? 'rgba(16, 185, 129, 0.35)' : lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(212, 175, 55, 0.35)') : 'var(--adm-border)'}`,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Utensils size={14} color="#D4AF37" />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      Degustação
+                    </span>
+                  </div>
+
+                  {lead.tastingCommitment ? (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: lead.tastingCommitment.status === 'completed'
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : lead.tastingCommitment.status === 'scheduled'
+                        ? 'rgba(212, 175, 55, 0.15)'
+                        : 'rgba(239, 68, 68, 0.15)',
+                      color: lead.tastingCommitment.status === 'completed'
+                        ? '#10B981'
+                        : lead.tastingCommitment.status === 'scheduled'
+                        ? '#D4AF37'
+                        : '#EF4444',
+                      border: `1px solid ${lead.tastingCommitment.status === 'completed' ? '#10B981' : lead.tastingCommitment.status === 'scheduled' ? '#D4AF37' : '#EF4444'}`,
+                      textTransform: 'uppercase',
+                    }}>
+                      {lead.tastingCommitment.status === 'completed' ? '✓ Realizada com Sucesso' : lead.tastingCommitment.status === 'scheduled' ? 'Agendada' : lead.tastingCommitment.status === 'no_show' ? 'Não Compareceu (No-Show)' : 'Cancelada'}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                      Não agendada
+                    </span>
+                  )}
                 </div>
-              </div>
 
-              {/* Qtd. Convidados */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Qtd. convidados</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Ex: 150, 200..."
-                    value={draftEstimatedGuests}
-                    onChange={(e) => setDraftEstimatedGuests(e.target.value)}
-                    onBlur={() => {
-                      const num = Number(draftEstimatedGuests) || undefined;
-                      handleUpdate({ estimatedGuests: num });
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
+                {lead.tastingCommitment ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Data & Horário:</span>
+                      <strong style={{ color: 'var(--adm-text-title)' }}>
+                        {new Date(lead.tastingCommitment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {lead.tastingCommitment.time}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Pessoas:</span>
+                      <span style={{
+                        fontWeight: 900,
+                        color: '#D4AF37',
+                        background: 'rgba(212, 175, 55, 0.15)',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                      }}>
+                        {lead.tastingCommitment.pax} PAX
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Responsável:</span>
+                      <span style={{ color: 'var(--adm-text-body)', fontWeight: 600 }}>
+                        {lead.tastingCommitment.responsibleName || 'Equipe de Degustação'}
+                      </span>
+                    </div>
 
-              {/* Período Desejado */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Período desejado</span>
-                <div style={cardValueStyle}>
-                  <textarea
-                    rows={2}
-                    placeholder="Ex: 2º Semestre 2027, Sábado..."
-                    value={draftDesiredPeriod}
-                    onChange={(e) => setDraftDesiredPeriod(e.target.value)}
-                    onBlur={() => {
-                      if (draftDesiredPeriod !== (lead.desiredPeriod || '')) {
-                        handleUpdate({ desiredPeriod: draftDesiredPeriod.trim() });
-                      }
-                    }}
-                    style={{
-                      ...seamlessInputStyle,
-                      fontWeight: 600,
-                      resize: 'none',
-                      height: 'auto',
-                      minHeight: '34px',
-                      lineHeight: '1.25',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
+                    {!effectiveReadOnly && lead.tastingCommitment.status === 'scheduled' && (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setCompletingCommitmentType('tasting')}
+                          style={{
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: '#10B981',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <CheckCircle2 size={12} />
+                          <span>Concluir</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCancellingCommitmentType('tasting')}
+                          style={{
+                            flex: 1,
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#EF4444',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <X size={12} />
+                          <span>Não Compareceu</span>
+                        </button>
+                      </div>
+                    )}
 
-              {/* Campos Personalizados: Seção Evento */}
-              {renderCustomFieldsForSection('event')}
+                    {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCommitmentType('tasting')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            border: '1px solid rgba(212, 175, 55, 0.4)',
+                            color: '#D4AF37',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Degustação
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  !effectiveReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => setScheduleCommitmentType('tasting')}
+                      style={{
+                        background: 'rgba(212, 175, 55, 0.1)',
+                        border: '1px dashed rgba(212, 175, 55, 0.4)',
+                        color: '#D4AF37',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        width: 'fit-content',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
+                    >
+                      <Plus size={12} />
+                      <span>Agendar Degustação</span>
+                    </button>
+                  )
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -4853,6 +5022,114 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               >
                 <X size={14} />
                 <span>Confirmar Cancelamento</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE LEAD */}
+      {showDeleteConfirmModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            animation: 'fadeIn 0.15s ease-out',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDeleteConfirmModal(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--adm-bg-card, #FFFFFF)',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '420px',
+              padding: '24px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+              border: '1px solid var(--adm-border, #E2E8F0)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  backgroundColor: '#FEE2E2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={22} color="#EF4444" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  Excluir Lead
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                  Esta ação é irreversível
+                </p>
+              </div>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--adm-text-body, #334155)', lineHeight: 1.5 }}>
+              Tem certeza que deseja excluir o lead <strong>"{lead.name}"</strong>? Todo o histórico de atendimentos, tarefas e dados associados serão removidos.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  background: 'var(--adm-bg-input, #F8FAFC)',
+                  color: 'var(--adm-text-title, #334155)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowDeleteConfirmModal(false);
+                  await deleteLead(lead.id);
+                  if (onToggleCollapse) onToggleCollapse();
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  background: '#EF4444',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Sim, Excluir</span>
               </button>
             </div>
           </div>

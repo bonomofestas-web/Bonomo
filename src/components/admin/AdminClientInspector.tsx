@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, FileText, Plus, ExternalLink, Check, Copy, Trash2, 
   Clock, Sparkles, Send, CheckCircle2, MessageSquare, Shield, Heart,
-  FileCheck, Users, ChevronDown, CheckSquare, Edit3
+  FileCheck, Users, ChevronDown, CheckSquare, Edit3, DollarSign, Gem,
+  X, ShoppingBag, Crown, PhoneCall, Zap
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { uazapiService } from '../../services/uazapiService';
+import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
-import type { ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus } from '../../types/admin';
+import type { ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 
 interface AdminClientInspectorProps {
   clientId: string | null;
@@ -72,6 +75,16 @@ const STAGES_ORDER: ClientStage[] = [
   'completed'
 ];
 
+const UPSELL_CATEGORIES: Record<string, { label: string; color: string; bg: string }> = {
+  foto_video: { label: 'Foto & Vídeo', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)' },
+  atracoes: { label: 'Atrações & Shows', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.12)' },
+  bar_bebidas: { label: 'Bebidas & Bar', color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
+  decoracao: { label: 'Decoração & Efeitos', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' },
+  estrutura: { label: 'Estrutura & Horas Extras', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' },
+  alimentacao: { label: 'Gastronomia & Extras', color: '#EAB308', bg: 'rgba(234, 179, 8, 0.12)' },
+  outro: { label: 'Outro Serviço', color: '#64748B', bg: 'rgba(100, 116, 139, 0.12)' },
+};
+
 export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   clientId,
   onClose,
@@ -82,6 +95,8 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     clients, 
     debutantes, 
     venues,
+    sources,
+    collaborators,
     updateClient,
     updateClientStage, 
     deleteClient,
@@ -89,17 +104,33 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     addClientDocument,
     linkClientDebutante,
     addDebutanteAccount,
+    addClientUpsellSale,
+    deleteClientUpsellSale,
     tasks,
     updateTask,
     deleteTask,
     completeTaskWithFeedback,
   } = useAdminState();
 
-  const [activeTab, setActiveTab] = useState<'timeline' | 'whatsapp' | 'tasks' | 'documents' | 'commercial'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'whatsapp' | 'tasks' | 'documents' | 'commercial'>('whatsapp');
   const [newNote, setNewNote] = useState('');
   const [copiedAppUrl, setCopiedAppUrl] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
+  
+  // Upsell Modal & Form State
+  const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
+  const [upsellTitle, setUpsellTitle] = useState('');
+  const [upsellCategory, setUpsellCategory] = useState<string>('foto_video');
+  const [upsellValue, setUpsellValue] = useState<string>('');
+  const [upsellDate, setUpsellDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [upsellPaymentMethod, setUpsellPaymentMethod] = useState<string>('PIX');
+  const [upsellPaymentStatus, setUpsellPaymentStatus] = useState<'pago' | 'pendente' | 'parcelado'>('pago');
+  const [upsellPaymentType, setUpsellPaymentType] = useState<'a_vista' | 'parcelado' | 'sinal'>('a_vista');
+  const [upsellInstallmentsCount, setUpsellInstallmentsCount] = useState<number>(1);
+  const [upsellResponsibleId, setUpsellResponsibleId] = useState<string>('');
+  const [upsellNotes, setUpsellNotes] = useState<string>('');
+  const [upsellToDelete, setUpsellToDelete] = useState<ClientUpsellSale | null>(null);
   
   // Task detail modal & completion state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -125,6 +156,9 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const [showPayerCpf, setShowPayerCpf] = useState(false);
   const [showPayerAddress, setShowPayerAddress] = useState(false);
 
+  const [whatsappCustomMsg, setWhatsappCustomMsg] = useState('');
+  const [selectedClientRecipientPhone, setSelectedClientRecipientPhone] = useState<string>('');
+
   if (!clientId) return null;
 
   const client = clients.find(c => c.id === clientId);
@@ -132,6 +166,79 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
   const linkedDebutante = client.debutanteId ? debutantes.find(d => d.id === client.debutanteId) : null;
   const stageInfo = STAGE_CONFIG[client.stage] || STAGE_CONFIG.onboarding;
+
+  // Lista de destinatários com prioridade para o Decisor
+  const clientRecipients = useMemo(() => {
+    if (!client) return [];
+    const list: Array<{ phone: string; label: string; role: string; isDecisor: boolean }> = [];
+    const seen = new Set<string>();
+    const clientAny = client as any;
+
+    if (client.payerPhone && !seen.has(client.payerPhone.trim())) {
+      seen.add(client.payerPhone.trim());
+      list.push({
+        phone: client.payerPhone.trim(),
+        label: `${client.payerName || 'Contratante'} (Decisor)`,
+        role: 'Decisor',
+        isDecisor: true,
+      });
+    }
+
+    if (clientAny.phone && !seen.has(clientAny.phone.trim())) {
+      seen.add(clientAny.phone.trim());
+      list.push({
+        phone: clientAny.phone.trim(),
+        label: `${client.birthdayPersonName || client.name || 'Aniversariante'}`,
+        role: 'Aniversariante',
+        isDecisor: false,
+      });
+    }
+
+    if (client.contacts && client.contacts.length > 0) {
+      client.contacts.forEach(c => {
+        if (c.phone && !seen.has(c.phone.trim())) {
+          seen.add(c.phone.trim());
+          list.push({
+            phone: c.phone.trim(),
+            label: `${c.name} (${c.role || 'Contato'})`,
+            role: c.role || 'Contato',
+            isDecisor: Boolean(c.isPrimaryDecisionMaker),
+          });
+        }
+      });
+    }
+
+    list.sort((a, b) => (b.isDecisor ? 1 : 0) - (a.isDecisor ? 1 : 0));
+    return list;
+  }, [client]);
+
+  useEffect(() => {
+    if (clientRecipients.length > 0) {
+      setSelectedClientRecipientPhone(clientRecipients[0].phone);
+    } else if (client?.payerPhone) {
+      setSelectedClientRecipientPhone(client.payerPhone);
+    }
+  }, [client?.id, clientRecipients]);
+
+  // WhatsApp Sender Selection para Pós-Venda
+  const connectedSenderSources = useMemo(() => {
+    return (sources || []).filter(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.connectedPhone || s.whatsappInstanceId));
+  }, [sources]);
+
+  const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
+
+  useEffect(() => {
+    if (connectedSenderSources.length > 0) {
+      const matchVenue = connectedSenderSources.find(s => s.venueId === client?.venueId);
+      setSelectedSenderSourceId(matchVenue ? matchVenue.id : connectedSenderSources[0].id);
+    } else {
+      setSelectedSenderSourceId('');
+    }
+  }, [connectedSenderSources, client?.venueId]);
+
+  const activeSenderSource = useMemo(() => {
+    return connectedSenderSources.find(s => s.id === selectedSenderSourceId) || connectedSenderSources[0] || null;
+  }, [connectedSenderSources, selectedSenderSourceId]);
 
   const clientTasks = useMemo(() => {
     if (!client) return [];
@@ -163,16 +270,6 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     navigator.clipboard.writeText(url);
     setCopiedAppUrl(true);
     setTimeout(() => setCopiedAppUrl(false), 2000);
-  };
-
-  const handleDirectWhatsApp = (phone: string, text?: string) => {
-    const clean = phone.replace(/\D/g, '');
-    if (!clean) return;
-    const fullNum = clean.startsWith('55') ? clean : `55${clean}`;
-    const url = text 
-      ? `https://wa.me/${fullNum}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/${fullNum}`;
-    window.open(url, '_blank');
   };
 
   const handleAddNote = (e: React.FormEvent) => {
@@ -236,6 +333,89 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const handleRemoveSubContact = (contactId: string) => {
     const updated = (client.contacts || []).filter(c => c.id !== contactId);
     updateClient(client.id, { contacts: updated });
+  };
+
+  const handleCreateUpsellSale = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!upsellTitle.trim() || !upsellValue) return;
+
+    const numericVal = parseFloat(upsellValue.replace(/[^0-9.,]/g, '').replace(',', '.'));
+    if (isNaN(numericVal) || numericVal <= 0) {
+      alert('Por favor, insira um valor numérico válido.');
+      return;
+    }
+
+    const selectedCollab = collaborators.find(c => c.id === upsellResponsibleId);
+
+    addClientUpsellSale(client.id, {
+      title: upsellTitle.trim(),
+      category: upsellCategory,
+      value: numericVal,
+      saleDate: upsellDate || new Date().toISOString().split('T')[0],
+      paymentMethod: upsellPaymentMethod,
+      paymentStatus: upsellPaymentStatus,
+      paymentType: upsellPaymentType,
+      installmentsCount: upsellPaymentType === 'parcelado' ? (Number(upsellInstallmentsCount) || 1) : undefined,
+      responsibleId: upsellResponsibleId || undefined,
+      responsibleName: selectedCollab?.name || undefined,
+      notes: upsellNotes.trim() || undefined,
+    });
+
+    setIsUpsellModalOpen(false);
+    setUpsellTitle('');
+    setUpsellValue('');
+    setUpsellNotes('');
+    setUpsellCategory('foto_video');
+  };
+
+  const handleDirectWhatsApp = (phone?: string, customText?: string) => {
+    const target = (phone || selectedClientRecipientPhone || client?.payerPhone || '').replace(/\D/g, '');
+    if (!target) {
+      alert('Nenhum número de WhatsApp válido encontrado para este contato.');
+      return;
+    }
+    const textParam = customText ? `?text=${encodeURIComponent(customText)}` : '';
+    window.open(`https://wa.me/55${target}${textParam}`, '_blank');
+  };
+
+  const handleSendClientUazapiMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!whatsappCustomMsg.trim() || !client) return;
+
+    const textToSend = whatsappCustomMsg.trim();
+    const targetPhone = selectedClientRecipientPhone || client.payerPhone || (client as any).phone;
+    setWhatsappCustomMsg('');
+
+    if (targetPhone) {
+      // Registra no histórico do cliente
+      addClientNote(client.id, `[WhatsApp Enviado para ${formatPhone(targetPhone)}]: ${textToSend}`);
+
+      // Disparo real via UAZAPI
+      if (activeSenderSource?.whatsappInstanceId) {
+        try {
+          await uazapiService.sendText(activeSenderSource.whatsappInstanceId, {
+            number: targetPhone,
+            text: textToSend,
+          });
+
+          // Sincroniza foto de perfil se o cliente ainda não tiver
+          if (!(client as any).avatarUrl) {
+            uazapiService.fetchProfilePicture(activeSenderSource.whatsappInstanceId, targetPhone)
+              .then(async (rawAvatar) => {
+                if (rawAvatar) {
+                  const permanentR2Avatar = await whatsappMediaService.syncWhatsAppAvatarToR2(targetPhone, rawAvatar);
+                  updateClient(client.id, {
+                    avatarUrl: permanentR2Avatar,
+                  } as any);
+                }
+              })
+              .catch(() => {});
+          }
+        } catch (err) {
+          console.warn('Disparo UAZAPI Pós-venda:', err);
+        }
+      }
+    }
   };
 
   // ── Styles ─────────────────────────────────────────────────────────────────
@@ -988,10 +1168,10 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     color: client.contractStatus === 'contrato_assinado' ? '#10B981' : client.contractStatus === 'sinal_pago' ? '#3B82F6' : '#F59E0B',
                   }}
                 >
-                  <option value="aguardando_sinal">⏳ Aguardando Pagamento do Sinal</option>
-                  <option value="sinal_pago">💰 Sinal Pago (Aguardando Assinatura)</option>
-                  <option value="contrato_enviado">📤 Contrato Enviado ao Cliente</option>
-                  <option value="contrato_assinado">✅ Contrato Assinado (Válido)</option>
+                  <option value="aguardando_sinal">⏳ Aguardando Sinal</option>
+                  <option value="sinal_pago">💰 Sinal Pago</option>
+                  <option value="contrato_enviado">📤 Contrato Enviado</option>
+                  <option value="contrato_assinado">✅ Contrato Assinado</option>
                 </select>
               </div>
             </div>
@@ -1028,12 +1208,46 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <input
                   type="number"
                   placeholder="Valor R$"
-                  value={client.signalValue || ''}
-                  onChange={(e) => updateClient(client.id, { signalValue: Number(e.target.value) || 0 })}
-                  style={{ ...seamlessInputStyle, width: '90px' }}
-                  onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--adm-accent)'; }}
+                  value={client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || '')}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 0;
+                    const totalVal = client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0);
+                    updateClient(client.id, { 
+                      contractDownPayment: val, 
+                      signalValue: val,
+                      contractInstallmentsRemaining: Math.max(0, totalVal - val)
+                    });
+                  }}
+                  style={{ ...seamlessInputStyle, width: '90px', fontWeight: 700, color: '#10B981' }}
+                  onFocus={(e) => { e.currentTarget.style.borderBottomColor = '#10B981'; }}
                   onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
                 />
+              </div>
+            </div>
+
+            {/* Restante Parcelado */}
+            <div style={cardRowStyle}>
+              <span style={cardLabelStyle}>Restante Parc.</span>
+              <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#F59E0B', fontWeight: 800, fontSize: '0.78rem' }}>R$</span>
+                <input
+                  type="number"
+                  placeholder="Restante"
+                  value={client.contractInstallmentsRemaining !== undefined ? client.contractInstallmentsRemaining : Math.max(0, (client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0)) - (client.contractDownPayment ?? client.signalValue ?? 0))}
+                  onChange={(e) => updateClient(client.id, { contractInstallmentsRemaining: Number(e.target.value) || 0 })}
+                  style={{ ...seamlessInputStyle, fontWeight: 700, color: '#F59E0B' }}
+                  onFocus={(e) => { e.currentTarget.style.borderBottomColor = '#F59E0B'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+                />
+                <select
+                  value={client.contractInstallmentsCount || 10}
+                  onChange={(e) => updateClient(client.id, { contractInstallmentsCount: Number(e.target.value) || 1 })}
+                  style={{ ...cardSelectStyle, width: '70px', fontSize: '0.72rem' }}
+                >
+                  {[1,2,3,4,5,6,7,8,9,10,12,15,18,24].map(n => (
+                    <option key={n} value={n}>{n}x</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -1055,13 +1269,21 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
             {/* Valor Total do Contrato */}
             <div style={cardRowStyle}>
-              <span style={cardLabelStyle}>Valor Total</span>
+              <span style={cardLabelStyle}>Contrato Base</span>
               <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{ color: '#10B981', fontWeight: 800, fontSize: '0.82rem' }}>R$</span>
                 <input
                   type="number"
-                  value={client.dealValue || 0}
-                  onChange={(e) => updateClient(client.id, { dealValue: Number(e.target.value) || 0 })}
+                  value={client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0)}
+                  onChange={(e) => {
+                    const totalVal = Number(e.target.value) || 0;
+                    const down = client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || 0);
+                    updateClient(client.id, { 
+                      dealValue: totalVal,
+                      baseContractValue: totalVal,
+                      contractInstallmentsRemaining: Math.max(0, totalVal - down)
+                    });
+                  }}
                   style={{ ...seamlessInputStyle, fontWeight: 800, color: '#10B981' }}
                   onFocus={(e) => { e.currentTarget.style.borderBottomColor = '#10B981'; }}
                   onBlur={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
@@ -1280,6 +1502,27 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
           }}>
             <button
               type="button"
+              onClick={() => setActiveTab('whatsapp')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'whatsapp' ? 'var(--adm-bg-input)' : 'transparent',
+                color: activeTab === 'whatsapp' ? '#25D366' : 'var(--adm-text-muted)',
+                fontWeight: activeTab === 'whatsapp' ? 800 : 500,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+              }}
+            >
+              <MessageSquare size={14} />
+              <span>WhatsApp & Mensagens</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('timeline')}
               style={{
                 display: 'flex',
@@ -1300,27 +1543,6 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', fontWeight: 700 }}>
                 {(client.activities || []).length}
               </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('whatsapp')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: '6px',
-                border: 'none',
-                background: activeTab === 'whatsapp' ? 'var(--adm-bg-input)' : 'transparent',
-                color: activeTab === 'whatsapp' ? '#25D366' : 'var(--adm-text-muted)',
-                fontWeight: activeTab === 'whatsapp' ? 800 : 500,
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-              }}
-            >
-              <MessageSquare size={14} />
-              <span>WhatsApp & Mensagens</span>
             </button>
 
             <button
@@ -1349,6 +1571,30 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
             <button
               type="button"
+              onClick={() => setActiveTab('commercial')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '6px',
+                border: 'none',
+                background: activeTab === 'commercial' ? 'var(--adm-bg-input)' : 'transparent',
+                color: activeTab === 'commercial' ? '#059669' : 'var(--adm-text-muted)',
+                fontWeight: activeTab === 'commercial' ? 800 : 500,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+              }}
+            >
+              <DollarSign size={14} />
+              <span>Vendas & Upsell</span>
+              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', fontWeight: 700 }}>
+                {(client.upsellSales || []).length}
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('documents')}
               style={{
                 display: 'flex',
@@ -1372,7 +1618,187 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             </button>
           </div>
 
-          {/* Tab 1: Timeline & Atividades */}
+          {/* Tab 1: WhatsApp & Comunicação */}
+          {activeTab === 'whatsapp' && (
+            <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+              <div style={{
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '12px',
+                padding: '18px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: 'rgba(37, 211, 102, 0.15)',
+                    border: '1px solid rgba(37, 211, 102, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#25D366',
+                  }}>
+                    <MessageSquare size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      Comunicação Direta de Pós-Venda
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                      Envie comunicados, confirmações e cronogramas diretamente para os contatos da ficha
+                    </p>
+                  </div>
+                </div>
+
+                {/* Remetente WhatsApp Conectado */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--adm-bg-input)', padding: '8px 12px', borderRadius: '10px', border: '1px solid var(--adm-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 700, color: '#10B981' }}>
+                    <Zap size={13} color="#10B981" />
+                    <span>Disparando através de:</span>
+                    {connectedSenderSources.length > 1 ? (
+                      <select
+                        value={selectedSenderSourceId}
+                        onChange={(e) => setSelectedSenderSourceId(e.target.value)}
+                        style={{ background: 'transparent', border: 'none', color: '#10B981', fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer', outline: 'none' }}
+                      >
+                        {connectedSenderSources.map(src => (
+                          <option key={src.id} value={src.id} style={{ background: '#1E293B', color: '#FFF' }}>
+                            {src.name} ({(src.configuration as any)?.connectedPhone || 'Conectado'})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        {activeSenderSource?.name || 'WhatsApp Pós-Venda'} {activeSenderSource ? `(${(activeSenderSource.configuration as any)?.connectedPhone || 'Conectado'})` : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Seletor Multi-Destinatário com Foco no Decisor */}
+                {clientRecipients.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--adm-bg-input)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <PhoneCall size={11} /> Destinatário Selecionado (Prioridade Decisor):
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {clientRecipients.map((rec) => {
+                        const isSelected = selectedClientRecipientPhone === rec.phone;
+                        return (
+                          <button
+                            key={rec.phone}
+                            type="button"
+                            onClick={() => setSelectedClientRecipientPhone(rec.phone)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-card)',
+                              border: isSelected ? '1px solid #10B981' : '1px solid var(--adm-border)',
+                              color: isSelected ? '#10B981' : 'var(--adm-text-title)',
+                              fontSize: '0.72rem',
+                              fontWeight: isSelected ? 800 : 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                            }}
+                          >
+                            {rec.isDecisor && <Crown size={12} color="#D4AF37" />}
+                            <span>{rec.label} • {formatPhone(rec.phone)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Message Sender */}
+                <form onSubmit={handleSendClientUazapiMessage} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={whatsappCustomMsg}
+                    onChange={(e) => setWhatsappCustomMsg(e.target.value)}
+                    placeholder={`Escreva uma mensagem para ${clientRecipients.find(r => r.phone === selectedClientRecipientPhone)?.label || client.payerName}...`}
+                    className="adm-input"
+                    style={{ flex: 1, height: '40px', borderRadius: '8px', fontSize: '0.78rem' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!whatsappCustomMsg.trim()}
+                    className="adm-btn-primary"
+                    style={{
+                      height: '40px',
+                      padding: '0 16px',
+                      borderRadius: '8px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: '#10B981',
+                      color: '#FFF',
+                      border: 'none',
+                    }}
+                  >
+                    <Send size={13} />
+                    <span>Enviar</span>
+                  </button>
+                </form>
+
+                {/* Quick Message Templates */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                    Modelos Rápidos de Mensagens
+                  </span>
+
+                  {[
+                    {
+                      label: '🎉 Boas-vindas & Onboarding',
+                      text: `Olá ${client.payerName}! É um prazer ter você e a ${client.birthdayPersonName} conosco na Bonomo Festas. Estamos iniciando a organização da sua festa para o dia ${new Date(client.eventDate).toLocaleDateString('pt-BR')}.`,
+                    },
+                    {
+                      label: '📋 Envio do Link do App',
+                      text: client.debutanteSlug ? `Olá ${client.birthdayPersonName}! Segue o link exclusivo do seu App de Convidados e Confirmação: ${window.location.origin}/app/${client.debutanteSlug}` : 'Acesse o App da Debutante.',
+                    },
+                    {
+                      label: '🍰 Agendamento de Degustação / Visita',
+                      text: `Olá ${client.payerName}! Gostaríamos de agendar a degustação do menu e a visita técnica da festa da ${client.birthdayPersonName}. Qual o melhor dia para vocês?`,
+                    },
+                  ].map((tpl, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleDirectWhatsApp(selectedClientRecipientPhone || client.payerPhone, tpl.text)}
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)'}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', display: 'block' }}>{tpl.label}</strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.70rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.text}</p>
+                      </div>
+                      <Send size={13} color="#25D366" style={{ marginLeft: '8px', flexShrink: 0 }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Timeline & Atividades */}
           {activeTab === 'timeline' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Activity List */}
@@ -1458,119 +1884,6 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   <span>Registrar</span>
                 </button>
               </form>
-            </div>
-          )}
-
-          {/* Tab 2: WhatsApp & Comunicação */}
-          {activeTab === 'whatsapp' && (
-            <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
-              <div style={{
-                background: 'var(--adm-bg-card)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '12px',
-                padding: '18px 20px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    background: 'rgba(37, 211, 102, 0.15)',
-                    border: '1px solid rgba(37, 211, 102, 0.35)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#25D366',
-                  }}>
-                    <MessageSquare size={18} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                      Comunicação Direta via WhatsApp
-                    </h3>
-                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
-                      Inicie conversas operacionais ou envie mensagens pré-formatadas com 1 clique
-                    </p>
-                  </div>
-                </div>
-
-                {/* Direct Number */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--adm-bg-input)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', display: 'block' }}>Telefone do Decisor:</span>
-                    <strong style={{ fontSize: '0.86rem', color: 'var(--adm-text-title)' }}>{formatPhone(client.payerPhone)}</strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDirectWhatsApp(client.payerPhone)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '7px 14px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      backgroundColor: '#25D366',
-                      color: '#FFF',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <MessageSquare size={13} fill="#FFF" />
-                    <span>Abrir Conversa</span>
-                  </button>
-                </div>
-
-                {/* Quick Message Templates */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                    Modelos Rápidos de Mensagens
-                  </span>
-
-                  {[
-                    {
-                      label: '🎉 Boas-vindas & Onboarding',
-                      text: `Olá ${client.payerName}! É um prazer ter você e a ${client.birthdayPersonName} conosco na Bonomo Festas. Estamos iniciando a organização da sua festa para o dia ${new Date(client.eventDate).toLocaleDateString('pt-BR')}.`,
-                    },
-                    {
-                      label: '📋 Envio do Link do App',
-                      text: client.debutanteSlug ? `Olá ${client.birthdayPersonName}! Segue o link exclusivo do seu App de Convidados e Confirmação: ${window.location.origin}/app/${client.debutanteSlug}` : 'Acesse o App da Debutante.',
-                    },
-                    {
-                      label: '🍰 Agendamento de Degustação / Visita',
-                      text: `Olá ${client.payerName}! Gostaríamos de agendar a degustação do menu e a visita técnica da festa da ${client.birthdayPersonName}. Qual o melhor dia para vocês?`,
-                    },
-                  ].map((tpl, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => handleDirectWhatsApp(client.payerPhone, tpl.text)}
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        transition: 'background 0.12s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)'}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', display: 'block' }}>{tpl.label}</strong>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.70rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tpl.text}</p>
-                      </div>
-                      <Send size={13} color="#25D366" style={{ marginLeft: '8px', flexShrink: 0 }} />
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
 
@@ -1784,6 +2097,9 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                               in_progress: 'Em Execução',
                               waiting: 'Aguardando',
                               completed: 'Finalizada',
+                              no_result: 'Sem Resultado',
+                              no_show: 'No-show',
+                              cancelled: 'Cancelada',
                             };
 
                             let activeBg = 'var(--adm-bg-input)';
@@ -1857,7 +2173,473 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
             </div>
           )}
 
-          {/* Tab 4: Documentos & Anexos */}
+          {/* Tab 4: Vendas & Upsell (Serviços Adicionais, Caixa vs Previsto & Rentabilidade) */}
+          {activeTab === 'commercial' && (() => {
+            const baseContract = client.baseContractValue !== undefined ? client.baseContractValue : (client.dealValue || 0);
+            const downPayment = client.contractDownPayment !== undefined ? client.contractDownPayment : (client.signalValue || (client.signalPaid ? baseContract * 0.3 : 0));
+            const installmentsRemaining = client.contractInstallmentsRemaining !== undefined ? client.contractInstallmentsRemaining : Math.max(0, baseContract - downPayment);
+            const installmentsCount = client.contractInstallmentsCount || 10;
+            const signalIsPaid = Boolean(client.signalPaid);
+
+            const upsells = client.upsellSales || [];
+            const totalUpsell = upsells.reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+            
+            // Upsell breakdown
+            const upsellAVista = upsells
+              .filter(u => u.paymentType === 'a_vista' || u.paymentType === 'sinal' || (!u.paymentType && u.paymentStatus === 'pago'))
+              .reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+            
+            const upsellParcelado = upsells
+              .filter(u => u.paymentType === 'parcelado' || (!u.paymentType && u.paymentStatus === 'parcelado'))
+              .reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+
+            // Dinheiro em Caixa (Recebido: Sinal do Contrato Pago + Upsells Pagos/À Vista)
+            const dinheiroCaixa = (signalIsPaid ? downPayment : 0) + upsellAVista;
+
+            // Dinheiro Previsto (A Receber: Restante Parcelado + Upsells Parcelados + Sinal se Pendente)
+            const dinheiroPrevisto = installmentsRemaining + upsellParcelado + (!signalIsPaid ? downPayment : 0);
+
+            // Rentabilidade Total
+            const totalRentabilidade = baseContract + totalUpsell;
+            const growthPercent = baseContract > 0 ? ((totalUpsell / baseContract) * 100).toFixed(1) : '0';
+
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '24px', gap: '20px' }}>
+                
+                {/* 1. 5 KPI CARDS BANNER */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+                  
+                  {/* Card 1: Contrato Base */}
+                  <div style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Contrato Base
+                      </span>
+                      <FileText size={15} color="var(--adm-accent)" />
+                    </div>
+                    <strong style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)', letterSpacing: '-0.3px' }}>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseContract)}
+                    </strong>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                      Sinal: <strong style={{ color: signalIsPaid ? '#10B981' : '#F59E0B' }}>R$ {downPayment.toLocaleString('pt-BR')}</strong> ({signalIsPaid ? 'Pago' : 'Pendente'})
+                    </div>
+                  </div>
+
+                  {/* Card 2: Serviços Extras / Upsell */}
+                  <div style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Serviços Extras / Upsell
+                      </span>
+                      <Gem size={15} color="#059669" />
+                    </div>
+                    <strong style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669', letterSpacing: '-0.3px' }}>
+                      +{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalUpsell)}
+                    </strong>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                      <strong style={{ color: '#059669' }}>{upsells.length} serviços</strong> • +{growthPercent}% sobre base
+                    </div>
+                  </div>
+
+                  {/* Card 3: Dinheiro em Caixa (Recebido) */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.05) 100%)',
+                    border: '1.5px solid rgba(16, 185, 129, 0.35)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.08)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        🟢 Dinheiro em Caixa
+                      </span>
+                      <span style={{ fontSize: '0.58rem', fontWeight: 800, background: '#10B981', color: '#FFF', padding: '1px 5px', borderRadius: '4px' }}>
+                        RECEBIDO
+                      </span>
+                    </div>
+                    <strong style={{ fontSize: '1.20rem', fontWeight: 900, color: '#047857', letterSpacing: '-0.3px' }}>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dinheiroCaixa)}
+                    </strong>
+                    <div style={{ fontSize: '0.66rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>
+                      Sinal pago + Extras à vista
+                    </div>
+                  </div>
+
+                  {/* Card 4: Dinheiro Previsto (A Receber) */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.05) 100%)',
+                    border: '1.5px solid rgba(245, 158, 11, 0.35)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 2px 6px rgba(245, 158, 11, 0.08)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        🟡 Dinheiro Previsto
+                      </span>
+                      <span style={{ fontSize: '0.58rem', fontWeight: 800, background: '#F59E0B', color: '#FFF', padding: '1px 5px', borderRadius: '4px' }}>
+                        A RECEBER
+                      </span>
+                    </div>
+                    <strong style={{ fontSize: '1.20rem', fontWeight: 900, color: '#B45309', letterSpacing: '-0.3px' }}>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dinheiroPrevisto)}
+                    </strong>
+                    <div style={{ fontSize: '0.66rem', color: '#D97706', fontWeight: 600, marginTop: '2px' }}>
+                      Restante parcelado + Extras a vencer
+                    </div>
+                  </div>
+
+                  {/* Card 5: Rentabilidade Total */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(184, 134, 11, 0.05) 100%)',
+                    border: '1.5px solid rgba(212, 175, 55, 0.4)',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 2px 6px rgba(212, 175, 55, 0.1)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        💰 Rentabilidade Geral
+                      </span>
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: 'var(--adm-accent, #B8860B)',
+                        color: '#FFF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.58rem',
+                        fontWeight: 800,
+                      }}>
+                        $
+                      </div>
+                    </div>
+                    <strong style={{ fontSize: '1.25rem', fontWeight: 900, color: '#92400E', letterSpacing: '-0.3px' }}>
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRentabilidade)}
+                    </strong>
+                    <div style={{ fontSize: '0.66rem', color: '#B8860B', fontWeight: 600, marginTop: '2px' }}>
+                      Receita total acumulada da unidade
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Detalhamento Financeiro do Contrato Base */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  padding: '18px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Estrutura de Pagamento do Contrato Base
+                      </h4>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                        Valores acordados no fechamento comercial: Entrada/Sinal e saldo parcelado
+                      </p>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      background: signalIsPaid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                      border: `1px solid ${signalIsPaid ? '#10B981' : '#F59E0B'}40`,
+                    }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: signalIsPaid ? '#10B981' : '#F59E0B' }}>
+                        {signalIsPaid ? '✓ Sinal Quitado em Caixa' : '⏳ Aguardando Sinal'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                    {/* Valor Contrato Base */}
+                    <div style={{ background: 'var(--adm-bg-input)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, display: 'block' }}>Contrato Base Fechado</span>
+                      <strong style={{ fontSize: '0.94rem', color: 'var(--adm-text-title)' }}>
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseContract)}
+                      </strong>
+                    </div>
+
+                    {/* Sinal / Entrada */}
+                    <div style={{ background: 'var(--adm-bg-input)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, display: 'block' }}>Sinal / Entrada</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                        <strong style={{ fontSize: '0.94rem', color: signalIsPaid ? '#10B981' : 'var(--adm-text-title)' }}>
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPayment)}
+                        </strong>
+                        <span style={{
+                          fontSize: '0.60rem',
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: signalIsPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                          color: signalIsPaid ? '#10B981' : '#F59E0B',
+                        }}>
+                          {signalIsPaid ? 'EM CAIXA' : 'PENDENTE'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Saldo Restante Parcelado */}
+                    <div style={{ background: 'var(--adm-bg-input)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, display: 'block' }}>Saldo Restante ({installmentsCount}x)</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                        <strong style={{ fontSize: '0.94rem', color: '#F59E0B' }}>
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(installmentsRemaining)}
+                        </strong>
+                        <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                          {installmentsCount > 0 ? `${installmentsCount}x de R$ ${(installmentsRemaining / installmentsCount).toFixed(2)}` : 'À vista'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Lista de Serviços Extras (Upsells) */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Serviços Adicionais e Opcionais Contratados (Upsells)
+                      </h3>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                        Itens comercializados no pós-venda (foto/vídeo extra, coreografia, open bar, cabines 360, etc.)
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUpsellTitle('');
+                        setUpsellValue('');
+                        setUpsellNotes('');
+                        setUpsellDate(new Date().toISOString().split('T')[0]);
+                        setUpsellPaymentMethod('PIX');
+                        setUpsellPaymentStatus('pago');
+                        setUpsellPaymentType('a_vista');
+                        setUpsellInstallmentsCount(1);
+                        setUpsellCategory('foto_video');
+                        setUpsellResponsibleId(collaborators[0]?.id || '');
+                        setIsUpsellModalOpen(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#10B981',
+                        color: '#FFF',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+                      }}
+                    >
+                      <Plus size={14} />
+                      <span>Registrar Venda Adicional / Upsell</span>
+                    </button>
+                  </div>
+
+                  {upsells.length === 0 ? (
+                    <div style={{
+                      border: '1.5px dashed var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '36px 20px',
+                      textAlign: 'center',
+                      color: 'var(--adm-text-muted)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}>
+                      <ShoppingBag size={30} style={{ opacity: 0.35 }} />
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Nenhuma venda adicional ou upsell registrada ainda.</span>
+                      <span style={{ fontSize: '0.72rem' }}>Clique no botão acima para adicionar itens extras e opcionais deste cliente.</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {upsells.map(sale => {
+                        const catConfig = UPSELL_CATEGORIES[sale.category] || UPSELL_CATEGORIES.outro;
+                        const isAVista = sale.paymentType === 'a_vista' || sale.paymentType === 'sinal' || (!sale.paymentType && sale.paymentStatus === 'pago');
+
+                        return (
+                          <div
+                            key={sale.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 14px',
+                              borderRadius: '8px',
+                              background: 'var(--adm-bg-input, #F8FAFC)',
+                              border: '1px solid var(--adm-border)',
+                              gap: '12px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '200px', flex: 1 }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: catConfig.bg,
+                                color: catConfig.color,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                <Gem size={15} />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)' }}>
+                                  {sale.title}
+                                </strong>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 700,
+                                    padding: '1px 6px',
+                                    borderRadius: '999px',
+                                    background: catConfig.bg,
+                                    color: catConfig.color,
+                                    border: `1px solid ${catConfig.color}40`,
+                                  }}>
+                                    {catConfig.label.toUpperCase()}
+                                  </span>
+
+                                  {/* Payment Type Badge */}
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 800,
+                                    padding: '1px 6px',
+                                    borderRadius: '999px',
+                                    background: isAVista ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                    color: isAVista ? '#059669' : '#D97706',
+                                    border: `1px solid ${isAVista ? '#10B981' : '#F59E0B'}40`,
+                                  }}>
+                                    {sale.paymentType === 'sinal' ? 'SINAL' : isAVista ? 'À VISTA (EM CAIXA)' : `PARCELADO ${sale.installmentsCount ? `(${sale.installmentsCount}X)` : ''}`}
+                                  </span>
+
+                                  {sale.paymentMethod && (
+                                    <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                      • {sale.paymentMethod}
+                                    </span>
+                                  )}
+                                  {sale.responsibleName && (
+                                    <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                      • Vendedor: <strong style={{ color: 'var(--adm-text-body)' }}>{sale.responsibleName}</strong>
+                                    </span>
+                                  )}
+                                  {sale.saleDate && (
+                                    <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                      • {new Date(sale.saleDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                    </span>
+                                  )}
+                                </div>
+                                {sale.notes && (
+                                  <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                                    Obs: {sale.notes}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                <span style={{ fontSize: '0.90rem', fontWeight: 800, color: '#047857' }}>
+                                  +{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(sale.value)}
+                                </span>
+                                <span style={{
+                                  fontSize: '0.56rem',
+                                  fontWeight: 700,
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: sale.paymentStatus === 'pago' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                  color: sale.paymentStatus === 'pago' ? '#10B981' : '#F59E0B',
+                                  textTransform: 'uppercase',
+                                }}>
+                                  {sale.paymentStatus || 'pago'}
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setUpsellToDelete(sale)}
+                                title="Excluir venda de serviço"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--adm-text-muted)',
+                                  cursor: 'pointer',
+                                  padding: '4px',
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Tab 5: Documentos & Anexos */}
           {activeTab === 'documents' && (
             <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2107,6 +2889,374 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
         cancelText="Cancelar"
         danger={true}
       />
+
+      {/* ── Confirm Delete Upsell Sale Modal ── */}
+      <AdminConfirmModal
+        isOpen={!!upsellToDelete}
+        onClose={() => setUpsellToDelete(null)}
+        onConfirm={() => {
+          if (upsellToDelete) {
+            deleteClientUpsellSale(client.id, upsellToDelete.id);
+            setUpsellToDelete(null);
+          }
+        }}
+        title="Excluir Venda de Serviço"
+        message={`Deseja realmente remover o serviço extra "${upsellToDelete?.title}" (${upsellToDelete ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(upsellToDelete.value) : ''})? O valor total do contrato será recalculado automaticamente.`}
+        confirmText="Sim, Excluir Serviço"
+        cancelText="Cancelar"
+        danger={true}
+      />
+
+      {/* ── Create Upsell Sale Modal ── */}
+      {isUpsellModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100,
+          padding: '20px',
+        }}>
+          <form onSubmit={handleCreateUpsellSale} style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '520px',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10B981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Gem size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Registrar Venda Adicional / Upsell
+                  </h3>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                    Cliente: {client.birthdayPersonName || client.name} ({client.code})
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUpsellModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Título do Serviço */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                Item / Serviço Contratado *
+              </label>
+              <input
+                type="text"
+                value={upsellTitle}
+                onChange={(e) => setUpsellTitle(e.target.value)}
+                placeholder="Ex: Cabine 360 Graus, Coreografia Especial, Open Bar..."
+                required
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '8px',
+                  padding: '9px 12px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.82rem',
+                }}
+              />
+            </div>
+
+            {/* Categoria & Valor */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Categoria *
+                </label>
+                <select
+                  value={upsellCategory}
+                  onChange={(e) => setUpsellCategory(e.target.value)}
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '9px 10px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="foto_video">Foto & Vídeo</option>
+                  <option value="atracoes">Atrações & Shows</option>
+                  <option value="bar_bebidas">Bebidas & Bar</option>
+                  <option value="decoracao">Decoração & Efeitos</option>
+                  <option value="estrutura">Estrutura & Horas Extras</option>
+                  <option value="alimentacao">Gastronomia & Extras</option>
+                  <option value="outro">Outro Serviço</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Valor da Venda (R$) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={upsellValue}
+                  onChange={(e) => setUpsellValue(e.target.value)}
+                  placeholder="0,00"
+                  required
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '9px 12px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Data, Tipo de Pagamento & Parcelas */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Data da Venda *
+                </label>
+                <input
+                  type="date"
+                  value={upsellDate}
+                  onChange={(e) => setUpsellDate(e.target.value)}
+                  required
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.80rem',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Tipo / Condição *
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <select
+                    value={upsellPaymentType}
+                    onChange={(e) => {
+                      const newType = e.target.value as 'a_vista' | 'parcelado' | 'sinal';
+                      setUpsellPaymentType(newType);
+                      if (newType === 'a_vista' || newType === 'sinal') {
+                        setUpsellPaymentStatus('pago');
+                      } else {
+                        setUpsellPaymentStatus('parcelado');
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.80rem',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                    }}
+                  >
+                    <option value="a_vista">À Vista (Em Caixa)</option>
+                    <option value="sinal">Sinal / Entrada</option>
+                    <option value="parcelado">Parcelado (A Receber)</option>
+                  </select>
+
+                  {upsellPaymentType === 'parcelado' && (
+                    <select
+                      value={upsellInstallmentsCount}
+                      onChange={(e) => setUpsellInstallmentsCount(Number(e.target.value) || 1)}
+                      style={{
+                        width: '70px',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '8px',
+                        padding: '8px 6px',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.80rem',
+                        cursor: 'pointer',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {[2,3,4,5,6,7,8,9,10,12,15,18,24].map(n => (
+                        <option key={n} value={n}>{n}x</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Forma de Pagamento & Status */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Forma de Pagamento
+                </label>
+                <select
+                  value={upsellPaymentMethod}
+                  onChange={(e) => setUpsellPaymentMethod(e.target.value)}
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.80rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="PIX">PIX</option>
+                  <option value="Cartão de Crédito">Cartão de Crédito</option>
+                  <option value="Cartão Parcelado">Cartão Parcelado</option>
+                  <option value="Boleto Bancário">Boleto Bancário</option>
+                  <option value="Transferência / Ted">Transferência / Ted</option>
+                  <option value="Dinheiro">Dinheiro</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Status do Pagamento
+                </label>
+                <select
+                  value={upsellPaymentStatus}
+                  onChange={(e) => setUpsellPaymentStatus(e.target.value as any)}
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.80rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="pago">Pago / Quitado</option>
+                  <option value="pendente">Pendente / A Cobrar</option>
+                  <option value="parcelado">Parcelado</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Responsável */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                Vendedor / Responsável
+              </label>
+              <select
+                value={upsellResponsibleId}
+                onChange={(e) => setUpsellResponsibleId(e.target.value)}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.80rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Selecione o colaborador...</option>
+                {collaborators.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Observações */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                Observações / Detalhes Contratuais (Opcional)
+              </label>
+              <textarea
+                value={upsellNotes}
+                onChange={(e) => setUpsellNotes(e.target.value)}
+                placeholder="Ex: Incluso 3 horas de operação com 2 monitores e adereços..."
+                rows={2}
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.80rem',
+                  resize: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setIsUpsellModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  fontSize: '0.80rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                style={{
+                  background: '#10B981',
+                  border: 'none',
+                  color: '#FFF',
+                  borderRadius: '8px',
+                  padding: '9px 20px',
+                  fontSize: '0.80rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                }}
+              >
+                Salvar Venda Adicional
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

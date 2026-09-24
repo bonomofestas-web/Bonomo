@@ -3,9 +3,25 @@
  * Formata números brasileiros no padrão (XX) 9XXXX-XXXX ou (XX) XXXX-XXXX
  */
 
+/**
+ * Verifica se um identificador é um LID multi-dispositivo do WhatsApp (@lid ou 14-16 dígitos)
+ */
+export const isLidIdentifier = (id?: string | null): boolean => {
+  if (!id) return false;
+  if (typeof id === 'string' && id.includes('@lid')) return true;
+  const digits = String(id).replace(/\D/g, '');
+  if (!digits) return false;
+  if (digits.length >= 14) return true;
+  if (digits.length >= 12 && !digits.startsWith('55')) return true;
+  return false;
+};
+
 export const formatPhone = (phone?: string | null): string => {
   if (!phone) return '';
   
+  // Se for LID do WhatsApp, não exibe string crua de dispositivo na interface
+  if (isLidIdentifier(phone)) return '';
+
   // Remove todos os caracteres não numéricos
   const numbers = phone.replace(/\D/g, '');
   
@@ -49,3 +65,29 @@ export const maskPhoneInput = (value: string): string => {
   // 11 dígitos (celular moderno com 9)
   return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
 };
+
+/**
+ * Normaliza número para envio oficial via WhatsApp / UAZAPI
+ * Garante o DDI 55 em números nacionais com 10 ou 11 dígitos, preservando @lid e números internacionais.
+ */
+export const normalizeWhatsAppNumber = (phone?: string | null): string => {
+  if (!phone) return '';
+  const trimmed = phone.trim();
+  if (trimmed.includes('@lid')) return trimmed;
+  
+  const clean = trimmed.replace(/@.*$/, '').replace(/\D/g, '');
+  if (!clean) return '';
+  
+  // LID numérico longo (ex: 155555555555555)
+  if (clean.length >= 14 && clean.startsWith('15')) {
+    return `${clean}@lid`;
+  }
+  
+  // Número brasileiro com 10 ou 11 dígitos (DDD + número, sem 55) -> adiciona 55
+  if ((clean.length === 10 || clean.length === 11) && !clean.startsWith('55')) {
+    return `55${clean}`;
+  }
+  
+  return clean;
+};
+

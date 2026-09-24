@@ -1,37 +1,39 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Kanban, List, Search, Building2,
-  Inbox, Clock, Calendar, DollarSign, XCircle,
-  ChevronDown, Plus, Layers,
+  Inbox, Calendar, DollarSign,
+  ChevronDown, ChevronUp, Plus, Layers,
   Users, ArrowRight, X,
-  Crown, Megaphone, Handshake, Sparkles, Target,
+  Megaphone, Sparkles, Target,
   Settings, Lock, Pin,
-  Flame, Zap, Rocket, Heart,
-  Trophy, Radio, PhoneCall, MessageSquare, Gift, FileText,
-  Compass, ShieldCheck, Star, ShoppingBag, Music, Camera,
-  UserPlus, Eye, PartyPopper, Award, AlertTriangle,
+  Flame, PhoneCall, MessageSquare, Gift, FileText,
+  Compass, ShieldCheck, Camera,
+  UserPlus, Eye, AlertTriangle,
   User, SunMedium, Snowflake, Tag as TagIcon,
   MoreVertical, CheckSquare, Trash2, GitBranch,
-  Store, Link2, Check
+  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { 
   AdminMoveFunnelModal, 
   AdminQuickTaskModal, 
-  AdminAddTagModal,
   AdminBulkMoveStageModal,
-  AdminBulkAssignModal
+  AdminBulkAssignModal,
+  AdminBulkMoveFunnelModal
 } from './AdminLeadActionModals';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
+import { SafeAvatar } from './SafeAvatar';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { FilterState } from './AdminFilterBar';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLostReasonModal } from './AdminLostReasonModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
+import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig } from '../../types/admin';
 
 interface AdminCrmKanbanViewProps {
@@ -198,7 +200,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     funnels,
     tasks,
     addFunnel,
-    updateFunnel,
     updateLeadStage,
     rejectLead,
     closeLeadSaleWithValue,
@@ -207,8 +208,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     deleteLead,
     addLeadTask,
     updateLeadData,
+    togglePinFunnel,
+    isFunnelPinned,
+    reorderFunnels,
     reassignLeadFunnel,
   } = useAdminState();
+
+  const totalUnreadMessages = useMemo(() => {
+    return leads.reduce((acc, l) => acc + (l.unreadCount || 0), 0);
+  }, [leads]);
 
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
     const venueIdSet = new Set<string>();
@@ -226,11 +234,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const hasIcpConfigured = (targetLead: Lead) => {
     if (!mqlQuestions || mqlQuestions.length === 0) return false;
+    // ICP é exclusivo por unidade/casa de festas
     return mqlQuestions.some(q =>
-      (targetLead.funnelId && ((q.funnelIds && q.funnelIds.includes(targetLead.funnelId)) || q.funnelId === targetLead.funnelId)) ||
-      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId)) ||
-      q.venueId === targetLead.venueId ||
-      q.venueId === 'all'
+      (q.venueId && q.venueId === targetLead.venueId) ||
+      (q.venueIds && q.venueIds.length > 0 && q.venueIds.includes(targetLead.venueId))
     );
   };
 
@@ -450,12 +457,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     venueId: 'all',
     collaboratorId: 'all',
     debutanteId: 'all',
-    sortBy: 'recent',
+    sortBy: 'waiting_time',
   });
   const [leadOwnershipFilter, setLeadOwnershipFilter] = useState<'all' | 'open' | 'mine'>('all');
   const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   const sortOptions = [
+    { id: 'waiting_time', label: '⏱️ Tempo de Espera (Prioridade)' },
     { id: 'recent', label: 'Mais Recentes (Data)' },
     { id: 'oldest', label: 'Mais Antigos (Data)' },
     { id: 'message_recent', label: 'Mais Recente (Mensagem)' },
@@ -471,14 +479,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     { id: '30d', label: 'Últimos 30 dias' },
     { id: 'this_month', label: 'Este mês' },
   ];
-
-  const getLastLeadMessageTime = (l: Lead) => {
-    const contactActs = (l.activities || []).filter(a => a.type === 'contact' || a.type === 'note');
-    if (contactActs.length > 0) {
-      return new Date(contactActs[contactActs.length - 1].timestamp || 0).getTime();
-    }
-    return new Date(l.updatedAt || l.createdAt || 0).getTime();
-  };
 
   // Close Deal modal state
   const [dealModalLead, setDealModalLead] = useState<Lead | null>(null);
@@ -498,19 +498,52 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // New Lead modal state
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+  const [isAddLeadMenuOpen, setIsAddLeadMenuOpen] = useState(false);
+  const [newLeadInitialMode, setNewLeadInitialMode] = useState<'quick' | 'full'>('quick');
 
   // Estados para Ações Rápidas do Lead Card (Referência Visual)
   const [activeLeadMenuId, setActiveLeadMenuId] = useState<string | null>(null);
   const [moveFunnelLead, setMoveFunnelLead] = useState<Lead | null>(null);
   const [quickTaskLead, setQuickTaskLead] = useState<Lead | null>(null);
   const [addTagLead, setAddTagLead] = useState<Lead | null>(null);
+  const [newCardTagInput, setNewCardTagInput] = useState('');
+  const [showCardCustomTagInput, setShowCardCustomTagInput] = useState(false);
+  const [activeValueLeadId, setActiveValueLeadId] = useState<string | null>(null);
   const [initialWorkspaceTab, setInitialWorkspaceTab] = useState<'whatsapp' | 'notes' | 'tasks'>('whatsapp');
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-tag-popover]') && !target.closest('[data-tag-trigger]')) {
+        setAddTagLead(null);
+        setShowCardCustomTagInput(false);
+        setNewCardTagInput('');
+      }
+      if (!target.closest('[data-lead-menu]') && !target.closest('[data-lead-menu-trigger]')) {
+        setActiveLeadMenuId(null);
+      }
+      if (!target.closest('[data-value-popover]') && !target.closest('[data-value-trigger]')) {
+        setActiveValueLeadId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Estados para Seleção Múltipla / Ações em Massa no Funil
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [bulkStageModalOpen, setBulkStageModalOpen] = useState(false);
   const [bulkAssigneeModalOpen, setBulkAssigneeModalOpen] = useState(false);
+  const [bulkFunnelModalOpen, setBulkFunnelModalOpen] = useState(false);
+
+  // Fast Switcher Dropdown dos Funis Comerciais
+  const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
+  const funnelSwitcherRef = useRef<HTMLDivElement>(null);
+
+  // Animações simétricas de recolher/expandir colunas com o fechamento como padrão de referência
+  const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
+  const [expandingColumns, setExpandingColumns] = useState<Record<string, 'starting' | 'active'>>({});
 
   // Colunas de Ganho e Perdido minimizadas por padrão
   const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({
@@ -523,10 +556,31 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   });
 
   const toggleColumnCollapse = (colId: string) => {
-    setCollapsedColumns(prev => ({
-      ...prev,
-      [colId]: !prev[colId],
-    }));
+    const isCurrentlyCollapsed = Boolean(collapsedColumns[colId]);
+    if (!isCurrentlyCollapsed) {
+      // Inicia fechamento: encolhe largura para 40px e fade-out suave dos cards
+      setCollapsingColumns(prev => ({ ...prev, [colId]: true }));
+      setTimeout(() => {
+        setCollapsedColumns(prev => ({ ...prev, [colId]: true }));
+        setCollapsingColumns(prev => ({ ...prev, [colId]: false }));
+      }, 200);
+    } else {
+      // Inicia abertura simétrica: desmarca colapsado, inicia em 40px com cards em opacidade 0 e anima abertura fluida para 280px
+      setCollapsedColumns(prev => ({ ...prev, [colId]: false }));
+      setExpandingColumns(prev => ({ ...prev, [colId]: 'starting' }));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandingColumns(prev => ({ ...prev, [colId]: 'active' }));
+        });
+      });
+      setTimeout(() => {
+        setExpandingColumns(prev => {
+          const copy = { ...prev };
+          delete copy[colId];
+          return copy;
+        });
+      }, 240);
+    }
   };
 
   const toggleLeadSelection = (leadId: string, e?: React.MouseEvent) => {
@@ -547,7 +601,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       setSelectedLeadIds(prev => Array.from(new Set([...prev, ...colLeadIds])));
     }
   };
-
 
   const handleBulkMoveStage = (targetStage: CrmStage) => {
     selectedLeadIds.forEach(id => {
@@ -573,6 +626,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setIsMultiSelectMode(false);
   };
 
+  const handleBulkMoveFunnel = async (targetFunnelId: string, targetStageId?: string) => {
+    for (const id of selectedLeadIds) {
+      await reassignLeadFunnel(id, targetFunnelId, targetStageId);
+    }
+    setBulkFunnelModalOpen(false);
+    setSelectedLeadIds([]);
+    setIsMultiSelectMode(false);
+  };
+
   const handleBulkDelete = () => {
     if (confirm(`Deseja realmente excluir os ${selectedLeadIds.length} leads selecionados? Essa ação não pode ser desfeita.`)) {
       selectedLeadIds.forEach(id => {
@@ -584,15 +646,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
   useEffect(() => {
-    const handleGlobalClick = () => {
+    const handleGlobalClick = (e: MouseEvent) => {
       setActiveLeadMenuId(null);
+      if (funnelSwitcherRef.current && !funnelSwitcherRef.current.contains(e.target as Node)) {
+        setIsFunnelSwitcherOpen(false);
+      }
     };
     document.addEventListener('click', handleGlobalClick);
     return () => document.removeEventListener('click', handleGlobalClick);
   }, []);
 
   // Check if current user is manager (Master or Admin)
-  const canConfigureFunnels = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'dev';
+  const canConfigureFunnels = currentUser?.role === 'master' || currentUser?.role === 'admin';
 
   // Allowed venues for user
   const userAllowedVenueIds = useMemo(() => {
@@ -604,8 +669,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   useEffect(() => {
     if (activeFunnelId !== undefined) {
       setSelectedFunnelId(activeFunnelId);
+      setIsComoFunnelSettingsOpen(false);
+      setComoFunnelId(undefined);
+      setViewMode('kanban');
     }
   }, [activeFunnelId]);
+
+  // Sempre que mudar o funil selecionado, redefinir para o modo Kanban
+  useEffect(() => {
+    if (selectedFunnelId && !initialLeadId) {
+      setViewMode('kanban');
+    }
+  }, [selectedFunnelId]);
 
   useEffect(() => {
     if (initialLeadId) {
@@ -620,6 +695,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleSelectFunnel = (id: string | null) => {
     setSelectedFunnelId(id);
+    setIsComoFunnelSettingsOpen(false);
+    setComoFunnelId(undefined);
+    setActiveLeadIdForWorkspace(null);
+    setViewMode('kanban');
+    setIsFunnelSwitcherOpen(false);
     if (onSelectFunnel) onSelectFunnel(id);
   };
 
@@ -642,6 +722,25 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     if (e) e.stopPropagation();
     setComoFunnelId(funnel.id);
     setIsComoFunnelSettingsOpen(true);
+  };
+
+  const handleMoveFunnel = (funnelId: string, direction: 'up' | 'down', e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const listToReorder = [...funnelsList];
+    const currentIndex = listToReorder.findIndex(f => f.id === funnelId);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= listToReorder.length) return;
+
+    const [moved] = listToReorder.splice(currentIndex, 1);
+    listToReorder.splice(targetIndex, 0, moved);
+
+    const reordered = listToReorder.map((f, idx) => ({
+      ...f,
+      order: idx,
+    }));
+
+    reorderFunnels(reordered);
   };
 
   // Computed Funnels List based on Venues, Permissions, and Real-time Leads
@@ -735,30 +834,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [isPostSaleView, selectedFunnelId, funnelsList]);
 
   const renderFunnelIcon = (iconName?: string, size = 16, color?: string) => {
-    const iconColor = color || 'var(--adm-accent)';
-    switch (iconName) {
-      case 'crown': return <Crown size={size} color={iconColor} />;
-      case 'megaphone': return <Megaphone size={size} color={iconColor} />;
-      case 'handshake': return <Handshake size={size} color={iconColor} />;
-      case 'sparkles': return <Sparkles size={size} color={iconColor} />;
-      case 'flame': return <Flame size={size} color={iconColor} />;
-      case 'zap': return <Zap size={size} color={iconColor} />;
-      case 'dollar': return <DollarSign size={size} color={iconColor} />;
-      case 'rocket': return <Rocket size={size} color={iconColor} />;
-      case 'heart': return <Heart size={size} color={iconColor} />;
-      case 'trophy': return <Trophy size={size} color={iconColor} />;
-      case 'radio': return <Radio size={size} color={iconColor} />;
-      case 'phone': return <PhoneCall size={size} color={iconColor} />;
-      case 'message': return <MessageSquare size={size} color={iconColor} />;
-      case 'gift': return <Gift size={size} color={iconColor} />;
-      case 'compass': return <Compass size={size} color={iconColor} />;
-      case 'shield': return <ShieldCheck size={size} color={iconColor} />;
-      case 'star': return <Star size={size} color={iconColor} />;
-      case 'shop': return <ShoppingBag size={size} color={iconColor} />;
-      case 'music': return <Music size={size} color={iconColor} />;
-      case 'camera': return <Camera size={size} color={iconColor} />;
-      default: return <Target size={size} color={iconColor} />;
-    }
+    return renderFunnelOrStageIcon(iconName, size, color, 'target');
   };
 
   const renderFunnelVisual = (funnel: { icon?: string; customImageUrl?: string; badgeColor?: string; name?: string }, size = 16, containerSize = 34) => {
@@ -802,6 +878,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return funnelsList.find(f => f.id === selectedFunnelId) || funnelsList[0];
   }, [funnelsList, selectedFunnelId]);
 
+  const commercialFunnelsForSwitcher = useMemo(() => {
+    return funnelsList.filter(f => !f.isPostSale && f.category !== 'Pós-Venda');
+  }, [funnelsList]);
+
   const isPostSaleFunnel = useMemo(() => {
     if (!currentFunnel) return false;
     return (
@@ -829,9 +909,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return false;
   };
 
+  const collabIdSet = useMemo(() => new Set((collaborators || []).map(c => c.id)), [collaborators]);
+
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
-    return leads.filter(l => {
+    const matching = leads.filter(l => {
       // 1. Mandatory Funnel / Venue Matching:
       if (currentFunnel) {
         if (l.funnelId) {
@@ -899,71 +981,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }
 
       return true;
-    }).sort((a, b) => {
-      if (filterState.sortBy === 'oldest') {
-        return new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
-      }
-      if (filterState.sortBy === 'name_asc') {
-        return a.name.localeCompare(b.name);
-      }
-      if (filterState.sortBy === 'name_desc') {
-        return b.name.localeCompare(a.name);
-      }
-      if (filterState.sortBy === 'message_recent') {
-        return getLastLeadMessageTime(b) - getLastLeadMessageTime(a);
-      }
-      if (filterState.sortBy === 'message_oldest') {
-        return getLastLeadMessageTime(a) - getLastLeadMessageTime(b);
-      }
-      // default: recent
-      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser]);
+
+    return sortLeadsByCriteria(matching, filterState.sortBy || 'waiting_time', collabIdSet);
+  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, collabIdSet]);
 
   const renderColumnIcon = (iconOrStage: string, size = 15, color?: string) => {
-    switch (iconOrStage) {
-      case 'inbox':
-      case 'new_lead':
-      case 'onboarding':
-        return <Inbox size={size} color={color || "#60A5FA"} />;
-      case 'clock':
-      case 'in_negotiation':
-      case 'in_analysis':
-      case 'qualificacao':
-        return <Clock size={size} color={color || "#FBBF24"} />;
-      case 'calendar':
-      case 'scheduled':
-      case 'meeting_scheduled':
-      case 'visita_agendada':
-        return <Calendar size={size} color={color || "#A78BFA"} />;
-      case 'users':
-        return <Users size={size} color={color || "#38BDF8"} />;
-      case 'award':
-      case 'decision':
-      case 'degustacao':
-        return <Award size={size} color={color || "#F97316"} />;
-      case 'sparkles':
-        return <Sparkles size={size} color={color || "#D4AF37"} />;
-      case 'dollar':
-      case 'deal_closed':
-      case 'contract_signed':
-      case 'contrato_fechado':
-        return <DollarSign size={size} color={color || "#FFD700"} />;
-      case 'x-circle':
-      case 'lost':
-      case 'recusado':
-        return <XCircle size={size} color={color || "#EF4444"} />;
-      case 'party':
-        return <PartyPopper size={size} color={color || "#EC4899"} />;
-      case 'phone':
-        return <PhoneCall size={size} color={color || "#10B981"} />;
-      case 'message':
-        return <MessageSquare size={size} color={color || "#10B981"} />;
-      case 'zap':
-        return <Zap size={size} color={color || "#EAB308"} />;
-      default:
-        return <Layers size={size} color={color || "#38BDF8"} />;
-    }
+    return renderFunnelOrStageIcon(iconOrStage, size, color, 'layers');
   };
 
   const columns = useMemo(() => {
@@ -1119,7 +1143,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     const transferTrigger = targetStageConfig?.triggers?.find(t => (t.type === 'move_to_funnel' || (t as any).type === 'transfer_funnel') && t.targetFunnelId);
     if (transferTrigger && transferTrigger.targetFunnelId) {
       setDraggedLeadId(null);
-      reassignLeadFunnel(leadId, transferTrigger.targetFunnelId, transferTrigger.targetStageId).then(ok => {
+      reassignLeadFunnel(leadId, transferTrigger.targetFunnelId, transferTrigger.targetStageId).then((ok: boolean) => {
         if (ok) {
           const destFunnel = funnels.find(f => f.id === transferTrigger.targetFunnelId);
           console.log(`[Automação] Lead "${lead.name}" transferido automaticamente para o funil "${destFunnel?.name || transferTrigger.targetFunnelId}".`);
@@ -1219,8 +1243,22 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     }
   };
 
-  const handleConfirmSale = (leadId: string, dealValue: number, packageSold: string, closerNotes?: string) => {
-    closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes);
+  const handleConfirmSale = (
+    leadId: string, 
+    dealValue: number, 
+    packageSold: string, 
+    closerNotes?: string,
+    extraOptions?: {
+      downPayment?: number;
+      installmentsCount?: number;
+      hasCreditCard?: boolean;
+      contractSignedFileUrl?: string;
+      contractSignedFileName?: string;
+      guestCount?: number;
+      eventYear?: number | string;
+    }
+  ) => {
+    closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes, extraOptions);
   };
 
   const handleConfirmLost = (reason: string, details?: string) => {
@@ -1575,32 +1613,83 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                       {/* Top Right: Pin Button + Settings + Visual */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {/* Pin on sidebar button */}
-                        <button
-                          type="button"
-                          title={funnel.isPinned ? "Desafixar do menu lateral" : "Fixar no menu lateral (Sidebar)"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateFunnel(funnel.id, { isPinned: !funnel.isPinned });
-                          }}
-                          style={{
-                            background: funnel.isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                            border: `1px solid ${funnel.isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                            borderRadius: '8px',
-                            padding: '5px 7px',
-                            color: funnel.isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            fontSize: '0.64rem',
-                            fontWeight: 700,
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <Pin size={11} style={{ transform: funnel.isPinned ? 'rotate(45deg)' : 'none' }} />
-                          <span>{funnel.isPinned ? 'Fixado' : 'Fixar'}</span>
-                        </button>
+                        {/* Pin on sidebar button (User-scoped) */}
+                        {(() => {
+                          const isPinned = isFunnelPinned(funnel.id);
+                          return (
+                            <button
+                              type="button"
+                              title={isPinned ? "Desafixar do meu Workspace (Sidebar)" : "Fixar no meu Workspace (Sidebar)"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                togglePinFunnel(funnel.id);
+                              }}
+                              style={{
+                                background: isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                                border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                                borderRadius: '8px',
+                                padding: '5px 7px',
+                                color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.64rem',
+                                fontWeight: 700,
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <Pin size={11} style={{ transform: isPinned ? 'rotate(45deg)' : 'none' }} />
+                              <span>{isPinned ? 'Fixado' : 'Fixar'}</span>
+                            </button>
+                          );
+                        })()}
+
+                        {/* Reorder Buttons */}
+                        {canConfigureFunnels && funnelsList.length > 1 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <button
+                              type="button"
+                              title="Mover funil para cima"
+                              disabled={funnelsList.findIndex(f => f.id === funnel.id) === 0}
+                              onClick={(e) => handleMoveFunnel(funnel.id, 'up', e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '6px',
+                                padding: '4px',
+                                color: funnelsList.findIndex(f => f.id === funnel.id) === 0 ? 'var(--adm-border)' : 'var(--adm-text-muted)',
+                                cursor: funnelsList.findIndex(f => f.id === funnel.id) === 0 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <ChevronUp size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Mover funil para baixo"
+                              disabled={funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1}
+                              onClick={(e) => handleMoveFunnel(funnel.id, 'down', e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '6px',
+                                padding: '4px',
+                                color: funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1 ? 'var(--adm-border)' : 'var(--adm-text-muted)',
+                                cursor: funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              <ChevronDown size={12} />
+                            </button>
+                          </div>
+                        )}
 
                         {/* Settings button */}
                         {canConfigureFunnels && (
@@ -1837,12 +1926,181 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         padding: '5px 14px',
         flexWrap: 'wrap',
       }}>
-        {/* Left Side: Receding Search Bar + Inline Expanding Filters + Meus Leads Pill */}
+        {/* Left Side: Active Funnel Pill + Receding Search Bar + Inline Expanding Filters + Meus Leads Pill */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+          {/* Active Funnel Indicator Pill with Fast Dropdown */}
+          {currentFunnel && (
+            <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-flex' }}>
+              <div
+                onClick={() => {
+                  if (!isPostSaleView) {
+                    setIsFunnelSwitcherOpen(prev => !prev);
+                  }
+                }}
+                title={!isPostSaleView ? "Clique para alternar rapidamente entre funis comerciais" : undefined}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 9px',
+                  borderRadius: '7px',
+                  background: `${currentFunnel.badgeColor || '#3B82F6'}18`,
+                  border: `1px solid ${currentFunnel.badgeColor || '#3B82F6'}45`,
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: !isPostSaleView ? 'pointer' : 'default',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{ color: currentFunnel.badgeColor || '#3B82F6', display: 'inline-flex', alignItems: 'center' }}>
+                  {renderFunnelIcon(currentFunnel.icon || 'target', 13, currentFunnel.badgeColor || '#3B82F6')}
+                </span>
+                <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {currentFunnel.name}
+                </span>
+                {!isPostSaleView && (
+                  <ChevronDown 
+                    size={11} 
+                    style={{ 
+                      color: 'var(--adm-text-muted)', 
+                      marginLeft: '2px',
+                      transform: isFunnelSwitcherOpen ? 'rotate(180deg)' : 'none',
+                      transition: 'transform 0.15s ease',
+                    }} 
+                  />
+                )}
+              </div>
+
+              {/* Fast Dropdown Menu dos Funis Comerciais */}
+              {isFunnelSwitcherOpen && !isPostSaleView && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  zIndex: 1000,
+                  background: 'var(--adm-bg-card, #1E1A29)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                  minWidth: '220px',
+                  maxWidth: '300px',
+                  padding: '6px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  animation: 'fadeIn 0.12s ease-out',
+                }}>
+                  <div style={{ 
+                    padding: '4px 8px 6px', 
+                    fontSize: '0.66rem', 
+                    fontWeight: 800, 
+                    color: 'var(--adm-text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    borderBottom: '1px solid var(--adm-border)',
+                    marginBottom: '2px',
+                  }}>
+                    Funis Comerciais
+                  </div>
+
+                  <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {commercialFunnelsForSwitcher.map(f => {
+                      const isActive = f.id === currentFunnel.id;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => {
+                            handleSelectFunnel(f.id);
+                            setIsFunnelSwitcherOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: isActive ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.12))' : 'transparent',
+                            border: 'none',
+                            color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            fontSize: '0.74rem',
+                            fontWeight: isActive ? 800 : 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            width: '100%',
+                            transition: 'background 0.1s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <span style={{ color: f.badgeColor || '#3B82F6', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                              {renderFunnelIcon(f.icon || 'target', 12, f.badgeColor || '#3B82F6')}
+                            </span>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {f.name}
+                            </span>
+                          </div>
+                          {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Link para Central de Funis */}
+                  <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSelectFunnel(null);
+                        setIsFunnelSwitcherOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        width: '100%',
+                        textAlign: 'left',
+                        transition: 'color 0.1s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--adm-text-title)';
+                        e.currentTarget.style.background = 'var(--adm-bg-input)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--adm-text-muted)';
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <Layers size={12} />
+                      <span>Ver todos os funis (Central)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Busca (Recolhe se filtros estiverem abertos, expande caso contrário) */}
           <div style={{
             position: 'relative',
-            width: isFilterBarExpanded ? '160px' : '230px',
+            width: isFilterBarExpanded ? '150px' : '200px',
             transition: 'width 0.2s ease',
             flexShrink: 0,
           }}>
@@ -2081,29 +2339,123 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             )}
           </button>
 
-          {/* Botão + Adicionar Lead */}
-          <button
-            type="button"
-            onClick={() => setIsNewLeadModalOpen(true)}
-            style={{
-              background: isPostSaleView ? 'linear-gradient(135deg, #06B6D4, #0891B2)' : 'linear-gradient(135deg, #6366F1, #4F46E5)',
-              border: 'none',
-              borderRadius: '6px',
-              color: '#ffffff',
-              padding: '6px 12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              fontSize: '0.76rem',
-              fontWeight: 600,
-              boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <UserPlus size={13} />
-            <span>{isPostSaleView ? 'Adicionar Cliente' : 'Adicionar Lead'}</span>
-          </button>
+          {/* Botão + Adicionar Lead com Submenu Rápido / Personalizado */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsAddLeadMenuOpen(prev => !prev)}
+              style={{
+                background: isPostSaleView ? 'linear-gradient(135deg, #06B6D4, #0891B2)' : 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                border: 'none',
+                borderRadius: '6px',
+                color: '#ffffff',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <UserPlus size={13} />
+              <span>{isPostSaleView ? 'Adicionar Cliente' : 'Adicionar Lead'}</span>
+              <ChevronDown size={12} style={{ transform: isAddLeadMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {isAddLeadMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  zIndex: 200,
+                  minWidth: '220px',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  border: '1px solid var(--adm-border, #E2E8F0)',
+                  borderRadius: '10px',
+                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+                  padding: '6px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  animation: 'fadeIn 0.15s ease-out',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewLeadInitialMode('quick');
+                    setIsNewLeadModalOpen(true);
+                    setIsAddLeadMenuOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.12s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Zap size={13} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                      Cadastro Rápido
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                      Apenas Nome, WhatsApp e Unidade
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewLeadInitialMode('full');
+                    setIsNewLeadModalOpen(true);
+                    setIsAddLeadMenuOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.12s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: 'rgba(99, 102, 241, 0.12)', color: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sliders size={13} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                      Cadastro Personalizado
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                      Completo com orçamento e notas
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Seletor de Modo Minimalista (Apenas Ícones com Tooltips) */}
           <div style={{
@@ -2140,7 +2492,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 setActiveLeadIdForWorkspace(null);
                 setViewMode('workspace');
               }}
-              title="Caixa de Entrada / Chat"
+              title={totalUnreadMessages > 0 ? `Caixa de Entrada (${totalUnreadMessages} mensagens não lidas)` : "Caixa de Entrada / Chat"}
               style={{
                 background: viewMode === 'workspace' ? 'var(--adm-accent-bg)' : 'transparent',
                 color: viewMode === 'workspace' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
@@ -2152,9 +2504,29 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'all 0.15s ease',
+                position: 'relative',
               }}
             >
               <Inbox size={14} />
+              {totalUnreadMessages > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#10B981',
+                  color: '#FFFFFF',
+                  fontSize: '0.55rem',
+                  fontWeight: 800,
+                  borderRadius: '10px',
+                  padding: '1px 4px',
+                  minWidth: '14px',
+                  textAlign: 'center',
+                  lineHeight: '1.2',
+                  boxShadow: '0 1px 4px rgba(16, 185, 129, 0.4)',
+                }}>
+                  {totalUnreadMessages}
+                </span>
+              )}
             </button>
 
             <button
@@ -2208,8 +2580,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   e.currentTarget.style.borderColor = 'var(--adm-border)';
                 }}
               >
-                <Settings size={13} />
-                <span>Configurar Funil</span>
+                <Settings size={14} />
               </button>
             )}
           </div>
@@ -2226,6 +2597,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           leadOwnershipFilter={leadOwnershipFilter}
           sortBy={filterState.sortBy}
           onClose={() => setViewMode('kanban')}
+          isMultiSelectActive={isMultiSelectMode}
+          onToggleMultiSelect={setIsMultiSelectMode}
+          selectedLeadIds={selectedLeadIds}
+          onSelectedLeadIdsChange={setSelectedLeadIds}
         />
       ) : (
         <>
@@ -2251,7 +2626,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             </div>
           </div>
 
-          {/* KANBAN BOARD VIEW (Scroll Vertical Independente nas Colunas & Header Fixo Sticky) */}
+          {/* KANBAN BOARD VIEW (Scroll Vertical Unificado da Tela com Headers Sticky e Arraste Horizontal) */}
           {viewMode === 'kanban' && (
             <div
               ref={boardRef}
@@ -2262,25 +2637,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               style={{
                 display: 'flex',
                 flexDirection: 'row',
-                alignItems: 'stretch',
+                alignItems: 'flex-start',
                 gap: '12px',
                 overflowX: 'auto',
-                overflowY: 'hidden',
+                overflowY: 'auto',
                 flex: 1,
-                height: 'calc(100vh - 120px)',
-                maxHeight: 'calc(100vh - 120px)',
+                height: 'calc(100vh - 110px)',
+                maxHeight: 'calc(100vh - 110px)',
                 width: '100%',
                 paddingLeft: '16px',
                 paddingRight: '40px',
                 paddingTop: '8px',
-                paddingBottom: '16px',
+                paddingBottom: '40px',
                 boxSizing: 'border-box',
                 cursor: isDraggingBoard ? 'grabbing' : 'grab',
                 userSelect: isDraggingBoard ? 'none' : 'auto',
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none',
               }}
-              className="hide-scrollbar"
+              className="custom-scrollbar"
             >
               {columns.map(col => {
                 const columnLeads = filteredLeads.filter(l => getLeadMatchedColumnId(l, columns) === col.id);
@@ -2294,6 +2667,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                 // Colunas minimizadas (Ganho e Perdido por padrão, e qualquer etapa clicada pelo usuário)
                 const isCollapsed = Boolean(collapsedColumns[col.id]);
+                const isCollapsing = Boolean(collapsingColumns[col.id]);
+                const expandingState = expandingColumns[col.id];
+                const isSlim = isCollapsing || expandingState === 'starting';
 
                 if (isCollapsed) {
                   return (
@@ -2302,7 +2678,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, col.id)}
                       onClick={() => toggleColumnCollapse(col.id)}
-                      title={`Clique para expandir a etapa "${col.title}" (${columnLeads.length} leads)`}
+                      title={`Clique para expandir a etapa "${col.title.toUpperCase()}" (${columnLeads.length} leads)`}
                       style={{
                         background: 'var(--adm-bg-card)',
                         border: '1px solid var(--adm-border)',
@@ -2311,24 +2687,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        alignSelf: 'stretch',
-                        width: '44px',
-                        minWidth: '44px',
-                        maxWidth: '44px',
-                        flex: '0 0 44px',
-                        padding: '12px 4px',
+                        alignSelf: 'flex-start',
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 15,
+                        width: '40px',
+                        minWidth: '40px',
+                        maxWidth: '40px',
+                        flex: '0 0 40px',
+                        padding: '10px 3px',
                         cursor: 'pointer',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                        gap: '12px',
-                        transition: 'all 0.15s ease',
+                        gap: '10px',
+                        transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                        animation: 'fadeIn 0.18s ease-out',
+                        minHeight: '340px',
+                        userSelect: 'none',
                       }}
                     >
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                        {renderColumnIcon(col.icon || col.id, 14, col.headerColor)}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                        {renderColumnIcon(col.icon || col.id, 13, col.headerColor)}
                         <span style={{
-                          padding: '1px 5px',
+                          padding: '1px 4px',
                           borderRadius: '999px',
-                          fontSize: '10px',
+                          fontSize: '9px',
                           fontWeight: 800,
                           backgroundColor: `${col.headerColor}20`,
                           color: col.headerColor,
@@ -2340,20 +2722,21 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       <div style={{
                         writingMode: 'vertical-rl',
                         transform: 'rotate(180deg)',
-                        fontSize: '11px',
+                        fontSize: '10.5px',
                         fontWeight: 800,
                         color: 'var(--adm-text-title)',
-                        letterSpacing: '0.5px',
+                        letterSpacing: '0.4px',
+                        textTransform: 'uppercase',
                         whiteSpace: 'nowrap',
-                        marginTop: '8px',
+                        marginTop: '6px',
                       }}>
-                        {col.title}
+                        {col.title.toUpperCase()}
                       </div>
 
                       {stageValue > 0 && (
                         <div style={{
                           marginTop: 'auto',
-                          fontSize: '9px',
+                          fontSize: '8.5px',
                           fontWeight: 700,
                           color: 'var(--adm-text-muted)',
                           writingMode: 'vertical-rl',
@@ -2373,47 +2756,50 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, col.id)}
                     style={{
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '8px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      alignSelf: 'stretch',
-                      height: '100%',
-                      maxHeight: '100%',
-                      minHeight: 0,
-                      width: '350px',
-                      minWidth: '350px',
-                      maxWidth: '360px',
-                      flex: '0 0 350px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                      overflow: 'hidden',
+                      alignSelf: 'flex-start',
+                      width: isSlim ? '40px' : '280px',
+                      minWidth: isSlim ? '40px' : '280px',
+                      maxWidth: isSlim ? '40px' : '280px',
+                      flex: isSlim ? '0 0 40px' : '0 0 280px',
+                      gap: '6px',
+                      boxShadow: 'none',
+                      position: 'relative',
+                      overflow: isSlim ? 'hidden' : 'visible',
+                      transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), flex 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
                   >
-                    {/* Column Header - Sticky / Fixo no topo da coluna */}
+                    {/* Column Header - Sticky / Fixo no topo do Board durante a rolagem vertical da tela */}
                     <div 
                       onClick={() => toggleColumnCollapse(col.id)}
-                      title={`Clique para minimizar a etapa "${col.title}"`}
+                      title={`Clique para minimizar a etapa "${col.title.toUpperCase()}"`}
                       style={{
-                        padding: '10px 12px',
-                        borderBottom: '1px solid var(--adm-border)',
+                        padding: '7px 9px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--adm-border)',
                         borderTop: `3px solid ${col.headerColor}`,
-                        borderTopLeftRadius: '8px',
-                        borderTopRightRadius: '8px',
-                        backgroundColor: col.bgColor || 'var(--adm-bg-elevated)',
+                        backgroundColor: 'var(--adm-bg-card, #1E1A29)',
+                        backgroundImage: col.bgColor ? `linear-gradient(${col.bgColor}, ${col.bgColor})` : undefined,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '3px',
+                        gap: '2px',
                         cursor: 'pointer',
                         userSelect: 'none',
                         position: 'sticky',
                         top: 0,
-                        zIndex: 10,
+                        zIndex: 20,
                         flexShrink: 0,
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, overflow: 'hidden' }}>
                           {isMultiSelectMode && (
                             <input
                               type="checkbox"
@@ -2431,15 +2817,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               style={{
                                 cursor: 'pointer',
                                 accentColor: 'var(--adm-accent, #6366F1)',
-                                width: '14px',
-                                height: '14px',
+                                width: '13px',
+                                height: '13px',
                                 flexShrink: 0,
                               }}
                             />
                           )}
-                          {renderColumnIcon(col.icon || col.id, 13, col.headerColor)}
-                          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {col.title}
+                          {renderColumnIcon(col.icon || col.id, 12, col.headerColor)}
+                          <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'uppercase' }}>
+                            {col.title.toUpperCase()}
                           </span>
 
                           {col.hints && (
@@ -2468,7 +2854,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   }
                                 }}
                               >
-                                <Sparkles size={11} />
+                                <Sparkles size={10} />
                               </button>
 
                               {activeHintStageId === col.id && (
@@ -2476,23 +2862,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   onClick={(e) => e.stopPropagation()}
                                   style={{
                                     position: 'absolute',
-                                    top: 'calc(100% + 8px)',
+                                    top: 'calc(100% + 6px)',
                                     left: '-10px',
                                     zIndex: 50,
-                                    width: '260px',
-                                    padding: '12px 14px',
+                                    width: '240px',
+                                    padding: '10px 12px',
                                     background: 'var(--adm-bg-card)',
                                     border: '1px solid var(--adm-border)',
-                                    borderRadius: '10px',
+                                    borderRadius: '8px',
                                     boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-                                    fontSize: '0.74rem',
+                                    fontSize: '0.70rem',
                                     color: 'var(--adm-text-body)',
-                                    lineHeight: 1.4,
+                                    lineHeight: 1.35,
                                     wordBreak: 'break-word',
                                   }}
                                 >
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '4px' }}>
-                                    <span style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.72rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px', borderBottom: '1px solid var(--adm-border)', paddingBottom: '3px' }}>
+                                    <span style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.68rem' }}>
                                       Orientações da Etapa
                                     </span>
                                     <button
@@ -2500,7 +2886,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                       onClick={() => setActiveHintStageId(null)}
                                       style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0 }}
                                     >
-                                      <X size={11} />
+                                      <X size={10} />
                                     </button>
                                   </div>
                                   <div>{col.hints}</div>
@@ -2509,11 +2895,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             </div>
                           )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                           <span style={{
-                            padding: '1px 6px',
-                            borderRadius: '8px',
-                            fontSize: '10px',
+                            padding: '1px 5px',
+                            borderRadius: '6px',
+                            fontSize: '9.5px',
                             fontWeight: 800,
                             backgroundColor: 'var(--adm-bg-card, #ffffff)',
                             color: col.headerColor,
@@ -2542,38 +2928,36 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             onMouseEnter={(e) => e.currentTarget.style.color = 'var(--adm-text-title)'}
                             onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
                           >
-                            <ChevronDown size={13} style={{ transform: 'rotate(90deg)' }} />
+                            <ChevronDown size={12} style={{ transform: 'rotate(90deg)' }} />
                           </button>
                         </div>
                       </div>
-                      <span style={{ fontSize: '10px', color: 'var(--adm-text-muted)' }}>
+                      <span style={{ fontSize: '9.5px', color: 'var(--adm-text-muted)' }}>
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(stageValue)}
                       </span>
                     </div>
 
-                    {/* Cards Container (Scroll Vertical com Header Fixo) */}
-                    <div 
-                      style={{
-                        flex: 1,
-                        minHeight: 0,
-                        overflowY: 'auto',
-                        padding: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        boxSizing: 'border-box',
-                      }}
-                      className="custom-scrollbar"
-                    >
+                    {/* Cards Container (Direto no background, com animação simétrica suave de recolher e expandir) */}
+                    <div style={{
+                      padding: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      opacity: isSlim ? 0 : 1,
+                      transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
+                      transition: 'opacity 0.20s ease, transform 0.20s ease',
+                      pointerEvents: isSlim ? 'none' : 'auto',
+                    }}>
                       {columnLeads.length === 0 ? (
                         <div style={{
                           textAlign: 'center',
-                          padding: '20px 8px',
+                          padding: '16px 6px',
                           color: 'var(--adm-text-muted)',
-                          fontSize: '0.70rem',
-                          border: '1px dashed var(--adm-border)',
+                          fontSize: '0.65rem',
+                          border: '1.5px dashed var(--adm-border)',
                           borderRadius: '8px',
                           lineHeight: 1.4,
+                          background: 'transparent',
                         }}>
                           Arraste um lead para cá
                         </div>
@@ -2583,6 +2967,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           const closerCollab = collaborators.find(c => (lead.closerId && c.id === lead.closerId) || (lead.closerName && c.name?.toLowerCase() === lead.closerName.toLowerCase()));
 
                           const isSelectedInMulti = selectedLeadIds.includes(lead.id);
+                          const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
+                          const sla = getLeadWaitTimeSla(pendingWaitMs);
+                          const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
 
                           return (
                             <div
@@ -2597,45 +2984,52 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 }
                               }}
                               style={{
-                                background: isSelectedInMulti ? 'rgba(99, 102, 241, 0.05)' : 'var(--adm-bg-card, #ffffff)',
-                                border: isSelectedInMulti ? '1.5px solid var(--adm-accent, #6366F1)' : '1px solid var(--adm-border, #E2E8F0)',
+                                background: isSelectedInMulti 
+                                  ? 'rgba(99, 102, 241, 0.05)' 
+                                  : (hasSlaAlert ? sla.cardBg : 'var(--adm-bg-card, #ffffff)'),
+                                border: isSelectedInMulti 
+                                  ? '1.5px solid var(--adm-accent, #6366F1)' 
+                                  : (hasSlaAlert ? `1.5px solid ${sla.cardBorder}` : '1px solid var(--adm-border, #E2E8F0)'),
                                 borderRadius: '8px',
-                                padding: '12px 14px',
+                                padding: '8px 10px',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '10px',
-                                transition: 'all 0.15s ease',
+                                gap: '6px',
+                                transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
                                 position: 'relative',
-                                boxShadow: isSelectedInMulti ? '0 2px 8px rgba(99, 102, 241, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
+                                boxShadow: isSelectedInMulti 
+                                  ? '0 2px 8px rgba(99, 102, 241, 0.15)' 
+                                  : (hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.03)'),
+                                zIndex: activeLeadMenuId === lead.id ? 100 : 1,
                               }}
                               onMouseEnter={(e) => {
                                 if (!isSelectedInMulti) {
-                                  e.currentTarget.style.borderColor = isPostSaleView ? '#06B6D4' : 'var(--adm-accent, #6366F1)';
+                                  e.currentTarget.style.borderColor = isPostSaleView ? '#06B6D4' : (hasSlaAlert ? sla.color : 'var(--adm-accent, #6366F1)');
                                   e.currentTarget.style.transform = 'translateY(-1px)';
-                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+                                  e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.06)';
                                 }
                               }}
                               onMouseLeave={(e) => {
                                 if (!isSelectedInMulti) {
-                                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                                  e.currentTarget.style.borderColor = hasSlaAlert ? sla.cardBorder : 'var(--adm-border, #E2E8F0)';
                                   e.currentTarget.style.transform = 'translateY(0)';
-                                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
+                                  e.currentTarget.style.boxShadow = hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.03)';
                                 }
                               }}
                             >
                               {/* ── 1. CABEÇALHO: 3 Pontinhos + Avatar + Nome/Telefone + Divisor + Valor + Selo $ ── */}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                                 {/* Esquerda: Checkbox/3 Pontinhos + Avatar + Nome + Telefone */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                                   {isMultiSelectMode ? (
                                     <div 
                                       onClick={(e) => toggleLeadSelection(lead.id, e)}
                                       style={{
-                                        width: '18px',
-                                        height: '18px',
-                                        borderRadius: '4px',
-                                        border: `2px solid ${isSelectedInMulti ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border, #CBD5E1)'}`,
+                                        width: '15px',
+                                        height: '15px',
+                                        borderRadius: '3px',
+                                        border: `1.5px solid ${isSelectedInMulti ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border, #CBD5E1)'}`,
                                         background: isSelectedInMulti ? 'var(--adm-accent, #6366F1)' : 'transparent',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -2644,11 +3038,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         flexShrink: 0,
                                       }}
                                     >
-                                      {isSelectedInMulti && <Check size={12} color="#fff" strokeWidth={3} />}
+                                      {isSelectedInMulti && <Check size={10} color="#fff" strokeWidth={3} />}
                                     </div>
                                   ) : (
                                     /* Botão de 3 Pontinhos Verticais com Menu Flutuante */
-                                    <div style={{ position: 'relative', flexShrink: 0, marginLeft: '-4px' }}>
+                                    <div style={{ position: 'relative', flexShrink: 0, marginLeft: '-3px' }}>
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -2659,8 +3053,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         style={{
                                           background: activeLeadMenuId === lead.id ? 'var(--adm-bg-input, #F1F5F9)' : 'transparent',
                                           border: 'none',
-                                          borderRadius: '6px',
-                                          padding: '4px 2px',
+                                          borderRadius: '4px',
+                                          padding: '2px',
                                           cursor: 'pointer',
                                           color: 'var(--adm-text-muted, #64748B)',
                                           display: 'flex',
@@ -2669,7 +3063,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                           transition: 'all 0.15s ease',
                                         }}
                                       >
-                                        <MoreVertical size={16} />
+                                        <MoreVertical size={13} />
                                       </button>
 
                                       {/* Menu Flutuante de Ações */}
@@ -2686,7 +3080,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             borderRadius: '8px',
                                             boxShadow: '0 10px 25px -5px rgba(0,0,0,0.18)',
                                             padding: '4px',
-                                            minWidth: '175px',
+                                            minWidth: '160px',
                                             display: 'flex',
                                             flexDirection: 'column',
                                             gap: '2px',
@@ -2701,13 +3095,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             style={{
                                               display: 'flex',
                                               alignItems: 'center',
-                                              gap: '8px',
-                                              padding: '7px 10px',
-                                              borderRadius: '6px',
+                                              gap: '6px',
+                                              padding: '6px 8px',
+                                              borderRadius: '5px',
                                               border: 'none',
                                               background: 'transparent',
                                               color: 'var(--adm-text-title, #0F172A)',
-                                              fontSize: '0.76rem',
+                                              fontSize: '0.72rem',
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               textAlign: 'left',
@@ -2716,7 +3110,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                           >
-                                            <MessageSquare size={13} color="#10B981" />
+                                            <MessageSquare size={12} color="#10B981" />
                                             <span>Abrir Atendimento</span>
                                           </button>
 
@@ -2729,13 +3123,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             style={{
                                               display: 'flex',
                                               alignItems: 'center',
-                                              gap: '8px',
-                                              padding: '7px 10px',
-                                              borderRadius: '6px',
+                                              gap: '6px',
+                                              padding: '6px 8px',
+                                              borderRadius: '5px',
                                               border: 'none',
                                               background: 'transparent',
                                               color: 'var(--adm-text-title, #0F172A)',
-                                              fontSize: '0.76rem',
+                                              fontSize: '0.72rem',
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               textAlign: 'left',
@@ -2744,7 +3138,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                           >
-                                            <CheckSquare size={13} color="#6366F1" />
+                                            <CheckSquare size={12} color="#6366F1" />
                                             <span>Criar Tarefa</span>
                                           </button>
 
@@ -2757,13 +3151,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             style={{
                                               display: 'flex',
                                               alignItems: 'center',
-                                              gap: '8px',
-                                              padding: '7px 10px',
-                                              borderRadius: '6px',
+                                              gap: '6px',
+                                              padding: '6px 8px',
+                                              borderRadius: '5px',
                                               border: 'none',
                                               background: 'transparent',
                                               color: 'var(--adm-text-title, #0F172A)',
-                                              fontSize: '0.76rem',
+                                              fontSize: '0.72rem',
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               textAlign: 'left',
@@ -2772,11 +3166,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                           >
-                                            <GitBranch size={13} color="#F59E0B" />
+                                            <GitBranch size={12} color="#F59E0B" />
                                             <span>Mudar de Funil</span>
                                           </button>
 
-                                          <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '3px 0' }} />
+                                          <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
 
                                           <button
                                             type="button"
@@ -2789,13 +3183,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             style={{
                                               display: 'flex',
                                               alignItems: 'center',
-                                              gap: '8px',
-                                              padding: '7px 10px',
-                                              borderRadius: '6px',
+                                              gap: '6px',
+                                              padding: '6px 8px',
+                                              borderRadius: '5px',
                                               border: 'none',
                                               background: 'transparent',
                                               color: '#EF4444',
-                                              fontSize: '0.76rem',
+                                              fontSize: '0.72rem',
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               textAlign: 'left',
@@ -2804,7 +3198,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                           >
-                                            <Trash2 size={13} color="#EF4444" />
+                                            <Trash2 size={12} color="#EF4444" />
                                             <span>Excluir Lead</span>
                                           </button>
                                         </div>
@@ -2813,69 +3207,51 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   )}
 
                                   {/* Avatar / Foto do Lead */}
-                                  {((lead as any).avatarUrl || (lead as any).photoUrl) ? (
-                                    <img
-                                      src={(lead as any).avatarUrl || (lead as any).photoUrl}
-                                      alt={lead.name}
-                                      style={{
-                                        width: '34px',
-                                        height: '34px',
-                                        borderRadius: '50%',
-                                        objectFit: 'cover',
-                                        border: '1.5px solid var(--adm-border, #E2E8F0)',
-                                        flexShrink: 0,
-                                      }}
-                                      onError={(e) => {
-                                        (e.currentTarget as HTMLElement).style.display = 'none';
-                                      }}
-                                    />
-                                  ) : (
-                                    <div style={{
-                                      width: '34px',
-                                      height: '34px',
-                                      borderRadius: '50%',
-                                      background: '#18181B',
-                                      border: '1.5px solid rgba(217, 119, 6, 0.4)',
-                                      boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      flexShrink: 0,
-                                    }}>
-                                      <span style={{
-                                        color: '#F59E0B',
-                                        fontSize: '0.84rem',
-                                        fontWeight: 800,
-                                        lineHeight: 1,
-                                      }}>
-                                        {(lead.name || 'L').trim().charAt(0).toUpperCase()}
-                                      </span>
-                                    </div>
-                                  )}
+                                  <SafeAvatar
+                                    src={(lead as any).avatarUrl || (lead as any).photoUrl}
+                                    name={lead.name}
+                                    size={24}
+                                  />
 
                                   {/* Nome do Lead e Telefone abaixo */}
-                                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '1px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '0px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', minWidth: 0 }}>
                                       <span style={{
-                                        fontSize: '0.86rem',
+                                        fontSize: '0.75rem',
                                         fontWeight: 800,
                                         color: 'var(--adm-text-title, #0F172A)',
                                         whiteSpace: 'nowrap',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
-                                        lineHeight: 1.2,
+                                        lineHeight: 1.15,
                                       }}>
                                         {lead.name}
                                       </span>
                                       {isLeadSpectator(lead) && (
-                                        <span title="Modo Espectador: somente leitura" style={{ fontSize: '0.50rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '0 2px', display: 'inline-flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-                                          <Eye size={8} />
+                                        <span title="Modo Espectador: somente leitura" style={{ fontSize: '0.45rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '3px', padding: '0 2px', display: 'inline-flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                                          <Eye size={7} />
+                                        </span>
+                                      )}
+                                      {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
+                                        <span style={{
+                                          background: '#10B981',
+                                          color: '#fff',
+                                          fontSize: '0.55rem',
+                                          fontWeight: 800,
+                                          borderRadius: '8px',
+                                          padding: '1px 4px',
+                                          minWidth: '14px',
+                                          textAlign: 'center',
+                                          lineHeight: '1.2',
+                                          flexShrink: 0,
+                                        }} title={`${lead.unreadCount} nova(s) mensagem(ns)`}>
+                                          {lead.unreadCount}
                                         </span>
                                       )}
                                     </div>
                                     {lead.phone && (
                                       <span style={{
-                                        fontSize: '0.70rem',
+                                        fontSize: '0.62rem',
                                         fontWeight: 500,
                                         color: 'var(--adm-text-muted, #64748B)',
                                         whiteSpace: 'nowrap',
@@ -2889,29 +3265,47 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   </div>
                                 </div>
 
-                                {/* Direita: Separador + Valor de Retorno + Selo Circular Verde com $ */}
+                                {/* Direita: Separador + Valor de Retorno + Selo Circular Verde com $ e Popover Interativo */}
                                 {(() => {
-                                  const potentialValue = (lead.dealValue && lead.dealValue > 0) 
-                                    ? lead.dealValue 
+                                  const downPayment = lead.downPayment || 0;
+                                  const installments = lead.installments || 0;
+                                  const installmentVal = lead.installmentValue || (installments > 0 && lead.dealValue ? Math.max(0, (lead.dealValue - downPayment) / installments) : 0);
+                                  const potentialValue = (lead.dealValue && lead.dealValue > 0)
+                                    ? lead.dealValue
+                                    : (downPayment > 0 || installments > 0)
+                                    ? (downPayment + (installments * installmentVal))
                                     : (lead.estimatedBudget && lead.estimatedBudget > 0 ? lead.estimatedBudget : null);
 
-                                  if (!potentialValue) return null;
+                                  if (!potentialValue && downPayment === 0 && installments === 0) return null;
+
+                                  const formattedTotal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(potentialValue || 0);
+                                  const isValuePopoverOpen = activeValueLeadId === lead.id;
+                                  const remainingBalance = (potentialValue || 0) - downPayment;
 
                                   return (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                      <div style={{ width: '1px', height: '18px', background: 'var(--adm-border, #CBD5E1)', opacity: 0.6 }} />
+                                    <div 
+                                      data-value-trigger
+                                      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, cursor: 'pointer' }}
+                                      onMouseEnter={() => setActiveValueLeadId(lead.id)}
+                                      onMouseLeave={() => setActiveValueLeadId(null)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveValueLeadId(isValuePopoverOpen ? null : lead.id);
+                                      }}
+                                    >
+                                      <div style={{ width: '1px', height: '14px', background: 'var(--adm-border, #CBD5E1)', opacity: 0.6 }} />
                                       <span style={{
-                                        fontSize: '0.90rem',
+                                        fontSize: '0.76rem',
                                         fontWeight: 800,
                                         color: '#047857',
-                                        letterSpacing: '-0.3px',
+                                        letterSpacing: '-0.2px',
                                         whiteSpace: 'nowrap',
                                       }}>
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(potentialValue)}
+                                        {formattedTotal}
                                       </span>
                                       <div style={{
-                                        width: '22px',
-                                        height: '22px',
+                                        width: '18px',
+                                        height: '18px',
                                         borderRadius: '50%',
                                         background: '#10B981',
                                         color: '#ffffff',
@@ -2919,12 +3313,107 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         fontWeight: 800,
-                                        fontSize: '0.74rem',
-                                        boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
+                                        fontSize: '0.60rem',
+                                        boxShadow: '0 1px 3px rgba(16, 185, 129, 0.3)',
                                         flexShrink: 0,
                                       }}>
                                         $
                                       </div>
+
+                                      {/* Popover Financeiro Glassmorphism */}
+                                      {isValuePopoverOpen && (
+                                        <div
+                                          data-value-popover
+                                          onClick={(e) => e.stopPropagation()}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 6px)',
+                                            right: 0,
+                                            zIndex: 99999,
+                                            minWidth: '220px',
+                                            background: 'var(--adm-bg-card, #FFFFFF)',
+                                            border: '1px solid var(--adm-border, #CBD5E1)',
+                                            borderRadius: '10px',
+                                            boxShadow: '0 12px 28px -4px rgba(0,0,0,0.22), 0 4px 8px -2px rgba(0,0,0,0.1)',
+                                            padding: '10px 12px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px',
+                                            pointerEvents: 'auto',
+                                          }}
+                                        >
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                                            paddingBottom: '6px',
+                                          }}>
+                                            <span style={{
+                                              fontSize: '0.68rem',
+                                              fontWeight: 800,
+                                              color: 'var(--adm-text-muted, #64748B)',
+                                              textTransform: 'uppercase',
+                                              letterSpacing: '0.4px',
+                                            }}>
+                                              Resumo Financeiro
+                                            </span>
+                                            <span style={{
+                                              fontSize: '0.65rem',
+                                              fontWeight: 700,
+                                              padding: '1px 6px',
+                                              borderRadius: '4px',
+                                              background: 'rgba(16, 185, 129, 0.12)',
+                                              color: '#10B981',
+                                            }}>
+                                              {(lead.stage as string) === 'deal_closed' || (lead.stage as string) === 'contract_signed' ? 'Fechado' : 'Em Negociação'}
+                                            </span>
+                                          </div>
+
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.72rem' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                              <span style={{ color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>Valor Total:</span>
+                                              <span style={{ fontWeight: 800, color: '#047857' }}>{formattedTotal}</span>
+                                            </div>
+
+                                            {downPayment > 0 && (
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>Entrada:</span>
+                                                <span style={{ fontWeight: 700, color: 'var(--adm-text-title, #1E293B)' }}>
+                                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(downPayment)}
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            {installments > 0 && (
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>Parcelamento:</span>
+                                                <span style={{ fontWeight: 700, color: 'var(--adm-text-title, #1E293B)' }}>
+                                                  {installments}x {installmentVal > 0 ? `de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(installmentVal)}` : ''}
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            {downPayment > 0 && remainingBalance > 0 && (
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>Saldo Restante:</span>
+                                                <span style={{ fontWeight: 700, color: 'var(--adm-text-title, #1E293B)' }}>
+                                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(remainingBalance)}
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            {lead.eventDate && (
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--adm-border, #E2E8F0)', paddingTop: '4px', marginTop: '2px' }}>
+                                                <span style={{ color: 'var(--adm-text-muted, #64748B)', fontWeight: 500 }}>Data do Evento:</span>
+                                                <span style={{ fontWeight: 700, color: 'var(--adm-accent, #6366F1)' }}>
+                                                  {new Date(lead.eventDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })()}
@@ -2942,6 +3431,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   title?: string;
                                 }> = [];
 
+                                // 0) Tempo de Espera / SLA (Prioridade Máxima com Ícone de Relógio Lucide)
+                                if (pendingWaitMs > 0) {
+                                  chips.push({
+                                    id: 'wait_time_sla',
+                                    label: sla.formattedTime,
+                                    icon: <Clock size={9} color={sla.color} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+                                    bg: sla.bg,
+                                    color: sla.color,
+                                    border: sla.border,
+                                    title: `Aguardando resposta da equipe: ${sla.formattedTime} (${sla.label})`,
+                                  });
+                                }
+
                                 // A) Casa de Festas (Ícone de Estabelecimento Comercial: Store)
                                 const venueObj = venues.find(v => v.id === lead.venueId);
                                 const venueTitle = venueObj?.name || lead.venueName;
@@ -2949,7 +3451,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'venue',
                                     label: venueTitle,
-                                    icon: <Store size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <Store size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(99, 102, 241, 0.08)',
                                     color: '#4F46E5',
                                     border: 'rgba(99, 102, 241, 0.22)',
@@ -2962,7 +3464,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_sub',
                                     label: lead.subSource,
-                                    icon: <PhoneCall size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <PhoneCall size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(16, 185, 129, 0.08)',
                                     color: '#059669',
                                     border: 'rgba(16, 185, 129, 0.22)',
@@ -2972,7 +3474,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_insta',
                                     label: 'Instagram',
-                                    icon: <Link2 size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <Link2 size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(236, 72, 153, 0.08)',
                                     color: '#DB2777',
                                     border: 'rgba(236, 72, 153, 0.22)',
@@ -2982,7 +3484,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_wa',
                                     label: 'WhatsApp',
-                                    icon: <PhoneCall size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <PhoneCall size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(16, 185, 129, 0.08)',
                                     color: '#059669',
                                     border: 'rgba(16, 185, 129, 0.22)',
@@ -2992,7 +3494,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_ind',
                                     label: 'Indicação',
-                                    icon: <Gift size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <Gift size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(212, 175, 55, 0.10)',
                                     color: '#B45309',
                                     border: 'rgba(212, 175, 55, 0.25)',
@@ -3002,7 +3504,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_ads',
                                     label: 'Campanha Meta',
-                                    icon: <Megaphone size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <Megaphone size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(168, 85, 247, 0.08)',
                                     color: '#9333EA',
                                     border: 'rgba(168, 85, 247, 0.22)',
@@ -3012,7 +3514,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_form',
                                     label: 'Formulário',
-                                    icon: <FileText size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <FileText size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(59, 130, 246, 0.08)',
                                     color: '#2563EB',
                                     border: 'rgba(59, 130, 246, 0.22)',
@@ -3022,7 +3524,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'source_custom',
                                     label: lead.sourceName,
-                                    icon: <Compass size={11} style={{ flexShrink: 0 }} />,
+                                    icon: <Compass size={9} style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(148, 163, 184, 0.08)',
                                     color: '#64748B',
                                     border: 'rgba(148, 163, 184, 0.22)',
@@ -3030,37 +3532,65 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   });
                                 }
 
-                                // C) Sistema de ICP (Perfil de Cliente Ideal - Tag com Ícone Oficial IcpTargetUserIcon)
-                                const hasCpAnswers = (hasIcpConfigured(lead) && Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).length > 0)) || 
-                                  (typeof lead.mqlScore === 'number' && lead.mqlScore > 0);
-
-                                if (hasCpAnswers) {
-                                  const score = lead.mqlScore ?? 0;
-                                  const isTop = score >= 80 || lead.mqlLevel === 'top';
-                                  const isQualified = (score >= 50 && score < 80) || lead.mqlLevel === 'qualified';
-                                  const cpColor = isTop ? '#059669' : isQualified ? '#D97706' : '#DC2626';
-                                  const cpBg = isTop ? 'rgba(16, 185, 129, 0.12)' : isQualified ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)';
-                                  const cpBorder = isTop ? 'rgba(16, 185, 129, 0.3)' : isQualified ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-
+                                // C) Tipo de Evento & Ano do Evento (Tags Prioritárias)
+                                if (lead.eventType) {
                                   chips.push({
-                                    id: 'icp_score',
-                                    label: `% ICP ${score}%`,
-                                    icon: <IcpTargetUserIcon size={12} color={cpColor} />,
-                                    bg: cpBg,
-                                    color: cpColor,
-                                    border: cpBorder,
-                                    title: `Perfil de Cliente Ideal: ${score}%`,
+                                    id: 'event_type',
+                                    label: lead.eventType,
+                                    icon: <Sparkles size={8.5} style={{ flexShrink: 0 }} />,
+                                    bg: 'rgba(168, 85, 247, 0.08)',
+                                    color: '#9333EA',
+                                    border: 'rgba(168, 85, 247, 0.22)',
+                                    title: `Tipo de Evento: ${lead.eventType}`,
                                   });
-                                } else {
+                                }
+
+                                const eventYearVal = lead.eventYear || (lead.partyDate ? new Date(lead.partyDate).getFullYear().toString() : undefined);
+                                if (eventYearVal) {
                                   chips.push({
-                                    id: 'icp_undefined',
-                                    label: 'Indefinido',
-                                    icon: <IcpTargetUserIcon size={12} color="#94A3B8" />,
-                                    bg: 'var(--adm-bg-input, rgba(148, 163, 184, 0.08))',
-                                    color: 'var(--adm-text-muted, #94A3B8)',
-                                    border: 'var(--adm-border, rgba(148, 163, 184, 0.2))',
-                                    title: 'Perfil ICP Indefinido (Nenhuma pergunta respondida)',
+                                    id: 'event_year',
+                                    label: String(eventYearVal),
+                                    icon: <Calendar size={8.5} style={{ flexShrink: 0 }} />,
+                                    bg: 'rgba(59, 130, 246, 0.08)',
+                                    color: '#2563EB',
+                                    border: 'rgba(59, 130, 246, 0.22)',
+                                    title: `Ano do Evento: ${eventYearVal}`,
                                   });
+                                }
+
+                                // D) Sistema de ICP (Perfil de Cliente Ideal - Exclusivo por Unidade)
+                                if (hasIcpConfigured(lead)) {
+                                  const hasCpAnswers = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).length > 0) || 
+                                    (typeof lead.mqlScore === 'number' && lead.mqlScore > 0);
+
+                                  if (hasCpAnswers) {
+                                    const score = lead.mqlScore ?? 0;
+                                    const isTop = score >= 80 || lead.mqlLevel === 'top';
+                                    const isQualified = (score >= 50 && score < 80) || lead.mqlLevel === 'qualified';
+                                    const cpColor = isTop ? '#059669' : isQualified ? '#D97706' : '#DC2626';
+                                    const cpBg = isTop ? 'rgba(16, 185, 129, 0.12)' : isQualified ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+                                    const cpBorder = isTop ? 'rgba(16, 185, 129, 0.3)' : isQualified ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+
+                                    chips.push({
+                                      id: 'icp_score',
+                                      label: `% ICP ${score}%`,
+                                      icon: <IcpTargetUserIcon size={10} color={cpColor} />,
+                                      bg: cpBg,
+                                      color: cpColor,
+                                      border: cpBorder,
+                                      title: `Perfil de Cliente Ideal: ${score}%`,
+                                    });
+                                  } else {
+                                    chips.push({
+                                      id: 'icp_undefined',
+                                      label: 'Indefinido',
+                                      icon: <IcpTargetUserIcon size={10} color="#94A3B8" />,
+                                      bg: 'var(--adm-bg-input, rgba(148, 163, 184, 0.08))',
+                                      color: 'var(--adm-text-muted, #94A3B8)',
+                                      border: 'var(--adm-border, rgba(148, 163, 184, 0.2))',
+                                      title: 'Perfil ICP Indefinido (Nenhuma pergunta respondida)',
+                                    });
+                                  }
                                 }
 
                                 // D) Temperatura
@@ -3068,7 +3598,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'temp',
                                     label: 'Quente',
-                                    icon: <Flame size={11} color="#EF4444" style={{ flexShrink: 0 }} />,
+                                    icon: <Flame size={9} color="#EF4444" style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(239, 68, 68, 0.08)',
                                     color: '#EF4444',
                                     border: 'rgba(239, 68, 68, 0.22)',
@@ -3078,7 +3608,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'temp',
                                     label: 'Morno',
-                                    icon: <SunMedium size={11} color="#F59E0B" style={{ flexShrink: 0 }} />,
+                                    icon: <SunMedium size={9} color="#F59E0B" style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(245, 158, 11, 0.08)',
                                     color: '#F59E0B',
                                     border: 'rgba(245, 158, 11, 0.22)',
@@ -3088,7 +3618,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   chips.push({
                                     id: 'temp',
                                     label: 'Frio',
-                                    icon: <Snowflake size={11} color="#3B82F6" style={{ flexShrink: 0 }} />,
+                                    icon: <Snowflake size={9} color="#3B82F6" style={{ flexShrink: 0 }} />,
                                     bg: 'rgba(59, 130, 246, 0.08)',
                                     color: '#3B82F6',
                                     border: 'rgba(59, 130, 246, 0.22)',
@@ -3102,7 +3632,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     chips.push({
                                       id: `tag_${idx}`,
                                       label: tag.trim(),
-                                      icon: <TagIcon size={10} color="#64748B" style={{ flexShrink: 0 }} />,
+                                      icon: <TagIcon size={8.5} color="#64748B" style={{ flexShrink: 0 }} />,
                                       bg: 'rgba(100, 116, 139, 0.08)',
                                       color: 'var(--adm-text-body, #334155)',
                                       border: 'rgba(100, 116, 139, 0.22)',
@@ -3115,7 +3645,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px',
+                                    gap: '4px',
                                     flexWrap: 'wrap',
                                     minWidth: 0,
                                   }}>
@@ -3126,19 +3656,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         style={{
                                           display: 'inline-flex',
                                           alignItems: 'center',
-                                          gap: '4px',
-                                          padding: '3px 9px',
+                                          gap: '3px',
+                                          padding: '2px 6px',
                                           borderRadius: '9999px',
-                                          fontSize: '0.68rem',
+                                          fontSize: '0.58rem',
                                           fontWeight: 700,
                                           background: chip.bg,
                                           border: `1px solid ${chip.border}`,
                                           color: chip.color,
                                           whiteSpace: 'nowrap',
-                                          maxWidth: '140px',
+                                          maxWidth: '120px',
                                           overflow: 'hidden',
                                           textOverflow: 'ellipsis',
-                                          lineHeight: 1.2,
+                                          lineHeight: 1.15,
                                         }}
                                       >
                                         {chip.icon}
@@ -3148,51 +3678,247 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                       </span>
                                     ))}
 
-                                    {/* Botão (+) Tracejado para Adicionar Tag Rápida */}
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setAddTagLead(lead);
-                                      }}
-                                      title="Adicionar tag ao lead"
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '24px',
-                                        height: '24px',
-                                        borderRadius: '50%',
-                                        border: '1.2px dashed var(--adm-border, #94A3B8)',
-                                        background: 'transparent',
-                                        color: 'var(--adm-text-muted, #64748B)',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease',
-                                        flexShrink: 0,
-                                        padding: 0,
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.borderColor = 'var(--adm-accent, #6366F1)';
-                                        e.currentTarget.style.color = 'var(--adm-accent, #6366F1)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.borderColor = 'var(--adm-border, #94A3B8)';
-                                        e.currentTarget.style.color = 'var(--adm-text-muted, #64748B)';
-                                      }}
-                                    >
-                                      <Plus size={12} />
-                                    </button>
+                                    {/* Botão (+) Tracejado para Adicionar Tag Rápida com Popover Inline */}
+                                    <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                      <button
+                                        type="button"
+                                        data-tag-trigger
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setAddTagLead(addTagLead?.id === lead.id ? null : lead);
+                                          setShowCardCustomTagInput(false);
+                                          setNewCardTagInput('');
+                                        }}
+                                        title="Adicionar tag ao lead"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          width: '18px',
+                                          height: '18px',
+                                          borderRadius: '50%',
+                                          border: `1px dashed ${addTagLead?.id === lead.id ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border, #94A3B8)'}`,
+                                          background: addTagLead?.id === lead.id ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                                          color: addTagLead?.id === lead.id ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-muted, #64748B)',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.15s ease',
+                                          flexShrink: 0,
+                                          padding: 0,
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.borderColor = 'var(--adm-accent, #6366F1)';
+                                          e.currentTarget.style.color = 'var(--adm-accent, #6366F1)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (addTagLead?.id !== lead.id) {
+                                            e.currentTarget.style.borderColor = 'var(--adm-border, #94A3B8)';
+                                            e.currentTarget.style.color = 'var(--adm-text-muted, #64748B)';
+                                          }
+                                        }}
+                                      >
+                                        <Plus size={9} />
+                                      </button>
+
+                                      {addTagLead?.id === lead.id && (
+                                        <div
+                                          data-tag-popover
+                                          onClick={(e) => e.stopPropagation()}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 'calc(100% + 4px)',
+                                            left: 0,
+                                            zIndex: 9999,
+                                            minWidth: '190px',
+                                            background: 'var(--adm-bg-card, #FFFFFF)',
+                                            border: '1px solid var(--adm-border, #CBD5E1)',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
+                                            padding: '4px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '2px',
+                                            maxHeight: '240px',
+                                            overflowY: 'auto',
+                                          }}
+                                        >
+                                          <div style={{
+                                            fontSize: '0.64rem',
+                                            fontWeight: 800,
+                                            color: 'var(--adm-text-muted, #64748B)',
+                                            padding: '4px 8px 2px',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.4px',
+                                          }}>
+                                            Tags do Funil
+                                          </div>
+                                          {(() => {
+                                            const funnelTags = currentFunnel?.predefinedTags || [];
+                                            const allowCustom = currentFunnel?.allowCollaboratorsCreateTags || (currentFunnel as any)?.duplicateRuleConfig?._allowCollaboratorsCreateTags;
+
+                                            return (
+                                              <>
+                                                {funnelTags.length === 0 && !allowCustom && (
+                                                  <div style={{
+                                                    padding: '8px 10px',
+                                                    fontSize: '0.72rem',
+                                                    color: 'var(--adm-text-muted)',
+                                                    textAlign: 'center',
+                                                    fontWeight: 500,
+                                                  }}>
+                                                    Sem tags cadastradas no funil
+                                                  </div>
+                                                )}
+                                                {funnelTags.map((tag) => {
+                                                  const currentTags = lead.tags || [];
+                                                  const isTagActive = currentTags.includes(tag);
+                                                  return (
+                                                    <button
+                                                      key={tag}
+                                                      type="button"
+                                                      onClick={() => {
+                                                        const updatedTags = isTagActive
+                                                          ? currentTags.filter(t => t !== tag)
+                                                          : [...currentTags, tag];
+                                                        updateLeadData(lead.id, { tags: updatedTags });
+                                                        setAddTagLead(null);
+                                                      }}
+                                                      style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '6px 8px',
+                                                        borderRadius: '5px',
+                                                        border: isTagActive ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid transparent',
+                                                        background: isTagActive ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                                                        color: isTagActive ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-title)',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: isTagActive ? 700 : 500,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'left',
+                                                        width: '100%',
+                                                        transition: 'all 0.1s ease',
+                                                      }}
+                                                      onMouseEnter={(e) => {
+                                                        if (!isTagActive) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                                                      }}
+                                                      onMouseLeave={(e) => {
+                                                        if (!isTagActive) e.currentTarget.style.background = 'transparent';
+                                                      }}
+                                                    >
+                                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {tag}
+                                                      </span>
+                                                      {isTagActive && <Check size={11} color="var(--adm-accent, #6366F1)" />}
+                                                    </button>
+                                                  );
+                                                })}
+
+                                                {/* Se criação de tags avulsas estiver habilitada pelo gestor */}
+                                                {allowCustom && (
+                                                  <div style={{ borderTop: '1px solid var(--adm-border, #E2E8F0)', marginTop: '4px', paddingTop: '4px' }}>
+                                                    {showCardCustomTagInput ? (
+                                                      <div style={{ display: 'flex', gap: '4px', padding: '2px 4px' }}>
+                                                        <input
+                                                          type="text"
+                                                          placeholder="Nova tag..."
+                                                          value={newCardTagInput}
+                                                          onChange={(e) => setNewCardTagInput(e.target.value)}
+                                                          onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && newCardTagInput.trim()) {
+                                                              e.preventDefault();
+                                                              const tagVal = newCardTagInput.trim();
+                                                              const curTags = lead.tags || [];
+                                                              if (!curTags.includes(tagVal)) {
+                                                                updateLeadData(lead.id, { tags: [...curTags, tagVal] });
+                                                              }
+                                                              setNewCardTagInput('');
+                                                              setShowCardCustomTagInput(false);
+                                                              setAddTagLead(null);
+                                                            }
+                                                          }}
+                                                          autoFocus
+                                                          style={{
+                                                            flex: 1,
+                                                            padding: '4px 6px',
+                                                            borderRadius: '4px',
+                                                            border: '1px solid var(--adm-border, #CBD5E1)',
+                                                            background: 'var(--adm-bg-input, #F8FAFC)',
+                                                            color: 'var(--adm-text-title, #1E293B)',
+                                                            fontSize: '0.70rem',
+                                                          }}
+                                                        />
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            if (newCardTagInput.trim()) {
+                                                              const tagVal = newCardTagInput.trim();
+                                                              const curTags = lead.tags || [];
+                                                              if (!curTags.includes(tagVal)) {
+                                                                updateLeadData(lead.id, { tags: [...curTags, tagVal] });
+                                                              }
+                                                              setNewCardTagInput('');
+                                                              setShowCardCustomTagInput(false);
+                                                              setAddTagLead(null);
+                                                            }
+                                                          }}
+                                                          style={{
+                                                            padding: '4px 6px',
+                                                            background: 'var(--adm-accent, #6366F1)',
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 700,
+                                                            cursor: 'pointer',
+                                                          }}
+                                                        >
+                                                          OK
+                                                        </button>
+                                                      </div>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setShowCardCustomTagInput(true)}
+                                                        style={{
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '4px',
+                                                          width: '100%',
+                                                          padding: '5px 8px',
+                                                          fontSize: '0.70rem',
+                                                          fontWeight: 600,
+                                                          color: 'var(--adm-accent, #6366F1)',
+                                                          background: 'transparent',
+                                                          border: 'none',
+                                                          cursor: 'pointer',
+                                                          borderRadius: '4px',
+                                                        }}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99, 102, 241, 0.08)'; }}
+                                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                                                      >
+                                                        <Plus size={11} />
+                                                        <span>Criar nova tag</span>
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })()}
 
                               {/* Divisória sutil */}
-                              <div style={{ height: '1px', backgroundColor: 'var(--adm-border, #E2E8F0)', opacity: 0.6, margin: '2px 0' }} />
+                              <div style={{ height: '1px', backgroundColor: 'var(--adm-border, #E2E8F0)', opacity: 0.5, margin: '1px 0' }} />
 
                               {/* ── 3. ÁREA INFERIOR: Foto do Colaborador + Barra de Status/Ações + Data de Criação ── */}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                                {/* Esquerda: Foto Colaborador + 6 Ícones de Status */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                {/* Esquerda: Foto Colaborador + 3 Ícones de Status */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                                   {/* Foto dos Colaboradores Responsáveis (SDR e Closer Empilhados se distintos) */}
                                   <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                                     {(() => {
@@ -3210,15 +3936,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                               alt={collab?.name || roleLabel}
                                               title={`${roleLabel}: ${collab?.name}`}
                                               style={{
-                                                width: '28px',
-                                                height: '28px',
+                                                width: '22px',
+                                                height: '22px',
                                                 borderRadius: '50%',
                                                 objectFit: 'cover',
                                                 flexShrink: 0,
-                                                marginLeft: isStacked ? '-8px' : 0,
-                                                border: isStacked ? '2px solid var(--adm-bg-card, #ffffff)' : 'none',
+                                                marginLeft: isStacked ? '-6px' : 0,
+                                                border: isStacked ? '1.5px solid var(--adm-bg-card, #ffffff)' : 'none',
                                                 zIndex: isStacked ? 2 : 1,
-                                                boxShadow: isStacked ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                                                boxShadow: isStacked ? '0 1px 2px rgba(0,0,0,0.15)' : 'none',
                                               }}
                                               onError={(e) => {
                                                 (e.currentTarget as HTMLElement).style.display = 'none';
@@ -3232,8 +3958,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             key={collab?.id || roleLabel}
                                             title={`${roleLabel}: ${collab?.name}`}
                                             style={{
-                                              width: '28px',
-                                              height: '28px',
+                                              width: '22px',
+                                              height: '22px',
                                               borderRadius: '50%',
                                               background: roleLabel === 'Closer' ? '#047857' : '#334155',
                                               color: '#F8FAFC',
@@ -3241,12 +3967,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                               alignItems: 'center',
                                               justifyContent: 'center',
                                               fontWeight: 700,
-                                              fontSize: '0.74rem',
+                                              fontSize: '0.62rem',
                                               flexShrink: 0,
-                                              marginLeft: isStacked ? '-8px' : 0,
-                                              border: isStacked ? '2px solid var(--adm-bg-card, #ffffff)' : 'none',
+                                              marginLeft: isStacked ? '-6px' : 0,
+                                              border: isStacked ? '1.5px solid var(--adm-bg-card, #ffffff)' : 'none',
                                               zIndex: isStacked ? 2 : 1,
-                                              boxShadow: isStacked ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                                              boxShadow: isStacked ? '0 1px 2px rgba(0,0,0,0.15)' : 'none',
                                             }}
                                           >
                                             {initial}
@@ -3272,8 +3998,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                         <div
                                           title="Sem responsável atribuído"
                                           style={{
-                                            width: '28px',
-                                            height: '28px',
+                                            width: '22px',
+                                            height: '22px',
                                             borderRadius: '50%',
                                             background: 'var(--adm-bg-input, #F1F5F9)',
                                             border: '1px dashed var(--adm-border, #CBD5E1)',
@@ -3284,14 +4010,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             flexShrink: 0,
                                           }}
                                         >
-                                          <User size={14} />
+                                          <User size={11} />
                                         </div>
                                       );
                                     })()}
                                   </div>
 
                                   {/* Barra com os 3 Ícones Essenciais (Tarefas, WhatsApp e Agenda) */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                                     {/* 1. Tarefas (☑ CheckSquare) */}
                                     {(() => {
                                       const allTasks = [...(lead.tasks || []), ...(tasks || []).filter(t => t.leadId === lead.id)];
@@ -3333,9 +4059,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'tasks');
                                           }}
                                           style={{
-                                            width: '26px',
-                                            height: '26px',
-                                            borderRadius: '6px',
+                                            width: '21px',
+                                            height: '21px',
+                                            borderRadius: '5px',
                                             background: bg,
                                             border: `1px solid ${border}`,
                                             color: color,
@@ -3346,23 +4072,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             position: 'relative',
                                           }}
                                         >
-                                          <CheckSquare size={13} />
+                                          <CheckSquare size={11} />
                                           {count > 0 && (
                                             <span style={{
                                               position: 'absolute',
-                                              top: '-4px',
-                                              right: '-4px',
+                                              top: '-3px',
+                                              right: '-3px',
                                               background: color,
                                               color: '#fff',
-                                              fontSize: '0.54rem',
+                                              fontSize: '0.48rem',
                                               fontWeight: 800,
                                               borderRadius: '50%',
-                                              minWidth: '12px',
-                                              height: '12px',
+                                              minWidth: '10px',
+                                              height: '10px',
                                               display: 'flex',
                                               alignItems: 'center',
                                               justifyContent: 'center',
-                                              padding: '0 2px',
+                                              padding: '0 1px',
                                             }}>
                                               {count}
                                             </span>
@@ -3384,9 +4110,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             handleOpenLeadWorkspace(lead, 'whatsapp');
                                           }}
                                           style={{
-                                            width: '26px',
-                                            height: '26px',
-                                            borderRadius: '6px',
+                                            width: '21px',
+                                            height: '21px',
+                                            borderRadius: '5px',
                                             background: hasUnread ? 'rgba(37, 211, 102, 0.15)' : 'var(--adm-bg-input, #F8FAFC)',
                                             border: hasUnread ? '1px solid rgba(37, 211, 102, 0.4)' : '1px solid var(--adm-border, #E2E8F0)',
                                             display: 'flex',
@@ -3396,23 +4122,23 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             position: 'relative',
                                           }}
                                         >
-                                          <WhatsAppBrandIcon size={14} color={hasUnread ? '#25D366' : '#94A3B8'} />
+                                          <WhatsAppBrandIcon size={12} color={hasUnread ? '#25D366' : '#94A3B8'} />
                                           {hasUnread && (
                                             <span style={{
                                               position: 'absolute',
-                                              top: '-4px',
-                                              right: '-4px',
+                                              top: '-3px',
+                                              right: '-3px',
                                               background: '#EF4444',
                                               color: '#fff',
-                                              fontSize: '0.54rem',
+                                              fontSize: '0.48rem',
                                               fontWeight: 800,
                                               borderRadius: '50%',
-                                              minWidth: '12px',
-                                              height: '12px',
+                                              minWidth: '10px',
+                                              height: '10px',
                                               display: 'flex',
                                               alignItems: 'center',
                                               justifyContent: 'center',
-                                              padding: '0 2px',
+                                              padding: '0 1px',
                                             }}>
                                               {unread}
                                             </span>
@@ -3421,32 +4147,160 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                       );
                                     })()}
 
-                                    {/* 3. Calendário / Festa (Calendar) */}
+                                    {/* 3. Visita (Building2) */}
                                     {(() => {
-                                      const eventDate = lead.partyDate || lead.eventDate;
-                                      const hasDate = Boolean(eventDate);
+                                      const visit = lead.visitCommitment;
+                                      let visitColor = '#94A3B8';
+                                      let visitBg = 'var(--adm-bg-input, #F8FAFC)';
+                                      let visitBorder = 'var(--adm-border, #E2E8F0)';
+                                      let title = 'Visita: Não agendada';
+
+                                      if (visit?.status === 'completed') {
+                                        visitColor = '#10B981';
+                                        visitBg = 'rgba(16, 185, 129, 0.15)';
+                                        visitBorder = 'rgba(16, 185, 129, 0.4)';
+                                        title = `Visita Realizada (${visit.date ? new Date(visit.date + 'T12:00:00').toLocaleDateString('pt-BR') : ''})`;
+                                      } else if (visit?.status === 'scheduled') {
+                                        visitColor = '#F59E0B';
+                                        visitBg = 'rgba(245, 158, 11, 0.15)';
+                                        visitBorder = 'rgba(245, 158, 11, 0.4)';
+                                        title = `Visita Agendada para ${visit.date ? new Date(visit.date + 'T12:00:00').toLocaleDateString('pt-BR') : ''} às ${visit.time || ''}`;
+                                      } else if (visit?.status === 'no_show' || visit?.status === 'cancelled') {
+                                        visitColor = '#EF4444';
+                                        visitBg = 'rgba(239, 68, 68, 0.15)';
+                                        visitBorder = 'rgba(239, 68, 68, 0.4)';
+                                        title = 'Visita: Não Compareceu / Cancelada';
+                                      }
 
                                       return (
                                         <div
-                                          title={hasDate ? `Data da Festa: ${new Date(eventDate!).toLocaleDateString('pt-BR')}` : 'Sem festa agendada'}
+                                          title={title}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenLeadWorkspace(lead, 'tasks');
+                                          }}
+                                          style={{
+                                            width: '21px',
+                                            height: '21px',
+                                            borderRadius: '5px',
+                                            background: visitBg,
+                                            border: `1px solid ${visitBorder}`,
+                                            color: visitColor,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.12s ease',
+                                          }}
+                                        >
+                                          <Building2 size={11} color={visitColor} />
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* 4. Degustação (Utensils) */}
+                                    {(() => {
+                                      const tasting = lead.tastingCommitment;
+                                      let tastingColor = '#94A3B8';
+                                      let tastingBg = 'var(--adm-bg-input, #F8FAFC)';
+                                      let tastingBorder = 'var(--adm-border, #E2E8F0)';
+                                      let title = 'Degustação: Não agendada';
+
+                                      if (tasting?.status === 'completed') {
+                                        tastingColor = '#10B981';
+                                        tastingBg = 'rgba(16, 185, 129, 0.15)';
+                                        tastingBorder = 'rgba(16, 185, 129, 0.4)';
+                                        title = `Degustação Realizada (${tasting.date ? new Date(tasting.date + 'T12:00:00').toLocaleDateString('pt-BR') : ''})`;
+                                      } else if (tasting?.status === 'scheduled') {
+                                        tastingColor = '#F59E0B';
+                                        tastingBg = 'rgba(245, 158, 11, 0.15)';
+                                        tastingBorder = 'rgba(245, 158, 11, 0.4)';
+                                        title = `Degustação Agendada para ${tasting.date ? new Date(tasting.date + 'T12:00:00').toLocaleDateString('pt-BR') : ''} às ${tasting.time || ''}`;
+                                      } else if (tasting?.status === 'no_show' || tasting?.status === 'cancelled') {
+                                        tastingColor = '#EF4444';
+                                        tastingBg = 'rgba(239, 68, 68, 0.15)';
+                                        tastingBorder = 'rgba(239, 68, 68, 0.4)';
+                                        title = 'Degustação: Não Compareceu / Cancelada';
+                                      }
+
+                                      return (
+                                        <div
+                                          title={title}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenLeadWorkspace(lead, 'tasks');
+                                          }}
+                                          style={{
+                                            width: '21px',
+                                            height: '21px',
+                                            borderRadius: '5px',
+                                            background: tastingBg,
+                                            border: `1px solid ${tastingBorder}`,
+                                            color: tastingColor,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.12s ease',
+                                          }}
+                                        >
+                                          <Utensils size={11} color={tastingColor} />
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* 5. Bandeira de Nível de Urgência (Flag) */}
+                                    {(() => {
+                                      const urgency = lead.urgencyLevel;
+                                      let flagColor = '#94A3B8';
+                                      let flagBg = 'var(--adm-bg-input, #F8FAFC)';
+                                      let flagBorder = 'var(--adm-border, #E2E8F0)';
+                                      let title = 'Urgência: Normal / Indefinida';
+
+                                      if (urgency === 'urgente' || urgency === 'imediata') {
+                                        flagColor = '#EF4444';
+                                        flagBg = 'rgba(239, 68, 68, 0.15)';
+                                        flagBorder = 'rgba(239, 68, 68, 0.35)';
+                                        title = 'Urgência: Urgente / Imediata';
+                                      } else if (urgency === 'alta') {
+                                        flagColor = '#EA580C';
+                                        flagBg = 'rgba(234, 88, 12, 0.15)';
+                                        flagBorder = 'rgba(234, 88, 12, 0.35)';
+                                        title = 'Urgência: Alta';
+                                      } else if (urgency === 'media') {
+                                        flagColor = '#F59E0B';
+                                        flagBg = 'rgba(245, 158, 11, 0.15)';
+                                        flagBorder = 'rgba(245, 158, 11, 0.35)';
+                                        title = 'Urgência: Média';
+                                      } else if (urgency === 'baixa') {
+                                        flagColor = '#10B981';
+                                        flagBg = 'rgba(16, 185, 129, 0.15)';
+                                        flagBorder = 'rgba(16, 185, 129, 0.35)';
+                                        title = 'Urgência: Baixa';
+                                      }
+
+                                      return (
+                                        <div
+                                          title={title}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleOpenLeadWorkspace(lead, 'whatsapp');
                                           }}
                                           style={{
-                                            width: '26px',
-                                            height: '26px',
-                                            borderRadius: '6px',
-                                            background: hasDate ? 'rgba(59, 130, 246, 0.12)' : 'var(--adm-bg-input, #F8FAFC)',
-                                            border: hasDate ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid var(--adm-border, #E2E8F0)',
-                                            color: hasDate ? '#2563EB' : '#94A3B8',
+                                            width: '21px',
+                                            height: '21px',
+                                            borderRadius: '5px',
+                                            background: flagBg,
+                                            border: `1px solid ${flagBorder}`,
+                                            color: flagColor,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             cursor: 'pointer',
+                                            transition: 'all 0.12s ease',
                                           }}
                                         >
-                                          <Calendar size={13} />
+                                          <Flag size={11} fill={urgency ? flagColor : 'none'} />
                                         </div>
                                       );
                                     })()}
@@ -3454,16 +4308,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 </div>
 
                                 {/* Direita: Data de Criação (Alinhamento Clean e Elegante) */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                  <div style={{ width: '1px', height: '22px', background: 'var(--adm-border, #E2E8F0)' }} />
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.2 }}>
-                                    <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
-                                      Criado em
-                                    </span>
-                                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)' }}>
-                                      {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '16/09/2026'}
-                                    </span>
-                                  </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                                  <span style={{ fontSize: '0.55rem', color: 'var(--adm-text-muted, #94A3B8)', lineHeight: 1.1 }}>
+                                    Criado em
+                                  </span>
+                                  <span style={{ fontSize: '0.60rem', fontWeight: 700, color: 'var(--adm-text-body, #475569)', lineHeight: 1.2 }}>
+                                    {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('pt-BR') : '--/--/----'}
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -3528,6 +4379,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     const col = columns.find(c => c.id === lead.stage) || columns[0];
                     const hasNoAssignee = !lead.assignedTo || lead.assignedTo === 'Sem responsável' || lead.assignedTo === 'Não atribuído';
                     const isSelectedInMulti = selectedLeadIds.includes(lead.id);
+                    const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
+                    const sla = getLeadWaitTimeSla(pendingWaitMs);
 
                     return (
                       <tr 
@@ -3563,7 +4416,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           </td>
                         )}
                         <td style={{ padding: '8px 16px', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          <div>{lead.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{lead.name}</span>
+                            {pendingWaitMs > 0 && (
+                              <span
+                                title={`Aguardando resposta da equipe: ${sla.formattedTime} (${sla.label})`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.62rem',
+                                  fontWeight: 800,
+                                  background: sla.bg,
+                                  color: sla.color,
+                                  border: `1px solid ${sla.border}`,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <Clock size={9} color={sla.color} strokeWidth={2.5} />
+                                {sla.formattedTime}
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: '0.64rem', color: isPostSaleView ? '#06B6D4' : 'var(--adm-accent)', fontWeight: 700 }}>
                             {isPostSaleView ? (lead.code ? (lead.code.startsWith('LEAD-') ? `CLI-${lead.code.replace('LEAD-', '')}` : lead.code) : 'CLI-NOVO') : (lead.code || 'LEAD-NOVO')}
                           </div>
@@ -3617,7 +4493,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             gap: '5px',
                           }}>
                             {renderColumnIcon(lead.stage, 12)}
-                            <span>{col.title}</span>
+                            <span style={{ textTransform: 'uppercase' }}>{col.title.toUpperCase()}</span>
                           </span>
                         </td>
                         <td style={{ padding: '8px 16px', textAlign: 'right' }}>
@@ -3792,6 +4668,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         defaultFunnelId={(currentFunnel?.id || selectedFunnelId) ?? undefined}
         defaultVenueId={(currentFunnel?.venueId || activeVenueId) ?? undefined}
         currentFunnelName={currentFunnel?.name}
+        initialMode={newLeadInitialMode}
         onLeadCreated={(newLeadId) => {
           setActiveLeadIdForWorkspace(newLeadId);
           setViewMode('workspace');
@@ -3828,24 +4705,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         }}
       />
 
-      <AdminAddTagModal
-        isOpen={Boolean(addTagLead)}
-        onClose={() => setAddTagLead(null)}
-        lead={addTagLead}
-        predefinedTags={currentFunnel?.predefinedTags || []}
-        onAddTag={(leadId, tag) => {
-          if (addTagLead) {
-            const currentTags = addTagLead.tags || [];
-            const updatedTags = currentTags.includes(tag)
-              ? currentTags.filter(t => t !== tag)
-              : [...currentTags, tag];
-            updateLeadData(leadId, { tags: updatedTags });
-          }
-        }}
-      />
-
       {/* ── BARRA FLUTUANTE DE AÇÕES EM MASSA (SELEÇÃO MÚLTIPLA NO FUNIL) ── */}
-      {isMultiSelectMode && (
+      {isMultiSelectMode && viewMode !== 'workspace' && (
         <div style={{
           position: 'fixed',
           bottom: '24px',
@@ -3890,6 +4751,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           </button>
 
           <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
+
+          {/* Ação 0: Mudar Funil */}
+          <button
+            type="button"
+            disabled={selectedLeadIds.length === 0}
+            onClick={() => setBulkFunnelModalOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              background: selectedLeadIds.length > 0 ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: selectedLeadIds.length > 0 ? '#F59E0B' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: selectedLeadIds.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: selectedLeadIds.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <GitBranch size={13} color="#F59E0B" />
+            <span>Mudar Funil</span>
+          </button>
 
           {/* Ação 1: Mover Etapa */}
           <button
@@ -3989,6 +4874,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       )}
 
       {/* Modais de Ações em Massa */}
+      <AdminBulkMoveFunnelModal
+        isOpen={bulkFunnelModalOpen}
+        onClose={() => setBulkFunnelModalOpen(false)}
+        count={selectedLeadIds.length}
+        funnels={funnelsList}
+        currentFunnelId={currentFunnel?.id || undefined}
+        onConfirm={handleBulkMoveFunnel}
+      />
+
       <AdminBulkMoveStageModal
         isOpen={bulkStageModalOpen}
         onClose={() => setBulkStageModalOpen(false)}

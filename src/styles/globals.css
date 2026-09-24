@@ -47,16 +47,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F1018;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #25273C;
+  background: var(--adm-border, rgba(148, 163, 184, 0.35));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3B3E5C;
+  background: var(--adm-text-muted, rgba(100, 116, 139, 0.6));
 }
 
 /* Hide scrollbar utility for smooth horizontal touch swipe */
