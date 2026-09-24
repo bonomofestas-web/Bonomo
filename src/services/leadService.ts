@@ -80,6 +80,9 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.tastingCommitment !== undefined) payload.tasting_commitment = lead.tastingCommitment;
   if (lead.updatedAt !== undefined) payload.updated_at = lead.updatedAt;
 
+  if (lead.isArchived !== undefined) payload.is_archived = lead.isArchived;
+  if (lead.archivedAt !== undefined) payload.archived_at = lead.archivedAt;
+
   // Preserva dualmente em custom_field_values para compatibilidade total
   payload.custom_field_values = {
     ...(lead.customFieldValues || {}),
@@ -94,6 +97,8 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
     ...(lead.hasCreditCard !== undefined ? { hasCreditCard: lead.hasCreditCard } : {}),
     ...(lead.profession !== undefined ? { profession: lead.profession } : {}),
     ...(lead.decisionMakers !== undefined ? { decisionMakers: lead.decisionMakers } : {}),
+    ...(lead.isArchived !== undefined ? { is_archived: lead.isArchived } : {}),
+    ...(lead.archivedAt !== undefined ? { archived_at: lead.archivedAt } : {}),
   };
   if (lead.createdBy !== undefined) payload.created_by = (lead.createdBy && isUuid(lead.createdBy)) ? lead.createdBy : null;
   if (lead.createdByName !== undefined) payload.created_by_name = lead.createdByName || null;
@@ -136,6 +141,23 @@ export const leadService = {
                 mediaUrl = match[1];
                 mediaType = match[2] || 'audio';
                 text = match[3] || '';
+              }
+            } else if (rawText.startsWith('{') || rawText.includes('mmg.whatsapp.net')) {
+              try {
+                const parsed = JSON.parse(rawText);
+                const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+                if (foundUrl) {
+                  mediaUrl = foundUrl;
+                  mediaType = 'audio';
+                  text = '🎵 Mensagem de voz';
+                }
+              } catch {
+                const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+                if (urlMatch) {
+                  mediaUrl = urlMatch[1] || urlMatch[0];
+                  mediaType = 'audio';
+                  text = '🎵 Mensagem de voz';
+                }
               }
             } else if (!mediaUrl && (rawText.startsWith('https://') || rawText.startsWith('http://') || rawText.startsWith('data:audio'))) {
               mediaUrl = rawText;
@@ -255,6 +277,8 @@ export const leadService = {
           createdByAvatar: row.created_by_avatar || undefined,
           cpf: row.cpf || undefined,
           birthday: row.birthday || undefined,
+          isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
+          archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
           participants: leadParticipants,
           tasks: [],
           activities: leadActivities,
@@ -498,6 +522,8 @@ export const leadService = {
   async delete(id: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {
+      await supabase.from('lead_activities').delete().eq('lead_id', id);
+      await supabase.from('lead_participants').delete().eq('lead_id', id);
       await supabase.from('admin_tasks').delete().eq('lead_id', id);
       await supabase.from('appointments').delete().eq('lead_id', id);
 
@@ -509,6 +535,74 @@ export const leadService = {
       return true;
     } catch (err) {
       console.error('❌ Falha em leadService.delete:', err);
+      return false;
+    }
+  },
+
+  async deleteMultiple(ids: string[]): Promise<boolean> {
+    if (!isSupabaseConfigured || ids.length === 0) return false;
+    try {
+      await supabase.from('lead_activities').delete().in('lead_id', ids);
+      await supabase.from('lead_participants').delete().in('lead_id', ids);
+      await supabase.from('admin_tasks').delete().in('lead_id', ids);
+      await supabase.from('appointments').delete().in('lead_id', ids);
+
+      const { error } = await supabase.from('leads').delete().in('id', ids);
+      if (error) {
+        console.error('❌ Erro ao deletar múltiplos leads no Supabase:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('❌ Falha em leadService.deleteMultiple:', err);
+      return false;
+    }
+  },
+
+  async archive(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase.from('leads').update({
+        is_archived: true,
+        archived_at: now,
+        funnel_id: null,
+      }).eq('id', id);
+
+      if (error) {
+        // Fallback para custom_field_values caso a coluna direta ainda não tenha sido aplicada
+        await supabase.from('leads').update({
+          funnel_id: null,
+          custom_field_values: { is_archived: true, archived_at: now }
+        }).eq('id', id);
+      }
+      return true;
+    } catch (err) {
+      console.error('❌ Falha em leadService.archive:', err);
+      return false;
+    }
+  },
+
+  async unarchive(id: string, funnelId?: string, stageId?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false;
+    try {
+      const { error } = await supabase.from('leads').update({
+        is_archived: false,
+        archived_at: null,
+        funnel_id: funnelId || null,
+        stage: stageId || 'new_lead',
+      }).eq('id', id);
+
+      if (error) {
+        await supabase.from('leads').update({
+          funnel_id: funnelId || null,
+          stage: stageId || 'new_lead',
+          custom_field_values: { is_archived: false, archived_at: null }
+        }).eq('id', id);
+      }
+      return true;
+    } catch (err) {
+      console.error('❌ Falha em leadService.unarchive:', err);
       return false;
     }
   },

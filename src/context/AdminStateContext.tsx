@@ -347,6 +347,9 @@ export interface AdminContextType {
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
+  deleteMultipleLeads: (leadIds: string[]) => Promise<void>;
+  archiveLead: (leadId: string) => Promise<boolean>;
+  unarchiveLead: (leadId: string, funnelId?: string, stageId?: string) => Promise<boolean>;
   mergeLeads: (primaryLeadId: string, secondaryLeadId: string) => Promise<boolean>;
   consolidateAllDuplicateLeads: () => Promise<{ mergedCount: number }>;
   syncWhatsAppHistoryGap: (options?: {
@@ -5317,6 +5320,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteLead = (leadId: string) => {
+    // 1. Validação de perfil / permissão
+    const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev;
+    if (!isMasterOrAdmin) {
+      alert('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
+      return;
+    }
+
+    // 2. Trava de segurança financeira e operacional: leads ganhos (won) ou perdidos (lost) não podem ser excluídos
+    const targetLead = leadsRef.current.find(l => l.id === leadId);
+    if (targetLead) {
+      const isWon = targetLead.stage === 'contract_signed' || (targetLead.stage as string) === 'deal_closed';
+      const isLost = targetLead.stage === 'lost';
+      if (isWon || isLost) {
+        alert('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
+        return;
+      }
+    }
+
     deletedLeadIdsRef.current.add(leadId);
     setLeads(prev => {
       const updated = prev.filter(l => l.id !== leadId);
@@ -5332,6 +5353,111 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       leadService.delete(leadId).catch(err => console.error('❌ Erro ao deletar lead no Supabase:', err));
     }
+  };
+
+  const deleteMultipleLeads = async (leadIds: string[]) => {
+    if (!leadIds || leadIds.length === 0) return;
+
+    // 1. Validação de perfil / permissão
+    const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev;
+    if (!isMasterOrAdmin) {
+      alert('Permissão negada: apenas gerentes (Admin) e Master podem excluir leads do sistema.');
+      return;
+    }
+
+    // 2. Filtra leads que NÃO podem ser excluídos (ganhos ou perdidos)
+    const currentLeads = leadsRef.current;
+    const blockedLeads: Lead[] = [];
+    const validIdsToDelete: string[] = [];
+
+    leadIds.forEach(id => {
+      const lead = currentLeads.find(l => l.id === id);
+      if (lead) {
+        const isWon = lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed';
+        const isLost = lead.stage === 'lost';
+        if (isWon || isLost) {
+          blockedLeads.push(lead);
+        } else {
+          validIdsToDelete.push(id);
+        }
+      } else {
+        validIdsToDelete.push(id);
+      }
+    });
+
+    if (blockedLeads.length > 0) {
+      alert(`Aviso de Segurança: ${blockedLeads.length} lead(s) com contrato fechado ou perdidos foram ignorados e preservados no CRM.`);
+    }
+
+    if (validIdsToDelete.length === 0) return;
+
+    validIdsToDelete.forEach(id => deletedLeadIdsRef.current.add(id));
+
+    // Atualização atômica instantânea sem piscar ou recarregar
+    setLeads(prev => {
+      const updated = prev.filter(l => !validIdsToDelete.includes(l.id));
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+    setTasks(prev => {
+      const updated = prev.filter(t => !t.leadId || !validIdsToDelete.includes(t.leadId));
+      safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.deleteMultiple(validIdsToDelete);
+      } catch (err) {
+        console.error('❌ Erro ao deletar múltiplos leads no Supabase:', err);
+      }
+    }
+  };
+
+  const archiveLead = async (leadId: string): Promise<boolean> => {
+    const now = new Date().toISOString();
+    setLeads(prev => {
+      const updated = prev.map(l => l.id === leadId ? {
+        ...l,
+        isArchived: true,
+        archivedAt: now,
+        funnelId: undefined,
+      } : l);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.archive(leadId);
+      } catch (err) {
+        console.error('❌ Erro ao arquivar lead no Supabase:', err);
+      }
+    }
+    return true;
+  };
+
+  const unarchiveLead = async (leadId: string, funnelId?: string, stageId?: string): Promise<boolean> => {
+    setLeads(prev => {
+      const updated = prev.map(l => l.id === leadId ? {
+        ...l,
+        isArchived: false,
+        archivedAt: undefined,
+        funnelId: funnelId || l.funnelId,
+        stage: (stageId as CrmStage) || l.stage || 'new_lead',
+      } : l);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.unarchive(leadId, funnelId, stageId);
+      } catch (err) {
+        console.error('❌ Erro ao desarquivar lead no Supabase:', err);
+      }
+    }
+    return true;
   };
 
   const mergeLeads = async (primaryLeadId: string, secondaryLeadId: string): Promise<boolean> => {
@@ -7344,6 +7470,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createLead,
       rejectLead,
       deleteLead,
+      deleteMultipleLeads,
+      archiveLead,
+      unarchiveLead,
       mergeLeads,
       consolidateAllDuplicateLeads,
       syncWhatsAppHistoryGap,

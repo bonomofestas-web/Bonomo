@@ -10,7 +10,7 @@ import {
   Compass, ShieldCheck, Camera,
   UserPlus, Eye, AlertTriangle,
   User, SunMedium, Snowflake, Tag as TagIcon,
-  MoreVertical, CheckSquare, Trash2, GitBranch,
+  MoreVertical, CheckSquare, Trash2, GitBranch, Archive,
   Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
@@ -206,6 +206,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     mqlQuestions,
     allSources,
     deleteLead,
+    deleteMultipleLeads,
+    archiveLead,
     addLeadTask,
     updateLeadData,
     togglePinFunnel,
@@ -635,13 +637,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setIsMultiSelectMode(false);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (confirm(`Deseja realmente excluir os ${selectedLeadIds.length} leads selecionados? Essa ação não pode ser desfeita.`)) {
-      selectedLeadIds.forEach(id => {
-        deleteLead(id);
-      });
+      const idsToDelete = [...selectedLeadIds];
       setSelectedLeadIds([]);
       setIsMultiSelectMode(false);
+      await deleteMultipleLeads(idsToDelete);
     }
   };
 
@@ -3085,6 +3086,35 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             type="button"
                                             onClick={() => {
                                               setActiveLeadMenuId(null);
+                                              setIsMultiSelectMode(true);
+                                              setSelectedLeadIds(prev => prev.includes(lead.id) ? prev : [...prev, lead.id]);
+                                            }}
+                                            style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              padding: '6px 8px',
+                                              borderRadius: '5px',
+                                              border: 'none',
+                                              background: 'transparent',
+                                              color: 'var(--adm-text-title, #0F172A)',
+                                              fontSize: '0.72rem',
+                                              fontWeight: 600,
+                                              cursor: 'pointer',
+                                              textAlign: 'left',
+                                              width: '100%',
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                          >
+                                            <CheckSquare size={12} color="#6366F1" />
+                                            <span>Selecionar Lead</span>
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setActiveLeadMenuId(null);
                                               handleOpenLeadWorkspace(lead, 'whatsapp');
                                             }}
                                             style={{
@@ -3165,14 +3195,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                             <span>Mudar de Funil</span>
                                           </button>
 
-                                          <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
-
                                           <button
                                             type="button"
-                                            onClick={() => {
+                                            onClick={async () => {
                                               setActiveLeadMenuId(null);
-                                              if (confirm(`Deseja realmente excluir o lead "${lead.name}"?`)) {
-                                                deleteLead(lead.id);
+                                              if (confirm(`Deseja arquivar o lead "${lead.name}"? Ele será desanexado dos funis ativos.`)) {
+                                                await archiveLead(lead.id);
                                               }
                                             }}
                                             style={{
@@ -3183,19 +3211,56 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                               borderRadius: '5px',
                                               border: 'none',
                                               background: 'transparent',
-                                              color: '#EF4444',
+                                              color: 'var(--adm-text-title, #0F172A)',
                                               fontSize: '0.72rem',
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               textAlign: 'left',
                                               width: '100%',
                                             }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'}
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                           >
-                                            <Trash2 size={12} color="#EF4444" />
-                                            <span>Excluir Lead</span>
+                                            <Archive size={12} color="#8B5CF6" />
+                                            <span>Arquivar Lead</span>
                                           </button>
+
+                                          {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
+                                            lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
+                                          ) && (
+                                            <>
+                                              <div style={{ height: '1px', background: 'var(--adm-border, #E2E8F0)', margin: '2px 0' }} />
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setActiveLeadMenuId(null);
+                                                  if (confirm(`Deseja realmente excluir o lead "${lead.name}"?`)) {
+                                                    deleteLead(lead.id);
+                                                  }
+                                                }}
+                                                style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '6px',
+                                                  padding: '6px 8px',
+                                                  borderRadius: '5px',
+                                                  border: 'none',
+                                                  background: 'transparent',
+                                                  color: '#EF4444',
+                                                  fontSize: '0.72rem',
+                                                  fontWeight: 600,
+                                                  cursor: 'pointer',
+                                                  textAlign: 'left',
+                                                  width: '100%',
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                              >
+                                                <Trash2 size={12} color="#EF4444" />
+                                                <span>Excluir Lead</span>
+                                              </button>
+                                            </>
+                                          )}
                                         </div>
                                       )}
                                     </div>

@@ -38,6 +38,21 @@ const WAVEFORM_BARS = [
 // Cache global em memória para ondas e duração decodificadas de áudio (Elimina reprocessamento e flickering)
 const AUDIO_PEAKS_CACHE = new Map<string, { peaks: number[]; duration?: number }>();
 
+const cleanAudioSrc = (raw?: string): string | undefined => {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{') || trimmed.includes('mmg.whatsapp.net')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath || trimmed;
+    } catch {
+      const match = trimmed.match(/"URL"\s*:\s*"([^"]+)"/i) || trimmed.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+      if (match) return match[1] || match[0];
+    }
+  }
+  return trimmed;
+};
+
 export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
   src,
   durationText,
@@ -49,27 +64,28 @@ export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
   status = 'read',
   onSyncR2Url,
 }) => {
+  const normalizedSrc = cleanAudioSrc(src);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number>(() => {
-    if (src && AUDIO_PEAKS_CACHE.has(src) && AUDIO_PEAKS_CACHE.get(src)?.duration) {
-      return AUDIO_PEAKS_CACHE.get(src)!.duration!;
+    if (normalizedSrc && AUDIO_PEAKS_CACHE.has(normalizedSrc) && AUDIO_PEAKS_CACHE.get(normalizedSrc)?.duration) {
+      return AUDIO_PEAKS_CACHE.get(normalizedSrc)!.duration!;
     }
     return parseDurationText(durationText);
   });
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
-  const [activeSrc, setActiveSrc] = useState<string | undefined>(src);
+  const [activeSrc, setActiveSrc] = useState<string | undefined>(normalizedSrc);
   const [showMenu, setShowMenu] = useState(false);
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
-    setActiveSrc(src);
+    setActiveSrc(cleanAudioSrc(src));
   }, [src]);
 
   const [realPeaks, setRealPeaks] = useState<number[]>(() => {
-    if (src && AUDIO_PEAKS_CACHE.has(src)) {
-      return AUDIO_PEAKS_CACHE.get(src)!.peaks;
+    if (normalizedSrc && AUDIO_PEAKS_CACHE.has(normalizedSrc)) {
+      return AUDIO_PEAKS_CACHE.get(normalizedSrc)!.peaks;
     }
     return WAVEFORM_BARS;
   });

@@ -590,6 +590,35 @@ class UazapiSseManager {
           }
         }
 
+        // 4. Detecção de payload JSON cru contido em text (ex: {"URL":"https://mmg.whatsapp.net/..."})
+        if (text && (text.startsWith('{') || text.includes('mmg.whatsapp.net'))) {
+          try {
+            const parsed = JSON.parse(text);
+            const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+            const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
+            if (foundUrl) {
+              mediaUrl = mediaUrl || foundUrl;
+              if (mimetype.includes('image')) {
+                mediaType = 'image';
+                text = '📷 Foto';
+              } else if (mimetype.includes('video')) {
+                mediaType = 'video';
+                text = '🎥 Vídeo';
+              } else {
+                mediaType = 'audio';
+                text = '🎵 Mensagem de voz';
+              }
+            }
+          } catch {
+            const urlMatch = text.match(/"URL"\s*:\s*"([^"]+)"/i) || text.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+            if (urlMatch) {
+              mediaUrl = mediaUrl || urlMatch[1] || urlMatch[0];
+              mediaType = 'audio';
+              text = '🎵 Mensagem de voz';
+            }
+          }
+        }
+
         // Garante texto padrão caso seja mídia e o texto esteja em branco
         if (!text) {
           if (mediaType === 'audio') text = '🎵 Mensagem de voz';

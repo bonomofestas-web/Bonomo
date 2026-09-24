@@ -2795,9 +2795,31 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 .reverse()
                 .find(a => (a.type === 'contact' || (a.type === 'creation' && Boolean(a.text))) && (a.text || a.mediaUrl));
               const rawMessageText = lastMessageActivity?.text || lastActivity?.text || '';
-              const isAudioMsg = rawMessageText.toLowerCase().includes('[áudio]') || rawMessageText.toLowerCase().includes('[audio]') || rawMessageText.startsWith('data:audio') || rawMessageText.includes('.mp3') || rawMessageText.includes('.ogg');
-              const isImageMsg = rawMessageText.toLowerCase().includes('[imagem]') || rawMessageText.toLowerCase().includes('[foto]') || rawMessageText.startsWith('data:image');
-              const isDocMsg = rawMessageText.toLowerCase().includes('[documento]') || rawMessageText.toLowerCase().includes('[arquivo]') || rawMessageText.toLowerCase().includes('.pdf');
+              const isAudioMsg = (
+                rawMessageText.toLowerCase().includes('[áudio]') || 
+                rawMessageText.toLowerCase().includes('[audio]') || 
+                rawMessageText.startsWith('data:audio') || 
+                rawMessageText.includes('.mp3') || 
+                rawMessageText.includes('.ogg') ||
+                rawMessageText.startsWith('{"URL"') ||
+                rawMessageText.includes('mmg.whatsapp.net') ||
+                lastMessageActivity?.mediaType === 'audio' ||
+                lastActivity?.mediaType === 'audio'
+              );
+              const isImageMsg = (
+                rawMessageText.toLowerCase().includes('[imagem]') || 
+                rawMessageText.toLowerCase().includes('[foto]') || 
+                rawMessageText.startsWith('data:image') ||
+                lastMessageActivity?.mediaType === 'image' ||
+                lastActivity?.mediaType === 'image'
+              );
+              const isDocMsg = (
+                rawMessageText.toLowerCase().includes('[documento]') || 
+                rawMessageText.toLowerCase().includes('[arquivo]') || 
+                rawMessageText.toLowerCase().includes('.pdf') ||
+                lastMessageActivity?.mediaType === 'document' ||
+                lastActivity?.mediaType === 'document'
+              );
 
               const cleanPreviewText = isAudioMsg 
                 ? 'Mensagem de voz' 
@@ -3832,22 +3854,46 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         );
                       }
 
-                      const isSticker = act.mediaType === 'sticker' || act.text?.includes('✨ Figurinha');
-                      const msgRawContent = act.mediaUrl || act.text || '';
+                      let effectiveMediaUrl = act.mediaUrl;
+                      let effectiveMediaType = act.mediaType;
+                      let effectiveText = act.text || '';
+
+                      if (effectiveText && (effectiveText.startsWith('{') || effectiveText.includes('mmg.whatsapp.net'))) {
+                        try {
+                          const parsed = JSON.parse(effectiveText);
+                          const parsedUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+                          if (parsedUrl) {
+                            effectiveMediaUrl = effectiveMediaUrl || parsedUrl;
+                            effectiveMediaType = 'audio';
+                            effectiveText = '🎵 Mensagem de voz';
+                          }
+                        } catch {
+                          const urlMatch = effectiveText.match(/"URL"\s*:\s*"([^"]+)"/i) || effectiveText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+                          if (urlMatch) {
+                            effectiveMediaUrl = effectiveMediaUrl || urlMatch[1] || urlMatch[0];
+                            effectiveMediaType = 'audio';
+                            effectiveText = '🎵 Mensagem de voz';
+                          }
+                        }
+                      }
+
+                      const isSticker = effectiveMediaType === 'sticker' || effectiveText?.includes('✨ Figurinha');
+                      const msgRawContent = effectiveMediaUrl || effectiveText || '';
                       const isInstagramMsg = Boolean(msgRawContent && /https?:\/\/(www\.)?instagram\.com/i.test(msgRawContent));
                       const instagramMsgUrl = msgRawContent.match(/https?:\/\/(?:www\.)?instagram\.com[^\s]*/i)?.[0] || msgRawContent;
                       const isAudioMsg = Boolean(
-                        act.mediaType === 'audio' || 
-                        (act.mediaUrl && (
-                          act.mediaUrl.startsWith('data:audio') || 
-                          act.mediaUrl.endsWith('.ogg') || 
-                          act.mediaUrl.endsWith('.mp3') || 
-                          act.mediaUrl.endsWith('.opus') || 
-                          act.mediaUrl.endsWith('.wav') ||
-                          act.mediaUrl.includes('.ogg?') || 
-                          act.mediaUrl.includes('.mp3?') || 
-                          act.mediaUrl.includes('.opus?') || 
-                          act.mediaUrl.includes('.wav?')
+                        effectiveMediaType === 'audio' || 
+                        (effectiveMediaUrl && (
+                          effectiveMediaUrl.startsWith('data:audio') || 
+                          effectiveMediaUrl.endsWith('.ogg') || 
+                          effectiveMediaUrl.endsWith('.mp3') || 
+                          effectiveMediaUrl.endsWith('.opus') || 
+                          effectiveMediaUrl.endsWith('.wav') ||
+                          effectiveMediaUrl.includes('.ogg?') || 
+                          effectiveMediaUrl.includes('.mp3?') || 
+                          effectiveMediaUrl.includes('.opus?') || 
+                          effectiveMediaUrl.includes('.wav?') ||
+                          effectiveMediaUrl.includes('mmg.whatsapp.net')
                         ))
                       );
 
@@ -3883,13 +3929,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             )}
 
                             {/* Conteúdo: Sticker Solto vs Balão Clássico */}
-                            {isSticker && act.mediaUrl ? (
+                            {isSticker && effectiveMediaUrl ? (
                               <div
                                 style={{ display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer' }}
-                                onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: 'Figurinha' })}
+                                onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: 'Figurinha' })}
                               >
                                 <img
-                                  src={act.mediaUrl}
+                                  src={effectiveMediaUrl}
                                   alt="Figurinha"
                                   style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
                                 />
@@ -3968,8 +4014,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   </div>
                                 ) : isAudioMsg ? (
                                   <WhatsAppAudioMessage
-                                    src={act.mediaUrl}
-                                    durationText={act.text?.includes('(') ? act.text.match(/\((.*?)\)/)?.[1] : undefined}
+                                    src={effectiveMediaUrl}
+                                    durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
                                     isIncoming={true}
                                     authorName={selectedLead.name}
                                     avatarUrl={(selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl}
@@ -3977,7 +4023,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     isDarkMode={isDarkMode}
                                     status="read"
                                   />
-                                ) : act.mediaType === 'image' && act.mediaUrl ? (
+                                ) : effectiveMediaType === 'image' && effectiveMediaUrl ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     <div 
                                       style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
@@ -4214,8 +4260,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 </div>
                               ) : isAudioMsg ? (
                                 <WhatsAppAudioMessage
-                                  src={act.mediaUrl}
-                                  durationText={act.text?.includes('(') ? act.text.match(/\((.*?)\)/)?.[1] : undefined}
+                                  src={effectiveMediaUrl}
+                                  durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
                                   isIncoming={false}
                                   authorName={authorName}
                                   avatarUrl={authorAvatar}

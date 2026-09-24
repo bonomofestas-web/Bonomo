@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  ChevronDown, Trash2, Check,
+  ChevronDown, Trash2, Check, Archive,
   ChevronLeft, ChevronRight, Plus,
   Shield, PartyPopper, Users,
   CheckCircle2, Clock, X, Sparkles,
@@ -91,6 +91,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     updateLeadStage,
     updateLeadData, 
     deleteLead,
+    archiveLead,
+    unarchiveLead,
     validateLead, 
     assignLeadSdr,
     assignLeadCloser,
@@ -903,12 +905,22 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <>
                 <button
                   type="button"
-                  onClick={() => setShowDeleteConfirmModal(true)}
-                  title="Excluir este Lead"
+                  onClick={async () => {
+                    if (lead.isArchived) {
+                      if (confirm(`Deseja desarquivar o lead "${lead.name}"?`)) {
+                        await unarchiveLead(lead.id);
+                      }
+                    } else {
+                      if (confirm(`Deseja arquivar o lead "${lead.name}"? Ele será desanexado dos funis ativos sem disparar alertas.`)) {
+                        await archiveLead(lead.id);
+                      }
+                    }
+                  }}
+                  title={lead.isArchived ? "Desarquivar este Lead" : "Arquivar este Lead"}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#EF4444',
+                    background: lead.isArchived ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.12)',
+                    border: '1px solid rgba(139, 92, 246, 0.35)',
+                    color: '#A78BFA',
                     borderRadius: '6px',
                     padding: '4px 6px',
                     cursor: 'pointer',
@@ -918,8 +930,32 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <Trash2 size={13} />
+                  <Archive size={13} />
                 </button>
+
+                {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
+                  lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirmModal(true)}
+                    title="Excluir este Lead"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#EF4444',
+                      borderRadius: '6px',
+                      padding: '4px 6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </>
             )}
 
