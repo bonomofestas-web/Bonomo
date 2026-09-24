@@ -59,6 +59,15 @@ const ENTRY_STAGE_DEF: FunnelStageConfig = {
   order: 0,
 };
 
+const POST_SALE_ENTRY_STAGE_DEF: FunnelStageConfig = {
+  id: 'new_lead',
+  name: 'ENTRADA DO CLIENTE',
+  color: '#EF4444',
+  icon: 'inbox',
+  isFixed: true,
+  order: 0,
+};
+
 export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = ({
   initialFunnelId,
   onClose,
@@ -69,7 +78,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     currentUser,
     collaborators,
     funnels, 
-    venues,
+    venues, 
     sources,
     leads,
     mqlQuestions,
@@ -78,6 +87,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     deleteMqlQuestion,
     updateLeadStage,
     updateFunnel, 
+    updateSource,
     deleteFunnelWithLeadMigration,
     duplicateFunnel
   } = useAdminState();
@@ -103,13 +113,42 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   // Role / Permission Control: Master or Venue Admin
   const canConfigure = useMemo(() => {
     if (!currentUser) return false;
-    if (currentUser.role === 'master') return true;
+    if (currentUser.role === 'master' || (currentUser as any).isDev) return true;
     if (currentUser.role === 'admin') {
       if (!activeFunnel?.venueId || activeFunnel.venueId === 'all') return true;
       return currentUser.venueIds?.includes(activeFunnel.venueId) ?? false;
     }
     return false;
   }, [currentUser, activeFunnel]);
+
+  const isPostSale = Boolean(
+    activeFunnel?.isPostSale || 
+    activeFunnel?.category === 'Pós-Venda' || 
+    activeFunnel?.name?.toLowerCase().includes('pós-venda') || 
+    selectedFunnelId?.startsWith('post_sale')
+  );
+
+  const defaultStages: FunnelStageConfig[] = useMemo(() => {
+    if (isPostSale) {
+      return [
+        { id: 'onboarding', name: 'ONBOARDING & BOAS-VINDAS', color: '#3B82F6', icon: 'shield', isFixed: true, order: 0 },
+        { id: 'planning', name: 'PLANEJAMENTO & CRONOGRAMA', color: '#F59E0B', icon: 'calendar', order: 1 },
+        { id: 'suppliers', name: 'DEFINIÇÃO DE FORNECEDORES', color: '#8B5CF6', icon: 'award', order: 2 },
+        { id: 'final_alignment', name: 'ALINHAMENTO FINAL (RETA FINAL)', color: '#6366F1', icon: 'clock', order: 3 },
+        { id: 'party_day', name: 'SEMANA DA FESTA / EVENTO', color: '#EAB308', icon: 'award', order: 4 },
+        { id: 'completed', name: 'FESTA REALIZADA', color: '#10B981', icon: 'dollar', isFixed: true, isWon: true, order: 5 },
+        { id: 'lost', name: 'CONTRATO CANCELADO', color: '#EF4444', icon: 'x-circle', isFixed: true, isLoss: true, order: 6 },
+      ];
+    }
+    return [
+      ENTRY_STAGE_DEF,
+      { id: 'in_negotiation', name: 'EM NEGOCIAÇÃO', color: '#3B82F6', icon: 'clock', order: 1 },
+      { id: 'scheduled', name: 'AGENDADO', color: '#EAB308', icon: 'calendar', order: 2 },
+      { id: 'decision', name: 'EM ANÁLISE / DEGUSTAÇÃO', color: '#F97316', icon: 'award', order: 3 },
+      { id: 'deal_closed', name: 'GANHO', color: '#10B981', icon: 'dollar', isFixed: true, isWon: true, order: 4 },
+      { id: 'lost', name: 'PERDIDO', color: '#EF4444', icon: 'x-circle', isFixed: true, isLoss: true, order: 5 },
+    ];
+  }, [isPostSale]);
 
   // Local Form states (Only saved when clicking "Salvar")
   const [funnelName, setFunnelName] = useState('');
@@ -143,6 +182,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
+  const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -211,34 +251,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setIsDragging(false);
   };
 
-  const isPostSale = Boolean(
-    activeFunnel?.isPostSale || 
-    activeFunnel?.category === 'Pós-Venda' || 
-    activeFunnel?.name?.toLowerCase().includes('pós-venda') || 
-    selectedFunnelId?.startsWith('post_sale')
-  );
-
-  const defaultStages: FunnelStageConfig[] = useMemo(() => {
-    if (isPostSale) {
-      return [
-        { id: 'onboarding', name: 'Onboarding & Boas-Vindas', color: '#3B82F6', icon: 'shield', isFixed: true, order: 0 },
-        { id: 'planning', name: 'Planejamento & Cronograma', color: '#F59E0B', icon: 'calendar', order: 1 },
-        { id: 'suppliers', name: 'Definição de Fornecedores', color: '#8B5CF6', icon: 'award', order: 2 },
-        { id: 'final_alignment', name: 'Alinhamento Final (Reta Final)', color: '#6366F1', icon: 'clock', order: 3 },
-        { id: 'party_day', name: 'Semana da Festa / Evento', color: '#EAB308', icon: 'award', order: 4 },
-        { id: 'completed', name: 'Festa Realizada', color: '#10B981', icon: 'dollar', isFixed: true, isWon: true, order: 5 },
-      ];
-    }
-    return [
-      ENTRY_STAGE_DEF,
-      { id: 'in_negotiation', name: 'EM NEGOCIAÇÃO', color: '#3B82F6', icon: 'clock', order: 1 },
-      { id: 'scheduled', name: 'AGENDADO', color: '#EAB308', icon: 'calendar', order: 2 },
-      { id: 'decision', name: 'EM ANÁLISE / DEGUSTAÇÃO', color: '#F97316', icon: 'award', order: 3 },
-      { id: 'deal_closed', name: 'GANHO', color: '#10B981', icon: 'dollar', isFixed: true, isWon: true, order: 4 },
-      { id: 'lost', name: 'PERDIDO', color: '#EF4444', icon: 'x-circle', isFixed: true, isLoss: true, order: 5 },
-    ];
-  }, [isPostSale]);
-
   useEffect(() => {
     if (!activeFunnel) return;
     setFunnelName(activeFunnel.name || '');
@@ -276,10 +288,17 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setPriorityWhatsappPerVenue(initialPriorities);
     setVenueDistributionConfig(activeFunnel.venueDistributionConfig || {});
     
+    // Inicializar WhatsApps habilitados neste funil
+    const savedEnabledWa = (activeFunnel as any)?.enabledWhatsAppSourceIds || 
+      (activeFunnel as any)?.duplicateRuleConfig?._enabledWhatsAppSourceIds || 
+      sources.filter(s => s.funnelId === activeFunnel.id && s.type === 'whatsapp_api').map(s => s.id);
+    setEnabledWhatsAppSourceIds(savedEnabledWa || []);
+
     if (activeFunnel.stages && activeFunnel.stages.length > 0) {
       let loadedStages = [...activeFunnel.stages];
-      if (entryActive && !loadedStages.some(s => s.id === 'new_lead' || s.id === 'onboarding' || s.name.toLowerCase().includes('entrada'))) {
-        loadedStages = [ENTRY_STAGE_DEF, ...loadedStages];
+      const entryDef = isPostSale ? POST_SALE_ENTRY_STAGE_DEF : ENTRY_STAGE_DEF;
+      if (entryActive && !loadedStages.some(s => s.id === 'new_lead' || (isPostSale ? false : s.id === 'onboarding') || s.name.toLowerCase().includes('entrada'))) {
+        loadedStages = [entryDef, ...loadedStages];
       }
       setStages(loadedStages.map((st, idx) => ({
         ...st,
@@ -297,24 +316,25 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     return leads.filter(l => {
       const matchesFunnel = l.funnelId === activeFunnel.id || (!l.funnelId && (activeFunnel.venueId === 'all' || l.venueId === activeFunnel.venueId));
       const stageStr = l.stage as string;
-      const isEntry = stageStr === 'new_lead' || stageStr === 'onboarding' || stageStr === stages[0]?.id;
+      const isEntry = stageStr === 'new_lead' || (isPostSale ? false : stageStr === 'onboarding') || stageStr === stages[0]?.id;
       return matchesFunnel && isEntry;
     });
-  }, [leads, activeFunnel, stages]);
+  }, [leads, activeFunnel, stages, isPostSale]);
 
   const handleToggleEntryStage = (checked: boolean) => {
     if (!checked && leadsInEntryStage.length > 0) {
-      const firstAvailableStage = stages.find(s => s.id !== 'new_lead' && s.id !== 'onboarding' && !s.name.toLowerCase().includes('entrada'));
-      setMigrationTargetStageId(firstAvailableStage?.id || stages[1]?.id || 'in_negotiation');
+      const firstAvailableStage = stages.find(s => s.id !== 'new_lead' && (isPostSale ? true : s.id !== 'onboarding') && !s.name.toLowerCase().includes('entrada'));
+      setMigrationTargetStageId(firstAvailableStage?.id || stages[1]?.id || (isPostSale ? 'onboarding' : 'in_negotiation'));
       setIsMigrateEntryLeadsModalOpen(true);
       return;
     }
     setIsEntryStageActive(checked);
     if (checked) {
       setStages(prev => {
-        const hasEntry = prev.some(s => s.id === 'new_lead' || s.id === 'onboarding' || s.name.toLowerCase().includes('entrada'));
+        const hasEntry = prev.some(s => s.id === 'new_lead' || s.name.toLowerCase().includes('entrada'));
         if (hasEntry) return prev;
-        return [ENTRY_STAGE_DEF, ...prev.map((s, idx) => ({ ...s, order: idx + 1 }))];
+        const entryDef = isPostSale ? POST_SALE_ENTRY_STAGE_DEF : ENTRY_STAGE_DEF;
+        return [entryDef, ...prev.map((s, idx) => ({ ...s, order: idx + 1 }))];
       });
     }
   };
@@ -333,12 +353,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
     let finalStages = [...stages];
     if (isEntryStageActive) {
-      const hasEntry = finalStages.some(s => s.id === 'new_lead' || s.id === 'onboarding' || s.name.toLowerCase().includes('entrada'));
+      const hasEntry = finalStages.some(s => s.id === 'new_lead' || s.name.toLowerCase().includes('entrada'));
       if (!hasEntry) {
-        finalStages = [ENTRY_STAGE_DEF, ...finalStages];
+        finalStages = [isPostSale ? POST_SALE_ENTRY_STAGE_DEF : ENTRY_STAGE_DEF, ...finalStages];
       }
     } else {
-      finalStages = finalStages.filter(s => s.id !== 'new_lead' && s.id !== 'onboarding' && !s.name.toLowerCase().includes('entrada'));
+      finalStages = finalStages.filter(s => s.id !== 'new_lead' && !s.name.toLowerCase().includes('entrada'));
     }
     finalStages = finalStages.map((s, idx) => ({
       ...s,
@@ -357,7 +377,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       assignedSdrIds,
       venueDistributionConfig,
       detectDuplicates,
-      duplicateRuleConfig,
+      duplicateRuleConfig: {
+        ...duplicateRuleConfig,
+        _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
+      },
+      enabledWhatsAppSourceIds,
       stages: finalStages,
       stagesCount: finalStages.length,
       packageOptions,
@@ -368,6 +392,24 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       defaultWhatsAppSourceId,
       priorityWhatsappPerVenue,
     } as any);
+
+    // Persistência de fontes WhatsApp habilitadas/desabilitadas para este funil no banco de dados
+    const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
+      ? venues.filter(v => v.active !== false)
+      : venues.filter(v => v.id === activeFunnel.venueId);
+    const targetVenueIds = new Set(targetVenues.map(v => v.id));
+
+    (sources || []).forEach(src => {
+      if (src.type === 'whatsapp_api' && (src.venueId && targetVenueIds.has(src.venueId))) {
+        const isChecked = enabledWhatsAppSourceIds.includes(src.id);
+        if (isChecked && src.funnelId !== activeFunnel.id) {
+          updateSource(src.id, { funnelId: activeFunnel.id, status: 'active' });
+        } else if (!isChecked && src.funnelId === activeFunnel.id) {
+          updateSource(src.id, { funnelId: '' });
+        }
+      }
+    });
+
     if (onSaved) onSaved();
     onClose();
   };
@@ -901,10 +943,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               1. CONFIGURAÇÕES OPERACIONAIS
             </div>
 
-            {/* Etapa de leads de entrada Toggle */}
+            {/* Etapa de leads / clientes de entrada Toggle */}
             <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Etapa de leads de entrada</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  {isPostSale ? 'Etapa de Entrada do Cliente' : 'Etapa de leads de entrada'}
+                </span>
                 <input 
                   type="checkbox" 
                   checked={isEntryStageActive} 
@@ -913,11 +957,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 />
               </div>
               <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
-                Mantenha seu funil {isPostSale ? 'de clientes' : 'de vendas'} mais limpo, adicionando esta etapa pré-funil.
+                {isPostSale 
+                  ? 'Quando ativado, novos clientes entram na coluna "ENTRADA DO CLIENTE" para triagem antes de irem para "ONBOARDING & BOAS-VINDAS".'
+                  : 'Mantenha seu funil de vendas mais limpo, adicionando esta etapa pré-funil para triagem.'}
               </p>
               {leadsInEntryStage.length > 0 && !isEntryStageActive && (
                 <div style={{ fontSize: '0.68rem', color: '#EAB308', fontWeight: 700, marginTop: '2px' }}>
-                  ⚠️ {leadsInEntryStage.length} leads aguardando migração
+                  ⚠️ {leadsInEntryStage.length} {isPostSale ? 'clientes' : 'leads'} aguardando migração
                 </div>
               )}
             </div>
@@ -1189,12 +1235,18 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           )}
 
                           {/* WhatsApp da Unidade */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                              WhatsApp da Casa
-                            </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                WhatsApps Vinculados ao Funil
+                              </span>
+                              <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
+                                Marque para habilitar
+                              </span>
+                            </div>
+
                             {venueWhatsappSources.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                 {(() => {
                                   const onlineWhatsappSources = venueWhatsappSources.filter(s => isSourceOnline(s));
                                   const storedPriorityId = priorityWhatsappPerVenue[venue.id] || venueConfig.priorityWhatsappSourceId;
@@ -1203,58 +1255,67 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
                                   return venueWhatsappSources.map(src => {
                                     const isOnline = isSourceOnline(src);
-                                    const isPriority = isOnline && effectivePriorityId === src.id;
+                                    const isEnabled = enabledWhatsAppSourceIds.includes(src.id) || (src.funnelId === activeFunnel.id);
+                                    const isPriority = isOnline && isEnabled && effectivePriorityId === src.id;
                                     const rawPhone = src.whatsappInstanceId || (src.configuration && (src.configuration.connectedPhone || src.configuration.targetPhone)) || '';
                                     const phoneDisplay = rawPhone ? formatPhone(rawPhone) : null;
 
                                     return (
                                       <div
                                         key={src.id}
-                                        onClick={() => {
-                                          if (!isOnline) {
-                                            alert(`A instância "${src.name}" está desconectada. Acesse o menu lateral em Origens para reconectar o WhatsApp.`);
-                                            return;
-                                          }
-                                          setPriorityWhatsappPerVenue(prev => ({
-                                            ...prev,
-                                            [venue.id]: src.id,
-                                          }));
-                                          setVenueDistributionConfig(prev => ({
-                                            ...prev,
-                                            [venue.id]: {
-                                              ...(prev[venue.id] || {}),
-                                              priorityWhatsappSourceId: src.id,
-                                            },
-                                          }));
-                                        }}
                                         style={{
                                           background: !isOnline 
-                                            ? 'rgba(239, 68, 68, 0.12)' 
-                                            : isPriority 
-                                              ? 'rgba(16, 185, 129, 0.12)' 
+                                            ? 'rgba(239, 68, 68, 0.08)' 
+                                            : isEnabled
+                                              ? (isPriority ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.08)')
                                               : 'var(--adm-bg-card)',
                                           border: !isOnline 
-                                            ? '1.5px solid #EF4444' 
+                                            ? '1.5px solid rgba(239, 68, 68, 0.4)' 
                                             : isPriority 
                                               ? '1.5px solid #10B981' 
-                                              : '1px solid var(--adm-border)',
+                                              : isEnabled
+                                                ? '1px solid var(--adm-accent)'
+                                                : '1px solid var(--adm-border)',
                                           borderRadius: '8px',
                                           padding: '6px 8px',
-                                          cursor: isOnline ? 'pointer' : 'default',
                                           display: 'flex',
                                           alignItems: 'center',
                                           justifyContent: 'space-between',
-                                          gap: '6px',
+                                          gap: '8px',
                                           transition: 'all 0.15s ease',
                                         }}
                                       >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                          {/* Checkbox de ativação no funil */}
+                                          <input
+                                            type="checkbox"
+                                            checked={isEnabled}
+                                            onChange={(e) => {
+                                              const checked = e.target.checked;
+                                              setEnabledWhatsAppSourceIds(prev => {
+                                                if (checked) {
+                                                  return [...new Set([...prev, src.id])];
+                                                } else {
+                                                  return prev.filter(id => id !== src.id);
+                                                }
+                                              });
+                                            }}
+                                            title="Ativar/Desativar este WhatsApp neste funil"
+                                            style={{
+                                              width: '15px',
+                                              height: '15px',
+                                              cursor: 'pointer',
+                                              accentColor: 'var(--adm-accent, #3B82F6)',
+                                              flexShrink: 0,
+                                            }}
+                                          />
+
                                           <SafeAvatar name={src.name || 'WhatsApp'} src={(src as any).avatarUrl || (src.configuration && src.configuration.connectedAvatar)} size={24} />
                                           <div style={{ minWidth: 0 }}>
                                             <div style={{ 
                                               fontSize: '0.70rem', 
                                               fontWeight: 700, 
-                                              color: !isOnline ? '#EF4444' : 'var(--adm-text-title)', 
+                                              color: !isOnline ? '#EF4444' : (isEnabled ? 'var(--adm-text-title)' : 'var(--adm-text-muted)'), 
                                               whiteSpace: 'nowrap', 
                                               overflow: 'hidden', 
                                               textOverflow: 'ellipsis' 
@@ -1262,25 +1323,59 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                               {src.name}
                                             </div>
                                             {phoneDisplay && (
-                                              <div style={{ fontSize: '0.62rem', color: !isOnline ? '#EF4444' : 'var(--adm-text-muted)', opacity: !isOnline ? 0.9 : 1 }}>
+                                              <div style={{ fontSize: '0.62rem', color: !isOnline ? '#EF4444' : 'var(--adm-text-muted)', opacity: !isOnline ? 0.9 : 0.8 }}>
                                                 {phoneDisplay}
                                               </div>
                                             )}
                                           </div>
                                         </div>
-                                        {!isOnline ? (
-                                          <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444' }}>
-                                            🔴 Desconectado
-                                          </span>
-                                        ) : isPriority ? (
-                                          <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#FFF' }}>
-                                            Principal
-                                          </span>
-                                        ) : (
-                                          <span style={{ fontSize: '0.55rem', fontWeight: 600, color: 'var(--adm-text-muted)' }}>
-                                            Definir
-                                          </span>
-                                        )}
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                          {!isOnline ? (
+                                            <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444' }}>
+                                              🔴 Offline
+                                            </span>
+                                          ) : isEnabled ? (
+                                            isPriority ? (
+                                              <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#FFF' }}>
+                                                Principal
+                                              </span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setPriorityWhatsappPerVenue(prev => ({
+                                                    ...prev,
+                                                    [venue.id]: src.id,
+                                                  }));
+                                                  setVenueDistributionConfig(prev => ({
+                                                    ...prev,
+                                                    [venue.id]: {
+                                                      ...(prev[venue.id] || {}),
+                                                      priorityWhatsappSourceId: src.id,
+                                                    },
+                                                  }));
+                                                }}
+                                                style={{
+                                                  background: 'var(--adm-bg-input)',
+                                                  border: '1px solid var(--adm-border)',
+                                                  borderRadius: '4px',
+                                                  padding: '2px 6px',
+                                                  fontSize: '0.55rem',
+                                                  fontWeight: 700,
+                                                  color: 'var(--adm-text-muted)',
+                                                  cursor: 'pointer',
+                                                }}
+                                              >
+                                                Definir Principal
+                                              </button>
+                                            )
+                                          ) : (
+                                            <span style={{ fontSize: '0.55rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.6 }}>
+                                              Inativo
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     );
                                   });
@@ -1288,7 +1383,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </div>
                             ) : (
                               <div style={{ fontSize: '0.65rem', color: 'var(--adm-text-muted)' }}>
-                                Sem WhatsApp conectado.
+                                Sem instâncias WhatsApp vinculadas a esta unidade.
                               </div>
                             )}
                           </div>

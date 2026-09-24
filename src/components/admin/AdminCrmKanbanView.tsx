@@ -914,17 +914,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     const matching = leads.filter(l => {
-      // 1. Mandatory Funnel / Venue Matching:
+      // 1. Mandatory Strict Funnel Matching:
       if (currentFunnel) {
-        if (l.funnelId) {
-          const matchesId = l.funnelId === currentFunnel.id;
-          const matchesName = l.funnelId.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim();
-          if (!matchesId && !matchesName) return false;
-        } else if (currentFunnel.venueId && currentFunnel.venueId !== 'all') {
-          if (l.venueId !== currentFunnel.venueId) return false;
-        } else if (!currentFunnel.isPrimary) {
-          return false;
-        }
+        if (!l.funnelId) return false; // Lead desindexado (sem funil) NUNCA deve aparecer no Kanban de funis
+        const matchesId = l.funnelId === currentFunnel.id;
+        const matchesName = l.funnelId.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim();
+        if (!matchesId && !matchesName) return false;
       } else if (activeVenueId && activeVenueId !== 'all') {
         if (l.venueId !== activeVenueId) return false;
       }
