@@ -230,13 +230,19 @@ export const sourceService = {
     if (!isSupabaseConfigured || venues.length === 0) return;
     try {
       const existingSources = await this.getAll();
-      const hasExactlyOneFunnel = funnels.length === 1 && isUuid(funnels[0].id);
-      const primaryFunnel = funnels.find(f => f.isPrimary);
-      const autoFunnelId = hasExactlyOneFunnel 
-        ? funnels[0].id 
-        : (primaryFunnel?.id || (funnels[0]?.id && isUuid(funnels[0].id) ? funnels[0].id : ''));
 
       for (const venue of venues) {
+        // Encontra apenas os funis comerciais pertencentes à casa ou ao master da casa
+        const venueFunnels = funnels.filter(f => 
+          f.venueId === venue.id || 
+          (f.venueId === 'all' && (f.masterId === venue.masterId || !f.masterId && !venue.masterId))
+        );
+        const hasExactlyOneFunnel = venueFunnels.length === 1 && isUuid(venueFunnels[0].id);
+        const primaryFunnel = venueFunnels.find(f => f.isPrimary);
+        const autoFunnelId = hasExactlyOneFunnel 
+          ? venueFunnels[0].id 
+          : (primaryFunnel?.id && isUuid(primaryFunnel.id) ? primaryFunnel.id : '');
+
         const venueSources = existingSources.filter(s => s.venueId === venue.id && s.type === 'referral');
         const expectedName = `Indicações • ${venue.name}`;
 
@@ -255,11 +261,14 @@ export const sourceService = {
         } else {
           // Mantém a primeira e atualiza o nome caso a casa de festa tenha sido renomeada
           const primarySource = venueSources[0];
-          if (primarySource.name !== expectedName) {
+          const isCurrentFunnelValid = primarySource.funnelId && venueFunnels.some(f => f.id === primarySource.funnelId);
+          const finalFunnelId = isCurrentFunnelValid ? primarySource.funnelId : autoFunnelId;
+
+          if (primarySource.name !== expectedName || primarySource.funnelId !== finalFunnelId) {
             await this.upsert({
               ...primarySource,
               name: expectedName,
-              funnelId: primarySource.funnelId || autoFunnelId,
+              funnelId: finalFunnelId,
               status: 'active',
             });
           }
