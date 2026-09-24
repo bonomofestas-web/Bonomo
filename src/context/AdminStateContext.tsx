@@ -3962,6 +3962,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
         const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
 
+        const postSaleFunnelMatch = funnels.find(f => 
+          f.isPostSale || 
+          f.category === 'Pós-Venda' || 
+          f.category === 'pos_venda' ||
+          f.name?.toLowerCase().includes('pós-venda') ||
+          f.name?.toLowerCase().includes('sucesso')
+        );
+        const isEntryStageActive = Boolean(postSaleFunnelMatch?.isEntryStageActive);
+        const clientInitialStage: ClientStage = isEntryStageActive ? ('new_lead' as any) : 'onboarding';
+
         const newClient: Client = {
           id: newCliId,
           code: generateClientCode(),
@@ -3991,7 +4001,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           signalPaid: false,
           paymentTerms: (targetLead as any).paymentTerms || targetLead.paymentMethod || 'Negociação comercial fechada',
           paymentStatus: 'pending',
-          stage: 'onboarding',
+          stage: clientInitialStage,
           contacts: targetLead.contacts || [],
           assignedSuccessManagerId: undefined,
           assignedSuccessManagerName: undefined,
@@ -4775,7 +4785,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               .catch(() => {});
           }
         } else {
-          // Cria um novo Lead automaticamente com telefone real e nome de contato resolvidos
+          // Segurança Pós-Venda: Se a mensagem chegou em uma fonte vinculada ao Pós-Venda (Sucesso do Cliente),
+          // e a Etapa de Entrada do Cliente NÃO estiver ativada, mensagens de números desconhecidos são ignoradas.
+          const isTargetPostSale = matchedSource?.funnelId === 'post_sale_default' ||
+            funnels.some(f => f.id === matchedSource?.funnelId && (f.isPostSale || f.category === 'Pós-Venda'));
+
+          if (isTargetPostSale) {
+            const postSaleFunnelObj = funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.id === matchedSource?.funnelId);
+            const isEntryActive = Boolean(postSaleFunnelObj?.isEntryStageActive);
+            
+            if (!isEntryActive) {
+              console.info(`[WhatsApp Pós-Venda] Mensagem de número desconhecido (${cleanPhone}) ignorada pois a Etapa de Entrada do Cliente está desativada no funil.`);
+              return;
+            }
+          }
+
+          // Cria um novo Lead / Cliente automaticamente com telefone real e nome de contato resolvidos
           const venueId = matchedSource?.venueId || activeVenueId || currentVenues[0]?.id || 'v1';
           const newId = await createLeadFromWhatsApp({
             venueId,
@@ -4785,6 +4810,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             sourceId: matchedSource?.id,
             avatarUrl: effectiveAvatar || undefined,
             fromMe: isFromMe,
+            initialFunnelId: isTargetPostSale ? 'post_sale_default' : undefined,
+            initialStage: isTargetPostSale ? ('new_lead' as any) : undefined,
           });
 
           if (newId && incoming.instanceToken) {

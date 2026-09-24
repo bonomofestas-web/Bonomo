@@ -197,6 +197,14 @@ const AdminFilterDropdown: React.FC<AdminFilterDropdownProps> = ({
   );
 };
 
+const POST_SALE_ENTRY_COLUMN: StageColumn = {
+  id: 'new_lead' as any,
+  title: 'ENTRADA DO CLIENTE',
+  color: '#EF4444',
+  bgColor: 'rgba(239, 68, 68, 0.08)',
+  borderColor: 'rgba(239, 68, 68, 0.3)',
+};
+
 export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = ({
   onOpenDebutanteApp,
   onOpenCommercialLead,
@@ -225,6 +233,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsFunnelId, setActiveSettingsFunnelId] = useState<string | null>(null);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
+
+  // Permissão de Configuração: Master, Admin ou Dev
+  const canConfigurePostSale = Boolean(
+    currentUser?.role === 'master' || 
+    currentUser?.role === 'admin' || 
+    currentUser?.isDev
+  );
 
   // Filtros Avançados Inline na Barra
   const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
@@ -327,10 +342,18 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     ) || null;
   }, [funnels]);
 
-  const handleOpenSettings = () => {
+  // Colunas Ativas (Inclui "Entrada do Cliente" quando a flag do funil estiver ativada)
+  const activeStageColumns = useMemo(() => {
+    if (postSaleFunnel?.isEntryStageActive) {
+      return [POST_SALE_ENTRY_COLUMN, ...STAGE_COLUMNS];
+    }
+    return STAGE_COLUMNS;
+  }, [postSaleFunnel?.isEntryStageActive]);
+
+  const handleOpenSettings = async () => {
     let funnelId = postSaleFunnel?.id;
     if (!funnelId) {
-      funnelId = addFunnel({
+      funnelId = await addFunnel({
         name: 'Sucesso do Cliente',
         category: 'Pós-Venda',
         description: 'Organização e acompanhamento da jornada do cliente pós-fechamento',
@@ -917,35 +940,37 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               <List size={14} />
             </button>
 
-            <button
-              type="button"
-              onClick={handleOpenSettings}
-              title="Configurar etapas e automações do funil"
-              style={{
-                background: 'var(--adm-bg-input)',
-                color: 'var(--adm-text-title)',
-                borderRadius: '6px',
-                border: '1px solid var(--adm-border)',
-                padding: '4px 9px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.74rem',
-                fontWeight: 700,
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--adm-accent)';
-                e.currentTarget.style.borderColor = 'var(--adm-accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--adm-text-title)';
-                e.currentTarget.style.borderColor = 'var(--adm-border)';
-              }}
-            >
-              <Settings size={14} />
-            </button>
+            {canConfigurePostSale && (
+              <button
+                type="button"
+                onClick={handleOpenSettings}
+                title="Configurar etapas e automações do funil"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--adm-border)',
+                  padding: '4px 9px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-accent)';
+                  e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-text-title)';
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                }}
+              >
+                <Settings size={14} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -984,7 +1009,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-title)' }}>Mover para etapa:</span>
-            {STAGE_COLUMNS.map(col => (
+            {activeStageColumns.map(col => (
               <button
                 key={col.id}
                 type="button"
@@ -1093,7 +1118,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             }}
             className="custom-scrollbar"
           >
-            {STAGE_COLUMNS.map(column => {
+            {activeStageColumns.map(column => {
               const stageClients = filteredClients.filter(c => c.stage === column.id);
               const stageValue = stageClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
 
