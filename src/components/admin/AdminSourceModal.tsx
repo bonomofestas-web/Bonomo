@@ -113,12 +113,13 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
           ? activeVenueId 
           : (venues[0]?.id || '');
         
-        const availableFunnels = funnels.filter(f => !defaultVenue || f.venueId === defaultVenue || f.venueId === 'all');
+        const availableFunnels = funnels.filter(f => !f.isPostSale && (!defaultVenue || f.venueId === defaultVenue || f.venueId === 'all'));
+        const fallbackFunnel = availableFunnels[0]?.id || funnels.find(f => !f.isPostSale)?.id || funnels[0]?.id || '';
 
         setName('');
         setVenueId(defaultVenue);
         setType('whatsapp_api');
-        setFunnelId(availableFunnels[0]?.id || 'comercial');
+        setFunnelId(fallbackFunnel);
         setWhatsappInstanceId('');
         setSlug('');
         setStatus('active');
@@ -342,10 +343,6 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
     }
     if (!venueId) {
       setErrorMsg('Selecione uma Casa de Festa obrigatória.');
-      return;
-    }
-    if (!funnelId) {
-      setErrorMsg('Selecione o Funil de Destino padrão para onde as mensagens/leads serão enviados.');
       return;
     }
 
@@ -592,16 +589,15 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
 
             <div>
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                Funil de Destino Padrão <span style={{ color: '#EF4444' }}>*</span>
+                Funil de Destino (Opcional)
               </label>
               <select
                 value={funnelId}
                 onChange={(e) => setFunnelId(e.target.value)}
                 className="adm-input"
                 style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem', borderColor: 'var(--adm-accent)' }}
-                required
               >
-                <option value="" disabled>-- Selecione o Funil de Destino --</option>
+                <option value="">-- Sem Funil Vinculado (Definir Depois) --</option>
                 {commercialFunnels.length > 0 && (
                   <optgroup label="💼 Funis Comerciais (Vendas)">
                     {commercialFunnels.map(f => (

@@ -23,6 +23,7 @@ export const funnelService = {
         category: row.category || 'Marketing Digital',
         description: row.description || '',
         venueId: row.venue_id || 'all',
+        masterId: row.master_id || undefined,
         sharedVenueIds: Array.isArray(row.shared_venue_ids) ? row.shared_venue_ids : [],
         allowedCollaboratorIds: row.allowed_collaborator_ids || [],
         badge: row.badge || row.category,
@@ -122,10 +123,17 @@ export const funnelService = {
       if (funnel.customFields !== undefined) payload.custom_fields = funnel.customFields;
       if (funnel.isWonStageEnabled !== undefined) payload.is_won_stage_enabled = funnel.isWonStageEnabled;
       if (funnel.distributionMode !== undefined) payload.distribution_mode = funnel.distributionMode;
+      if (funnel.masterId !== undefined) payload.master_id = funnel.masterId;
       if (funnel.assignedSdrIds !== undefined) payload.assigned_sdr_ids = funnel.assignedSdrIds;
       if (funnel.roundRobinNextIndex !== undefined) payload.round_robin_next_index = funnel.roundRobinNextIndex;
       if (funnel.pinnedAt !== undefined) payload.pinned_at = funnel.pinnedAt || null;
       if (funnel.order !== undefined) payload.order = funnel.order;
+
+      // Se venue_id for nulo mas houver shared_venue_ids válidos, usa o primeiro como primário
+      if (!payload.venue_id && funnel.sharedVenueIds && funnel.sharedVenueIds.length > 0) {
+        const firstValidVenue = funnel.sharedVenueIds.find(vid => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vid));
+        if (firstValidVenue) payload.venue_id = firstValidVenue;
+      }
 
       if (isUuid) {
         const { data: updated, error: updateErr } = await supabase
@@ -153,8 +161,10 @@ export const funnelService = {
             pinned_at: funnel.pinnedAt,
             order: funnel.order,
             is_primary: funnel.isPrimary,
+            master_id: funnel.masterId,
             duplicate_rule_config: payload.duplicate_rule_config,
           };
+          if (payload.venue_id) fallbackPayload.venue_id = payload.venue_id;
           Object.keys(fallbackPayload).forEach(k => fallbackPayload[k] === undefined && delete fallbackPayload[k]);
 
           const { data: retryUpdated, error: retryErr } = await supabase
@@ -169,13 +179,31 @@ export const funnelService = {
         }
 
         payload.id = funnel.id;
-        const { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
+        let { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
+
+        // Se falhou por venue_id not-null violation, busca a primeira casa disponível no banco
+        if (insertErr && (insertErr.code === '23502' || insertErr.message?.includes('venue_id'))) {
+          const { data: vList } = await supabase.from('venues').select('id').limit(1);
+          if (vList && vList[0]) {
+            payload.venue_id = vList[0].id;
+            const retry = await supabase.from('commercial_funnels').insert(payload);
+            insertErr = retry.error;
+          }
+        }
+
         if (insertErr) {
           console.warn('⚠️ Tentativa de insert completo em commercial_funnels falhou, tentando fallback:', insertErr.message);
+          let safeVenueId = payload.venue_id;
+          if (!safeVenueId || safeVenueId === 'all' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safeVenueId)) {
+            const { data: vList } = await supabase.from('venues').select('id').limit(1);
+            safeVenueId = vList?.[0]?.id || null;
+          }
+
           const fallbackInsert: any = {
             id: funnel.id,
             name: funnel.name || 'Novo Funil',
-            venue_id: funnel.venueId,
+            venue_id: safeVenueId,
+            master_id: funnel.masterId,
             category: funnel.category || 'Marketing Digital',
             stages: funnel.stages || [],
             stages_count: funnel.stagesCount || (funnel.stages?.length || 4),

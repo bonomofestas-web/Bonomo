@@ -59,8 +59,8 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   // Nome de exibição do funil
   const displayFunnelName = currentFunnelName || targetFunnel?.name || 'Funil Comercial';
 
-  // Se o funil for de uma casa específica, a casa é travada nele
-  const isVenueFixedByFunnel = targetFunnel && targetFunnel.venueId && targetFunnel.venueId !== 'all';
+  // A casa de festas é livre para ser escolhida pelo usuário
+  const isVenueFixedByFunnel = false;
 
   // Inicializar formulário ao abrir
   useEffect(() => {
@@ -75,18 +75,14 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     setNotes('');
 
     // Determinar a casa de festas padrão
-    if (isVenueFixedByFunnel && targetFunnel?.venueId) {
-      setVenueId(targetFunnel.venueId);
-    } else {
-      const initialVenue = defaultVenueId && defaultVenueId !== 'all'
-        ? defaultVenueId
-        : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (venues[0]?.id || ''));
-      setVenueId(initialVenue);
-    }
+    const initialVenue = defaultVenueId && defaultVenueId !== 'all'
+      ? defaultVenueId
+      : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (venues[0]?.id || ''));
+    setVenueId(initialVenue);
 
     setSource('cadastro_interno');
     setSourceId('');
-  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, isVenueFixedByFunnel, initialMode]);
+  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, initialMode]);
 
   // Lista de origens filtradas pela casa ou gerais, OBRIGATORIAMENTE excluindo canais automáticos/sistema
   const availableSources = useMemo(() => {

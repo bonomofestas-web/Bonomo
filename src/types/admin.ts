@@ -287,6 +287,7 @@ export interface AdminTask {
   debutanteId?: string; // Debutante connection
   debutanteName?: string;
   venueId?: string;
+  masterId?: string;
   databaseSector?: string;
   isFollowUp?: boolean;
   customProperties?: Record<string, any>;

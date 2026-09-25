@@ -706,11 +706,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // Open Create Funnel in Full Content Area View
   const handleOpenCreateFunnel = (targetVenueId?: string) => {
+    const resolvedVenue = (targetVenueId && targetVenueId !== 'all')
+      ? targetVenueId
+      : (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi')
+        ? activeVenueId
+        : (venues[0]?.id || 'all');
     const newId = addFunnel({
       name: isPostSaleView ? 'Novo Funil Pós-Venda' : 'Novo Funil Comercial',
       category: isPostSaleView ? 'Pós-Venda' : 'Vendas & Atendimento',
       description: '',
-      venueId: targetVenueId || activeVenueId || 'all',
+      venueId: resolvedVenue,
+      sharedVenueIds: (targetVenueId === 'all' || activeVenueId === 'all' || !activeVenueId) ? venues.map(v => v.id) : undefined,
       isEntryStageActive: false,
       stages: isPostSaleView ? DEFAULT_POST_SALE_FORM_STAGES : DEFAULT_FORM_STAGES,
     });

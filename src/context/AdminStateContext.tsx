@@ -2069,18 +2069,62 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
-  // Funis do Tenant Ativo
+  // Mapa de casas conectadas dinamicamente a cada funil através das origens ativas
+  const funnelConnectedVenueIds = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    sources.forEach(s => {
+      if (s.funnelId && s.venueId) {
+        if (!map.has(s.funnelId)) map.set(s.funnelId, new Set());
+        map.get(s.funnelId)!.add(s.venueId);
+      }
+    });
+    return map;
+  }, [sources]);
+
+  // Funis do Tenant Ativo (Funis soltos do Master ou dinamicamente vinculados a casas via Origens)
   const scopedFunnels = useMemo(() => {
     if (!currentUser || !scopedMasterId) return funnels;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return funnels.filter(f => f.venueId === activeVenueId || (f.venueId === 'all' && f.masterId === scopedMasterId));
-    }
+
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return funnels.filter(f => 
-      (f.venueId && masterVenueIds.has(f.venueId)) || 
-      (f.venueId === 'all' && (f.masterId === scopedMasterId || !f.masterId))
-    );
-  }, [funnels, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
+    const isMasterOrDev = currentUser.role === 'master' || currentUser.isDev;
+    const userVenueIds = new Set(currentUser.venueIds || []);
+
+    return funnels.filter(f => {
+      const isOwnedByMaster = f.masterId === scopedMasterId;
+      const connectedVenues = funnelConnectedVenueIds.get(f.id) || new Set<string>();
+
+      // Casas associadas: tanto via origens quanto via venueId/sharedVenueIds existentes
+      const hasSourceFromMasterVenues = Array.from(connectedVenues).some(vid => masterVenueIds.has(vid));
+      const hasDirectMasterVenue = Boolean(f.venueId && f.venueId !== 'all' && masterVenueIds.has(f.venueId));
+      const hasSharedMasterVenue = Boolean(f.sharedVenueIds && f.sharedVenueIds.some(vid => masterVenueIds.has(vid)));
+
+      // O funil deve obrigatoriamente pertencer ao tenant do Master ativo
+      if (!isOwnedByMaster && !hasSourceFromMasterVenues && !hasDirectMasterVenue && !hasSharedMasterVenue) {
+        return false;
+      }
+
+      // Se for colaborador (não-master), só enxerga funis com origens nas casas dele
+      if (!isMasterOrDev) {
+        const matchesUserVenues = Array.from(connectedVenues).some(vid => userVenueIds.has(vid))
+          || (f.venueId && userVenueIds.has(f.venueId))
+          || (f.sharedVenueIds && f.sharedVenueIds.some(vid => userVenueIds.has(vid)));
+        if (!matchesUserVenues) return false;
+      }
+
+      // Se uma casa específica estiver selecionada no filtro global do topo (activeVenueId)
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        const isConnectedToActive = connectedVenues.has(activeVenueId) 
+          || f.venueId === activeVenueId 
+          || (f.sharedVenueIds && f.sharedVenueIds.includes(activeVenueId));
+        
+        // Se for Master, permite também visualizar funis soltos (sem nenhuma origem vinculada ainda) para configuração
+        const isLooseFunnel = isMasterOrDev && connectedVenues.size === 0 && (!f.venueId || f.venueId === 'all');
+        return isConnectedToActive || isLooseFunnel;
+      }
+
+      return true;
+    });
+  }, [funnels, funnelConnectedVenueIds, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
   // Debutantes do Tenant Ativo
   const scopedDebutantes = useMemo(() => {
@@ -2168,7 +2212,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const c = clients.find(cli => cli.id === t.clientId);
           return c?.venueId === activeVenueId;
         }
-        return false;
+        // Tarefas sem casa vinculada mas pertencentes ao master ativo
+        return t.masterId === scopedMasterId || t.createdById === currentUser.id;
       }
       // 2. Se estiver em 'all' ou 'multi', deve pertencer às casas do tenant
       if (t.venueId) return masterVenueIds.has(t.venueId);
@@ -2180,7 +2225,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const c = clients.find(cli => cli.id === t.clientId);
         return c && ((c as any).masterId === scopedMasterId || (c.venueId && masterVenueIds.has(c.venueId)));
       }
-      return (t as any).masterId === scopedMasterId || t.createdById === currentUser.id;
+      return t.masterId === scopedMasterId || t.createdById === currentUser.id;
     });
   }, [tasks, scopedVenues, scopedMasterId, leads, clients, activeVenueId, currentUser]);
 
@@ -2947,10 +2992,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addFunnel = (data: Omit<CommercialFunnel, 'id' | 'createdAt'>): string => {
     const id = generateUuid();
+    // Funil é solto por padrão (pertence ao Master e atende às casas de suas origens)
+    const effectiveVenueId = (data.venueId && data.venueId !== 'all') ? data.venueId : 'all';
+    const targetVenue = venues.find(v => v.id === effectiveVenueId);
+    const resolvedMasterId = data.masterId || targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+
     const newFunnel: CommercialFunnel = {
       ...data,
       id,
-      masterId: data.masterId || scopedMasterId || currentUser?.id,
+      venueId: effectiveVenueId,
+      sharedVenueIds: data.sharedVenueIds || [],
+      masterId: resolvedMasterId,
       createdAt: new Date().toISOString().split('T')[0],
     };
     setFunnels(prev => {
@@ -2959,7 +3011,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
-    funnelService.upsert(newFunnel);
+    funnelService.upsert(newFunnel).catch(e => console.error('Erro ao salvar funil no Supabase:', e));
 
     return id;
   };
@@ -3388,9 +3440,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addSource = async (data: Omit<Source, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
     const id = generateUuid();
+    const effectiveVenueId = (data.venueId && data.venueId !== 'all')
+      ? data.venueId
+      : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id || ''));
+    
+    // Funil na Origem é OPCIONAL
+    const isValidUuid = (v?: string | null) => Boolean(v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
+    const resolvedFunnelId = (data.funnelId && isValidUuid(data.funnelId)) ? data.funnelId : '';
+
     const newSource: Source = {
       ...data,
       id,
+      venueId: effectiveVenueId,
+      funnelId: resolvedFunnelId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -5274,7 +5336,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     phone: string;
     email?: string;
     venueId: string;
-    funnelId: string;
+    funnelId?: string;
     stage?: CrmStage;
     source?: import('../types/admin').LeadSource;
     sourceId?: string;
@@ -5301,12 +5363,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const leadCode = generateLeadCode();
     const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
 
-    const DEFAULT_COMMERCIAL_FUNNEL_ID = 'f1111111-1111-1111-1111-111111111111';
-    const primaryFunnel = funnels.find(f => f.isPrimary);
     const isValUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
-    const resolvedFunnelId = (data.funnelId && isValUuid(data.funnelId))
-      ? data.funnelId
-      : (primaryFunnel?.id || DEFAULT_COMMERCIAL_FUNNEL_ID);
+    const resolvedFunnelId = (data.funnelId && isValUuid(data.funnelId)) ? data.funnelId : '';
 
     let sdrName = data.sdrName;
     if (data.sdrId && !sdrName) {
@@ -7251,9 +7309,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addTask = (data: Omit<AdminTask, 'id' | 'createdAt'>): string => {
     const id = generateUuid();
+    const effectiveVenueId = data.venueId || (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (scopedVenues[0]?.id));
+    const targetVenue = venues.find(v => v.id === effectiveVenueId);
+    const resolvedMasterId = data.masterId || targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+
     const newTask: AdminTask = {
       ...data,
       id,
+      venueId: effectiveVenueId,
+      masterId: resolvedMasterId,
       createdAt: new Date().toISOString(),
     };
     setTasks(prev => {

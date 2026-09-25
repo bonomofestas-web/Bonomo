@@ -33,6 +33,8 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
     collaborators, 
     leads, 
     debutantes, 
+    venues,
+    activeVenueId,
     addTask, 
     updateTask 
   } = useAdminState();
@@ -80,7 +82,7 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
       setAssignedToIds(currentUser ? [currentUser.id] : []);
       setSelectedLeadId(presetLeadId || '');
       setSelectedDebutanteId(presetDebutanteId || '');
-      setSelectedVenueId('');
+      setSelectedVenueId(activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : (venues[0]?.id || ''));
     }
     setIsLeadDropdownOpen(false);
     setIsDebDropdownOpen(false);
@@ -177,7 +179,7 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
       leadName: lead?.name,
       debutanteId: selectedDebutanteId || undefined,
       debutanteName: debutante?.name,
-      venueId: selectedVenueId || lead?.venueId || debutante?.venueId || undefined,
+      venueId: selectedVenueId || lead?.venueId || debutante?.venueId || (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' ? activeVenueId : (venues[0]?.id || undefined)),
     };
 
     if (taskToEdit) {
