@@ -590,8 +590,8 @@ class UazapiSseManager {
           }
         }
 
-        // 4. Detecção de payload JSON cru contido em text (ex: {"URL":"https://mmg.whatsapp.net/..."})
-        if (text && (text.startsWith('{') || text.includes('mmg.whatsapp.net'))) {
+        // 4. Detecção de payload JSON cru contido em text (ex: {"URL":"https://mmg.whatsapp.net/...", "mimetype":"audio/ogg"} ou audioMessage)
+        if (text && text.startsWith('{') && (text.includes('mimetype') || text.includes('audio') || text.includes('ptt') || text.includes('directPath') || text.includes('mmg.whatsapp.net'))) {
           try {
             const parsed = JSON.parse(text);
             const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
@@ -604,13 +604,13 @@ class UazapiSseManager {
               } else if (mimetype.includes('video')) {
                 mediaType = 'video';
                 text = '🎥 Vídeo';
-              } else {
+              } else if (mimetype.includes('audio') || parsed.ptt || text.includes('ptt') || text.includes('audioMessage')) {
                 mediaType = 'audio';
                 text = '🎵 Mensagem de voz';
               }
             }
           } catch {
-            const urlMatch = text.match(/"URL"\s*:\s*"([^"]+)"/i) || text.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+            const urlMatch = text.match(/"URL"\s*:\s*"([^"]+)"/i) || (text.includes('audio') ? text.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
             if (urlMatch) {
               mediaUrl = mediaUrl || urlMatch[1] || urlMatch[0];
               mediaType = 'audio';

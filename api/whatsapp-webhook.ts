@@ -329,38 +329,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // 2. Busca se já existe um Lead com esse telefone
+        const last8 = cleanPhone.slice(-8);
         const { data: existingLeads } = await supabase
           .from('leads')
-          .select('*')
-          .ilike('phone', `%${cleanPhone.slice(-8)}%`)
+          .select('id, name, phone, unread_count, venue_id, funnel_id')
+          .ilike('phone', `%${last8}%`)
           .limit(1);
 
         const existingLead = existingLeads?.[0];
 
         if (existingLead) {
-          // Atualiza o Lead existente com a nova atividade de mensagem
+          // Atualiza o Lead existente com a nova atividade de mensagem na tabela lead_activities
           const isAudio = mediaType === 'audio' || text.includes('🎵');
-          const newActivity = {
-            id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            leadId: existingLead.id,
+          let storedText = text.trim();
+          if (mediaUrl && !storedText.startsWith('[media:')) {
+            storedText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${storedText}`.trim();
+          }
+
+          const activityId = crypto.randomUUID();
+          const newActivityRecord = {
+            id: activityId,
+            lead_id: existingLead.id,
             timestamp: new Date().toISOString(),
             type: 'contact',
             title: isFromMe 
               ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)')
               : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
-            text: text.trim(),
-            mediaUrl,
-            mediaType,
-            authorName: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
-            authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
-            authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
+            text: storedText,
+            author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
+            author_id: null,
+            author_avatar_url: isFromMe ? 'whatsapp_brand' : '',
             status: isFromMe ? 'sent' : 'delivered',
           };
 
-          const currentActivities = Array.isArray(existingLead.activities) ? existingLead.activities : [];
+          await supabase.from('lead_activities').insert([newActivityRecord]);
+
           const updatePayload: Record<string, any> = {
-            activities: [...currentActivities, newActivity],
-            updated_at: new Date().toISOString().split('T')[0],
+            updated_at: new Date().toISOString(),
+            last_interaction_at: new Date().toISOString(),
+            last_message_direction: isFromMe ? 'outgoing' : 'incoming',
           };
 
           if (!isFromMe) {
@@ -372,42 +379,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update(updatePayload)
             .eq('id', existingLead.id);
         } else if (!isFromMe) {
-          // Cria um novo Lead automaticamente (apenas quando recebido do cliente)
+          // Cria um novo Lead automaticamente com UUID válido
+          const leadId = crypto.randomUUID();
           const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)') ? senderName.trim() : leadCode;
           const venueId = matchedSource?.venue_id || 'v1';
           const funnelId = matchedSource?.funnel_id || 'comercial';
 
           const newLead = {
-            id: `lead_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            id: leadId,
             code: leadCode,
             name: cleanLeadName,
             phone: cleanPhone,
             venue_id: venueId,
             funnel_id: funnelId,
             source_id: matchedSource?.id || null,
-            source: 'whatsapp',
-            source_name: matchedSource?.name || 'WhatsApp API',
+            source_name: matchedSource?.name || 'WhatsApp Oficial',
             stage: 'new_lead',
             unread_count: 1,
             notes: `Primeira mensagem via WhatsApp: "${text.trim()}"`,
-            activities: [
-              {
-                id: `act_${Date.now()}`,
-                timestamp: new Date().toISOString(),
-                type: 'creation',
-                title: 'Lead captado via WhatsApp Oficial',
-                text: `Primeira mensagem: "${text.trim()}"`,
-                authorName: 'WhatsApp API',
-                mediaUrl,
-                mediaType,
-              }
-            ],
-            created_at: new Date().toISOString().split('T')[0],
-            updated_at: new Date().toISOString().split('T')[0],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            last_interaction_at: new Date().toISOString(),
+            last_message_direction: 'incoming',
           };
 
           await supabase.from('leads').insert([newLead]);
+
+          let creationStoredText = `Primeira mensagem: "${text.trim()}"`;
+          if (mediaUrl) {
+            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`;
+          }
+
+          await supabase.from('lead_activities').insert([{
+            id: crypto.randomUUID(),
+            lead_id: leadId,
+            timestamp: new Date().toISOString(),
+            type: 'creation',
+            title: 'Lead captado via WhatsApp Oficial',
+            text: creationStoredText,
+            author_name: 'WhatsApp Oficial',
+            author_id: null,
+            author_avatar_url: '',
+            status: 'delivered',
+          }]);
 
           if (matchedSource?.id) {
             const currentTotal = Number(matchedSource.total_leads || 0) + 1;

@@ -1531,31 +1531,33 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
     const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
 
-    if (isPostSaleFunnel || selectedLead.isClient) {
-      addClientNote(selectedLead.id, textToSend);
-    } else if (composerTab === 'notes') {
-      addLeadNote(selectedLead.id, textToSend);
+    if (composerTab === 'notes') {
+      if (selectedLead.isClient) {
+        addClientNote(selectedLead.id, textToSend);
+      } else {
+        addLeadNote(selectedLead.id, textToSend);
+      }
       return;
-    } else {
-      newActivity = {
-        id: generateUuid(),
-        leadId: selectedLead.id,
-        timestamp: finalTimestampIso,
-        type: 'contact',
-        title: `Mensagem enviada via WhatsApp`,
-        text: textToSend,
-        authorName: currentUser?.name || author,
-        authorId: currentUser?.id,
-        authorAvatarUrl: currentUser?.avatarUrl,
-        status: 'sending',
-      };
-
-      const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
-      updateLeadData(selectedLead.id, {
-        activities: updatedActivities,
-        updatedAt: new Date().toISOString().split('T')[0],
-      });
     }
+
+    newActivity = {
+      id: generateUuid(),
+      leadId: selectedLead.id,
+      timestamp: finalTimestampIso,
+      type: 'contact',
+      title: `Mensagem enviada via WhatsApp`,
+      text: textToSend,
+      authorName: currentUser?.name || author,
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+      status: 'sending',
+    };
+
+    const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
+    updateLeadData(selectedLead.id, {
+      activities: updatedActivities,
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
 
     // Disparo oficial via UAZAPI
     let targetPhone = selectedRecipientPhone || selectedLead.phone;
@@ -3855,20 +3857,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }
 
                       let effectiveMediaUrl = act.mediaUrl;
-                      let effectiveMediaType = act.mediaType;
+                      let effectiveMediaType: LeadActivity['mediaType'] = act.mediaType;
                       let effectiveText = act.text || '';
 
-                      if (effectiveText && (effectiveText.startsWith('{') || effectiveText.includes('mmg.whatsapp.net'))) {
+                      if (effectiveText && effectiveText.startsWith('{') && (effectiveText.includes('mimetype') || effectiveText.includes('audio') || effectiveText.includes('ptt') || effectiveText.includes('directPath') || effectiveText.includes('mmg.whatsapp.net'))) {
                         try {
                           const parsed = JSON.parse(effectiveText);
                           const parsedUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+                          const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
                           if (parsedUrl) {
                             effectiveMediaUrl = effectiveMediaUrl || parsedUrl;
-                            effectiveMediaType = 'audio';
-                            effectiveText = '🎵 Mensagem de voz';
+                            if (mimetype.includes('image')) {
+                              effectiveMediaType = 'image';
+                              effectiveText = '📷 Foto';
+                            } else if (mimetype.includes('video')) {
+                              effectiveMediaType = 'video';
+                              effectiveText = '🎥 Vídeo';
+                            } else if (mimetype.includes('audio') || parsed.ptt || effectiveText.includes('ptt') || effectiveText.includes('audioMessage')) {
+                              effectiveMediaType = 'audio';
+                              effectiveText = '🎵 Mensagem de voz';
+                            }
                           }
                         } catch {
-                          const urlMatch = effectiveText.match(/"URL"\s*:\s*"([^"]+)"/i) || effectiveText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+                          const urlMatch = effectiveText.match(/"URL"\s*:\s*"([^"]+)"/i) || (effectiveText.includes('audio') ? effectiveText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
                           if (urlMatch) {
                             effectiveMediaUrl = effectiveMediaUrl || urlMatch[1] || urlMatch[0];
                             effectiveMediaType = 'audio';
@@ -3885,15 +3896,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         effectiveMediaType === 'audio' || 
                         (effectiveMediaUrl && (
                           effectiveMediaUrl.startsWith('data:audio') || 
-                          effectiveMediaUrl.endsWith('.ogg') || 
-                          effectiveMediaUrl.endsWith('.mp3') || 
-                          effectiveMediaUrl.endsWith('.opus') || 
-                          effectiveMediaUrl.endsWith('.wav') ||
-                          effectiveMediaUrl.includes('.ogg?') || 
-                          effectiveMediaUrl.includes('.mp3?') || 
-                          effectiveMediaUrl.includes('.opus?') || 
-                          effectiveMediaUrl.includes('.wav?') ||
-                          effectiveMediaUrl.includes('mmg.whatsapp.net')
+                          /\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(effectiveMediaUrl) ||
+                          (effectiveMediaUrl.includes('mmg.whatsapp.net') && (effectiveText.includes('🎵') || effectiveText.includes('voz')))
                         ))
                       );
 

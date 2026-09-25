@@ -142,27 +142,60 @@ export const leadService = {
                 mediaType = match[2] || 'audio';
                 text = match[3] || '';
               }
-            } else if (rawText.startsWith('{') || rawText.includes('mmg.whatsapp.net')) {
+            } else if (rawText.startsWith('{') && (rawText.includes('mimetype') || rawText.includes('audio') || rawText.includes('ptt') || rawText.includes('directPath') || rawText.includes('mmg.whatsapp.net'))) {
               try {
                 const parsed = JSON.parse(rawText);
                 const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+                const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
                 if (foundUrl) {
                   mediaUrl = foundUrl;
-                  mediaType = 'audio';
-                  text = '🎵 Mensagem de voz';
+                  if (mimetype.includes('image')) {
+                    mediaType = 'image';
+                    text = '📷 Foto';
+                  } else if (mimetype.includes('video')) {
+                    mediaType = 'video';
+                    text = '🎥 Vídeo';
+                  } else if (mimetype.includes('audio') || parsed.ptt || rawText.includes('ptt') || rawText.includes('audioMessage')) {
+                    mediaType = 'audio';
+                    text = '🎵 Mensagem de voz';
+                  } else {
+                    text = rawText;
+                  }
                 }
               } catch {
-                const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i);
+                const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || (rawText.includes('audio') ? rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
                 if (urlMatch) {
                   mediaUrl = urlMatch[1] || urlMatch[0];
                   mediaType = 'audio';
                   text = '🎵 Mensagem de voz';
                 }
               }
-            } else if (!mediaUrl && (rawText.startsWith('https://') || rawText.startsWith('http://') || rawText.startsWith('data:audio'))) {
+            } else if (!mediaUrl && rawText.startsWith('data:audio/')) {
               mediaUrl = rawText;
-              mediaType = rawText.includes('.mp4') ? 'video' : (rawText.includes('.jpg') || rawText.includes('.png')) ? 'image' : 'audio';
-            } else if (!mediaType && (a.title?.toLowerCase().includes('áudio') || a.title?.toLowerCase().includes('voz') || text.includes('🎵'))) {
+              mediaType = 'audio';
+            } else if (!mediaUrl && rawText.startsWith('data:image/')) {
+              mediaUrl = rawText;
+              mediaType = 'image';
+            } else if (!mediaUrl && rawText.startsWith('data:video/')) {
+              mediaUrl = rawText;
+              mediaType = 'video';
+            } else if (!mediaUrl && /^https?:\/\/[^\s]+$/i.test(rawText.trim())) {
+              const cleanTrimmed = rawText.trim().toLowerCase();
+              if (/\.(mp3|ogg|opus|wav|m4a|aac|webm)(\?.*)?$/i.test(cleanTrimmed)) {
+                mediaUrl = rawText.trim();
+                mediaType = 'audio';
+              } else if (/\.(mp4|mov|avi|mkv|webm)(\?.*)?$/i.test(cleanTrimmed)) {
+                mediaUrl = rawText.trim();
+                mediaType = 'video';
+              } else if (/\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?.*)?$/i.test(cleanTrimmed)) {
+                mediaUrl = rawText.trim();
+                mediaType = 'image';
+              } else if (/\.(pdf|doc|docx|xls|xlsx|txt|zip|rar)(\?.*)?$/i.test(cleanTrimmed)) {
+                mediaUrl = rawText.trim();
+                mediaType = 'document';
+              }
+              // Links de sites normais permanecem como texto limpo (mediaType = undefined)
+            } else if (!mediaType && (a.title?.toLowerCase().includes('áudio') || a.title?.toLowerCase().includes('voz') || text.includes('🎵 Mensagem de voz'))) {
               mediaType = 'audio';
             }
 

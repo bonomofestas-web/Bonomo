@@ -549,6 +549,8 @@ export interface Lead {
   isClient?: boolean;         // Flag que indica se o registro se origina do módulo de clientes (Pós-Venda)
   isArchived?: boolean;       // Lead arquivado (desanexado de funil ativo sem disparar alerta de 'Sem Funil')
   archivedAt?: string;        // Data em que o lead foi arquivado
+  lastInteractionAt?: string; // Timestamp ISO da última interação / mensagem enviada ou recebida
+  lastMessageDirection?: 'incoming' | 'outgoing'; // Direção da última mensagem
   createdAt: string;
   updatedAt: string;
 }

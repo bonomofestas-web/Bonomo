@@ -4571,8 +4571,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     // 1. Sincroniza instâncias ativas do WhatsApp (re-executa só quando sources muda)
-    const activeWaTokens = sources
-      .filter(s => s.type === 'whatsapp_api' && s.status === 'active')
+    const activeWaSources = sources.filter(s => s.type === 'whatsapp_api' && s.status === 'active');
+    const activeWaTokens = activeWaSources
       .map(s => {
         const tok = s.whatsappInstanceId ||
           (s.configuration as any)?.token ||
@@ -4584,6 +4584,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .filter(Boolean);
 
     uazapiSseService.syncActiveInstances(activeWaTokens);
+
+    // Auto-configura webhook da UAZAPI para garantir ingestão mesmo quando o navegador estiver fechado
+    if (typeof window !== 'undefined' && activeWaTokens.length > 0) {
+      const webhookUrl = `${window.location.origin}/api/whatsapp-webhook`;
+      activeWaTokens.forEach(tok => {
+        uazapiService.configureWebhook(tok, {
+          url: webhookUrl,
+          enabled: true,
+          events: ['messages', 'messages_update', 'connection', 'presence'],
+        }).catch(() => {});
+      });
+    }
   }, [sources]);
 
   // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
@@ -4716,6 +4728,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const updatedActivities = mergeAndSortActivities(existingLead.activities || [], [newAct], existingLead.id);
           leadUpdates.activities = updatedActivities;
           leadUpdates.updatedAt = new Date().toISOString().split('T')[0];
+          leadUpdates.lastInteractionAt = incoming.timestamp || new Date().toISOString();
+          leadUpdates.lastMessageDirection = isFromMe ? 'outgoing' : 'incoming';
           
           if (!isFromMe) {
             leadUpdates.unreadCount = (existingLead.unreadCount || 0) + 1;
