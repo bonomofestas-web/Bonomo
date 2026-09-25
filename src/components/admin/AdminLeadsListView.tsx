@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { getLeadStageLabel } from '../../utils/leadUtils';
 import { SafeAvatar } from './SafeAvatar';
 import type { CommercialFunnel } from '../../types/admin';
 
@@ -1356,7 +1357,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                               {funnel?.name || 'Funil Comercial'}
                             </span>
                             <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                              Etapa: {lead.stage}
+                              Etapa: {getLeadStageLabel(lead.stage, funnels, lead.funnelId)}
                             </span>
                           </div>
                         )}

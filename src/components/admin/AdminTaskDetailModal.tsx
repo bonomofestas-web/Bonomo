@@ -25,6 +25,7 @@ import type {
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { getLeadStageLabel } from '../../utils/leadUtils';
 
 export const renderTaskTypeLucideIcon = (typeName: string, size = 14) => {
   const t = (typeName || '').toLowerCase();
@@ -2238,7 +2239,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                                 }}
                               >
                                 <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>{l.name}</span>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{l.stage}</span>
+                                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{getLeadStageLabel(l.stage)}</span>
                               </button>
                             ))}
                         </div>
@@ -3088,7 +3089,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                                       }}
                                     >
                                       <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 600 }}>{l.name}</span>
-                                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{l.stage}</span>
+                                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{getLeadStageLabel(l.stage)}</span>
                                     </button>
                                   ))}
                               </div>

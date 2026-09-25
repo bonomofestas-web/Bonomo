@@ -330,8 +330,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     }
     if (onStageChange) {
       onStageChange(newStageId as CrmStage);
+    } else {
+      updateLeadStage(lead.id, newStageId as CrmStage);
     }
-    updateLeadStage(lead.id, newStageId as CrmStage);
     setIsStageDropdownOpen(false);
   };
 

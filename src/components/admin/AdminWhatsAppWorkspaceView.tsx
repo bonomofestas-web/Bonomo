@@ -2366,7 +2366,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       a.type === 'task_created' ||
       a.type === 'task_completed'
     );
-    return [...items].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sorted = [...items].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Deduplicação inteligente de ações do histórico
+    const deduped: LeadActivity[] = [];
+    const seenIds = new Set<string>();
+    const seenFingerprints = new Set<string>();
+
+    for (const act of sorted) {
+      if (act.id && seenIds.has(act.id)) continue;
+      if (act.id) seenIds.add(act.id);
+
+      const minuteBucket = Math.floor(new Date(act.timestamp || 0).getTime() / 60000);
+      const textKey = (act.text || act.title || '').trim().toLowerCase();
+      const authorKey = (act.authorName || '').trim().toLowerCase();
+      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}`;
+
+      if (fingerprint && seenFingerprints.has(fingerprint)) {
+        continue;
+      }
+      seenFingerprints.add(fingerprint);
+      deduped.push(act);
+    }
+
+    return deduped;
   }, [selectedLead?.activities]);
 
   const notesCount = useMemo(() => historyActivities.length, [historyActivities]);

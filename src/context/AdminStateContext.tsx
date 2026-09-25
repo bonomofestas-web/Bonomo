@@ -4002,6 +4002,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const updateLeadStage = (leadId: string, newStage: CrmStage) => {
     const targetLead = leads.find(l => l.id === leadId);
 
+    // Se o lead já estiver nesta etapa, não faz nada (evita duplicações de atividade)
+    if (targetLead && targetLead.stage === newStage) {
+      return;
+    }
+
     // Regra F5 System: Não é permitido retornar para "Novo Lead" após ter avançado no funil
     if (targetLead && targetLead.stage !== 'new_lead' && newStage === 'new_lead') {
       alert('Regra do CRM: A coluna "Novo Lead" é exclusivamente uma porta de entrada do sistema. Leads que já avançaram no pipeline não podem retornar para ela.');
