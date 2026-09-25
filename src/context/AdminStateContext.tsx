@@ -47,7 +47,7 @@ import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage'
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
-import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname } from '../services/leadService';
+import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
@@ -1391,12 +1391,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (isMounted && updated.length > 0) setFunnels(updated);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async () => {
-        const updated = await leadService.getAll();
-        if (isMounted) {
-          const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
-          setLeads(filtered);
-          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filtered));
-        }
+        triggerDebouncedSync(async () => {
+          const updated = await leadService.getAll();
+          if (isMounted) {
+            const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
+            setLeads(filtered);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filtered));
+          }
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, async () => {
         const updated = await debutanteService.getAll();
@@ -1453,13 +1455,64 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           safeLocalStorageSet(STORAGE_KEY_TASKS, JSON.stringify(filtered));
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_activities' }, async () => {
-        const updated = await leadService.getAll();
-        if (isMounted && updated.length > 0) setLeads(updated);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_activities' }, async (payload: any) => {
+        if (!isMounted) return;
+        const eventType = payload.eventType; // 'INSERT', 'UPDATE', 'DELETE'
+        const newRow = payload.new;
+        const oldRow = payload.old;
+        const targetLeadId = newRow?.lead_id || oldRow?.lead_id;
+
+        if (targetLeadId) {
+          setLeads(prev => {
+            let found = false;
+            const updated = prev.map(lead => {
+              if (lead.id !== targetLeadId) return lead;
+              found = true;
+              const currentActs = lead.activities || [];
+
+              if (eventType === 'INSERT' && newRow) {
+                const formatted = formatActivityFromDb(newRow);
+                const exists = currentActs.some(a => a.id === formatted.id || (
+                  a.text === formatted.text && 
+                  Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 5000
+                ));
+                const acts = exists
+                  ? currentActs.map(a => (a.id === formatted.id || (a.text === formatted.text && Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 5000)) ? formatted : a)
+                  : [...currentActs, formatted];
+                return {
+                  ...lead,
+                  activities: acts.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+                  lastInteractionAt: formatted.timestamp || lead.lastInteractionAt,
+                };
+              } else if (eventType === 'UPDATE' && newRow) {
+                const formatted = formatActivityFromDb(newRow);
+                const acts = currentActs.map(a => a.id === formatted.id ? formatted : a);
+                return { ...lead, activities: acts };
+              } else if (eventType === 'DELETE' && oldRow?.id) {
+                const acts = currentActs.filter(a => a.id !== oldRow.id);
+                return { ...lead, activities: acts };
+              }
+              return lead;
+            });
+
+            if (!found) {
+              triggerDebouncedSync(async () => {
+                const refreshed = await leadService.getAll();
+                if (isMounted) setLeads(refreshed);
+              });
+              return prev;
+            }
+
+            leadsRef.current = updated;
+            return updated;
+          });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_participants' }, async () => {
-        const updated = await leadService.getAll();
-        if (isMounted && updated.length > 0) setLeads(updated);
+        triggerDebouncedSync(async () => {
+          const updated = await leadService.getAll();
+          if (isMounted && updated.length > 0) setLeads(updated);
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, async () => {
         const updated = await clientService.getAll();

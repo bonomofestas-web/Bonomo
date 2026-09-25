@@ -109,6 +109,107 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   return payload;
 }
 
+/**
+ * Converte um registro bruto de atividade do PostgreSQL / Supabase para o modelo LeadActivity
+ */
+export function formatActivityFromDb(a: any): LeadActivity {
+  const rawText = a.text || '';
+  let mediaUrl = (a as any).media_url;
+  let mediaType = (a as any).media_type;
+  let text = rawText;
+
+  if (rawText.startsWith('[media:')) {
+    const match = rawText.match(/^\[media:([^|\]]+)(?:\|([^\]]+))?\]\s*([\s\S]*)$/);
+    if (match) {
+      mediaUrl = match[1];
+      mediaType = match[2] || 'audio';
+      text = match[3] || '';
+    }
+  } else if (rawText.startsWith('{') && (rawText.includes('mimetype') || rawText.includes('audio') || rawText.includes('ptt') || rawText.includes('directPath') || rawText.includes('mmg.whatsapp.net'))) {
+    try {
+      const parsed = JSON.parse(rawText);
+      const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
+      const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
+      if (foundUrl) {
+        mediaUrl = foundUrl;
+        if (mimetype.includes('image')) {
+          mediaType = 'image';
+          text = '📷 Foto';
+        } else if (mimetype.includes('video')) {
+          mediaType = 'video';
+          text = '🎥 Vídeo';
+        } else if (mimetype.includes('audio') || parsed.ptt || rawText.includes('ptt') || rawText.includes('audioMessage')) {
+          mediaType = 'audio';
+          text = '🎵 Mensagem de voz';
+        } else {
+          text = rawText;
+        }
+      }
+    } catch {
+      const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || (rawText.includes('audio') ? rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
+      if (urlMatch) {
+        mediaUrl = urlMatch[1] || urlMatch[0];
+        mediaType = 'audio';
+        text = '🎵 Mensagem de voz';
+      }
+    }
+  } else if (!mediaUrl && rawText.startsWith('data:audio/')) {
+    mediaUrl = rawText;
+    mediaType = 'audio';
+  } else if (!mediaUrl && rawText.startsWith('data:image/')) {
+    mediaUrl = rawText;
+    mediaType = 'image';
+  } else if (!mediaUrl && rawText.startsWith('data:video/')) {
+    mediaUrl = rawText;
+    mediaType = 'video';
+  } else if (!mediaUrl && /^https?:\/\/[^\s]+$/i.test(rawText.trim())) {
+    const cleanTrimmed = rawText.trim().toLowerCase();
+    if (/\.(mp3|ogg|opus|wav|m4a|aac|webm)(\?.*)?$/i.test(cleanTrimmed)) {
+      mediaUrl = rawText.trim();
+      mediaType = 'audio';
+    } else if (/\.(mp4|mov|avi|mkv|webm)(\?.*)?$/i.test(cleanTrimmed)) {
+      mediaUrl = rawText.trim();
+      mediaType = 'video';
+    } else if (/\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?.*)?$/i.test(cleanTrimmed)) {
+      mediaUrl = rawText.trim();
+      mediaType = 'image';
+    } else if (/\.(pdf|doc|docx|xls|xlsx|txt|zip|rar)(\?.*)?$/i.test(cleanTrimmed)) {
+      mediaUrl = rawText.trim();
+      mediaType = 'document';
+    }
+  } else if (!mediaType && (a.title?.toLowerCase().includes('áudio') || a.title?.toLowerCase().includes('voz') || text.includes('🎵 Mensagem de voz'))) {
+    mediaType = 'audio';
+  }
+
+  let status: 'sending' | 'sent' | 'failed' | 'read' = (a as any).status || 'sent';
+  let errorMessage: string | undefined = (a as any).error_message || undefined;
+
+  if (text.startsWith('[failed:')) {
+    const failMatch = text.match(/^\[failed:([^\]]+)\]\s*([\s\S]*)$/);
+    if (failMatch) {
+      status = 'failed';
+      errorMessage = failMatch[1];
+      text = failMatch[2] || '';
+    }
+  }
+
+  return {
+    id: a.id,
+    leadId: a.lead_id,
+    timestamp: a.timestamp || a.created_at || new Date().toISOString(),
+    type: a.type || 'contact',
+    title: a.title || 'Mensagem',
+    text,
+    authorName: a.author_name || 'Sistema',
+    authorId: a.author_id,
+    authorAvatarUrl: a.author_avatar_url,
+    mediaUrl,
+    mediaType,
+    status,
+    errorMessage,
+  };
+}
+
 export const leadService = {
   async getAll(): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
@@ -123,110 +224,41 @@ export const leadService = {
         return [];
       }
 
-      const { data: activitiesData } = await supabase.from('lead_activities').select('*');
-      const { data: participantsData } = await supabase.from('lead_participants').select('*');
+      // Paginação completa de todas as atividades (supera a limitação padrão de 1.000 linhas do PostgREST)
+      const activitiesData: any[] = [];
+      let actFrom = 0;
+      const actStep = 1000;
+      while (true) {
+        const { data: pageData, error: pageErr } = await supabase
+          .from('lead_activities')
+          .select('*')
+          .order('timestamp', { ascending: true })
+          .range(actFrom, actFrom + actStep - 1);
+        if (pageErr || !pageData || pageData.length === 0) break;
+        activitiesData.push(...pageData);
+        if (pageData.length < actStep) break;
+        actFrom += actStep;
+      }
+
+      // Paginação completa de participantes
+      const participantsData: any[] = [];
+      let partFrom = 0;
+      const partStep = 1000;
+      while (true) {
+        const { data: partPage, error: partErr } = await supabase
+          .from('lead_participants')
+          .select('*')
+          .range(partFrom, partFrom + partStep - 1);
+        if (partErr || !partPage || partPage.length === 0) break;
+        participantsData.push(...partPage);
+        if (partPage.length < partStep) break;
+        partFrom += partStep;
+      }
 
       return (leadsData || []).map(row => {
         const leadActivities: LeadActivity[] = (activitiesData || [])
           .filter(a => a.lead_id === row.id)
-          .map(a => {
-            const rawText = a.text || '';
-            let mediaUrl = (a as any).media_url;
-            let mediaType = (a as any).media_type;
-            let text = rawText;
-
-            if (rawText.startsWith('[media:')) {
-              const match = rawText.match(/^\[media:([^|\]]+)(?:\|([^\]]+))?\]\s*([\s\S]*)$/);
-              if (match) {
-                mediaUrl = match[1];
-                mediaType = match[2] || 'audio';
-                text = match[3] || '';
-              }
-            } else if (rawText.startsWith('{') && (rawText.includes('mimetype') || rawText.includes('audio') || rawText.includes('ptt') || rawText.includes('directPath') || rawText.includes('mmg.whatsapp.net'))) {
-              try {
-                const parsed = JSON.parse(rawText);
-                const foundUrl = parsed.URL || parsed.url || parsed.fileURL || parsed.mediaUrl || parsed.directPath;
-                const mimetype = String(parsed.mimetype || parsed.mime || '').toLowerCase();
-                if (foundUrl) {
-                  mediaUrl = foundUrl;
-                  if (mimetype.includes('image')) {
-                    mediaType = 'image';
-                    text = '📷 Foto';
-                  } else if (mimetype.includes('video')) {
-                    mediaType = 'video';
-                    text = '🎥 Vídeo';
-                  } else if (mimetype.includes('audio') || parsed.ptt || rawText.includes('ptt') || rawText.includes('audioMessage')) {
-                    mediaType = 'audio';
-                    text = '🎵 Mensagem de voz';
-                  } else {
-                    text = rawText;
-                  }
-                }
-              } catch {
-                const urlMatch = rawText.match(/"URL"\s*:\s*"([^"]+)"/i) || (rawText.includes('audio') ? rawText.match(/https:\/\/mmg\.whatsapp\.net[^\s"'}]+/i) : null);
-                if (urlMatch) {
-                  mediaUrl = urlMatch[1] || urlMatch[0];
-                  mediaType = 'audio';
-                  text = '🎵 Mensagem de voz';
-                }
-              }
-            } else if (!mediaUrl && rawText.startsWith('data:audio/')) {
-              mediaUrl = rawText;
-              mediaType = 'audio';
-            } else if (!mediaUrl && rawText.startsWith('data:image/')) {
-              mediaUrl = rawText;
-              mediaType = 'image';
-            } else if (!mediaUrl && rawText.startsWith('data:video/')) {
-              mediaUrl = rawText;
-              mediaType = 'video';
-            } else if (!mediaUrl && /^https?:\/\/[^\s]+$/i.test(rawText.trim())) {
-              const cleanTrimmed = rawText.trim().toLowerCase();
-              if (/\.(mp3|ogg|opus|wav|m4a|aac|webm)(\?.*)?$/i.test(cleanTrimmed)) {
-                mediaUrl = rawText.trim();
-                mediaType = 'audio';
-              } else if (/\.(mp4|mov|avi|mkv|webm)(\?.*)?$/i.test(cleanTrimmed)) {
-                mediaUrl = rawText.trim();
-                mediaType = 'video';
-              } else if (/\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?.*)?$/i.test(cleanTrimmed)) {
-                mediaUrl = rawText.trim();
-                mediaType = 'image';
-              } else if (/\.(pdf|doc|docx|xls|xlsx|txt|zip|rar)(\?.*)?$/i.test(cleanTrimmed)) {
-                mediaUrl = rawText.trim();
-                mediaType = 'document';
-              }
-              // Links de sites normais permanecem como texto limpo (mediaType = undefined)
-            } else if (!mediaType && (a.title?.toLowerCase().includes('áudio') || a.title?.toLowerCase().includes('voz') || text.includes('🎵 Mensagem de voz'))) {
-              mediaType = 'audio';
-            }
-
-            let status: 'sending' | 'sent' | 'failed' | 'read' = (a as any).status || 'sent';
-            let errorMessage: string | undefined = (a as any).error_message || undefined;
-
-            if (text.startsWith('[failed:')) {
-              const failMatch = text.match(/^\[failed:([^\]]+)\]\s*([\s\S]*)$/);
-              if (failMatch) {
-                status = 'failed';
-                errorMessage = failMatch[1];
-                text = failMatch[2] || '';
-              }
-            }
-
-            return {
-              id: a.id,
-              leadId: a.lead_id,
-              timestamp: a.timestamp || new Date().toISOString(),
-              type: a.type,
-              title: a.title,
-              text,
-              authorName: a.author_name,
-              authorId: a.author_id,
-              authorAvatarUrl: a.author_avatar_url,
-              mediaUrl,
-              mediaType,
-              status,
-              errorMessage,
-            };
-          });
+          .map(a => formatActivityFromDb(a));
 
         const leadParticipants: LeadParticipant[] = (participantsData || [])
           .filter(p => p.lead_id === row.id)

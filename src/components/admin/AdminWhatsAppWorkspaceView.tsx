@@ -685,6 +685,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const cPayer = c.payerName || pName;
       const cPhone = c.payerPhone || '';
       const cNotes = Array.isArray(c.notes) ? c.notes : [];
+
+      const matchingLead = leads.find(l => l.id === c.id || (cPhone && l.phone && l.phone.replace(/\D/g, '') === cPhone.replace(/\D/g, '')));
+      const leadActivities = matchingLead?.activities || [];
+      const noteActivities = cNotes.map((n: any) => ({
+        id: n.id || `note_${Date.now()}_${Math.random()}`,
+        leadId: c.id,
+        type: (n.type === 'whatsapp' || (typeof n.text === 'string' && n.text.toLowerCase().includes('whatsapp'))) ? ('contact' as const) : ('note' as const),
+        title: n.title || 'Mensagem / Nota',
+        text: n.text || '',
+        timestamp: n.createdAt || new Date().toISOString(),
+        authorName: n.authorName || 'Gestor de Sucesso',
+      }));
+      const mergedActivities = [...leadActivities];
+      for (const nAct of noteActivities) {
+        if (!mergedActivities.some(a => a.id === nAct.id)) {
+          mergedActivities.push(nAct);
+        }
+      }
+      mergedActivities.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
       return {
         id: c.id,
         code: c.code || `CLI-${c.id.slice(0, 5).toUpperCase()}`,
@@ -726,29 +746,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         tasks: [],
         createdAt: c.createdAt || c.contractDate || new Date().toISOString(),
         updatedAt: c.updatedAt || c.contractDate || new Date().toISOString(),
-        activities: cNotes.map((n: any) => ({
-          id: n.id || `note_${Date.now()}_${Math.random()}`,
-          leadId: c.id,
-          type: (n.type === 'whatsapp' || (typeof n.text === 'string' && n.text.toLowerCase().includes('whatsapp'))) ? ('contact' as const) : ('note' as const),
-          title: n.title || 'Mensagem / Nota',
-          text: n.text || '',
-          timestamp: n.createdAt || new Date().toISOString(),
-          authorName: n.authorName || 'Gestor de Sucesso',
-        })),
-        contacts: (c.contacts && c.contacts.length > 0) ? (c.contacts as any) : [
-          {
-            id: `payer_${c.id}`,
-            name: cPayer,
-            phone: cPhone,
-            email: c.payerEmail || '',
-            role: c.payerRelationship || 'decision_maker',
-            isPrimaryDecisionMaker: true,
-          }
-        ],
-        isClient: true,
-      };
-    });
-  }, [isPostSaleFunnel, clients, activeFunnelId]);
+          activities: mergedActivities,
+          contacts: (c.contacts && c.contacts.length > 0) ? (c.contacts as any) : [
+            {
+              id: `payer_${c.id}`,
+              name: cPayer,
+              phone: cPhone,
+              email: c.payerEmail || '',
+              role: c.payerRelationship || 'decision_maker',
+              isPrimaryDecisionMaker: true,
+            }
+          ],
+          isClient: true,
+        };
+      });
+    }, [isPostSaleFunnel, clients, leads, activeFunnelId]);
 
   const sourceLeads = useMemo(() => {
     if (isPostSaleFunnel) {
@@ -1598,7 +1610,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         // Sucesso no envio: marca status como sent e persiste no Supabase
         if (newActivity) {
           const sentActivity: LeadActivity = { ...newActivity, status: 'sent', errorMessage: undefined };
-          const finalActivities = (selectedLead.activities || []).map(a => a.id === newActivity!.id ? sentActivity : a);
+          const finalActivities = updatedActivities.map(a => a.id === newActivity!.id ? sentActivity : a);
           updateLeadData(selectedLead.id, {
             activities: finalActivities,
             updatedAt: new Date().toISOString().split('T')[0],
@@ -1633,9 +1645,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const errMsg = err?.message || 'Falha ao conectar com o WhatsApp via UAZAPI';
         if (newActivity) {
           const failedActivity: LeadActivity = { ...newActivity, status: 'failed', errorMessage: errMsg };
-          const currentActivities = (selectedLead.activities || []).filter(a => a.id !== newActivity!.id);
+          const currentActivities = updatedActivities.map(a => a.id === newActivity!.id ? failedActivity : a);
           updateLeadData(selectedLead.id, {
-            activities: [...currentActivities, failedActivity],
+            activities: currentActivities,
           });
 
           if (isSupabaseConfigured) {
@@ -1652,9 +1664,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       
       if (newActivity) {
         const failedActivity: LeadActivity = { ...newActivity, status: 'failed', errorMessage: missingReason };
-        const currentActivities = (selectedLead.activities || []).filter(a => a.id !== newActivity!.id);
+        const currentActivities = updatedActivities.map(a => a.id === newActivity!.id ? failedActivity : a);
         updateLeadData(selectedLead.id, {
-          activities: [...currentActivities, failedActivity],
+          activities: currentActivities,
         });
 
         if (isSupabaseConfigured) {
