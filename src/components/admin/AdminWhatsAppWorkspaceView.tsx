@@ -2895,11 +2895,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const venue = venues.find(v => v.id === lead.venueId);
               const lastActivity = lead.activities?.[lead.activities.length - 1];
 
+              // Apenas mensagens REAIS de chat (tipo contact com texto ou mídia) aparecem no preview da caixa de entrada
               const lastMessageActivity = (lead.activities || [])
                 .slice()
                 .reverse()
-                .find(a => (a.type === 'contact' || (a.type === 'creation' && Boolean(a.text))) && (a.text || a.mediaUrl));
-              const rawMessageText = lastMessageActivity?.text || lastActivity?.text || '';
+                .find(a => a.type === 'contact' && (a.text || a.mediaUrl));
+              const rawMessageText = lastMessageActivity?.text || '';
               const isAudioMsg = (
                 rawMessageText.toLowerCase().includes('[áudio]') || 
                 rawMessageText.toLowerCase().includes('[audio]') || 
@@ -2908,22 +2909,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 rawMessageText.includes('.ogg') ||
                 rawMessageText.startsWith('{"URL"') ||
                 rawMessageText.includes('mmg.whatsapp.net') ||
-                lastMessageActivity?.mediaType === 'audio' ||
-                lastActivity?.mediaType === 'audio'
+                lastMessageActivity?.mediaType === 'audio'
               );
               const isImageMsg = (
                 rawMessageText.toLowerCase().includes('[imagem]') || 
                 rawMessageText.toLowerCase().includes('[foto]') || 
                 rawMessageText.startsWith('data:image') ||
-                lastMessageActivity?.mediaType === 'image' ||
-                lastActivity?.mediaType === 'image'
+                lastMessageActivity?.mediaType === 'image'
               );
               const isDocMsg = (
                 rawMessageText.toLowerCase().includes('[documento]') || 
                 rawMessageText.toLowerCase().includes('[arquivo]') || 
                 rawMessageText.toLowerCase().includes('.pdf') ||
-                lastMessageActivity?.mediaType === 'document' ||
-                lastActivity?.mediaType === 'document'
+                lastMessageActivity?.mediaType === 'document'
               );
 
               const cleanPreviewText = isAudioMsg 
@@ -2932,9 +2930,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 ? (rawMessageText.replace(/\[(imagem|foto)\]/gi, '').trim() || 'Foto')
                 : isDocMsg
                 ? (rawMessageText.replace(/\[(documento|arquivo)\]/gi, '').trim() || 'Documento')
-                : rawMessageText;
+                : (rawMessageText || 'Nenhuma mensagem recente');
 
-              const lastTime = lastMessageActivity?.timestamp || lastActivity?.timestamp || lead.updatedAt;
+              const lastTime = lastMessageActivity?.timestamp || lead.updatedAt;
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
               const sla = getLeadWaitTimeSla(pendingWaitMs);
 

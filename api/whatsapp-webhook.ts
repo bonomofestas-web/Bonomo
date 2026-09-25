@@ -353,9 +353,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
           if (!existingLead) {
-            const rawExtracted = extractRealWhatsAppPhone(msg, payload);
-            if (rawExtracted && !isLidIdentifier(rawExtracted) && rawExtracted.length >= 10 && rawExtracted.length <= 13) {
-              resolvedPhone = rawExtracted;
+            if (remoteJid && remoteJid.includes('@s.whatsapp.net')) {
+              const p = remoteJid.replace(/:\d+@/, '@').replace(/@.*$/, '').replace(/\D/g, '');
+              if (p && p.length >= 10 && p.length <= 13 && !isLidIdentifier(p)) {
+                resolvedPhone = p;
+              }
+            }
+
+            if (!resolvedPhone) {
+              const rawExtracted = extractRealWhatsAppPhone(msg, payload);
+              if (rawExtracted && !isLidIdentifier(rawExtracted) && rawExtracted.length >= 10 && rawExtracted.length <= 13) {
+                resolvedPhone = rawExtracted;
+              }
             }
 
             // Se ainda não tiver telefone real, consulta /chat/details na UAZAPI
@@ -497,7 +506,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .eq('id', existingLead.id);
         } else {
           // Cria um novo Lead automaticamente com telefone real na casa da instância do WhatsApp
-          const finalPhone = resolvedPhone || (!isLid ? cleanPhone : '');
+          const finalPhone = resolvedPhone || cleanPhone;
           const leadId = crypto.randomUUID();
           const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)' && senderName !== 'WhatsApp App / Web') ? senderName.trim() : leadCode;

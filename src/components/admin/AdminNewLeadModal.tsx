@@ -59,8 +59,29 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   // Nome de exibição do funil
   const displayFunnelName = currentFunnelName || targetFunnel?.name || 'Funil Comercial';
 
-  // A casa de festas é livre para ser escolhida pelo usuário
-  const isVenueFixedByFunnel = false;
+  // Casas vinculadas a este funil (via f.venueId e via origens conectadas a ele)
+  const allowedVenuesForFunnel = useMemo(() => {
+    if (!targetFunnel) return venues;
+
+    const vSet = new Set<string>();
+    if (targetFunnel.venueId && targetFunnel.venueId !== 'all') {
+      vSet.add(targetFunnel.venueId);
+    }
+    // Origens conectadas a este funil
+    (sources || []).filter(s => s.funnelId === targetFunnel.id && s.venueId && s.venueId !== 'all').forEach(s => {
+      vSet.add(s.venueId);
+    });
+
+    if (vSet.size > 0) {
+      const filtered = venues.filter(v => vSet.has(v.id));
+      if (filtered.length > 0) return filtered;
+    }
+
+    return venues;
+  }, [targetFunnel, venues, sources]);
+
+  // Se o funil só tem 1 casa de festas vinculada, a opção é unitária
+  const isVenueFixedByFunnel = allowedVenuesForFunnel.length === 1;
 
   // Inicializar formulário ao abrir
   useEffect(() => {
@@ -75,14 +96,16 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     setNotes('');
 
     // Determinar a casa de festas padrão
-    const initialVenue = defaultVenueId && defaultVenueId !== 'all'
-      ? defaultVenueId
-      : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (venues[0]?.id || ''));
+    const initialVenue = allowedVenuesForFunnel.length === 1
+      ? allowedVenuesForFunnel[0].id
+      : (defaultVenueId && defaultVenueId !== 'all'
+        ? defaultVenueId
+        : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (allowedVenuesForFunnel[0]?.id || venues[0]?.id || '')));
     setVenueId(initialVenue);
 
     setSource('cadastro_interno');
     setSourceId('');
-  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, initialMode]);
+  }, [isOpen, defaultVenueId, activeVenueId, venues, targetFunnel, initialMode, allowedVenuesForFunnel]);
 
   // Lista de origens filtradas pela casa ou gerais, OBRIGATORIAMENTE excluindo canais automáticos/sistema
   const availableSources = useMemo(() => {
@@ -415,40 +438,45 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
           </div>
 
           {/* Casa de Festas Vinculada */}
-          {!isVenueFixedByFunnel && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
-                Casa de Festa Vinculada <span style={{ color: '#EF4444' }}>*</span>
-              </label>
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
-                  <Building2 size={14} />
-                </div>
-                <select
-                  value={venueId}
-                  onChange={(e) => setVenueId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    height: '38px',
-                    paddingLeft: '30px',
-                    paddingRight: '10px',
-                    backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    borderRadius: '8px',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    fontSize: '0.8rem',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  {venues.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', marginBottom: '5px' }}>
+              Casa de Festa Vinculada <span style={{ color: '#EF4444' }}>*</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted, #64748B)' }}>
+                <Building2 size={14} />
               </div>
+              <select
+                value={venueId}
+                disabled={isVenueFixedByFunnel}
+                onChange={(e) => setVenueId(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  paddingLeft: '30px',
+                  paddingRight: '10px',
+                  backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  borderRadius: '8px',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  cursor: isVenueFixedByFunnel ? 'not-allowed' : 'pointer',
+                  opacity: isVenueFixedByFunnel ? 0.8 : 1,
+                  boxSizing: 'border-box',
+                }}
+              >
+                {allowedVenuesForFunnel.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
             </div>
-          )}
+            {isVenueFixedByFunnel && (
+              <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '4px', display: 'block' }}>
+                Unidade exclusiva vinculada a este funil.
+              </span>
+            )}
+          </div>
 
           {/* WhatsApp / Telefone */}
           <div>

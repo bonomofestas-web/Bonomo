@@ -20,6 +20,14 @@ function isLidIdentifier(id?: string): boolean {
 }
 
 function extractRealWhatsAppPhone(msg: any, payload?: any): string {
+  const remoteJid = msg?.key?.remoteJid || msg?.remoteJid || payload?.remoteJid || "";
+  if (remoteJid && typeof remoteJid === "string" && remoteJid.includes("@s.whatsapp.net")) {
+    const p = remoteJid.replace(/:\d+@/, "@").replace(/@.*$/, "").replace(/\D/g, "");
+    if (p.length >= 10 && p.length <= 13 && !isLidIdentifier(p)) {
+      return p;
+    }
+  }
+
   const candidates: any[] = [
     msg?.key?.participantPn,
     msg?.key?.remoteJidPn,

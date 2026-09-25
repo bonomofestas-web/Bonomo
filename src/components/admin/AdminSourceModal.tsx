@@ -497,70 +497,92 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
           )}
 
           {/* 1. Tipo de Origem */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
-              Tipo de Origem
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              {/* Formulário Público */}
-              <div
-                onClick={() => setType('form')}
-                style={{
-                  padding: '16px 14px',
-                  borderRadius: '14px',
-                  border: type === 'form' ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                  background: type === 'form' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'form' ? 'var(--adm-accent)' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
-                    <FileText size={18} />
-                    <span>Formulário Público</span>
-                  </div>
-                  <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                    Landing Page
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
-                  Página de captura pública ou link compartilhável para orçamentos e leads externos.
-                </div>
+          {/* 1. Seleção do Tipo de Origem ou Banner de Indicação Nativa */}
+          {type === 'referral' ? (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)',
+              border: '1.5px solid rgba(20, 169, 215, 0.35)',
+              borderRadius: '14px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', fontWeight: 800, fontSize: '0.88rem' }}>
+                <Gift size={18} />
+                <span>Origem Nativa • Indicações no App (Aniversariantes & Debutantes)</span>
               </div>
-
-              {/* WhatsApp API (UAZAPI Conexão Direta) */}
-              <div
-                onClick={() => setType('whatsapp_api')}
-                style={{
-                  padding: '16px 14px',
-                  borderRadius: '14px',
-                  border: type === 'whatsapp_api' ? '2px solid #10B981' : '1px solid var(--adm-border)',
-                  background: type === 'whatsapp_api' ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'whatsapp_api' ? '#10B981' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
-                    <PhoneCall size={18} />
-                    <span>WhatsApp API (UAZAPI)</span>
+              <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted)', lineHeight: '1.45' }}>
+                Esta é uma origem padrão gerenciada automaticamente pelo sistema para a unidade selecionada.
+                O nome e tipo são protegidos. <strong>Configure abaixo apenas o Funil de Destino</strong> para onde os leads indicados serão enviados.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
+                Tipo de Origem
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* Formulário Público */}
+                <div
+                  onClick={() => setType('form')}
+                  style={{
+                    padding: '16px 14px',
+                    borderRadius: '14px',
+                    border: type === 'form' ? '2px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                    background: type === 'form' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'form' ? 'var(--adm-accent)' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
+                      <FileText size={18} />
+                      <span>Formulário Público</span>
+                    </div>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                      Landing Page
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                    QR Code Live
-                  </span>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
+                    Página de captura pública ou link compartilhável para orçamentos e leads externos.
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
-                  Conexão direta de número comercial via QR Code, mensagens e rastreio automático.
+
+                {/* WhatsApp API (UAZAPI Conexão Direta) */}
+                <div
+                  onClick={() => setType('whatsapp_api')}
+                  style={{
+                    padding: '16px 14px',
+                    borderRadius: '14px',
+                    border: type === 'whatsapp_api' ? '2px solid #10B981' : '1px solid var(--adm-border)',
+                    background: type === 'whatsapp_api' ? 'rgba(16, 185, 129, 0.12)' : 'var(--adm-bg-input)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: type === 'whatsapp_api' ? '#10B981' : 'var(--adm-text-title)', fontWeight: 800, fontSize: '0.86rem' }}>
+                      <PhoneCall size={18} />
+                      <span>WhatsApp API (UAZAPI)</span>
+                    </div>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                      QR Code Live
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', lineHeight: '1.35' }}>
+                    Conexão direta de número comercial via QR Code, mensagens e rastreio automático.
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* 2. Casa de Festa e Funil Padrão (Obrigatórios) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -570,6 +592,7 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               </label>
               <select
                 value={venueId}
+                disabled={type === 'referral'}
                 onChange={(e) => {
                   setVenueId(e.target.value);
                   const newVenueFunnels = funnels.filter(f => f.venueId === e.target.value || f.venueId === 'all');
@@ -578,7 +601,14 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
                   }
                 }}
                 className="adm-input"
-                style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
+                style={{
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  opacity: type === 'referral' ? 0.7 : 1,
+                  cursor: type === 'referral' ? 'not-allowed' : 'pointer'
+                }}
                 required
               >
                 {venues.map(v => (
@@ -588,14 +618,21 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '6px' }}>
-                Funil de Destino (Opcional)
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: type === 'referral' ? 'var(--adm-accent)' : 'var(--adm-text-title)', marginBottom: '6px' }}>
+                {type === 'referral' ? 'Funil de Destino dos Leads Indicados *' : 'Funil de Destino (Opcional)'}
               </label>
               <select
                 value={funnelId}
                 onChange={(e) => setFunnelId(e.target.value)}
                 className="adm-input"
-                style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem', borderColor: 'var(--adm-accent)' }}
+                style={{
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  borderColor: 'var(--adm-accent)',
+                  boxShadow: type === 'referral' ? '0 0 0 1.5px rgba(20, 169, 215, 0.35)' : 'none'
+                }}
               >
                 <option value="">-- Sem Funil Vinculado (Definir Depois) --</option>
                 {commercialFunnels.length > 0 && (
@@ -627,10 +664,18 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               <input
                 type="text"
                 value={name}
+                disabled={type === 'referral'}
                 onChange={(e) => handleNameChange(e.target.value)}
                 placeholder={type === 'whatsapp_api' ? 'Ex: WhatsApp Comercial Barra' : 'Ex: Formulário Site Oficial'}
                 className="adm-input"
-                style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
+                style={{
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  opacity: type === 'referral' ? 0.7 : 1,
+                  cursor: type === 'referral' ? 'not-allowed' : 'text'
+                }}
                 required
               />
             </div>
@@ -641,9 +686,17 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
               </label>
               <select
                 value={status}
+                disabled={type === 'referral'}
                 onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
                 className="adm-input"
-                style={{ width: '100%', height: '42px', borderRadius: '10px', fontSize: '0.82rem' }}
+                style={{
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  opacity: type === 'referral' ? 0.7 : 1,
+                  cursor: type === 'referral' ? 'not-allowed' : 'pointer'
+                }}
               >
                 <option value="active">Ativa (Recebendo)</option>
                 <option value="inactive">Inativa (Pausada)</option>

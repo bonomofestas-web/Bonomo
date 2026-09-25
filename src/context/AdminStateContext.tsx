@@ -5480,9 +5480,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (isSupabaseConfigured) {
       await leadService.upsert(newLead);
-      await leadService.addActivity(newLeadId, initialActivity);
+      // Salva atividades e eventos em segundo plano sem travar a interface
+      leadService.addActivity(newLeadId, initialActivity).catch(err => console.warn('Erro ao salvar atividade inicial:', err));
       if (autoSdr && activities[0]) {
-        await leadService.addActivity(newLeadId, activities[0]);
+        leadService.addActivity(newLeadId, activities[0]).catch(err => console.warn('Erro ao salvar roleta:', err));
       }
       if (data.sourceId) {
         sourceService.recordEvent(data.sourceId, data.venueId, 'lead_created', newLeadId, {

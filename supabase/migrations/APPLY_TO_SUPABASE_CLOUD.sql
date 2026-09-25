@@ -210,5 +210,14 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- 11. CONFIRMAÇÃO DE SUCESSO
+-- 11. DESVINCULAÇÃO DE CASA OBRIGATÓRIA EM FUNIS E ORIGENS (F5 SYSTEM REGRA DE OURO)
+ALTER TABLE IF EXISTS public.commercial_funnels ALTER COLUMN venue_id DROP NOT NULL;
+ALTER TABLE IF EXISTS public.sources ALTER COLUMN funnel_id DROP NOT NULL;
+ALTER TABLE IF EXISTS public.leads ALTER COLUMN funnel_id DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_commercial_funnels_master_id ON public.commercial_funnels(master_id);
+CREATE INDEX IF NOT EXISTS idx_sources_funnel_id ON public.sources(funnel_id);
+CREATE INDEX IF NOT EXISTS idx_sources_venue_id ON public.sources(venue_id);
+CREATE INDEX IF NOT EXISTS idx_leads_venue_id ON public.leads(venue_id);
+
+-- 12. CONFIRMAÇÃO DE SUCESSO
 SELECT 'MIGRAÇÃO F5 SYSTEM APLICADA COM SUCESSO NO SUPABASE CLOUD!' AS status;
