@@ -790,6 +790,16 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (!funnel.allowedCollaboratorIds.includes(currentUser.id)) return false;
       }
 
+      // 2. Filtro estrito de Unidade Selecionada no Topo (activeVenueId)
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        const linkedVenues = getLinkedVenuesForFunnel(funnel);
+        if (linkedVenues.length > 0) {
+          if (!linkedVenues.some(v => v.id === activeVenueId)) return false;
+        } else if (funnel.venueId && funnel.venueId !== 'all' && funnel.venueId !== activeVenueId) {
+          return false;
+        }
+      }
+
       return true;
     }).map(funnel => {
       // Calculate dynamic metrics per funnel strictly for this funnel (filtered by activeVenueId if set)

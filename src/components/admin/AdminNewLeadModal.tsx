@@ -49,12 +49,19 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   // Localiza o funil atual em que o usuário está
   const targetFunnel = useMemo(() => {
     if (defaultFunnelId) {
-      const found = funnels.find(f => f.id === defaultFunnelId);
+      const found = funnels.find(f => 
+        f.id === defaultFunnelId || 
+        f.name.toLowerCase().trim() === defaultFunnelId.toLowerCase().trim()
+      );
       if (found) return found;
     }
-    // Fallback: funil primário ou primeiro disponível
-    return funnels.find(f => f.isPrimary) || funnels[0] || null;
-  }, [funnels, defaultFunnelId]);
+    if (currentFunnelName) {
+      const found = funnels.find(f => f.name.toLowerCase().trim() === currentFunnelName.toLowerCase().trim());
+      if (found) return found;
+    }
+    // Fallback: funil primário comercial ou primeiro disponível
+    return funnels.find(f => f.isPrimary && !f.isPostSale) || funnels.find(f => !f.isPostSale) || funnels[0] || null;
+  }, [funnels, defaultFunnelId, currentFunnelName]);
 
   // Nome de exibição do funil
   const displayFunnelName = currentFunnelName || targetFunnel?.name || 'Funil Comercial';
@@ -163,7 +170,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       return;
     }
 
-    const finalFunnelId = targetFunnel?.id || defaultFunnelId || 'f1111111-1111-1111-1111-111111111111';
+    const finalFunnelId = targetFunnel?.id || defaultFunnelId || funnels[0]?.id || '';
 
     setIsSubmitting(true);
 

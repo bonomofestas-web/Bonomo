@@ -431,7 +431,24 @@ export const leadService = {
         if (v?.id) payload.venue_id = v.id;
       }
       if (!payload.funnel_id && payload.venue_id) {
-        const { data: f } = await supabase.from('funnels').select('id').eq('venue_id', payload.venue_id).eq('type', 'commercial').limit(1).maybeSingle();
+        const { data: f } = await supabase
+          .from('commercial_funnels')
+          .select('id')
+          .eq('venue_id', payload.venue_id)
+          .eq('is_post_sale', false)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (f?.id) payload.funnel_id = f.id;
+      }
+      if (!payload.funnel_id) {
+        const { data: f } = await supabase
+          .from('commercial_funnels')
+          .select('id')
+          .eq('is_post_sale', false)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .maybeSingle();
         if (f?.id) payload.funnel_id = f.id;
       }
 

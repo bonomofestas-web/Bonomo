@@ -2113,13 +2113,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // Se uma casa específica estiver selecionada no filtro global do topo (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        const isConnectedToActive = connectedVenues.has(activeVenueId) 
-          || f.venueId === activeVenueId 
-          || (f.sharedVenueIds && f.sharedVenueIds.includes(activeVenueId));
-        
-        // Se for Master, permite também visualizar funis soltos (sem nenhuma origem vinculada ainda) para configuração
-        const isLooseFunnel = isMasterOrDev && connectedVenues.size === 0 && (!f.venueId || f.venueId === 'all');
-        return isConnectedToActive || isLooseFunnel;
+        // Regra de Ouro: Se o funil já possui origens conectadas a ele, ele pertence EXCLUSIVAMENTE às casas dessas origens!
+        if (connectedVenues.size > 0) {
+          return connectedVenues.has(activeVenueId);
+        }
+
+        // Se ainda não possui origens conectadas (funil solto recém-criado pelo Master):
+        // Só aparece se for explicitamente criado para essa casa
+        return Boolean(f.venueId && f.venueId === activeVenueId);
       }
 
       return true;
@@ -5369,7 +5370,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
 
     const isValUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
-    const resolvedFunnelId = (data.funnelId && isValUuid(data.funnelId)) ? data.funnelId : '';
+    
+    // Resolve o funil de destino: aceita tanto UUID quanto Nome do funil
+    let resolvedFunnelId = '';
+    if (data.funnelId) {
+      const inputFunnelId = data.funnelId.toLowerCase().trim();
+      const matched = funnels.find(f => 
+        f.id === data.funnelId || 
+        f.name.toLowerCase().trim() === inputFunnelId
+      );
+      if (matched) {
+        resolvedFunnelId = matched.id;
+      } else if (isValUuid(data.funnelId)) {
+        resolvedFunnelId = data.funnelId;
+      }
+    }
+
+    // Se ainda não encontrou o funil, pega o funil comercial padrão da unidade ou do master
+    if (!resolvedFunnelId) {
+      const fallback = funnels.find(f => !f.isPostSale && (f.venueId === data.venueId || f.venueId === 'all'));
+      if (fallback) {
+        resolvedFunnelId = fallback.id;
+      } else if (funnels.length > 0) {
+        resolvedFunnelId = funnels[0].id;
+      }
+    }
 
     let sdrName = data.sdrName;
     if (data.sdrId && !sdrName) {
