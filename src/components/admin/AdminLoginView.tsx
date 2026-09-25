@@ -144,7 +144,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         });
       }
 
-      const activateEmail = urlParams.get('activate');
+      const activateEmail = urlParams.get('activate') || urlParams.get('email');
       const token = urlParams.get('token');
       const mode = urlParams.get('mode');
 
@@ -154,7 +154,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           if (!valid) return;
           setActivationEmail(clean);
           setAuthMode('first_access_code');
-          setIsResetMode(mode === 'reset');
+          setIsResetMode(mode === 'reset' || isRecovery);
           setMatchedCollab(valid);
 
           if (token && token.trim().length >= 6) {
