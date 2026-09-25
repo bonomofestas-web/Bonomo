@@ -1065,12 +1065,17 @@ export function findMatchingLead(
   }
 
   // ── ETAPA 2: JID / LID (Fallback secundário) ─────────────────────
+  const getLeadLid = (l: Lead) => (l.whatsappLid || (l.customFieldValues as any)?.whatsappLid || (l.customFieldValues as any)?.whatsapp_lid || '').toString();
+  const getLeadJid = (l: Lead) => (l.whatsappJid || (l.customFieldValues as any)?.whatsappJid || (l.customFieldValues as any)?.whatsapp_jid || '').toString();
+
   // 2a. Busca por whatsappLid ou whatsappJid explícito
   if (cleanLid || cleanJid) {
     const targetLidDigits = (cleanLid || cleanJid).replace(/\D/g, '');
     const matched = leads.find(l => {
-      if (cleanLid && l.whatsappLid && (l.whatsappLid === cleanLid || l.whatsappLid.replace(/\D/g, '') === targetLidDigits)) return true;
-      if (cleanJid && l.whatsappJid && (l.whatsappJid === cleanJid || l.whatsappJid.replace(/\D/g, '') === targetLidDigits)) return true;
+      const lidVal = getLeadLid(l);
+      const jidVal = getLeadJid(l);
+      if (cleanLid && lidVal && (lidVal === cleanLid || lidVal.replace(/\D/g, '') === targetLidDigits)) return true;
+      if (cleanJid && jidVal && (jidVal === cleanJid || jidVal.replace(/\D/g, '') === targetLidDigits)) return true;
       if (targetLidDigits && isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === targetLidDigits) return true;
       return false;
     });
@@ -1081,8 +1086,10 @@ export function findMatchingLead(
   if (cleanPhone && isLidIdentifier(cleanPhone)) {
     const targetDigits = cleanPhone.replace(/\D/g, '');
     const matched = leads.find(l => {
-      if (l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === targetDigits) return true;
-      if (l.whatsappJid && l.whatsappJid.replace(/\D/g, '') === targetDigits) return true;
+      const lidVal = getLeadLid(l);
+      const jidVal = getLeadJid(l);
+      if (lidVal && (lidVal === cleanPhone || lidVal.replace(/\D/g, '') === targetDigits)) return true;
+      if (jidVal && (jidVal === cleanPhone || jidVal.replace(/\D/g, '') === targetDigits)) return true;
       if (isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === targetDigits) return true;
       return false;
     });

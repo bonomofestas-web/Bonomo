@@ -4,7 +4,6 @@ import {
   KeyRound, RefreshCw, Eye, EyeOff, Check, Sparkles 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
-import { AdminForgotPasswordModal } from './AdminForgotPasswordModal';
 import { APP_VERSION } from '../../types/admin';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
@@ -34,7 +33,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showForgotModal, setShowForgotModal] = useState(false);
 
   // Mobile 2-step navigation state ('welcome' | 'form')
   const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('welcome');
@@ -254,7 +252,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       const found = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
 
       if (!found) {
-        setError('Seu e-mail não foi identificado na base. Converse com o seu administrador para fornecer um novo acesso ou criar suas credenciais de acesso.');
+        setError('Esse e-mail não está cadastrado. Revise o seu e-mail ou converse com o administrador.');
         setLoading(false);
         return;
       }
@@ -583,7 +581,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowForgotModal(true)}
+                  onClick={() => {
+                    setError(null);
+                    setActivationEmail(email);
+                    setIsResetMode(true);
+                    setAuthMode('first_access_email');
+                  }}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -704,13 +707,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               marginBottom: '10px',
             }}>
               <Sparkles size={13} />
-              <span>F5 System • Primeiro Acesso</span>
+              <span>{isResetMode ? 'F5 System • Recuperação de Senha' : 'F5 System • Primeiro Acesso'}</span>
             </div>
             <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
-              Ativação de Conta
+              {isResetMode ? 'Redefinir Senha de Acesso' : 'Ativação de Conta'}
             </h2>
             <p style={{ fontSize: '0.8rem', color: '#8096A8', margin: 0, lineHeight: '1.5' }}>
-              Informe o seu e-mail corporativo para receber o código de segurança.
+              {isResetMode 
+                ? 'Informe o seu e-mail corporativo cadastrado para receber o código de segurança.' 
+                : 'Informe o seu e-mail corporativo para receber o código de segurança.'}
             </p>
           </div>
 
@@ -782,7 +787,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 fontFamily: "'Poppins', sans-serif",
               }}
             >
-              <span>{loading ? 'VERIFICANDO BASE...' : 'Solicitar código de acesso'}</span>
+              <span>{loading ? 'VERIFICANDO BASE...' : (isResetMode ? 'Solicitar código de recuperação' : 'Solicitar código de acesso')}</span>
               <ArrowRight size={16} />
             </button>
 
@@ -1448,11 +1453,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Forgot Password Modal */}
-      {showForgotModal && (
-        <AdminForgotPasswordModal onClose={() => setShowForgotModal(false)} />
-      )}
 
       {/* Responsive Styles */}
       <style>{`

@@ -328,15 +328,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
 
-        // 2. Busca se já existe um Lead com esse telefone
-        const last8 = cleanPhone.slice(-8);
-        const { data: existingLeads } = await supabase
-          .from('leads')
-          .select('id, name, phone, unread_count, venue_id, funnel_id')
-          .ilike('phone', `%${last8}%`)
-          .limit(1);
+        // 2. Busca se já existe um Lead com esse telefone ou LID
+        const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
+        let existingLead: any = null;
+        let resolvedPhone = (!isLid && cleanPhone.length <= 13) ? cleanPhone : '';
 
-        const existingLead = existingLeads?.[0];
+        // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
+        if (isLid) {
+          const { data: lidMatches } = await supabase
+            .from('leads')
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values')
+            .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`)
+            .limit(1);
+
+          if (lidMatches && lidMatches.length > 0) {
+            existingLead = lidMatches[0];
+          }
+
+          // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
+          if (!existingLead) {
+            const rawExtracted = extractRealWhatsAppPhone(msg, payload);
+            if (rawExtracted && !isLidIdentifier(rawExtracted) && rawExtracted.length >= 10 && rawExtracted.length <= 13) {
+              resolvedPhone = rawExtracted;
+            }
+
+            // Se ainda não tiver telefone real, consulta /chat/details na UAZAPI
+            if (!resolvedPhone) {
+              const uazapiUrl = payload.BaseUrl || 'https://f5system.uazapi.com';
+              const effectiveToken = candidateToken || matchedSource?.whatsapp_instance_id || (matchedSource?.configuration as any)?.token;
+              if (effectiveToken) {
+                try {
+                  const detailsRes = await fetch(`${uazapiUrl}/chat/details`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', token: effectiveToken },
+                    body: JSON.stringify({ number: cleanPhone }),
+                  });
+                  if (detailsRes.ok) {
+                    const dData = await detailsRes.json();
+                    const p = dData?.phone || dData?.wa_phone || dData?.number;
+                    if (p && !isLidIdentifier(p)) {
+                      const cleanP = String(p).replace(/\D/g, '');
+                      if (cleanP.length >= 10 && cleanP.length <= 13) {
+                        resolvedPhone = cleanP;
+                      }
+                    }
+                  }
+                } catch (uazErr) {
+                  console.warn('Erro ao consultar /chat/details na UAZAPI:', uazErr);
+                }
+              }
+            }
+          }
+        }
+
+        // 2b. Busca por telefone real se ainda não encontrou o lead
+        const targetSearchPhone = resolvedPhone || (!isLid ? cleanPhone : '');
+        if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
+          const last8 = targetSearchPhone.slice(-8);
+          const { data: phoneLeads } = await supabase
+            .from('leads')
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values')
+            .ilike('phone', `%${last8}%`)
+            .limit(1);
+
+          if (phoneLeads && phoneLeads.length > 0) {
+            existingLead = phoneLeads[0];
+            // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
+            if (isLid) {
+              const updatedCustom = {
+                ...(existingLead.custom_field_values || {}),
+                whatsappLid: cleanPhone,
+                whatsapp_lid: cleanPhone,
+              };
+              await supabase.from('leads').update({ custom_field_values: updatedCustom }).eq('id', existingLead.id);
+            }
+          }
+        }
 
         if (existingLead) {
           // Atualiza o Lead existente com a nova atividade de mensagem na tabela lead_activities
@@ -379,7 +446,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .update(updatePayload)
             .eq('id', existingLead.id);
         } else if (!isFromMe) {
-          // Cria um novo Lead automaticamente com UUID válido
+          // Cria um novo Lead automaticamente com telefone real (NUNCA usa LID no campo phone!)
+          const finalPhone = resolvedPhone || (!isLid ? cleanPhone : '');
           const leadId = crypto.randomUUID();
           const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)') ? senderName.trim() : leadCode;
@@ -390,7 +458,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             id: leadId,
             code: leadCode,
             name: cleanLeadName,
-            phone: cleanPhone,
+            phone: finalPhone,
             venue_id: venueId,
             funnel_id: funnelId,
             source_id: matchedSource?.id || null,
@@ -402,6 +470,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             updated_at: new Date().toISOString(),
             last_interaction_at: new Date().toISOString(),
             last_message_direction: 'incoming',
+            custom_field_values: isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {},
           };
 
           await supabase.from('leads').insert([newLead]);
