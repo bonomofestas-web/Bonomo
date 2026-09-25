@@ -232,10 +232,11 @@ export const sourceService = {
       const existingSources = await this.getAll();
 
       for (const venue of venues) {
-        // Encontra apenas os funis comerciais pertencentes à casa ou ao master da casa
+        // Encontra apenas os funis comerciais pertencentes à casa ou ao master da casa (ignora funis de pós-venda)
         const venueFunnels = funnels.filter(f => 
-          f.venueId === venue.id || 
-          (f.venueId === 'all' && (f.masterId === venue.masterId || !f.masterId && !venue.masterId))
+          !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda' &&
+          (f.venueId === venue.id || 
+          (f.venueId === 'all' && (f.masterId === venue.masterId || !f.masterId && !venue.masterId)))
         );
         const hasExactlyOneFunnel = venueFunnels.length === 1 && isUuid(venueFunnels[0].id);
         const primaryFunnel = venueFunnels.find(f => f.isPrimary);

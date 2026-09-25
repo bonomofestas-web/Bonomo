@@ -7,7 +7,7 @@ import {
   Globe, ExternalLink, FileText, Copy, Tag,
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
-  Lock, Unlock, AlertTriangle, Send
+  Lock, Unlock, AlertTriangle, Send, Edit3
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -101,8 +101,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     saveLeadMqlAnswers,
     completeCommercialCommitment,
     cancelCommercialCommitment,
+    reassignLeadFunnel,
   } = useAdminState();
 
+  const [isFunnelPickerOpen, setIsFunnelPickerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -4057,9 +4059,87 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Funil de Destino:</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
-                    {leadFunnel?.name || 'Funil Comercial Padrão'}
-                  </span>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      onClick={() => setIsFunnelPickerOpen(!isFunnelPickerOpen)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                        margin: 0,
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        color: 'var(--adm-accent, #6366F1)',
+                        cursor: readOnly ? 'default' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        textAlign: 'left',
+                      }}
+                      title="Clique para realocar este lead em outro funil"
+                    >
+                      <span>{leadFunnel?.name || 'Funil Comercial Padrão'}</span>
+                      {!readOnly && <Edit3 size={11} color="var(--adm-accent, #6366F1)" />}
+                    </button>
+
+                    {isFunnelPickerOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 4px)',
+                          left: 0,
+                          zIndex: 9999,
+                          minWidth: '200px',
+                          background: 'var(--adm-bg-card)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '8px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                          padding: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                        }}
+                      >
+                        {funnels.map(f => {
+                          const isCurrent = f.id === leadFunnel?.id;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={async () => {
+                                setIsFunnelPickerOpen(false);
+                                if (!isCurrent) {
+                                  await reassignLeadFunnel(lead.id, f.id, f.stages?.[0]?.id);
+                                }
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                                padding: '6px 8px',
+                                borderRadius: '5px',
+                                border: 'none',
+                                background: isCurrent ? 'var(--adm-accent-bg)' : 'transparent',
+                                color: isCurrent ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                                fontSize: '0.72rem',
+                                fontWeight: isCurrent ? 700 : 500,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%',
+                              }}
+                            >
+                              <span>{f.name} {f.isPostSale ? '👑' : ''}</span>
+                              {isCurrent && <Check size={12} color="var(--adm-accent)" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Data de Entrada no Funil:</span>

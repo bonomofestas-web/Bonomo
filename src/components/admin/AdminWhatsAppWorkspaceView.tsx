@@ -764,10 +764,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const sourceLeads = useMemo(() => {
     if (isPostSaleFunnel) {
-      return clientsAsLeads;
+      const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
+      const postSaleLeads = (leads || []).filter(l => 
+        (l.isClient || l.group === 'Pós-Venda' || (activeFunnel && l.funnelId === activeFunnel.id)) &&
+        !existingClientIds.has(l.id)
+      );
+      return [...clientsAsLeads, ...postSaleLeads];
     }
     return leads;
-  }, [isPostSaleFunnel, clientsAsLeads, leads]);
+  }, [isPostSaleFunnel, clientsAsLeads, leads, activeFunnel]);
 
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
@@ -2279,10 +2284,73 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setFilterTemperature('all');
   };
 
-  // Timeline Activities (Chat do WhatsApp)
+  // Timeline Activities (Chat do WhatsApp - Exclusivamente mensagens de conversação e anotações internas)
   const timelineActivities = useMemo(() => {
     if (!selectedLead?.activities) return [];
-    return [...selectedLead.activities].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    
+    // Filtra estritamente apenas mensagens de chat e notas de conversa (remove logs de CRM como status_change, creation, assignment, validation, realocação de funil)
+    const chatOnly = selectedLead.activities.filter(a => {
+      // 1. Rejeita tipos de eventos internos de CRM
+      if (
+        a.type === 'status_change' ||
+        a.type === 'creation' ||
+        a.type === 'assignment' ||
+        a.type === 'validation' ||
+        a.type === 'deal_closed' ||
+        a.type === 'task_created' ||
+        a.type === 'task_completed'
+      ) {
+        return false;
+      }
+
+      // 2. Proteção textual defensiva: bloqueia logs de sistema mesmo se gravados como contact
+      const rawLower = `${a.title || ''} ${a.text || ''}`.toLowerCase();
+      if (
+        rawLower.includes('realocado de') ||
+        rawLower.includes('status movido de') ||
+        rawLower.includes('lead cadastrado via') ||
+        rawLower.includes('lead migrado do funil') ||
+        rawLower.includes('realocação de funil') ||
+        rawLower.includes('etapa alterada')
+      ) {
+        return false;
+      }
+
+      return (
+        a.type === 'contact' || 
+        a.type === 'note' || 
+        (a as any).type === 'whatsapp' ||
+        (a as any).metadata?.isSessionEnd
+      );
+    });
+
+    // Deduplicação inteligente de mensagens repetidas (por id e por conteúdo idêntico no mesmo minuto)
+    const seenIds = new Set<string>();
+    const seenFingerprints = new Set<string>();
+    const deduped: LeadActivity[] = [];
+
+    const sorted = [...chatOnly].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+
+    for (const act of sorted) {
+      if (act.id && seenIds.has(act.id)) continue;
+      if (act.id) seenIds.add(act.id);
+
+      const minuteBucket = Math.floor(new Date(act.timestamp || 0).getTime() / 60000);
+      const textKey = (act.text || act.title || '').trim().toLowerCase();
+      const authorKey = (act.authorName || '').trim().toLowerCase();
+      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}`;
+
+      if (textKey && act.type === 'contact' && seenFingerprints.has(fingerprint)) {
+        continue;
+      }
+      if (textKey && act.type === 'contact') {
+        seenFingerprints.add(fingerprint);
+      }
+
+      deduped.push(act);
+    }
+
+    return deduped;
   }, [selectedLead?.activities]);
 
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente)

@@ -14,7 +14,7 @@ import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminClientInspector } from './AdminClientInspector';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import type { ClientStage } from '../../types/admin';
+import type { Client, ClientStage } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
   onOpenDebutanteApp?: (slug: string) => void;
@@ -212,6 +212,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 }) => {
   const { 
     clients, 
+    leads,
     venues, 
     collaborators, 
     currentUser,
@@ -391,9 +392,32 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     { id: 'alphabetical', label: 'Nome (A-Z)' },
   ];
 
+  // Clientes unificados (combina tabela clients com leads marcados como pós-venda para evitar dados órfãos)
+  const allClients = useMemo<Client[]>(() => {
+    const existingClientIds = new Set(clients.map(c => c.id));
+    const extraClientsFromLeads: Client[] = (leads || [])
+      .filter(l => (l.isClient || l.group === 'Pós-Venda' || (postSaleFunnel && l.funnelId === postSaleFunnel.id)) && !existingClientIds.has(l.id))
+      .map(l => ({
+        id: l.id,
+        code: l.code || `CLI-${l.id.slice(0, 5).toUpperCase()}`,
+        name: l.name,
+        payerName: (l as any).payerName || l.name,
+        payerPhone: l.phone,
+        stage: (l.stage || 'onboarding') as any,
+        venueId: l.venueId,
+        venueName: l.venueName,
+        dealValue: l.dealValue || 0,
+        assignedSuccessManagerId: l.sdrId || l.closerId,
+        assignedSuccessManagerName: l.assignedTo || l.sdrName || l.closerName,
+        createdAt: l.createdAt || new Date().toISOString(),
+        updatedAt: l.updatedAt || new Date().toISOString(),
+      } as Client));
+    return [...clients, ...extraClientsFromLeads];
+  }, [clients, leads, postSaleFunnel]);
+
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
-    let list = clients.filter(client => {
+    let list = allClients.filter(client => {
       // 1. Casa de Festas
       const effectiveVenue = filterState.venueId !== 'all' ? filterState.venueId : activeVenueId;
       if (effectiveVenue && effectiveVenue !== 'all' && client.venueId !== effectiveVenue) {
@@ -1346,15 +1370,15 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                         : Math.max(0, baseContract - signalGiven);
 
                       const upsells = client.upsellSales || [];
-                      const totalUpsell = upsells.reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+                      const totalUpsell = upsells.reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
                       
                       const upsellAVista = upsells
-                        .filter(u => u.paymentType === 'a_vista' || u.paymentType === 'sinal' || u.paymentStatus === 'pago')
-                        .reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+                        .filter((u: any) => u.paymentType === 'a_vista' || u.paymentType === 'sinal' || u.paymentStatus === 'pago')
+                        .reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
                       
                       const upsellParcelado = upsells
-                        .filter(u => u.paymentType === 'parcelado' || (u.paymentStatus !== 'pago' && u.paymentType !== 'a_vista' && u.paymentType !== 'sinal'))
-                        .reduce((acc, u) => acc + (Number(u.value) || 0), 0);
+                        .filter((u: any) => u.paymentType === 'parcelado' || (u.paymentStatus !== 'pago' && u.paymentType !== 'a_vista' && u.paymentType !== 'sinal'))
+                        .reduce((acc: number, u: any) => acc + (Number(u.value) || 0), 0);
 
                       const totalCashReceived = signalGiven + upsellAVista;
                       const totalForecastedRemaining = contractRemaining + upsellParcelado;
@@ -1914,7 +1938,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             }
 
                             // D) Tags Customizadas (CAPSLOCK)
-                            (client.tags || []).forEach((t, idx) => {
+                            (client.tags || []).forEach((t: string, idx: number) => {
                               if (t && t.trim()) {
                                 chips.push({
                                   id: `tag_${idx}`,

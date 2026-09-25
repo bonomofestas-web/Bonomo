@@ -883,6 +883,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return funnelsList.filter(f => !f.isPostSale && f.category !== 'Pós-Venda');
   }, [funnelsList]);
 
+  const postSaleFunnelsForSwitcher = useMemo(() => {
+    return funnelsList.filter(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda');
+  }, [funnelsList]);
+
   const isPostSaleFunnel = useMemo(() => {
     if (!currentFunnel) return false;
     return (
@@ -2049,6 +2053,74 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         </button>
                       );
                     })}
+
+                    {postSaleFunnelsForSwitcher.length > 0 && (
+                      <>
+                        <div style={{ 
+                          padding: '6px 8px 4px', 
+                          fontSize: '0.66rem', 
+                          fontWeight: 800, 
+                          color: 'var(--adm-text-muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          borderTop: '1px solid var(--adm-border)',
+                          marginTop: '4px',
+                          marginBottom: '2px',
+                        }}>
+                          Funis de Pós-Venda
+                        </div>
+
+                        {postSaleFunnelsForSwitcher.map(f => {
+                          const isActive = f.id === currentFunnel.id;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => {
+                                handleSelectFunnel(f.id);
+                                setIsFunnelSwitcherOpen(false);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                background: isActive ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.12))' : 'transparent',
+                                border: 'none',
+                                color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                                fontSize: '0.74rem',
+                                fontWeight: isActive ? 800 : 500,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%',
+                                transition: 'background 0.1s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isActive) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isActive) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                <span style={{ color: '#10B981', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                                  {renderFunnelIcon(f.icon || 'star', 12, '#10B981')}
+                                </span>
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {f.name}
+                                </span>
+                                <span style={{ fontSize: '0.60rem', padding: '1px 4px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', fontWeight: 800 }}>
+                                  Pós-Venda
+                                </span>
+                              </div>
+                              {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
                   </div>
 
                   {/* Link para Central de Funis */}

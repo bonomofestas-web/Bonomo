@@ -328,18 +328,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
 
-        // 2. Busca se já existe um Lead com esse telefone ou LID
+        // 2. Busca se já existe um Lead com esse telefone ou LID (ESTRITAMENTE escopado à Casa de Festa da Origem)
         const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
         let existingLead: any = null;
         let resolvedPhone = (!isLid && cleanPhone.length <= 13) ? cleanPhone : '';
+        const targetVenueId = matchedSource?.venue_id;
 
         // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
         if (isLid) {
-          const { data: lidMatches } = await supabase
+          let lidQuery = supabase
             .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values')
-            .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`)
-            .limit(1);
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
+            .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
+          
+          if (targetVenueId) {
+            lidQuery = lidQuery.eq('venue_id', targetVenueId);
+          }
+
+          const { data: lidMatches } = await lidQuery.limit(1);
 
           if (lidMatches && lidMatches.length > 0) {
             existingLead = lidMatches[0];
@@ -381,15 +387,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // 2b. Busca por telefone real se ainda não encontrou o lead
+        // 2b. Busca por telefone real se ainda não encontrou o lead (Estritamente escopado à casa do WhatsApp conectado)
         const targetSearchPhone = resolvedPhone || (!isLid ? cleanPhone : '');
         if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
           const last8 = targetSearchPhone.slice(-8);
-          const { data: phoneLeads } = await supabase
+          let phoneQuery = supabase
             .from('leads')
-            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values')
-            .ilike('phone', `%${last8}%`)
-            .limit(1);
+            .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
+            .ilike('phone', `%${last8}%`);
+
+          if (targetVenueId) {
+            phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
+          }
+
+          const { data: phoneLeads } = await phoneQuery.limit(1);
 
           if (phoneLeads && phoneLeads.length > 0) {
             existingLead = phoneLeads[0];
@@ -413,6 +424,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             storedText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${storedText}`.trim();
           }
 
+          const waMessageId = msg.key?.id || msg.id;
+
+          // DEDUPLICAÇÃO 1: Checa se a mensagem já foi salva por esse whatsappMessageId
+          if (waMessageId) {
+            const { data: existingMsg } = await supabase
+              .from('lead_activities')
+              .select('id')
+              .eq('lead_id', existingLead.id)
+              .contains('metadata', { whatsapp_message_id: waMessageId })
+              .limit(1);
+
+            if (existingMsg && existingMsg.length > 0) {
+              console.log(`[Webhook] Mensagem duplicada ignorada (waMessageId: ${waMessageId}) no lead ${existingLead.id}`);
+              continue;
+            }
+          }
+
+          // DEDUPLICAÇÃO 2: Checa se uma mensagem com texto idêntico foi gravada nos últimos 45 segundos
+          if (storedText) {
+            const fortyFiveSecsAgo = new Date(Date.now() - 45000).toISOString();
+            const { data: recentIdentical } = await supabase
+              .from('lead_activities')
+              .select('id')
+              .eq('lead_id', existingLead.id)
+              .eq('text', storedText)
+              .gte('timestamp', fortyFiveSecsAgo)
+              .limit(1);
+
+            if (recentIdentical && recentIdentical.length > 0) {
+              console.log(`[Webhook] Mensagem idêntica recente ignorada no lead ${existingLead.id}: "${storedText.slice(0, 30)}..."`);
+              continue;
+            }
+          }
+
           const activityId = crypto.randomUUID();
           const newActivityRecord = {
             id: activityId,
@@ -427,6 +472,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             author_id: null,
             author_avatar_url: isFromMe ? 'whatsapp_brand' : '',
             status: isFromMe ? 'sent' : 'delivered',
+            metadata: {
+              whatsapp_message_id: waMessageId,
+              remote_jid: remoteJid,
+              from_me: isFromMe,
+            },
           };
 
           await supabase.from('lead_activities').insert([newActivityRecord]);
@@ -445,14 +495,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .from('leads')
             .update(updatePayload)
             .eq('id', existingLead.id);
-        } else if (!isFromMe) {
-          // Cria um novo Lead automaticamente com telefone real (NUNCA usa LID no campo phone!)
+        } else {
+          // Cria um novo Lead automaticamente com telefone real na casa da instância do WhatsApp
           const finalPhone = resolvedPhone || (!isLid ? cleanPhone : '');
           const leadId = crypto.randomUUID();
           const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
-          const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)') ? senderName.trim() : leadCode;
+          const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)' && senderName !== 'WhatsApp App / Web') ? senderName.trim() : leadCode;
           const venueId = matchedSource?.venue_id || 'v1';
           const funnelId = matchedSource?.funnel_id || 'comercial';
+
+          // Localiza o masterId da casa para garantir isolamento por tenant no banco
+          let venueMasterId: string | null = null;
+          if (venueId) {
+            const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', venueId).maybeSingle();
+            if (vRow?.master_id) venueMasterId = vRow.master_id;
+          }
 
           const newLead = {
             id: leadId,
@@ -461,36 +518,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             phone: finalPhone,
             venue_id: venueId,
             funnel_id: funnelId,
+            master_id: venueMasterId,
             source_id: matchedSource?.id || null,
             source_name: matchedSource?.name || 'WhatsApp Oficial',
             stage: 'new_lead',
-            unread_count: 1,
-            notes: `Primeira mensagem via WhatsApp: "${text.trim()}"`,
+            unread_count: isFromMe ? 0 : 1,
+            notes: isFromMe ? `Conversa iniciada via WhatsApp: "${text.trim()}"` : `Primeira mensagem via WhatsApp: "${text.trim()}"`,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             last_interaction_at: new Date().toISOString(),
-            last_message_direction: 'incoming',
+            last_message_direction: isFromMe ? 'outgoing' : 'incoming',
             custom_field_values: isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {},
           };
 
           await supabase.from('leads').insert([newLead]);
 
-          let creationStoredText = `Primeira mensagem: "${text.trim()}"`;
+          let creationStoredText = isFromMe ? `Mensagem: "${text.trim()}"` : `Primeira mensagem: "${text.trim()}"`;
           if (mediaUrl) {
             creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`;
           }
+
+          const waMessageId = msg.key?.id || msg.id;
 
           await supabase.from('lead_activities').insert([{
             id: crypto.randomUUID(),
             lead_id: leadId,
             timestamp: new Date().toISOString(),
-            type: 'creation',
-            title: 'Lead captado via WhatsApp Oficial',
+            type: 'contact',
+            title: isFromMe 
+              ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
+              : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
             text: creationStoredText,
-            author_name: 'WhatsApp Oficial',
-            author_id: null,
-            author_avatar_url: '',
-            status: 'delivered',
+            author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
+            status: isFromMe ? 'sent' : 'delivered',
+            metadata: {
+              whatsapp_message_id: waMessageId,
+              remote_jid: remoteJid,
+              is_first_message: true,
+            },
           }]);
 
           if (matchedSource?.id) {

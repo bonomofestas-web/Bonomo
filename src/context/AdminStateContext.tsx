@@ -358,6 +358,7 @@ export interface AdminContextType {
     timeWindowMinutes?: number;
     startTimestamp?: number;
     endTimestamp?: number;
+    createMissingLeads?: boolean;
   }) => Promise<{ recoveredCount: number; newLeadsCount: number; updatedLeadsCount: number }>;
   closeLeadSale: (leadId: string) => void;
   closeLeadSaleWithValue: (
@@ -2038,15 +2039,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
     if (!currentUser || !scopedMasterId) return leads;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return leads.filter(l => l.venueId === activeVenueId);
-    }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return leads.filter(l => 
-      l.masterId === scopedMasterId || 
-      (l.venueId && masterVenueIds.has(l.venueId))
-    );
-  }, [leads, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
+
+    return leads.filter(l => {
+      // REGRA DE OURO DA HIERARQUIA: Lead -> Origem -> Casa de Festa -> Master
+      // Se o lead possui uma origem vinculada, essa origem DEVE pertencer a uma das casas do tenant!
+      if (l.sourceId) {
+        const src = sources.find(s => s.id === l.sourceId);
+        if (src && src.venueId && !masterVenueIds.has(src.venueId)) {
+          return false; // Origem pertence a outro master/casa -> isola 100%!
+        }
+      }
+
+      // Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
+      if (l.venueId && !masterVenueIds.has(l.venueId)) {
+        return false;
+      }
+
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        return l.venueId === activeVenueId;
+      }
+
+      // Se o lead não tiver casa vinculada, restringe pelo masterId
+      if (!l.venueId) {
+        return l.masterId === scopedMasterId;
+      }
+
+      return masterVenueIds.has(l.venueId);
+    });
+  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
   // Funis do Tenant Ativo
   const scopedFunnels = useMemo(() => {
@@ -2130,6 +2151,50 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return vipCatalog.filter(v => Boolean(v.venueId && masterVenueIds.has(v.venueId)));
   }, [vipCatalog, scopedVenues, activeVenueId, currentUser]);
+
+  // Tarefas do Tenant Ativo (Estritamente isoladas por casas do tenant e master)
+  const scopedTasks = useMemo(() => {
+    if (!currentUser || !scopedMasterId) return tasks;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return tasks.filter(t => {
+      // 1. Se uma casa específica estiver selecionada no filtro global
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (t.venueId) return t.venueId === activeVenueId;
+        if (t.leadId) {
+          const l = leads.find(lead => lead.id === t.leadId);
+          return l?.venueId === activeVenueId;
+        }
+        if (t.clientId) {
+          const c = clients.find(cli => cli.id === t.clientId);
+          return c?.venueId === activeVenueId;
+        }
+        return false;
+      }
+      // 2. Se estiver em 'all' ou 'multi', deve pertencer às casas do tenant
+      if (t.venueId) return masterVenueIds.has(t.venueId);
+      if (t.leadId) {
+        const l = leads.find(lead => lead.id === t.leadId);
+        return l && (l.masterId === scopedMasterId || (l.venueId && masterVenueIds.has(l.venueId)));
+      }
+      if (t.clientId) {
+        const c = clients.find(cli => cli.id === t.clientId);
+        return c && ((c as any).masterId === scopedMasterId || (c.venueId && masterVenueIds.has(c.venueId)));
+      }
+      return (t as any).masterId === scopedMasterId || t.createdById === currentUser.id;
+    });
+  }, [tasks, scopedVenues, scopedMasterId, leads, clients, activeVenueId, currentUser]);
+
+  // Agendamentos / Visitas do Tenant Ativo
+  const scopedAppointments = useMemo(() => {
+    if (!currentUser || !scopedMasterId) return appointments;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return appointments.filter(a => {
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        return a.venueId === activeVenueId;
+      }
+      return a.venueId ? masterVenueIds.has(a.venueId) : true;
+    });
+  }, [appointments, scopedVenues, activeVenueId, currentUser]);
 
   // ── Developer Exclusive Methods ─────────────────────────────────────────────
   const addMasterAccount = (name: string, email: string): string => {
@@ -3211,12 +3276,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       authorAvatarUrl: currentUser?.avatarUrl,
     };
 
+    const isDestPostSale = Boolean(
+      destFunnel.isPostSale ||
+      destFunnel.category === 'Pós-Venda' ||
+      destFunnel.category === 'pos_venda' ||
+      destFunnel.name?.toLowerCase().includes('pós-venda') ||
+      destFunnel.name?.toLowerCase().includes('pos-venda') ||
+      destFunnel.name?.toLowerCase().includes('sucesso do cliente')
+    );
+
     setLeads(prev => {
       const updated = prev.map(l => l.id === leadId ? {
         ...l,
         funnelId: destinationFunnelId,
         stage: defaultStage,
         venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : l.venueId,
+        group: isDestPostSale ? 'Pós-Venda' : 'Comercial',
+        isClient: isDestPostSale ? true : false,
         activities: [activity, ...(l.activities || [])],
         updatedAt: today,
       } : l);
@@ -3224,12 +3300,51 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    if (isDestPostSale) {
+      const targetVenueId = destFunnel.venueId !== 'all' ? destFunnel.venueId : targetLead.venueId;
+      const targetVenue = venues.find(v => v.id === targetVenueId);
+      const postSaleClient: Client = {
+        id: targetLead.id,
+        code: targetLead.code || `CLI-${targetLead.id.slice(0, 5).toUpperCase()}`,
+        name: targetLead.name,
+        payerName: (targetLead as any).payerName || targetLead.name,
+        payerPhone: targetLead.phone,
+        birthdayPersonName: (targetLead as any).birthdayPersonName || targetLead.name,
+        eventType: targetLead.eventType || '15_anos',
+        eventDate: targetLead.partyDate || (targetLead as any).eventDate || today,
+        guestCount: (targetLead as any).guestCount || targetLead.estimatedGuests || 150,
+        packageSold: (targetLead as any).packageSold || 'Pacote Padrão',
+        dealValue: targetLead.dealValue || 0,
+        contractDate: (targetLead as any).contractDate || today,
+        stage: (defaultStage as any) || 'onboarding',
+        venueId: targetVenueId || targetLead.venueId || '',
+        venueName: targetVenue?.name || targetLead.venueName || '',
+        commercialLeadId: targetLead.id,
+        contractStatus: 'contrato_assinado',
+        activities: [],
+        createdAt: targetLead.createdAt || now,
+        updatedAt: today,
+      };
+      setClients(prev => {
+        const idx = prev.findIndex(c => c.id === targetLead.id || c.commercialLeadId === targetLead.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], stage: (defaultStage as any) || copy[idx].stage };
+          return copy;
+        }
+        return [postSaleClient, ...prev];
+      });
+      clientService.upsert(postSaleClient).catch(err => console.error('Erro ao sincronizar cliente pós-venda:', err));
+    }
+
     if (isSupabaseConfigured) {
       await leadService.upsert({
         id: leadId,
         funnelId: destinationFunnelId,
         stage: defaultStage,
         venueId: destFunnel.venueId !== 'all' ? destFunnel.venueId : undefined,
+        group: isDestPostSale ? 'Pós-Venda' : 'Comercial',
+        isClient: isDestPostSale ? true : false,
       }).catch(err => console.error('Erro ao realocar lead no Supabase:', err));
 
       leadService.addActivity(leadId, activity).catch(err => console.error('Erro ao registrar atividade:', err));
@@ -3956,6 +4071,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }, 60);
     }
 
+    // Sincronização automática com o Pós-Venda se for um Cliente ou Funil de Pós-Venda
+    const isTargetPostSale = Boolean(targetLead?.isClient || targetLead?.group === 'Pós-Venda' || currentLeadFunnel?.isPostSale || currentLeadFunnel?.category === 'Pós-Venda');
+    if (isTargetPostSale) {
+      setClients(prev => prev.map(c => {
+        if (c.id === leadId || c.commercialLeadId === leadId) {
+          const mod: Client = { ...c, stage: finalStage as any, updatedAt: new Date().toISOString().split('T')[0] };
+          clientService.upsert(mod).catch(() => {});
+          return mod;
+        }
+        return c;
+      }));
+    }
+
     // Sincronização 100% no Supabase
     if (isSupabaseConfigured) {
       const updatePayload: any = {
@@ -4392,9 +4520,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     }
 
+    const targetVenue = venues.find(v => v.id === data.venueId);
+    const resolvedMasterId = targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+
     const newLead: Lead = {
       id: newLeadId,
-      masterId: scopedMasterId || currentUser?.id,
+      masterId: resolvedMasterId,
       code: leadCode,
       debutanteId: data.debutanteId,
       debutanteName: data.debutanteName,
@@ -4542,14 +4673,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || venues.find(v => isUuid(v.id))?.id
       || 'b2222222-2222-2222-2222-222222222222';
 
+    const targetVenue = venues.find(v => v.id === targetVenueId);
+    const resolvedMasterId = targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+
+    // Garante que o funil padrão para leads de entrada seja comercial (e não pós-venda)
+    const commercialFunnelForVenue = funnels.find(f => 
+      !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda' &&
+      (f.venueId === targetVenueId || (f.venueId === 'all' && (f.masterId === resolvedMasterId || !f.masterId)))
+    );
+
     const matchedFunnel = (data.initialFunnelId && isUuid(data.initialFunnelId) ? funnels.find(f => f.id === data.initialFunnelId) : null)
       || funnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
+      || commercialFunnelForVenue
       || funnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
       || funnels.find(f => isUuid(f.id));
 
     const validFunnelId = (data.initialFunnelId && isUuid(data.initialFunnelId))
       ? data.initialFunnelId
-      : (matchedFunnel?.id || '41d857a5-107e-4607-908c-7ebd5ba32cc9');
+      : (matchedFunnel && !matchedFunnel.isPostSale ? matchedFunnel.id : (commercialFunnelForVenue?.id || '41d857a5-107e-4607-908c-7ebd5ba32cc9'));
 
     const isTargetPostSale = Boolean(
       targetFunnelId === 'post_sale_default' ||
@@ -4560,7 +4701,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const newLead: Lead = {
       id: newLeadId,
-      masterId: scopedMasterId || currentUser?.id,
+      masterId: resolvedMasterId,
       code: leadCode,
       debutanteId: '',
       debutanteName: 'WhatsApp Direto',
@@ -4961,13 +5102,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
           });
         }
-        const lastDisc = lastDisconnectTimestampRef.current.get(token);
-        if (lastDisc) {
-          const gapMinutes = Math.max(5, Math.ceil((Date.now() - lastDisc) / (60 * 1000)));
-          console.log(`[Reconexão Detectada]: Instância ${token.substring(0, 8)}... reconectada após ${gapMinutes} min. Executando Catch-Up de mensagens...`);
-          lastDisconnectTimestampRef.current.delete(token);
-          syncWhatsAppHistoryGap({ instanceToken: token, timeWindowMinutes: gapMinutes + 10 });
-        }
+        // Conexão restabelecida: apenas limpa o registro de desconexão (não importa contatos automaticamente)
+        lastDisconnectTimestampRef.current.delete(token);
       }
     });
 
@@ -4981,6 +5117,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     timeWindowMinutes?: number;
     startTimestamp?: number;
     endTimestamp?: number;
+    createMissingLeads?: boolean;
   }): Promise<{ recoveredCount: number; newLeadsCount: number; updatedLeadsCount: number }> => {
     const currentSources = sourcesRef.current;
     let targetToken = options?.instanceToken;
@@ -5106,7 +5243,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             leadService.update(existingLead.id, leadUpdates).catch(() => {});
           }
           updatedLeadsCount++;
-        } else {
+        } else if (options?.createMissingLeads === true) {
+          // Apenas cria lead se o usuário solicitou explicitamente (ex: Triagem de Histórico)
           const venueId = targetSource?.venueId || activeVenueId || venuesRef.current[0]?.id || 'v1';
           const newId = await createLeadFromWhatsApp({
             venueId,
@@ -5223,9 +5361,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     }
 
+    const targetVenue = venues.find(v => v.id === data.venueId);
+    const resolvedMasterId = targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+
     const newLead: Lead = {
       id: newLeadId,
-      masterId: scopedMasterId || currentUser?.id,
+      masterId: resolvedMasterId,
       code: leadCode,
       debutanteId: '',
       debutanteName: '',
@@ -7469,7 +7610,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       benefitsCatalog: scopedBenefitsCatalog,
       vipCatalog: scopedVipCatalog,
       funnels: scopedFunnels,
-      tasks,
+      tasks: scopedTasks,
       activeVenueId,
       activeDebutanteId,
       theme,
@@ -7581,7 +7722,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addAppointmentForDebutante,
       updateAppointmentForDebutante,
       deleteAppointmentForDebutante,
-      appointments,
+      appointments: scopedAppointments,
       addAppointment,
       updateAppointment,
       deleteAppointment,
