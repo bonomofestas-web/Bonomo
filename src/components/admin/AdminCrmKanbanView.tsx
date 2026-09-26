@@ -543,47 +543,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
   const funnelSwitcherRef = useRef<HTMLDivElement>(null);
 
-  // Animações simétricas de recolher/expandir colunas com o fechamento como padrão de referência
+  // Animações simétricas de recolher/expandir colunas com o fechamento como padrão de referência (isolado por funil)
   const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
   const [expandingColumns, setExpandingColumns] = useState<Record<string, 'starting' | 'active'>>({});
 
-  // Colunas de Ganho e Perdido minimizadas por padrão
-  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({
-    deal_closed: true,
-    contrato_fechado: true,
-    lost: true,
-    cancelado: true,
-    recusado: true,
-    perdido: true,
-  });
-
-  const toggleColumnCollapse = (colId: string) => {
-    const isCurrentlyCollapsed = Boolean(collapsedColumns[colId]);
-    if (!isCurrentlyCollapsed) {
-      // Inicia fechamento: encolhe largura para 40px e fade-out suave dos cards
-      setCollapsingColumns(prev => ({ ...prev, [colId]: true }));
-      setTimeout(() => {
-        setCollapsedColumns(prev => ({ ...prev, [colId]: true }));
-        setCollapsingColumns(prev => ({ ...prev, [colId]: false }));
-      }, 200);
-    } else {
-      // Inicia abertura simétrica: desmarca colapsado, inicia em 40px com cards em opacidade 0 e anima abertura fluida para 280px
-      setCollapsedColumns(prev => ({ ...prev, [colId]: false }));
-      setExpandingColumns(prev => ({ ...prev, [colId]: 'starting' }));
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setExpandingColumns(prev => ({ ...prev, [colId]: 'active' }));
-        });
-      });
-      setTimeout(() => {
-        setExpandingColumns(prev => {
-          const copy = { ...prev };
-          delete copy[colId];
-          return copy;
-        });
-      }, 240);
-    }
-  };
+  // Armazena colunas recolhidas no formato `${funnelId}:${colId}` para que o fechamento de uma etapa não afete outros funis
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({});
 
   const toggleLeadSelection = (leadId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -1050,6 +1015,55 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       isLoss: Boolean(st.isLoss),
     }));
   }, [currentFunnel, isPostSaleView]);
+
+  // Funções para controle de colunas recolhidas com escopo estrito por funil
+  const getFunnelColKey = (colId: string, funnelId?: string) => {
+    const fId = funnelId || currentFunnel?.id || selectedFunnelId || 'default';
+    return `${fId}:${colId}`;
+  };
+
+  const isDefaultCollapsedCol = (colId: string, col?: { isWon?: boolean; isLoss?: boolean }) => {
+    return ['deal_closed', 'contrato_fechado', 'lost', 'cancelado', 'recusado', 'perdido'].includes(colId) || Boolean(col?.isWon || col?.isLoss);
+  };
+
+  const isColumnCollapsed = (colId: string, col?: { isWon?: boolean; isLoss?: boolean }, funnelId?: string) => {
+    const key = getFunnelColKey(colId, funnelId);
+    if (collapsedColumns[key] !== undefined) {
+      return Boolean(collapsedColumns[key]);
+    }
+    return isDefaultCollapsedCol(colId, col);
+  };
+
+  const toggleColumnCollapse = (colId: string) => {
+    const key = getFunnelColKey(colId);
+    const targetCol = columns.find(c => c.id === colId);
+    const isCurrentlyCollapsed = isColumnCollapsed(colId, targetCol);
+
+    if (!isCurrentlyCollapsed) {
+      // Inicia fechamento: encolhe largura para 40px e fade-out suave dos cards
+      setCollapsingColumns(prev => ({ ...prev, [key]: true }));
+      setTimeout(() => {
+        setCollapsedColumns(prev => ({ ...prev, [key]: true }));
+        setCollapsingColumns(prev => ({ ...prev, [key]: false }));
+      }, 200);
+    } else {
+      // Inicia abertura simétrica: desmarca colapsado, inicia em 40px com cards em opacidade 0 e anima abertura fluida para 280px
+      setCollapsedColumns(prev => ({ ...prev, [key]: false }));
+      setExpandingColumns(prev => ({ ...prev, [key]: 'starting' }));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandingColumns(prev => ({ ...prev, [key]: 'active' }));
+        });
+      });
+      setTimeout(() => {
+        setExpandingColumns(prev => {
+          const copy = { ...prev };
+          delete copy[key];
+          return copy;
+        });
+      }, 240);
+    }
+  };
 
   // Robust lead to column matcher: guarantees no leads disappear from Kanban
   const getLeadMatchedColumnId = (lead: Lead, cols: typeof columns): string => {
@@ -2749,10 +2763,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   return null;
                 }
 
-                // Colunas minimizadas (Ganho e Perdido por padrão, e qualquer etapa clicada pelo usuário)
-                const isCollapsed = Boolean(collapsedColumns[col.id]);
-                const isCollapsing = Boolean(collapsingColumns[col.id]);
-                const expandingState = expandingColumns[col.id];
+                // Colunas minimizadas com escopo estrito por funil (Ganho e Perdido por padrão, e qualquer etapa clicada pelo usuário)
+                const colKey = getFunnelColKey(col.id);
+                const isCollapsed = isColumnCollapsed(col.id, col);
+                const isCollapsing = Boolean(collapsingColumns[colKey]);
+                const expandingState = expandingColumns[colKey];
                 const isSlim = isCollapsing || expandingState === 'starting';
 
                 if (isCollapsed) {

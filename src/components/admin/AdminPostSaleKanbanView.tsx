@@ -298,38 +298,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     setAddTagClientId(null);
   };
 
-  // Animações simétricas de recolher/expandir colunas
+  // Animações simétricas de recolher/expandir colunas (isoladas por funil)
   const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
   const [expandingColumns, setExpandingColumns] = useState<Record<string, 'starting' | 'active'>>({});
-  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({
-    completed: true,
-  });
-
-  const toggleColumnCollapse = (colId: string) => {
-    const isCurrentlyCollapsed = Boolean(collapsedColumns[colId]);
-    if (!isCurrentlyCollapsed) {
-      setCollapsingColumns(prev => ({ ...prev, [colId]: true }));
-      setTimeout(() => {
-        setCollapsedColumns(prev => ({ ...prev, [colId]: true }));
-        setCollapsingColumns(prev => ({ ...prev, [colId]: false }));
-      }, 200);
-    } else {
-      setCollapsedColumns(prev => ({ ...prev, [colId]: false }));
-      setExpandingColumns(prev => ({ ...prev, [colId]: 'starting' }));
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setExpandingColumns(prev => ({ ...prev, [colId]: 'active' }));
-        });
-      });
-      setTimeout(() => {
-        setExpandingColumns(prev => {
-          const copy = { ...prev };
-          delete copy[colId];
-          return copy;
-        });
-      }, 240);
-    }
-  };
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({});
 
   const postSaleFunnel = useMemo(() => {
     return (funnels || []).find(f => 
@@ -342,6 +314,50 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       f.name?.toLowerCase().includes('sucesso')
     ) || null;
   }, [funnels]);
+
+  const getPostSaleColKey = (colId: string) => {
+    const fId = postSaleFunnel?.id || activeVenueId || 'post_sale_default';
+    return `${fId}:${colId}`;
+  };
+
+  const isDefaultPostSaleCollapsed = (colId: string) => {
+    return ['completed', 'finalizado', 'lost', 'cancelado'].includes(colId);
+  };
+
+  const isColumnCollapsed = (colId: string) => {
+    const key = getPostSaleColKey(colId);
+    if (collapsedColumns[key] !== undefined) {
+      return Boolean(collapsedColumns[key]);
+    }
+    return isDefaultPostSaleCollapsed(colId);
+  };
+
+  const toggleColumnCollapse = (colId: string) => {
+    const key = getPostSaleColKey(colId);
+    const isCurrentlyCollapsed = isColumnCollapsed(colId);
+    if (!isCurrentlyCollapsed) {
+      setCollapsingColumns(prev => ({ ...prev, [key]: true }));
+      setTimeout(() => {
+        setCollapsedColumns(prev => ({ ...prev, [key]: true }));
+        setCollapsingColumns(prev => ({ ...prev, [key]: false }));
+      }, 200);
+    } else {
+      setCollapsedColumns(prev => ({ ...prev, [key]: false }));
+      setExpandingColumns(prev => ({ ...prev, [key]: 'starting' }));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandingColumns(prev => ({ ...prev, [key]: 'active' }));
+        });
+      });
+      setTimeout(() => {
+        setExpandingColumns(prev => {
+          const copy = { ...prev };
+          delete copy[key];
+          return copy;
+        });
+      }, 240);
+    }
+  };
 
   // Colunas Ativas (Inclui "Entrada do Cliente" quando a flag do funil estiver ativada)
   const activeStageColumns = useMemo(() => {
@@ -1146,9 +1162,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               const stageClients = filteredClients.filter(c => c.stage === column.id);
               const stageValue = stageClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
 
-              const isCollapsed = Boolean(collapsedColumns[column.id]);
-              const isCollapsing = Boolean(collapsingColumns[column.id]);
-              const expandingState = expandingColumns[column.id];
+              const colKey = getPostSaleColKey(column.id);
+              const isCollapsed = isColumnCollapsed(column.id);
+              const isCollapsing = Boolean(collapsingColumns[colKey]);
+              const expandingState = expandingColumns[colKey];
               const isSlim = isCollapsing || expandingState === 'starting';
 
               if (isCollapsed) {
