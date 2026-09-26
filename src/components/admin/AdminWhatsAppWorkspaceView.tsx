@@ -4813,7 +4813,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Registre anotações privadas da equipe sobre este lead abaixo.</div>
                   </div>
                 ) : (
-                  historyActivities.map((act) => {
+                  historyActivities.map((act, idx) => {
                     // Identifica se é nota advinda de Follow-up / Tarefa
                     const isTaskOrFollowUpNote = Boolean(
                       act.type === 'task_completed' || 
@@ -4873,70 +4873,128 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       ? '' 
                       : actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                    // 1. Caso seja puramente robô/sistema sem colaborador humano
-                    if (isPureBotOrSystem) {
+                    const prevAct = idx > 0 ? historyActivities[idx - 1] : null;
+
+                    // Checagem de mudança de data estilo WhatsApp
+                    const isDifferentDayFromPrev = (() => {
+                      if (idx === 0) return true;
+                      if (!prevAct || !prevAct.timestamp || !act.timestamp) return false;
+                      const d1 = new Date(prevAct.timestamp);
+                      const d2 = new Date(act.timestamp);
+                      return d1.getFullYear() !== d2.getFullYear() ||
+                             d1.getMonth() !== d2.getMonth() ||
+                             d1.getDate() !== d2.getDate();
+                    })();
+
+                    const dateDividerText = isDifferentDayFromPrev && act.timestamp ? formatWhatsAppDateDivider(act.timestamp) : '';
+
+                    const renderDateDivider = () => {
+                      if (!isDifferentDayFromPrev || !dateDividerText) return null;
                       return (
                         <div
-                          key={act.id}
                           style={{
-                            alignSelf: 'flex-start',
-                            maxWidth: '85%',
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '10px',
-                            margin: '4px 0',
-                          }}
-                        >
-                          {/* Logo F5 / Bot Avatar */}
-                          <div style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '50%',
-                            background: '#0F1724',
-                            border: '1.5px solid #8B5CF6',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                          }}>
-                            <img 
-                              src="/logo_f5.png" 
-                              alt="F5" 
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
-                              }}
-                              style={{ width: '22px', height: '22px', objectFit: 'contain' }} 
-                            />
-                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#8B5CF6' }}>F5</span>
+                            width: '100%',
+                            margin: idx === 0 ? '6px 0 14px 0' : '20px 0 14px 0',
+                            position: 'relative',
+                            userSelect: 'none',
+                            zIndex: 2,
+                          }}
+                        >
+                          <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
+                          <div
+                            style={{
+                              margin: '0 12px',
+                              background: isDarkMode ? '#182229' : '#ffffff',
+                              color: isDarkMode ? '#8696a0' : '#54656f',
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              letterSpacing: '0.04em',
+                              padding: '4px 14px',
+                              borderRadius: '8px',
+                              boxShadow: isDarkMode ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(11,20,26,0.12)',
+                              border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            <span>{dateDividerText}</span>
                           </div>
-
-                          {/* Balão do Sistema */}
-                          <div style={{
-                            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(139, 92, 246, 0.12) 100%)',
-                            border: '1px solid rgba(139, 92, 246, 0.35)',
-                            borderRadius: '14px',
-                            borderTopLeftRadius: '3px',
-                            padding: '10px 14px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#8B5CF6', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                <Zap size={12} color="#8B5CF6" />
-                                <span>Bot F5 System (Nota Automática do Sistema)</span>
-                              </span>
-                              <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
-                                {timeStr}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)', lineHeight: '1.4' }}>
-                              {cleanText}
-                            </div>
-                          </div>
+                          <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
                         </div>
+                      );
+                    };
+
+                    // 1. Caso seja puramente robô/sistema sem colaborador humano
+                    if (isPureBotOrSystem) {
+                      return (
+                        <React.Fragment key={act.id}>
+                          {renderDateDivider()}
+                          <div
+                            style={{
+                              alignSelf: 'flex-start',
+                              maxWidth: '85%',
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '10px',
+                              margin: '4px 0',
+                            }}
+                          >
+                            {/* Logo F5 / Bot Avatar */}
+                            <div style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              background: '#0F1724',
+                              border: '1.5px solid #8B5CF6',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                            }}>
+                              <img 
+                                src="/logo_f5.png" 
+                                alt="F5" 
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                                style={{ width: '22px', height: '22px', objectFit: 'contain' }} 
+                              />
+                              <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#8B5CF6' }}>F5</span>
+                            </div>
+
+                            {/* Balão do Sistema */}
+                            <div style={{
+                              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(139, 92, 246, 0.12) 100%)',
+                              border: '1px solid rgba(139, 92, 246, 0.35)',
+                              borderRadius: '14px',
+                              borderTopLeftRadius: '3px',
+                              padding: '10px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#8B5CF6', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <Zap size={12} color="#8B5CF6" />
+                                  <span>Bot F5 System (Nota Automática do Sistema)</span>
+                                </span>
+                                <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
+                                  {timeStr}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)', lineHeight: '1.4' }}>
+                                {cleanText}
+                              </div>
+                            </div>
+                          </div>
+                        </React.Fragment>
                       );
                     }
 
@@ -4963,9 +5021,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       : (isMine ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid var(--adm-border)');
 
                     return (
-                      <div
-                        key={act.id}
-                        style={{
+                      <React.Fragment key={act.id}>
+                        {renderDateDivider()}
+                        <div
+                          style={{
                           alignSelf: isMine ? 'flex-end' : 'flex-start',
                           maxWidth: '82%',
                           display: 'flex',
@@ -5193,7 +5252,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           )}
                         </div>
                       </div>
-                    );
+                    </React.Fragment>
+                  );
                   })
                 )
               )}
