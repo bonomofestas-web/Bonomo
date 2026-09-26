@@ -2095,7 +2095,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        return l.venueId === activeVenueId;
+        if (l.venueId === activeVenueId) return true;
+        // Se o lead pertence a um funil compartilhado com a unidade ativa, ele deve permanecer visível no funil
+        if (l.funnelId) {
+          const funnel = funnels.find(f => f.id === l.funnelId);
+          if (funnel) {
+            const linkedVenueIds = new Set([
+              funnel.venueId,
+              ...(funnel.sharedVenueIds || []),
+              ...((funnel as any).shared_venue_ids || []),
+            ]);
+            if (linkedVenueIds.has(activeVenueId)) return true;
+          }
+        }
+        return false;
       }
 
       // Se o lead não tiver casa vinculada, restringe pelo masterId
@@ -2105,7 +2118,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       return masterVenueIds.has(l.venueId);
     });
-  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
+  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser, funnels]);
 
   // Mapa de casas conectadas dinamicamente a cada funil através das origens ativas
   const funnelConnectedVenueIds = useMemo(() => {
@@ -4807,6 +4820,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       waSource?.funnelId === 'post_sale_default'
     );
 
+    const firstStageId = matchedFunnel?.stages && matchedFunnel.stages.length > 0
+      ? (matchedFunnel.stages.find(s => s.id === 'new_lead')?.id || matchedFunnel.stages[0].id)
+      : 'new_lead';
+
     const newLead: Lead = {
       id: newLeadId,
       masterId: resolvedMasterId,
@@ -4829,7 +4846,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
       assignedTo: autoSdr ? autoSdr.name : undefined,
-      stage: (data.initialStage || (isTargetPostSale ? 'onboarding' : 'new_lead')) as CrmStage,
+      stage: (data.initialStage || (isTargetPostSale ? 'onboarding' : firstStageId)) as CrmStage,
       isClient: isTargetPostSale ? true : undefined,
       isValidated: false,
       pointsGranted: 0,

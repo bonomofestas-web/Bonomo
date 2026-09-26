@@ -427,13 +427,31 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
 
-  // Active Funnel selection: null = Hub de Funis (Cards), or 'indicacao', 'trafego', etc.
-  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(() => {
-    if (activeFunnelId !== undefined) return activeFunnelId;
+  // Active Funnel selection: null = Hub de Funis (Cards), or specific funnel ID
+  const [selectedFunnelId, setSelectedFunnelIdState] = useState<string | null>(() => {
+    if (activeFunnelId) return activeFunnelId;
+    try {
+      const saved = localStorage.getItem('bonomo_admin_active_funnel_id');
+      if (saved) return saved;
+    } catch {}
     if (initialLeadId) return 'indicacao';
     if (isPostSaleView) return 'post_sale_default';
     return null;
   });
+
+  const setSelectedFunnelId = (id: string | null) => {
+    setSelectedFunnelIdState(id);
+    try {
+      if (id) {
+        localStorage.setItem('bonomo_admin_active_funnel_id', id);
+      } else {
+        localStorage.removeItem('bonomo_admin_active_funnel_id');
+      }
+    } catch {}
+    if (onSelectFunnel) {
+      onSelectFunnel(id);
+    }
+  };
   const [funnelSearch, setFunnelSearch] = useState('');
 
   // Como CRM Funnel Settings Modal
@@ -808,7 +826,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [funnels, leads, venues, activeVenueId, userAllowedVenueIds, canConfigureFunnels, currentUser, isPostSaleView]);
 
   useEffect(() => {
-    if (isPostSaleView && (!selectedFunnelId || selectedFunnelId === 'indicacao' || selectedFunnelId === 'post_sale_default')) {
+    if (!selectedFunnelId || selectedFunnelId === 'indicacao' || selectedFunnelId === 'post_sale_default') {
+      try {
+        const saved = localStorage.getItem('bonomo_admin_active_funnel_id');
+        if (saved && funnelsList.some(f => f.id === saved)) {
+          setSelectedFunnelIdState(saved);
+          return;
+        }
+      } catch {}
       if (funnelsList.length > 0) {
         setSelectedFunnelId(funnelsList[0].id);
       }

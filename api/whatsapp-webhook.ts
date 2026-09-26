@@ -453,13 +453,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const targetSearchPhone = resolvedPhone || (!isLid ? cleanPhone : '');
         if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
           const last8 = targetSearchPhone.slice(-8);
+          const part1 = last8.slice(0, 4);
+          const part2 = last8.slice(4);
           let phoneQuery = supabase
             .from('leads')
             .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
-            .ilike('phone', `%${last8}%`);
+            .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
 
           if (targetVenueId) {
-            phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
+            const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', targetVenueId).maybeSingle();
+            if (vRow?.master_id) {
+              phoneQuery = phoneQuery.or(`venue_id.eq.${targetVenueId},master_id.eq.${vRow.master_id}`);
+            } else {
+              phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
+            }
           }
 
           const { data: phoneLeads } = await phoneQuery.limit(1);
@@ -587,6 +594,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const initialNoteText = text.trim() || (isAudio ? 'Mensagem de voz' : 'Mensagem no WhatsApp');
 
+          let targetStage = 'new_lead';
+          if (funnelId && funnelId !== 'comercial') {
+            const { data: fRow } = await supabase.from('commercial_funnels').select('stages').eq('id', funnelId).maybeSingle();
+            if (fRow?.stages && Array.isArray(fRow.stages) && fRow.stages.length > 0) {
+              const hasNewLead = fRow.stages.some((s: any) => s.id === 'new_lead');
+              if (!hasNewLead) {
+                targetStage = fRow.stages[0]?.id || 'in_negotiation';
+              }
+            }
+          }
+
           const newLead = {
             id: leadId,
             code: leadCode,
@@ -597,7 +615,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             master_id: venueMasterId,
             source_id: matchedSource?.id || null,
             source_name: matchedSource?.name || 'WhatsApp Oficial',
-            stage: 'new_lead',
+            stage: targetStage,
             unread_count: isFromMe ? 0 : 1,
             notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
             created_at: new Date().toISOString(),

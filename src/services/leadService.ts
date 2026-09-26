@@ -373,10 +373,12 @@ export const leadService = {
       const clean = phone.replace(/\D/g, '');
       if (clean.length < 8) return null;
       const digits = clean.slice(-8);
+      const part1 = digits.slice(0, 4);
+      const part2 = digits.slice(4);
       let query = supabase
         .from('leads')
         .select('*')
-        .ilike('phone', `%${digits}%`);
+        .or(`phone.ilike.%${digits}%,phone.ilike.%${part1}%${part2}%`);
 
       if (masterId) {
         query = query.eq('master_id', masterId);
@@ -781,6 +783,17 @@ export const leadService = {
             return false;
           }
 
+          // REGRA DE ISOLAMENTO DE FUNIS: NUNCA mesclar leads de FUNIS DIFERENTES!
+          // Um lead no funil "AAA" e outro no funil "Comercial" ou "Pós-Venda" representam ciclos e processos distintos!
+          if (existing.funnelId && lead.funnelId && existing.funnelId !== lead.funnelId) {
+            return false;
+          }
+
+          // NUNCA mesclar cliente de Pós-Venda com Lead Comercial
+          if (Boolean(existing.isClient) !== Boolean(lead.isClient)) {
+            return false;
+          }
+
           // 1a. Casamento por telefone real
           if (isPhoneMatch(existing.phone, lead.phone)) return true;
           
@@ -826,12 +839,17 @@ export const leadService = {
         continue;
       }
 
-      // Mais de um lead no grupo: eleger o Lead Master (com prioridade MASSIVA para telefone real e nome completo)
+      // Mais de um lead no mesmo grupo e funil: eleger o Lead Master preservando a interação mais recente
       group.sort((a, b) => {
+        const hasRealNameA = !isGenericOrFamilyNickname(a.name);
+        const hasRealNameB = !isGenericOrFamilyNickname(b.name);
+        if (hasRealNameA !== hasRealNameB) {
+          return hasRealNameB ? 1 : -1;
+        }
         const scoreA = scoreLeadCompleteness(a);
         const scoreB = scoreLeadCompleteness(b);
         if (scoreB !== scoreA) return scoreB - scoreA;
-        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       });
 
       const master = { ...group[0] };

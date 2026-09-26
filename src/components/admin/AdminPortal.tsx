@@ -91,7 +91,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return 'home';
   });
   const [isSplashDismissed, setIsSplashDismissed] = useState(false);
-  const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
+  const [activeFunnelId, setActiveFunnelIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('bonomo_admin_active_funnel_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setActiveFunnelId = (id: string | null) => {
+    setActiveFunnelIdState(id);
+    try {
+      if (id) {
+        localStorage.setItem('bonomo_admin_active_funnel_id', id);
+      } else {
+        localStorage.removeItem('bonomo_admin_active_funnel_id');
+      }
+    } catch {}
+  };
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
