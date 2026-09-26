@@ -2081,17 +2081,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     return leads.filter(l => {
       // REGRA DE OURO DA HIERARQUIA: Lead -> Origem -> Casa de Festa -> Master
-      // Se o lead possui uma origem vinculada, essa origem DEVE pertencer a uma das casas do tenant!
-      if (l.sourceId) {
+      // Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
+      if (l.venueId && !masterVenueIds.has(l.venueId)) {
+        return false;
+      }
+
+      // Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant
+      if (!l.venueId && l.sourceId) {
         const src = sources.find(s => s.id === l.sourceId);
         if (src && src.venueId && !masterVenueIds.has(src.venueId)) {
           return false; // Origem pertence a outro master/casa -> isola 100%!
         }
-      }
-
-      // Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
-      if (l.venueId && !masterVenueIds.has(l.venueId)) {
-        return false;
       }
 
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {

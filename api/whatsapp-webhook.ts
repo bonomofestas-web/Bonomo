@@ -394,7 +394,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
             .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
           
-          if (targetVenueId) {
+          if (matchedSource?.funnel_id) {
+            lidQuery = lidQuery.eq('funnel_id', matchedSource.funnel_id);
+          } else if (targetVenueId) {
             lidQuery = lidQuery.eq('venue_id', targetVenueId);
           }
 
@@ -460,13 +462,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
             .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
 
-          if (targetVenueId) {
-            const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', targetVenueId).maybeSingle();
-            if (vRow?.master_id) {
-              phoneQuery = phoneQuery.or(`venue_id.eq.${targetVenueId},master_id.eq.${vRow.master_id}`);
-            } else {
-              phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
-            }
+          if (matchedSource?.funnel_id) {
+            phoneQuery = phoneQuery.eq('funnel_id', matchedSource.funnel_id);
+          } else if (targetVenueId) {
+            phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
           }
 
           const { data: phoneLeads } = await phoneQuery.limit(1);
