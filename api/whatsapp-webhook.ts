@@ -18,6 +18,13 @@ function isLidIdentifier(id?: string): boolean {
 
 function extractRealWhatsAppPhone(msg: any, payload?: any): string {
   const candidates: any[] = [
+    msg?.chatid,
+    msg?.wa_chatid,
+    msg?.chatId,
+    msg?.chat,
+    payload?.chatid,
+    payload?.wa_chatid,
+    payload?.chatId,
     msg?.key?.participantPn,
     msg?.key?.remoteJidPn,
     msg?.participantPn,
@@ -114,13 +121,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Método não permitido. Use POST.' });
   }
 
-  // 1. REGRA CRÍTICA UAZAPI: Responder 200 IMEDIATAMENTE para não bloquear a fila da API
-  res.status(200).json({ success: true, received: true });
-
-  // 2. Processamento assíncrono em segundo plano
+  // 2. Processamento assíncrono antes de encerrar a resposta no serverless
   try {
     const payload = req.body;
-    if (!payload) return;
+    if (!payload) {
+      return res.status(200).json({ success: true, empty: true });
+    }
 
     const eventType = (payload.EventType || payload.event || payload.type || '').toString().toLowerCase();
     const instanceToken = payload.token || (req.headers['token'] as string);
@@ -435,30 +441,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const waMessageId = msg.key?.id || msg.id;
 
-          // DEDUPLICAÇÃO 1: Checa se a mensagem já foi salva por esse whatsappMessageId
-          if (waMessageId) {
-            const { data: existingMsg } = await supabase
-              .from('lead_activities')
-              .select('id')
-              .eq('lead_id', existingLead.id)
-              .contains('metadata', { whatsapp_message_id: waMessageId })
-              .limit(1);
-
-            if (existingMsg && existingMsg.length > 0) {
-              console.log(`[Webhook] Mensagem duplicada ignorada (waMessageId: ${waMessageId}) no lead ${existingLead.id}`);
-              continue;
-            }
-          }
-
-          // DEDUPLICAÇÃO 2: Checa se uma mensagem com texto idêntico foi gravada nos últimos 45 segundos
+          // DEDUPLICAÇÃO: Checa se uma mensagem com texto idêntico foi gravada nos últimos 30 segundos
           if (storedText) {
-            const fortyFiveSecsAgo = new Date(Date.now() - 45000).toISOString();
+            const thirtySecsAgo = new Date(Date.now() - 30000).toISOString();
             const { data: recentIdentical } = await supabase
               .from('lead_activities')
               .select('id')
               .eq('lead_id', existingLead.id)
               .eq('text', storedText)
-              .gte('timestamp', fortyFiveSecsAgo)
+              .gte('timestamp', thirtySecsAgo)
               .limit(1);
 
             if (recentIdentical && recentIdentical.length > 0) {
@@ -481,11 +472,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             author_id: null,
             author_avatar_url: isFromMe ? 'whatsapp_brand' : '',
             status: isFromMe ? 'sent' : 'delivered',
-            metadata: {
-              whatsapp_message_id: waMessageId,
-              remote_jid: remoteJid,
-              from_me: isFromMe,
-            },
           };
 
           await supabase.from('lead_activities').insert([newActivityRecord]);
@@ -560,11 +546,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             text: creationStoredText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             status: isFromMe ? 'sent' : 'delivered',
-            metadata: {
-              whatsapp_message_id: waMessageId,
-              remote_jid: remoteJid,
-              is_first_message: true,
-            },
           }]);
 
           if (matchedSource?.id) {
@@ -577,7 +558,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+
+    return res.status(200).json({ success: true, processed: true });
   } catch (error: any) {
     console.error('[UAZAPI Webhook Error]:', error.message);
+    return res.status(200).json({ success: false, error: error.message });
   }
 }

@@ -43,6 +43,13 @@ export function isLidIdentifier(id?: string): boolean {
  */
 export function extractRealWhatsAppPhone(msg: any, payload?: any): string {
   const candidates: any[] = [
+    msg?.chatid,
+    msg?.wa_chatid,
+    msg?.chatId,
+    msg?.chat,
+    payload?.chatid,
+    payload?.wa_chatid,
+    payload?.chatId,
     msg?.key?.cleanedParticipantPn,
     msg?.key?.remoteJidPn,
     msg?.key?.participantPn,
@@ -51,10 +58,8 @@ export function extractRealWhatsAppPhone(msg: any, payload?: any): string {
     msg?.senderPhone,
     msg?.phone,
     msg?.userPn,
-    msg?.chatId,
     payload?.phone,
     payload?.senderPhone,
-    payload?.chatId,
     payload?.data?.phone,
     payload?.data?.senderPhone,
     msg?.sender_phone,
@@ -481,7 +486,7 @@ class UazapiSseManager {
         if (msg.wasSentByApi === true || payload.wasSentByApi === true) continue;
 
         // REGRA CRÍTICA: Ignora mensagens de grupos (@g.us), canais (@newsletter) e status broadcast
-        const remoteJid = msg.key?.remoteJid || msg.remoteJid || msg.from || msg.to || msg.chat || '';
+        const remoteJid = msg.chatid || msg.wa_chatid || msg.key?.remoteJid || msg.remoteJid || msg.from || msg.to || msg.chat || payload?.chatid || '';
         const isGroup = msg.isGroup === true || payload.isGroup === true || remoteJid.includes('@g.us') || remoteJid.includes('@newsletter') || remoteJid.includes('@broadcast') || remoteJid === 'status@broadcast';
         if (isGroup) continue;
 

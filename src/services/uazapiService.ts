@@ -45,6 +45,10 @@ export const uazapiService = {
     // 2. Tenta extrair telefone real diretamente de campos alternativos do rawPayload
     if (rawPayload) {
       const candidates = [
+        rawPayload?.chatid,
+        rawPayload?.wa_chatid,
+        rawPayload?.chatId,
+        rawPayload?.chat,
         rawPayload?.key?.cleanedParticipantPn,
         rawPayload?.key?.remoteJidPn,
         rawPayload?.key?.participantPn,
@@ -53,7 +57,6 @@ export const uazapiService = {
         rawPayload?.senderPhone,
         rawPayload?.phone,
         rawPayload?.userPn,
-        rawPayload?.chatId,
         rawPayload?.data?.phone,
         rawPayload?.data?.senderPhone,
       ];
@@ -933,7 +936,8 @@ export const uazapiService = {
 
     for (const chatId of possibleChatIds) {
       try {
-        const res = await fetch(`${baseUrl}/chat/findMessages`, {
+        // Tenta primeiro /message/find (padrão UAZAPI v2)
+        const res = await fetch(`${baseUrl}/message/find`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -954,8 +958,31 @@ export const uazapiService = {
           }
         }
       } catch {
-        // Tenta próximo
+        // Tenta fallback
       }
+
+      try {
+        const resOld = await fetch(`${baseUrl}/chat/findMessages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'token': instanceToken,
+          },
+          body: JSON.stringify({
+            chatid: chatId,
+            limit,
+            order: 'asc',
+          }),
+        });
+
+        if (resOld.ok) {
+          const dataOld = await resOld.json();
+          const messagesOld = Array.isArray(dataOld) ? dataOld : (dataOld.messages || dataOld.data || []);
+          if (Array.isArray(messagesOld) && messagesOld.length > 0) {
+            return messagesOld;
+          }
+        }
+      } catch {}
     }
     return [];
   },
