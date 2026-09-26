@@ -581,7 +581,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         groups.push([lead]);
         continue;
       }
-      const matchedGroup = groups.find(g => g.some(existing => isPhoneMatch(existing.phone, lead.phone)));
+      const matchedGroup = groups.find(g => g.some(existing => {
+        // REGRA DE OURO: Leads de funis diferentes NUNCA devem ser consolidados/apagados entre si!
+        if (existing.funnelId && lead.funnelId && existing.funnelId !== lead.funnelId) return false;
+        // REGRA DE OURO: Um Lead do CRM e um Cliente de Pós-Venda nunca devem ser mesclados
+        if (Boolean(existing.isClient) !== Boolean(lead.isClient)) return false;
+        return isPhoneMatch(existing.phone, lead.phone);
+      }));
       if (matchedGroup) {
         matchedGroup.push(lead);
       } else {
@@ -598,10 +604,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // Eleger o lead Master
       group.sort((a, b) => {
-        const scoreA = (a.name && !a.name.startsWith('LEAD-') && a.name !== 'Sem nome' ? 50 : 0) + (a.activities?.length || 0);
-        const scoreB = (b.name && !b.name.startsWith('LEAD-') && b.name !== 'Sem nome' ? 50 : 0) + (b.activities?.length || 0);
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+        const hasCustomNameA = a.name && !a.name.startsWith('LEAD-') && !a.name.startsWith('LD-') && a.name !== 'Sem nome';
+        const hasCustomNameB = b.name && !b.name.startsWith('LEAD-') && !b.name.startsWith('LD-') && b.name !== 'Sem nome';
+        if (hasCustomNameA && !hasCustomNameB) return -1;
+        if (!hasCustomNameA && hasCustomNameB) return 1;
+
+        const actsA = a.activities?.length || 0;
+        const actsB = b.activities?.length || 0;
+        if (actsB !== actsA) return actsB - actsA;
+
+        // Prioriza o lead mais recente se ambos forem equivalentes
+        return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime();
       });
 
       const master = { ...group[0] };

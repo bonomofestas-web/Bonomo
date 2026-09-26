@@ -381,11 +381,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
 
-        // 2. Busca se já existe um Lead com esse telefone ou LID (ESTRITAMENTE escopado à Casa de Festa da Origem)
+        // 2. Busca se já existe um Lead com esse telefone ou LID no sistema (Escopo do Tenant / Rede)
         const isLid = isLidIdentifier(cleanPhone) || cleanPhone.length >= 14 || remoteJid.includes('@lid');
         let existingLead: any = null;
         let resolvedPhone = (!isLid && cleanPhone.length <= 13) ? cleanPhone : '';
         const targetVenueId = matchedSource?.venue_id;
+
+        // Identifica o tenant (master_id e todas as unidades da rede) para busca abrangente
+        let tenantMasterId: string | null = null;
+        let tenantVenueIds: string[] = targetVenueId ? [targetVenueId] : [];
+        if (targetVenueId) {
+          const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', targetVenueId).maybeSingle();
+          if (vRow?.master_id) {
+            tenantMasterId = vRow.master_id;
+            const { data: allTenantVenues } = await supabase.from('venues').select('id').eq('master_id', vRow.master_id);
+            if (allTenantVenues && allTenantVenues.length > 0) {
+              tenantVenueIds = Array.from(new Set([...tenantVenueIds, ...allTenantVenues.map((v: any) => v.id)]));
+            }
+          }
+        }
 
         // 2a. Se for LID, procura primeiro por correspondência de whatsappLid salva em custom_field_values
         if (isLid) {
@@ -394,16 +408,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
             .or(`custom_field_values->>whatsappLid.eq.${cleanPhone},custom_field_values->>whatsapp_lid.eq.${cleanPhone}`);
           
-          if (matchedSource?.funnel_id) {
-            lidQuery = lidQuery.eq('funnel_id', matchedSource.funnel_id);
+          if (tenantMasterId) {
+            lidQuery = lidQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
           } else if (targetVenueId) {
             lidQuery = lidQuery.eq('venue_id', targetVenueId);
           }
 
-          const { data: lidMatches } = await lidQuery.limit(1);
+          const { data: lidMatches } = await lidQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
 
           if (lidMatches && lidMatches.length > 0) {
-            existingLead = lidMatches[0];
+            // Prioriza o lead no funil da origem se houver, caso contrário pega o mais recente no sistema
+            existingLead = (matchedSource?.funnel_id 
+              ? lidMatches.find((l: any) => l.funnel_id === matchedSource.funnel_id) 
+              : null) || lidMatches[0];
           }
 
           // Se não encontrou por LID gravado, tenta extrair o telefone real dos campos do payload ou UAZAPI
@@ -451,10 +468,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // 2b. Busca por telefone real se ainda não encontrou o lead (Estritamente escopado à casa do WhatsApp conectado)
+        // 2b. Busca por telefone real se ainda não encontrou o lead (Busca em TODO o sistema/tenant, não isola a um único funil!)
         const targetSearchPhone = resolvedPhone || (!isLid ? cleanPhone : '');
         if (!existingLead && targetSearchPhone && targetSearchPhone.length >= 8) {
-          const last8 = targetSearchPhone.slice(-8);
+          const digitsOnly = targetSearchPhone.replace(/\D/g, '');
+          const last8 = digitsOnly.slice(-8);
           const part1 = last8.slice(0, 4);
           const part2 = last8.slice(4);
           let phoneQuery = supabase
@@ -462,16 +480,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .select('id, name, phone, unread_count, venue_id, funnel_id, custom_field_values, master_id')
             .or(`phone.ilike.%${last8}%,phone.ilike.%${part1}%${part2}%`);
 
-          if (matchedSource?.funnel_id) {
-            phoneQuery = phoneQuery.eq('funnel_id', matchedSource.funnel_id);
+          if (tenantMasterId) {
+            phoneQuery = phoneQuery.or(`master_id.eq.${tenantMasterId},venue_id.in.(${tenantVenueIds.join(',')})`);
           } else if (targetVenueId) {
             phoneQuery = phoneQuery.eq('venue_id', targetVenueId);
           }
 
-          const { data: phoneLeads } = await phoneQuery.limit(1);
+          const { data: phoneLeads } = await phoneQuery.order('last_interaction_at', { ascending: false, nullsFirst: false });
 
           if (phoneLeads && phoneLeads.length > 0) {
-            existingLead = phoneLeads[0];
+            // REGRA: Se houver lead já alocado no funil desta origem, prioriza ele;
+            // Caso contrário, aproveita o lead existente no sistema para NÃO gerar duplicidade!
+            existingLead = (matchedSource?.funnel_id 
+              ? phoneLeads.find((l: any) => l.funnel_id === matchedSource.funnel_id) 
+              : null) || phoneLeads[0];
+
             // Vincula o LID ao lead encontrado para que as próximas mensagens batam de primeira!
             if (isLid) {
               const updatedCustom = {
@@ -563,6 +586,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             updatePayload.unread_count = (existingLead.unread_count || 0) + 1;
           }
 
+          if (matchedSource?.id && !existingLead.source_id) {
+            updatePayload.source_id = matchedSource.id;
+            updatePayload.source_name = matchedSource.name || 'WhatsApp Oficial';
+          }
+
           await supabase
             .from('leads')
             .update(updatePayload)
@@ -577,8 +605,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const funnelId = matchedSource?.funnel_id || 'comercial';
 
           // Localiza o masterId da casa para garantir isolamento por tenant no banco
-          let venueMasterId: string | null = null;
-          if (venueId) {
+          let venueMasterId: string | null = tenantMasterId;
+          if (!venueMasterId && venueId) {
             const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', venueId).maybeSingle();
             if (vRow?.master_id) venueMasterId = vRow.master_id;
           }

@@ -282,8 +282,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       setSelectedFunnelId(activeFunnelId);
     } else if (isPostSale) {
       setSelectedFunnelId('post_sale_default');
+    } else if (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'post_sale_default' && funnels.length > 0) {
+      const exists = funnels.some(f => f.id === selectedFunnelId);
+      if (!exists) {
+        setSelectedFunnelId('all');
+      }
     }
-  }, [activeFunnelId, isPostSale]);
+  }, [activeFunnelId, isPostSale, funnels, selectedFunnelId]);
 
   const handleSelectFunnel = (id: string) => {
     setSelectedFunnelId(id);
@@ -785,7 +790,31 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       ? (filterVenueId !== 'all' ? filterVenueId : globalVenueFilter)
       : ((currentFunnel?.venueId && currentFunnel.venueId !== 'all') ? currentFunnel.venueId : globalVenueFilter);
 
+    const term = (isEmbeddedInFunnel && searchQuery) ? searchQuery : searchTerm;
+    const hasSearch = Boolean(term && term.trim());
+    const cleanSearch = hasSearch ? term.toLowerCase().trim() : '';
+    const cleanDigits = hasSearch ? cleanSearch.replace(/\D/g, '') : '';
+
     const result = sourceLeads.filter(lead => {
+      // 0. Se houver busca explícita digitada pelo usuário, ela tem precedência total na localização do lead:
+      if (hasSearch) {
+        const matchesName = (lead.name || '').toLowerCase().includes(cleanSearch);
+        const leadDigits = (lead.phone || '').replace(/\D/g, '');
+        const matchesPhone = cleanDigits.length >= 4 && (leadDigits.includes(cleanDigits) || (leadDigits.length >= 8 && cleanDigits.includes(leadDigits.slice(-8))));
+        const matchesJid = Boolean(lead.whatsappJid && lead.whatsappJid.toLowerCase().includes(cleanSearch));
+        const lidStr = (lead.whatsappLid || (lead.customFieldValues as any)?.whatsappLid || (lead.customFieldValues as any)?.whatsapp_lid || '');
+        const matchesLid = Boolean(lidStr && (lidStr.toLowerCase().includes(cleanSearch) || (cleanDigits.length >= 4 && lidStr.replace(/\D/g, '').includes(cleanDigits))));
+        const matchesDeb = (lead.debutanteName || '').toLowerCase().includes(cleanSearch);
+        const matchesPayer = ((lead as any).payerName || '').toLowerCase().includes(cleanSearch);
+        const matchesCode = (lead.code || '').toLowerCase().includes(cleanSearch);
+
+        const isMatched = matchesName || matchesPhone || matchesJid || matchesLid || matchesDeb || matchesPayer || matchesCode;
+        if (!isMatched && lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+          return false;
+        }
+        return true;
+      }
+
       // 1. Funnel & Venue Matching
       if (!isPostSaleFunnel) {
         if (currentFunnel && lead.funnelId) {
@@ -852,21 +881,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       // 6. Temperature filter (only for commercial leads)
       if (!isPostSaleFunnel && filterTemperature !== 'all' && lead.temperature !== filterTemperature) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
-      }
-
-      // 7. Search term (Sync with searchQuery if embedded)
-      const term = (isEmbeddedInFunnel && searchQuery) ? searchQuery : searchTerm;
-      if (term.trim()) {
-        const clean = term.toLowerCase();
-        const cleanDigits = clean.replace(/\D/g, '');
-        const matchesName = (lead.name || '').toLowerCase().includes(clean);
-        const matchesPhone = cleanDigits.length > 0 && (lead.phone || '').replace(/\D/g, '').includes(cleanDigits);
-        const matchesJid = Boolean(lead.whatsappJid && lead.whatsappJid.toLowerCase().includes(clean));
-        const matchesLid = Boolean(lead.whatsappLid && (lead.whatsappLid.toLowerCase().includes(clean) || (cleanDigits && lead.whatsappLid.replace(/\D/g, '').includes(cleanDigits))));
-        const matchesDeb = (lead.debutanteName || '').toLowerCase().includes(clean);
-        const matchesPayer = ((lead as any).payerName || '').toLowerCase().includes(clean);
-        const matchesCode = (lead.code || '').toLowerCase().includes(clean);
-        if (!matchesName && !matchesPhone && !matchesJid && !matchesLid && !matchesDeb && !matchesPayer && !matchesCode && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       return true;
