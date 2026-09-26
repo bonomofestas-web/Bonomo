@@ -361,17 +361,24 @@ export const leadService = {
     }
   },
 
-  async getByPhone(phone: string): Promise<Lead | null> {
+  async getByPhone(phone: string, masterId?: string, venueIds?: string[]): Promise<Lead | null> {
     if (!isSupabaseConfigured || !phone) return null;
     try {
       const clean = phone.replace(/\D/g, '');
       if (clean.length < 8) return null;
       const digits = clean.slice(-8);
-      const { data } = await supabase
+      let query = supabase
         .from('leads')
         .select('*')
-        .ilike('phone', `%${digits}%`)
-        .limit(1);
+        .ilike('phone', `%${digits}%`);
+
+      if (masterId) {
+        query = query.eq('master_id', masterId);
+      } else if (venueIds && venueIds.length > 0) {
+        query = query.in('venue_id', venueIds);
+      }
+
+      const { data } = await query.limit(1);
 
       if (!data || data.length === 0) return null;
       return formatLeadFromDb(data[0]);
@@ -400,11 +407,13 @@ export const leadService = {
         if (!error && data && data.length > 0) return true;
       }
 
-      // 3. Tenta por telefone se fornecido
+      // 3. Tenta por telefone se fornecido (restringindo ao master do lead)
       if (updates.phone) {
         const cleanPhone = updates.phone.replace(/\D/g, '');
         if (cleanPhone.length >= 8) {
-          const { data, error } = await supabase.from('leads').update(payload).ilike('phone', `%${cleanPhone.slice(-8)}%`).select('id');
+          let query = supabase.from('leads').update(payload).ilike('phone', `%${cleanPhone.slice(-8)}%`);
+          if (payload.master_id) query = query.eq('master_id', payload.master_id);
+          const { data, error } = await query.select('id');
           if (!error && data && data.length > 0) return true;
         }
       }
@@ -434,15 +443,22 @@ export const leadService = {
         if (!error && data && data.length > 0) return true;
       }
 
-      // 3. Tenta por telefone
+      // 3. Tenta por telefone dentro do mesmo master/empresa
       if (lead.phone) {
         const cleanPhone = lead.phone.replace(/\D/g, '');
         if (cleanPhone.length >= 8) {
-          const { data: existingRecords } = await supabase
+          let checkQuery = supabase
             .from('leads')
-            .select('id, venue_id, funnel_id, stage')
-            .ilike('phone', `%${cleanPhone.slice(-8)}%`)
-            .limit(1);
+            .select('id, venue_id, funnel_id, stage, master_id')
+            .ilike('phone', `%${cleanPhone.slice(-8)}%`);
+
+          if (payload.master_id) {
+            checkQuery = checkQuery.eq('master_id', payload.master_id);
+          } else if (payload.venue_id) {
+            checkQuery = checkQuery.eq('venue_id', payload.venue_id);
+          }
+
+          const { data: existingRecords } = await checkQuery.limit(1);
 
           if (existingRecords && existingRecords.length > 0) {
             const existingRecord = existingRecords[0];
@@ -754,6 +770,11 @@ export const leadService = {
 
       let matchedGroup = groups.find(g => 
         g.some(existing => {
+          // REGRA DE OURO MULTI-TENANT: NUNCA mesclar leads de Masters/Empresas diferentes!
+          if (existing.masterId && lead.masterId && existing.masterId !== lead.masterId) {
+            return false;
+          }
+
           // 1a. Casamento por telefone real
           if (isPhoneMatch(existing.phone, lead.phone)) return true;
           

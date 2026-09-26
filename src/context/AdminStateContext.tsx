@@ -4910,19 +4910,36 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const rawJid = incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || incoming.rawPayload?.chatId || '';
         const rawLid = (isLidIdentifier(incoming.senderPhone) ? incoming.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
 
-        // Procura se o Lead já existe usando a busca robusta em 2 etapas:
-        // 1ª Prioridade (90%+ dos casos): Telefone Real
-        // 2ª Prioridade (Fallback): JID / LID
-        let { matchedLead } = findMatchingLead(currentLeads, {
+        // REGRA DE OURO MULTI-TENANT: Determina a empresa/master proprietária da origem WhatsApp
+        const sourceVenue = currentVenues.find(v => v.id === matchedSource?.venueId);
+        const sourceMasterId = sourceVenue?.masterId || (matchedSource as any)?.masterId || (matchedSource as any)?.master_id || scopedMasterId;
+        const tenantVenues = currentVenues.filter(v => (sourceMasterId && v.masterId === sourceMasterId) || v.id === matchedSource?.venueId);
+        const tenantVenueIds = new Set(tenantVenues.map(v => v.id));
+
+        // Isola estritamente a lista de leads candidatos para a mesma empresa/master da conexão
+        const tenantLeads = currentLeads.filter(l => {
+          if (sourceMasterId && l.masterId && l.masterId !== sourceMasterId) return false;
+          if (tenantVenueIds.size > 0 && l.venueId && !tenantVenueIds.has(l.venueId)) return false;
+          return true;
+        });
+
+        // 1ª Prioridade (90%+ dos casos): Telefone Real dentro do mesmo Tenant
+        // 2ª Prioridade (Fallback): JID / LID dentro do mesmo Tenant
+        let { matchedLead } = findMatchingLead(tenantLeads, {
           phone: cleanPhone,
           jid: rawJid,
           lid: rawLid,
           rawPayload: incoming.rawPayload,
         });
 
-        // Fallback 1: se não achou em currentLeads (ex: estado ainda propagando), tenta no estado react leads
+        // Fallback 1: se não achou em tenantLeads, tenta no estado react leads (filtrado para o tenant)
         if (!matchedLead && leads && leads.length > 0) {
-          const fallback = findMatchingLead(leads, {
+          const tenantReactLeads = leads.filter(l => {
+            if (sourceMasterId && l.masterId && l.masterId !== sourceMasterId) return false;
+            if (tenantVenueIds.size > 0 && l.venueId && !tenantVenueIds.has(l.venueId)) return false;
+            return true;
+          });
+          const fallback = findMatchingLead(tenantReactLeads, {
             phone: cleanPhone,
             jid: rawJid,
             lid: rawLid,
@@ -4931,9 +4948,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (fallback.matchedLead) matchedLead = fallback.matchedLead;
         }
 
-        // Fallback 2: se ainda não achou, consulta o Supabase antes de criar qualquer lead novo!
+        // Fallback 2: se ainda não achou, consulta o Supabase antes de criar qualquer lead novo (com filtro de master/unidade)!
         if (!matchedLead && isSupabaseConfigured && cleanPhone.length >= 8) {
-          const dbLead = await leadService.getByPhone(cleanPhone);
+          const dbLead = await leadService.getByPhone(cleanPhone, sourceMasterId, Array.from(tenantVenueIds));
           if (dbLead) {
             matchedLead = dbLead;
             leadsRef.current = [dbLead, ...leadsRef.current.filter(l => l.id !== dbLead.id)];
@@ -4941,8 +4958,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
 
-        // Procura todos os leads equivalentes para auto-consolidação se houver duplicatas antigas
-        const matchingLeads = currentLeads.filter(l => {
+        // Procura todos os leads equivalentes para auto-consolidação estritamente dentro do mesmo Tenant
+        const matchingLeads = tenantLeads.filter(l => {
           if (cleanPhone && !isLidIdentifier(cleanPhone) && isPhoneMatch(l.phone, cleanPhone)) return true;
           if (rawJidClean && !isLidIdentifier(rawJidClean) && isPhoneMatch(l.phone, rawJidClean)) return true;
           if (rawLid && l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
