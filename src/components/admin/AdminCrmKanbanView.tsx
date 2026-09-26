@@ -4819,6 +4819,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         initialMode={newLeadInitialMode}
         onLeadCreated={(newLeadId) => {
           setActiveLeadIdForWorkspace(newLeadId);
+          setInitialWorkspaceTab('whatsapp');
           setViewMode('workspace');
           setIsNewLeadModalOpen(false);
         }}

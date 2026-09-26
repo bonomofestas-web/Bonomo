@@ -932,12 +932,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const lastInitialLeadIdRef = useRef<string | undefined>(initialLeadId);
 
-  // Sincronização inteligente de seleção: preserva a escolha manual do usuário
+  // Sincronização inteligente de seleção: preserva a escolha manual do usuário e do lead recém-criado
   useEffect(() => {
-    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban), atualiza a seleção
+    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban ou criou novo lead), atualiza a seleção
     if (initialLeadId && initialLeadId !== lastInitialLeadIdRef.current) {
       lastInitialLeadIdRef.current = initialLeadId;
       setSelectedLeadId(initialLeadId);
+      return;
+    }
+
+    // Se temos um initialLeadId ativo e ele está presente em filteredLeads mas não está selecionado, seleciona ele
+    if (initialLeadId && selectedLeadId !== initialLeadId && filteredLeads.some(l => l.id === initialLeadId)) {
+      setSelectedLeadId(initialLeadId);
+      return;
+    }
+
+    // Se temos um initialLeadId e ele é a seleção atual, NUNCA reseta para filteredLeads[0]
+    if (initialLeadId && selectedLeadId === initialLeadId) {
       return;
     }
 
@@ -949,7 +960,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     } else {
       setSelectedLeadId(null);
     }
-  }, [filteredLeads, initialLeadId]);
+  }, [filteredLeads, initialLeadId, selectedLeadId]);
 
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;

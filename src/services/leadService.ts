@@ -210,6 +210,87 @@ export function formatActivityFromDb(a: any): LeadActivity {
   };
 }
 
+export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], leadParticipants: LeadParticipant[] = []): Lead {
+  return {
+    id: row.id,
+    masterId: row.master_id || undefined,
+    code: row.code,
+    funnelId: row.funnel_id,
+    venueId: row.venue_id,
+    venueName: row.venue_name || undefined,
+    sourceId: row.source_id,
+    sourceName: row.source_name,
+    subSource: row.sub_source,
+    source: row.source,
+    debutanteId: row.debutante_id || '',
+    debutanteName: row.debutante_name || 'Indicação Externa',
+    debutanteSlug: row.debutante_slug || '',
+    name: row.name,
+    phone: row.phone,
+    whatsappJid: row.custom_field_values?.whatsappJid || row.whatsapp_jid || undefined,
+    whatsappLid: row.custom_field_values?.whatsappLid || row.whatsapp_lid || undefined,
+    email: row.email,
+    avatarUrl: row.custom_field_values?.avatarUrl || row.avatar_url || row.photo_url || row.avatar || undefined,
+    neighborhood: row.neighborhood || row.custom_field_values?.neighborhood,
+    address: row.address || row.custom_field_values?.address,
+    contacts: row.contacts || [],
+    primaryContactRole: row.primary_contact_role || 'debutante',
+    eventType: row.event_type || row.custom_field_values?.eventType || undefined,
+    eventDate: row.event_date || row.party_date,
+    eventYear: row.event_year || row.custom_field_values?.eventYear || (row.party_date ? new Date(row.party_date).getFullYear().toString() : undefined),
+    debutanteBirthDate: row.debutante_birth_date,
+    estimatedGuests: row.estimated_guests,
+    desiredPeriod: row.desired_period,
+    urgencyLevel: row.urgency_level || row.custom_field_values?.urgencyLevel || undefined,
+    interestService: row.interest_service || row.package_sold,
+    estimatedBudget: row.estimated_budget ? Number(row.estimated_budget) : (row.deal_value ? Number(row.deal_value) : undefined),
+    paymentMethod: row.payment_method || row.custom_field_values?.paymentMethod,
+    downPayment: row.down_payment !== undefined && row.down_payment !== null ? Number(row.down_payment) : (row.custom_field_values?.downPayment !== undefined ? Number(row.custom_field_values.downPayment) : undefined),
+    installments: row.installments !== undefined && row.installments !== null ? Number(row.installments) : (row.custom_field_values?.installments !== undefined ? Number(row.custom_field_values.installments) : undefined),
+    installmentValue: row.installment_value !== undefined && row.installment_value !== null ? Number(row.installment_value) : (row.custom_field_values?.installmentValue !== undefined ? Number(row.custom_field_values.installmentValue) : undefined),
+    hasCreditCard: row.has_credit_card !== undefined && row.has_credit_card !== null ? Boolean(row.has_credit_card) : (row.custom_field_values?.hasCreditCard !== undefined ? Boolean(row.custom_field_values.hasCreditCard) : undefined),
+    profession: row.profession || row.custom_field_values?.profession || undefined,
+    decisionMakers: row.decision_makers || row.custom_field_values?.decisionMakers || undefined,
+    temperature: row.temperature || undefined,
+    tags: row.tags || [],
+    age: row.age || 14,
+    group: row.group || 'Amigos',
+    notes: row.notes || '',
+    stage: row.stage,
+    isValidated: row.is_validated || false,
+    pointsGranted: row.points_granted || 0,
+    rejectionReason: row.rejection_reason,
+    sdrId: row.sdr_id,
+    sdrName: row.sdr_name,
+    closerId: row.closer_id,
+    closerName: row.closer_name,
+    assignedTo: row.assigned_to,
+    dealValue: row.deal_value ? Number(row.deal_value) : 0,
+    packageSold: row.package_sold,
+    contractDate: row.contract_date,
+    partyDate: row.party_date,
+    funnelEnteredAt: row.funnel_entered_at || row.created_at || new Date().toISOString(),
+    mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
+    mqlLevel: row.mql_level || undefined,
+    mqlAnswers: row.mql_answers || undefined,
+    visitCommitment: row.visit_commitment || undefined,
+    tastingCommitment: row.tasting_commitment || undefined,
+    customFieldValues: row.custom_field_values || {},
+    createdBy: row.created_by || undefined,
+    createdByName: row.created_by_name || undefined,
+    createdByAvatar: row.created_by_avatar || undefined,
+    cpf: row.cpf || undefined,
+    birthday: row.birthday || undefined,
+    isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
+    archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
+    participants: leadParticipants,
+    tasks: [],
+    activities: leadActivities,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || new Date().toISOString(),
+  };
+}
+
 export const leadService = {
   async getAll(): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
@@ -272,88 +353,31 @@ export const leadService = {
             timestamp: p.timestamp,
           }));
 
-        return {
-          id: row.id,
-          masterId: row.master_id || undefined,
-          code: row.code,
-          funnelId: row.funnel_id,
-          venueId: row.venue_id,
-          venueName: row.venue_name || undefined,
-          sourceId: row.source_id,
-          sourceName: row.source_name,
-          subSource: row.sub_source,
-          source: row.source,
-          debutanteId: row.debutante_id || '',
-          debutanteName: row.debutante_name || 'Indicação Externa',
-          debutanteSlug: row.debutante_slug || '',
-          name: row.name,
-          phone: row.phone,
-          whatsappJid: row.custom_field_values?.whatsappJid || row.whatsapp_jid || undefined,
-          whatsappLid: row.custom_field_values?.whatsappLid || row.whatsapp_lid || undefined,
-          email: row.email,
-          avatarUrl: row.custom_field_values?.avatarUrl || row.avatar_url || row.photo_url || row.avatar || undefined,
-          neighborhood: row.neighborhood || row.custom_field_values?.neighborhood,
-          address: row.address || row.custom_field_values?.address,
-          contacts: row.contacts || [],
-          primaryContactRole: row.primary_contact_role || 'debutante',
-          eventType: row.event_type || row.custom_field_values?.eventType || undefined,
-          eventDate: row.event_date || row.party_date,
-          eventYear: row.event_year || row.custom_field_values?.eventYear || (row.party_date ? new Date(row.party_date).getFullYear().toString() : undefined),
-          debutanteBirthDate: row.debutante_birth_date,
-          estimatedGuests: row.estimated_guests,
-          desiredPeriod: row.desired_period,
-          urgencyLevel: row.urgency_level || row.custom_field_values?.urgencyLevel || undefined,
-          interestService: row.interest_service || row.package_sold,
-          estimatedBudget: row.estimated_budget ? Number(row.estimated_budget) : (row.deal_value ? Number(row.deal_value) : undefined),
-          paymentMethod: row.payment_method || row.custom_field_values?.paymentMethod,
-          downPayment: row.down_payment !== undefined && row.down_payment !== null ? Number(row.down_payment) : (row.custom_field_values?.downPayment !== undefined ? Number(row.custom_field_values.downPayment) : undefined),
-          installments: row.installments !== undefined && row.installments !== null ? Number(row.installments) : (row.custom_field_values?.installments !== undefined ? Number(row.custom_field_values.installments) : undefined),
-          installmentValue: row.installment_value !== undefined && row.installment_value !== null ? Number(row.installment_value) : (row.custom_field_values?.installmentValue !== undefined ? Number(row.custom_field_values.installmentValue) : undefined),
-          hasCreditCard: row.has_credit_card !== undefined && row.has_credit_card !== null ? Boolean(row.has_credit_card) : (row.custom_field_values?.hasCreditCard !== undefined ? Boolean(row.custom_field_values.hasCreditCard) : undefined),
-          profession: row.profession || row.custom_field_values?.profession || undefined,
-          decisionMakers: row.decision_makers || row.custom_field_values?.decisionMakers || undefined,
-          temperature: row.temperature || undefined,
-          tags: row.tags || [],
-          age: row.age || 14,
-          group: row.group || 'Amigos',
-          notes: row.notes || '',
-          stage: row.stage,
-          isValidated: row.is_validated || false,
-          pointsGranted: row.points_granted || 0,
-          rejectionReason: row.rejection_reason,
-          sdrId: row.sdr_id,
-          sdrName: row.sdr_name,
-          closerId: row.closer_id,
-          closerName: row.closer_name,
-          assignedTo: row.assigned_to,
-          dealValue: row.deal_value ? Number(row.deal_value) : 0,
-          packageSold: row.package_sold,
-          contractDate: row.contract_date,
-          partyDate: row.party_date,
-          funnelEnteredAt: row.funnel_entered_at || row.created_at || new Date().toISOString(),
-          mqlScore: row.mql_score !== null && row.mql_score !== undefined ? Number(row.mql_score) : undefined,
-          mqlLevel: row.mql_level || undefined,
-          mqlAnswers: row.mql_answers || undefined,
-          visitCommitment: row.visit_commitment || undefined,
-          tastingCommitment: row.tasting_commitment || undefined,
-          customFieldValues: row.custom_field_values || {},
-          createdBy: row.created_by || undefined,
-          createdByName: row.created_by_name || undefined,
-          createdByAvatar: row.created_by_avatar || undefined,
-          cpf: row.cpf || undefined,
-          birthday: row.birthday || undefined,
-          isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
-          archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
-          participants: leadParticipants,
-          tasks: [],
-          activities: leadActivities,
-          createdAt: row.created_at || new Date().toISOString(),
-          updatedAt: row.updated_at || new Date().toISOString(),
-        };
+        return formatLeadFromDb(row, leadActivities, leadParticipants);
       });
     } catch (err) {
       console.error('Falha em leadService.getAll:', err);
       return [];
+    }
+  },
+
+  async getByPhone(phone: string): Promise<Lead | null> {
+    if (!isSupabaseConfigured || !phone) return null;
+    try {
+      const clean = phone.replace(/\D/g, '');
+      if (clean.length < 8) return null;
+      const digits = clean.slice(-8);
+      const { data } = await supabase
+        .from('leads')
+        .select('*')
+        .ilike('phone', `%${digits}%`)
+        .limit(1);
+
+      if (!data || data.length === 0) return null;
+      return formatLeadFromDb(data[0]);
+    } catch (err) {
+      console.warn('Erro ao buscar lead por telefone no Supabase:', err);
+      return null;
     }
   },
 
@@ -414,8 +438,31 @@ export const leadService = {
       if (lead.phone) {
         const cleanPhone = lead.phone.replace(/\D/g, '');
         if (cleanPhone.length >= 8) {
-          const { data, error } = await supabase.from('leads').update(payload).ilike('phone', `%${cleanPhone.slice(-8)}%`).select('id');
-          if (!error && data && data.length > 0) return true;
+          const { data: existingRecords } = await supabase
+            .from('leads')
+            .select('id, venue_id, funnel_id, stage')
+            .ilike('phone', `%${cleanPhone.slice(-8)}%`)
+            .limit(1);
+
+          if (existingRecords && existingRecords.length > 0) {
+            const existingRecord = existingRecords[0];
+            const safePayload = { ...payload };
+            // Preserva estritamente funil, unidade e etapa para mensagens recebidas não sobrescreverem nem desindexarem leads
+            if (existingRecord.funnel_id && (!lead.funnelId || !payload.funnel_id)) {
+              safePayload.funnel_id = existingRecord.funnel_id;
+            }
+            if (existingRecord.venue_id && (!lead.venueId || !payload.venue_id)) {
+              safePayload.venue_id = existingRecord.venue_id;
+            }
+            if (existingRecord.stage && (!lead.stage || !payload.stage)) {
+              safePayload.stage = existingRecord.stage;
+            }
+            const { error: updErr } = await supabase
+              .from('leads')
+              .update(safePayload)
+              .eq('id', existingRecord.id);
+            if (!updErr) return true;
+          }
         }
       }
 
@@ -1064,21 +1111,22 @@ export function findMatchingLead(
 
   // ── ETAPA 1 (Prioridade Absoluta - 90%+ das vezes): Telefone Real ──────────────────
   if (cleanPhone && !isLidIdentifier(cleanPhone) && cleanPhone.length >= 8 && cleanPhone.length <= 13) {
-    const matched = leads.find(l => {
-      if (l.phone && !isLidIdentifier(l.phone) && isPhoneMatch(l.phone, cleanPhone)) return true;
-      if (l.contacts && l.contacts.some(c => c.phone && !isLidIdentifier(c.phone) && isPhoneMatch(c.phone, cleanPhone))) return true;
-      return false;
-    });
-    if (matched) return { matchedLead: matched, matchType: 'phone' };
+    // 1a. Prioridade máxima: Telefone principal do Lead (l.phone)
+    const directMatch = leads.find(l => l.phone && !isLidIdentifier(l.phone) && isPhoneMatch(l.phone, cleanPhone));
+    if (directMatch) return { matchedLead: directMatch, matchType: 'phone' };
+
+    // 1b. Prioridade secundária: Telefone de Contatos Adicionais (apenas se nenhum lead tiver como telefone principal)
+    const contactMatch = leads.find(l => l.contacts && l.contacts.some(c => c.phone && !isLidIdentifier(c.phone) && isPhoneMatch(c.phone, cleanPhone)));
+    if (contactMatch) return { matchedLead: contactMatch, matchType: 'phone' };
   }
 
   // Se rawJidClean for telefone real
   if (rawJidClean && !isLidIdentifier(rawJidClean) && rawJidClean.length >= 8 && rawJidClean.length <= 13) {
-    const matched = leads.find(l => {
-      if (l.phone && !isLidIdentifier(l.phone) && isPhoneMatch(l.phone, rawJidClean)) return true;
-      return false;
-    });
-    if (matched) return { matchedLead: matched, matchType: 'phone' };
+    const directMatch = leads.find(l => l.phone && !isLidIdentifier(l.phone) && isPhoneMatch(l.phone, rawJidClean));
+    if (directMatch) return { matchedLead: directMatch, matchType: 'phone' };
+
+    const contactMatch = leads.find(l => l.contacts && l.contacts.some(c => c.phone && !isLidIdentifier(c.phone) && isPhoneMatch(c.phone, rawJidClean)));
+    if (contactMatch) return { matchedLead: contactMatch, matchType: 'phone' };
   }
 
   // ── ETAPA 2: JID / LID (Fallback secundário) ─────────────────────

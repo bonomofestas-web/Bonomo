@@ -4913,12 +4913,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Procura se o Lead já existe usando a busca robusta em 2 etapas:
         // 1ª Prioridade (90%+ dos casos): Telefone Real
         // 2ª Prioridade (Fallback): JID / LID
-        const { matchedLead } = findMatchingLead(currentLeads, {
+        let { matchedLead } = findMatchingLead(currentLeads, {
           phone: cleanPhone,
           jid: rawJid,
           lid: rawLid,
           rawPayload: incoming.rawPayload,
         });
+
+        // Fallback 1: se não achou em currentLeads (ex: estado ainda propagando), tenta no estado react leads
+        if (!matchedLead && leads && leads.length > 0) {
+          const fallback = findMatchingLead(leads, {
+            phone: cleanPhone,
+            jid: rawJid,
+            lid: rawLid,
+            rawPayload: incoming.rawPayload,
+          });
+          if (fallback.matchedLead) matchedLead = fallback.matchedLead;
+        }
+
+        // Fallback 2: se ainda não achou, consulta o Supabase antes de criar qualquer lead novo!
+        if (!matchedLead && isSupabaseConfigured && cleanPhone.length >= 8) {
+          const dbLead = await leadService.getByPhone(cleanPhone);
+          if (dbLead) {
+            matchedLead = dbLead;
+            leadsRef.current = [dbLead, ...leadsRef.current.filter(l => l.id !== dbLead.id)];
+            setLeads(prev => [dbLead, ...prev.filter(l => l.id !== dbLead.id)]);
+          }
+        }
 
         // Procura todos os leads equivalentes para auto-consolidação se houver duplicatas antigas
         const matchingLeads = currentLeads.filter(l => {
@@ -4932,7 +4953,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         let existingLead: Lead | null = matchedLead;
         if (matchingLeads.length > 1) {
           const { consolidatedLeads } = await leadService.consolidateDuplicatesInDatabase(matchingLeads);
-          existingLead = consolidatedLeads[0] || matchingLeads[0];
+          existingLead = consolidatedLeads[0] || matchedLead || matchingLeads[0];
           const deletedIds = matchingLeads.filter(m => m.id !== existingLead!.id).map(m => m.id);
           setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
         } else if (matchingLeads.length === 1 && !existingLead) {
@@ -5502,6 +5523,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
       return next;
     });
+    // Sincroniza o ref imediatamente para o listener de mensagens (SSE / Webhooks) encontrar o lead sem lag
+    leadsRef.current = [newLead, ...leadsRef.current.filter(l => l.id !== newLeadId)];
 
     if (isSupabaseConfigured) {
       await leadService.upsert(newLead);
