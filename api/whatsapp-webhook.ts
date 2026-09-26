@@ -489,18 +489,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const waMessageId = msg.key?.id || msg.id;
 
-          // DEDUPLICAÇÃO: Checa se uma mensagem com texto idêntico foi gravada nos últimos 30 segundos
-          if (storedText) {
-            const thirtySecsAgo = new Date(Date.now() - 30000).toISOString();
-            const { data: recentIdentical } = await supabase
+          // DEDUPLICAÇÃO: Checa se áudio ou mensagem idêntica foi gravada nos últimos segundos
+          if (isAudio) {
+            const fortyFiveSecsAgo = new Date(Date.now() - 45000).toISOString();
+            const { data: recentAudio } = await supabase
               .from('lead_activities')
               .select('id')
               .eq('lead_id', existingLead.id)
-              .eq('text', storedText)
-              .gte('timestamp', thirtySecsAgo)
+              .gte('timestamp', fortyFiveSecsAgo)
+              .ilike('text', '%🎵%')
               .limit(1);
 
-            if (recentIdentical && recentIdentical.length > 0) {
+            if (recentAudio && recentAudio.length > 0) {
+              console.log(`[Webhook] Áudio recente já registrado no lead ${existingLead.id}, ignorando duplicata.`);
+              continue;
+            }
+          } else if (storedText) {
+            const thirtySecsAgo = new Date(Date.now() - 30000).toISOString();
+            const cleanTextForCheck = text.trim();
+            const { data: recentIdentical } = await supabase
+              .from('lead_activities')
+              .select('id, text')
+              .eq('lead_id', existingLead.id)
+              .gte('timestamp', thirtySecsAgo)
+              .limit(5);
+
+            const isDuplicate = recentIdentical?.some(r => {
+              if (r.text === storedText) return true;
+              if (cleanTextForCheck && r.text?.includes(cleanTextForCheck)) return true;
+              return false;
+            });
+
+            if (isDuplicate) {
               console.log(`[Webhook] Mensagem idêntica recente ignorada no lead ${existingLead.id}: "${storedText.slice(0, 30)}..."`);
               continue;
             }

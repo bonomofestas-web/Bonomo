@@ -1069,7 +1069,9 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
   for (const act of allActs) {
     const isDuplicate = uniqueActs.some(existing => {
       if (existing.id && act.id && existing.id === act.id) return true;
-      if (existing.type === act.type && existing.text === act.text) {
+      const isBothAudio = (existing.mediaType === 'audio' || existing.text?.includes('🎵') || existing.title?.toLowerCase().includes('voz')) &&
+                          (act.mediaType === 'audio' || act.text?.includes('🎵') || act.title?.toLowerCase().includes('voz'));
+      if (existing.type === act.type && (existing.text === act.text || isBothAudio)) {
         const t1 = new Date(existing.timestamp || 0).getTime();
         const t2 = new Date(act.timestamp || 0).getTime();
         if (Math.abs(t1 - t2) < 90000) return true;

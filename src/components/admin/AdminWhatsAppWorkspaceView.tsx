@@ -6,7 +6,7 @@ import {
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
-  ExternalLink, ShieldCheck, Sparkles, ShoppingBag
+  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -226,6 +226,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     currentUser, 
     activeVenueId, 
     updateLeadData, 
+    updateLeadActivity,
     addLeadNote,
     addClientNote,
     updateLeadStage,
@@ -2017,12 +2018,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       whatsappMediaService.uploadOutboundMedia(file, activeSenderToken || 'default')
         .then(({ publicUrl }) => {
           if (publicUrl) {
-            updateLeadData(selectedLead.id, {
-              activities: (selectedLead.activities || []).map(a => a.id === activityId ? { ...a, mediaUrl: publicUrl } : a),
-            });
-            if (isSupabaseConfigured) {
-              leadService.updateActivity(activityId, { mediaUrl: publicUrl, mediaType: fileCategory, text: newActivity.text }).catch(() => {});
-            }
+            updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl });
           }
         })
         .catch(err => console.warn('Erro ao salvar mídia enviada no R2:', err));
@@ -2250,12 +2246,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         whatsappMediaService.uploadOutboundMedia(audioBlob, activeSenderToken || 'default')
           .then(({ publicUrl }) => {
             if (publicUrl) {
-              updateLeadData(selectedLead.id, {
-                activities: (selectedLead.activities || []).map(a => a.id === activityId ? { ...a, mediaUrl: publicUrl } : a),
-              });
-              if (isSupabaseConfigured) {
-                leadService.updateActivity(activityId, { mediaUrl: publicUrl, mediaType: 'audio', text: newActivity.text }).catch(() => {});
-              }
+              updateLeadActivity(selectedLead.id, activityId, { mediaUrl: publicUrl });
             }
           })
           .catch(err => console.warn('Erro ao enviar áudio para R2:', err));
@@ -2912,36 +2903,78 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 .reverse()
                 .find(a => a.type === 'contact' && (a.text || a.mediaUrl));
               const rawMessageText = lastMessageActivity?.text || '';
+              // Limpa tags internas como [media:...] ou [failed:...]
+              let cleanedText = rawMessageText
+                .replace(/^\[media:[^\]]+\]\s*/i, '')
+                .replace(/^\[failed:[^\]]+\]\s*/i, '')
+                .trim();
+
               const isAudioMsg = (
-                rawMessageText.toLowerCase().includes('[áudio]') || 
-                rawMessageText.toLowerCase().includes('[audio]') || 
-                rawMessageText.startsWith('data:audio') || 
-                rawMessageText.includes('.mp3') || 
-                rawMessageText.includes('.ogg') ||
-                rawMessageText.startsWith('{"URL"') ||
-                rawMessageText.includes('mmg.whatsapp.net') ||
-                lastMessageActivity?.mediaType === 'audio'
-              );
-              const isImageMsg = (
-                rawMessageText.toLowerCase().includes('[imagem]') || 
-                rawMessageText.toLowerCase().includes('[foto]') || 
-                rawMessageText.startsWith('data:image') ||
-                lastMessageActivity?.mediaType === 'image'
-              );
-              const isDocMsg = (
-                rawMessageText.toLowerCase().includes('[documento]') || 
-                rawMessageText.toLowerCase().includes('[arquivo]') || 
-                rawMessageText.toLowerCase().includes('.pdf') ||
-                lastMessageActivity?.mediaType === 'document'
+                lastMessageActivity?.mediaType === 'audio' ||
+                cleanedText.toLowerCase().includes('[áudio]') || 
+                cleanedText.toLowerCase().includes('[audio]') || 
+                cleanedText.includes('🎵') ||
+                cleanedText.startsWith('data:audio') || 
+                cleanedText.includes('.mp3') || 
+                cleanedText.includes('.ogg') ||
+                cleanedText.startsWith('{"URL"') ||
+                cleanedText.includes('mmg.whatsapp.net') ||
+                lastMessageActivity?.title?.toLowerCase().includes('voz') ||
+                lastMessageActivity?.title?.toLowerCase().includes('áudio')
               );
 
-              const cleanPreviewText = isAudioMsg 
-                ? 'Mensagem de voz' 
-                : isImageMsg 
-                ? (rawMessageText.replace(/\[(imagem|foto)\]/gi, '').trim() || 'Foto')
-                : isDocMsg
-                ? (rawMessageText.replace(/\[(documento|arquivo)\]/gi, '').trim() || 'Documento')
-                : (rawMessageText || 'Nenhuma mensagem recente');
+              const isImageMsg = (
+                !isAudioMsg && (
+                  lastMessageActivity?.mediaType === 'image' ||
+                  cleanedText.toLowerCase().includes('[imagem]') || 
+                  cleanedText.toLowerCase().includes('[foto]') || 
+                  cleanedText.includes('📷') ||
+                  cleanedText.startsWith('data:image') ||
+                  /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(cleanedText)
+                )
+              );
+
+              const isVideoMsg = (
+                !isAudioMsg && !isImageMsg && (
+                  lastMessageActivity?.mediaType === 'video' ||
+                  cleanedText.toLowerCase().includes('[vídeo]') || 
+                  cleanedText.toLowerCase().includes('[video]') || 
+                  cleanedText.includes('🎥') ||
+                  cleanedText.includes('🎬') ||
+                  cleanedText.startsWith('data:video') ||
+                  /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(cleanedText)
+                )
+              );
+
+              const isDocMsg = (
+                !isAudioMsg && !isImageMsg && !isVideoMsg && (
+                  lastMessageActivity?.mediaType === 'document' ||
+                  cleanedText.toLowerCase().includes('[documento]') || 
+                  cleanedText.toLowerCase().includes('[arquivo]') || 
+                  cleanedText.includes('📄') ||
+                  /\.(pdf|docx?|xlsx?|pptx?|txt|zip)(\?.*)?$/i.test(cleanedText)
+                )
+              );
+
+              // Extrai tempo/duração do áudio se disponível (ex: "(0:15)" ou "(1:20)")
+              const durationMatch = cleanedText.match(/\((\d+:\d{2})\)/) || lastMessageActivity?.title?.match(/\((\d+:\d{2})\)/);
+              const audioDuration = durationMatch ? durationMatch[1] : null;
+
+              let cleanPreviewText = '';
+              if (isAudioMsg) {
+                cleanPreviewText = audioDuration ? `Áudio (${audioDuration})` : 'Áudio';
+              } else if (isImageMsg) {
+                const caption = cleanedText.replace(/\[(imagem|foto)\]/gi, '').replace(/📷/g, '').trim();
+                cleanPreviewText = (caption && caption !== 'Foto') ? `Foto: ${caption}` : 'Foto';
+              } else if (isVideoMsg) {
+                const caption = cleanedText.replace(/\[(vídeo|video)\]/gi, '').replace(/[🎥🎬]/g, '').trim();
+                cleanPreviewText = (caption && caption !== 'Vídeo') ? `Vídeo: ${caption}` : 'Vídeo';
+              } else if (isDocMsg) {
+                const docName = cleanedText.replace(/\[(documento|arquivo)\]/gi, '').replace(/📄\s*(Documento:?)?/g, '').trim();
+                cleanPreviewText = docName ? `Documento: ${docName}` : 'Documento';
+              } else {
+                cleanPreviewText = cleanedText || 'Nenhuma mensagem recente';
+              }
 
               const lastTime = lastMessageActivity?.timestamp || lead.updatedAt;
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
@@ -3349,6 +3382,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <Mic size={11} color="#10B981" style={{ flexShrink: 0 }} />
                       ) : isImageMsg ? (
                         <ImageIcon size={11} color="#3B82F6" style={{ flexShrink: 0 }} />
+                      ) : isVideoMsg ? (
+                        <Video size={11} color="#EC4899" style={{ flexShrink: 0 }} />
                       ) : isDocMsg ? (
                         <FileText size={11} color="#8B5CF6" style={{ flexShrink: 0 }} />
                       ) : null}

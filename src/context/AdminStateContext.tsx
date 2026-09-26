@@ -378,6 +378,7 @@ export interface AdminContextType {
     }
   ) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
+  updateLeadActivity: (leadId: string, activityId: string, updates: Partial<LeadActivity>) => void;
   assignLead: (leadId: string, assigneeName: string) => void;
   claimLeadIfUnassigned: (leadId: string, claimantName?: string) => void;
 
@@ -1494,12 +1495,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
               if (eventType === 'INSERT' && newRow) {
                 const formatted = formatActivityFromDb(newRow);
-                const exists = currentActs.some(a => a.id === formatted.id || (
-                  a.text === formatted.text && 
-                  Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 5000
-                ));
+                const isMatchingAct = (a: LeadActivity) => {
+                  if (a.id === formatted.id) return true;
+                  const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
+                                       (a.mediaType === 'audio' || a.text?.includes('🎵'));
+                  if ((a.text === formatted.text || actBothAudio) &&
+                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 60000) {
+                    return true;
+                  }
+                  return false;
+                };
+
+                const exists = currentActs.some(isMatchingAct);
                 const acts = exists
-                  ? currentActs.map(a => (a.id === formatted.id || (a.text === formatted.text && Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 5000)) ? formatted : a)
+                  ? currentActs.map(a => {
+                      if (!isMatchingAct(a)) return a;
+                      return {
+                        ...formatted,
+                        mediaUrl: formatted.mediaUrl || a.mediaUrl,
+                        mediaType: formatted.mediaType || a.mediaType,
+                        text: (a.text && a.text.includes('(')) ? a.text : formatted.text,
+                      };
+                    })
                   : [...currentActs, formatted];
                 return {
                   ...lead,
@@ -6587,7 +6604,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setLeads(prev => {
       const updated = prev.map(lead => {
         if (lead.id !== leadId) return lead;
-        const currentActivities = data.activities ? data.activities : (lead.activities || []);
+        let currentActivities: LeadActivity[];
+        if (data.activities) {
+          // Garante que atividades recém-adicionadas (últimos 120s) não sejam perdidas se data.activities vier de uma closure desatualizada
+          const incomingIds = new Set(data.activities.map(a => a.id));
+          const twoMinutesAgo = Date.now() - 120000;
+          const preservedRecent = (lead.activities || []).filter(a => {
+            if (incomingIds.has(a.id)) return false;
+            const actTime = new Date(a.timestamp || 0).getTime();
+            return actTime >= twoMinutesAgo;
+          });
+          currentActivities = preservedRecent.length > 0 
+            ? [...data.activities, ...preservedRecent].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
+            : data.activities;
+        } else {
+          currentActivities = lead.activities || [];
+        }
+
         const finalActivities = newAuditActivities.length > 0 
           ? [...currentActivities, ...newAuditActivities] 
           : currentActivities;
@@ -6613,6 +6646,28 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           leadService.addActivity(leadId, act).catch(err => console.error('Erro ao salvar auditoria de lead no Supabase:', err));
         });
       }
+    }
+  };
+
+  const updateLeadActivity = (leadId: string, activityId: string, updates: Partial<LeadActivity>) => {
+    setLeads(prev => {
+      const updated = prev.map(lead => {
+        if (lead.id !== leadId) return lead;
+        const currentActivities = lead.activities || [];
+        const updatedActs = currentActivities.map(a => a.id === activityId ? { ...a, ...updates } : a);
+        return {
+          ...lead,
+          activities: updatedActs,
+        };
+      });
+      leadsRef.current = updated;
+      return updated;
+    });
+
+    if (isSupabaseConfigured) {
+      leadService.updateActivity(activityId, updates).catch(err => {
+        console.warn('Erro ao atualizar atividade no Supabase:', err);
+      });
     }
   };
 
@@ -7854,6 +7909,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       closeLeadSale,
       closeLeadSaleWithValue,
       updateLeadData,
+      updateLeadActivity,
       assignLead,
       claimLeadIfUnassigned,
       assignLeadSdr,
