@@ -52,6 +52,31 @@ import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, ClientUpsellSale, ClientDocument } from '../../types/admin';
 
+export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffTime = today.getTime() - target.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return 'HOJE';
+  }
+  if (diffDays === 1) {
+    return 'ONTEM';
+  }
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 interface AdminWhatsAppWorkspaceViewProps {
   initialLeadId?: string;
   activeFunnelId?: string;
@@ -3953,7 +3978,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const prevTime = prevAct?.timestamp ? new Date(prevAct.timestamp).getTime() : 0;
                       const nextTime = nextAct?.timestamp ? new Date(nextAct.timestamp).getTime() : 0;
 
+                      // Checagem de mudança de data estilo WhatsApp
+                      const isDifferentDayFromPrev = (() => {
+                        if (idx === 0) return true;
+                        if (!prevAct || !prevAct.timestamp || !act.timestamp) return false;
+                        const d1 = new Date(prevAct.timestamp);
+                        const d2 = new Date(act.timestamp);
+                        return d1.getFullYear() !== d2.getFullYear() ||
+                               d1.getMonth() !== d2.getMonth() ||
+                               d1.getDate() !== d2.getDate();
+                      })();
+
+                      const dateDividerText = isDifferentDayFromPrev && act.timestamp ? formatWhatsAppDateDivider(act.timestamp) : '';
+
                       const isSameAsPrev = Boolean(
+                        !isDifferentDayFromPrev &&
                         !isBot && prevAct && !checkIsBot(prevAct) &&
                         checkIsIncoming(prevAct) === isIncoming &&
                         Math.abs(actTime - prevTime) < 120000
@@ -3967,6 +4006,47 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                       const formattedTime = act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
+                      const renderDateDivider = () => {
+                        if (!isDifferentDayFromPrev || !dateDividerText) return null;
+                        return (
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '100%',
+                              margin: idx === 0 ? '6px 0 14px 0' : '20px 0 14px 0',
+                              position: 'relative',
+                              userSelect: 'none',
+                              zIndex: 2,
+                            }}
+                          >
+                            <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
+                            <div
+                              style={{
+                                margin: '0 12px',
+                                background: isDarkMode ? '#182229' : '#ffffff',
+                                color: isDarkMode ? '#8696a0' : '#54656f',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.04em',
+                                padding: '4px 14px',
+                                borderRadius: '8px',
+                                boxShadow: isDarkMode ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(11,20,26,0.12)',
+                                border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              <span>{dateDividerText}</span>
+                            </div>
+                            <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
+                          </div>
+                        );
+                      };
+
                       const isSessionEnd = Boolean(
                         (act as any).metadata?.isSessionEnd ||
                         act.title?.toLowerCase().includes('conversa encerrada') ||
@@ -3975,45 +4055,51 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                       if (isSessionEnd) {
                         return (
-                          <div key={act.id} style={{ 
-                            width: '100%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            gap: '12px',
-                            margin: '16px 0 12px 0',
-                          }}>
-                            <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
-                            <div style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '6px 16px',
-                              borderRadius: '999px',
-                              background: isDarkMode ? 'rgba(16, 185, 129, 0.12)' : '#ecfdf5',
-                              border: isDarkMode ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid #a7f3d0',
-                              color: isDarkMode ? '#34d399' : '#047857',
-                              fontSize: '0.74rem',
-                              fontWeight: 600,
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                          <React.Fragment key={act.id}>
+                            {renderDateDivider()}
+                            <div style={{ 
+                              width: '100%', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              gap: '12px',
+                              margin: '16px 0 12px 0',
                             }}>
-                              <CheckCheck size={14} style={{ flexShrink: 0 }} />
-                              <span>Conversa encerrada por <strong>{act.authorName || (act as any).metadata?.closedByName || 'Equipe'}</strong></span>
-                              {formattedTime && <span style={{ opacity: 0.7, fontSize: '0.68rem', marginLeft: '4px' }}>• {formattedTime}</span>}
+                              <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 16px',
+                                borderRadius: '999px',
+                                background: isDarkMode ? 'rgba(16, 185, 129, 0.12)' : '#ecfdf5',
+                                border: isDarkMode ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid #a7f3d0',
+                                color: isDarkMode ? '#34d399' : '#047857',
+                                fontSize: '0.74rem',
+                                fontWeight: 600,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                              }}>
+                                <CheckCheck size={14} style={{ flexShrink: 0 }} />
+                                <span>Conversa encerrada por <strong>{act.authorName || (act as any).metadata?.closedByName || 'Equipe'}</strong></span>
+                                {formattedTime && <span style={{ opacity: 0.7, fontSize: '0.68rem', marginLeft: '4px' }}>• {formattedTime}</span>}
+                              </div>
+                              <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
                             </div>
-                            <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
-                          </div>
+                          </React.Fragment>
                         );
                       }
 
                       if (isBot) {
                         return (
-                          <div key={act.id} style={{ alignSelf: 'center', maxWidth: '85%', margin: '6px 0', display: 'flex', alignItems: 'center', gap: '8px', background: isDarkMode ? 'rgba(212, 175, 55, 0.08)' : 'rgba(212, 175, 55, 0.15)', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '12px', padding: '8px 14px' }}>
-                            <img src="/logo_f5.png" alt="F5" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
-                            <div style={{ fontSize: '0.74rem', color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
-                              <strong style={{ color: isDarkMode ? 'var(--adm-accent)' : '#b45309' }}>{act.title || 'Automação F5 System'}:</strong> {act.text}
+                          <React.Fragment key={act.id}>
+                            {renderDateDivider()}
+                            <div style={{ alignSelf: 'center', maxWidth: '85%', margin: '6px 0', display: 'flex', alignItems: 'center', gap: '8px', background: isDarkMode ? 'rgba(212, 175, 55, 0.08)' : 'rgba(212, 175, 55, 0.15)', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '12px', padding: '8px 14px' }}>
+                              <img src="/logo_f5.png" alt="F5" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                              <div style={{ fontSize: '0.74rem', color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
+                                <strong style={{ color: isDarkMode ? 'var(--adm-accent)' : '#b45309' }}>{act.title || 'Automação F5 System'}:</strong> {act.text}
+                              </div>
                             </div>
-                          </div>
+                          </React.Fragment>
                         );
                       }
 
@@ -4065,9 +4151,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       if (isIncoming) {
                         // Balão à Esquerda (Lead / Cliente)
                         return (
-                          <div
-                            key={act.id}
-                            style={{
+                          <React.Fragment key={act.id}>
+                            {renderDateDivider()}
+                            <div
+                              style={{
                               alignSelf: 'flex-start',
                               maxWidth: '75%',
                               display: 'flex',
@@ -4289,23 +4376,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </div>
                             )}
                           </div>
-                        );
-                      }
+                        </React.Fragment>
+                      );
+                    }
 
-                      // Balão à Direita (Usuário Logado no F5 ou WhatsApp Celular/Web Oficial)
-                      const isExternalWa = act.authorName === 'WhatsApp App / Web' || 
-                                           act.authorId === 'whatsapp_mobile' || 
-                                           act.authorAvatarUrl === 'whatsapp_brand' ||
-                                           act.title?.toLowerCase().includes('celular') ||
-                                           act.title?.toLowerCase().includes('web');
+                    // Balão à Direita (Usuário Logado no F5 ou WhatsApp Celular/Web Oficial)
+                    const isExternalWa = act.authorName === 'WhatsApp App / Web' || 
+                                         act.authorId === 'whatsapp_mobile' || 
+                                         act.authorAvatarUrl === 'whatsapp_brand' ||
+                                         act.title?.toLowerCase().includes('celular') ||
+                                         act.title?.toLowerCase().includes('web');
 
-                      const authorAvatar = isExternalWa ? undefined : (act.authorAvatarUrl || currentUser?.avatarUrl);
-                      const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
-                      const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
+                    const authorAvatar = isExternalWa ? undefined : (act.authorAvatarUrl || currentUser?.avatarUrl);
+                    const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
+                    const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
 
-                      return (
+                    return (
+                      <React.Fragment key={act.id}>
+                        {renderDateDivider()}
                         <div
-                          key={act.id}
                           style={{
                             alignSelf: 'flex-end',
                             maxWidth: '75%',
@@ -4660,7 +4749,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             <div style={{ width: '30px', flexShrink: 0 }} />
                           )}
                         </div>
-                      );
+                      </React.Fragment>
+                    );
                     })
                   )}
 
