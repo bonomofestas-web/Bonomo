@@ -4808,6 +4808,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (isSupabaseConfigured) {
       await leadService.upsert(newLead);
+      if (activities && activities.length > 0) {
+        for (const act of activities) {
+          await leadService.addActivity(newLeadId, act).catch(() => {});
+        }
+      }
       if (waSource?.id) {
         await sourceService.recordEvent(waSource.id, data.venueId, 'lead_created', newLeadId, {
           sourceName: waSource.name,

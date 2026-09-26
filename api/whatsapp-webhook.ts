@@ -528,9 +528,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           await supabase.from('leads').insert([newLead]);
 
-          let creationStoredText = isFromMe ? `Mensagem: "${text.trim()}"` : `Primeira mensagem: "${text.trim()}"`;
-          if (mediaUrl) {
-            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`;
+          let creationStoredText = text.trim();
+          if (mediaUrl && !creationStoredText.startsWith('[media:')) {
+            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`.trim();
           }
 
           const waMessageId = msg.key?.id || msg.id;

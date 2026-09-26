@@ -312,7 +312,11 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               const isSelected = lead.id === selectedLeadId;
               const sdr = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
               const sdrAvatar = sdr?.avatarUrl;
-              const lastActivity = lead.activities?.[0];
+              const lastMessageActivity = (lead.activities || [])
+                .slice()
+                .reverse()
+                .find(a => a.type === 'contact' && (a.text || a.mediaUrl));
+              const lastActivity = lastMessageActivity || lead.activities?.[lead.activities.length - 1];
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
               const sla = getLeadWaitTimeSla(pendingWaitMs);
               const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
@@ -480,7 +484,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                     whiteSpace: 'nowrap',
                     opacity: 0.8,
                   }}>
-                    {lastActivity ? lastActivity.title : (lead.notes || 'Aguardando primeiro contato...')}
+                    {lastMessageActivity?.text || lastActivity?.text || lastActivity?.title || (lead.notes || 'Aguardando primeiro contato...')}
                   </div>
                 </div>
               );
