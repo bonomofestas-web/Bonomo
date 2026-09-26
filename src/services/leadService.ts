@@ -82,6 +82,9 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
 
   if (lead.isArchived !== undefined) payload.is_archived = lead.isArchived;
   if (lead.archivedAt !== undefined) payload.archived_at = lead.archivedAt;
+  if (lead.unreadCount !== undefined) payload.unread_count = lead.unreadCount;
+  if (lead.lastInteractionAt !== undefined) payload.last_interaction_at = lead.lastInteractionAt;
+  if (lead.lastMessageDirection !== undefined) payload.last_message_direction = lead.lastMessageDirection;
 
   // Preserva dualmente em custom_field_values para compatibilidade total
   payload.custom_field_values = {
@@ -283,6 +286,9 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     birthday: row.birthday || undefined,
     isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
     archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
+    unreadCount: row.unread_count !== undefined && row.unread_count !== null ? Number(row.unread_count) : 0,
+    lastInteractionAt: row.last_interaction_at || undefined,
+    lastMessageDirection: row.last_message_direction || undefined,
     participants: leadParticipants,
     tasks: [],
     activities: leadActivities,

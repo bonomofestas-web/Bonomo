@@ -1396,8 +1396,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const updated = await leadService.getAll();
           if (isMounted) {
             const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
-            setLeads(filtered);
-            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(filtered));
+            const merged = filtered.map(freshLead => {
+              const currentLead = leadsRef.current.find(l => l.id === freshLead.id);
+              if (!currentLead || !currentLead.activities || currentLead.activities.length === 0) {
+                return freshLead;
+              }
+              if (!freshLead.activities || freshLead.activities.length === 0) {
+                return { ...freshLead, activities: currentLead.activities };
+              }
+              const freshIds = new Set(freshLead.activities.map(a => a.id));
+              const missingActs = currentLead.activities.filter(a => !freshIds.has(a.id));
+              if (missingActs.length > 0) {
+                return {
+                  ...freshLead,
+                  activities: [...freshLead.activities, ...missingActs].sort(
+                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  ),
+                };
+              }
+              return freshLead;
+            });
+            leadsRef.current = merged;
+            setLeads(merged);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(merged));
           }
         });
       })
@@ -4701,8 +4722,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     ];
 
-    if (data.firstMessage || data.mediaUrl) {
-      const isAudio = data.mediaType === 'audio' || data.firstMessage?.includes('🎵') || data.firstMessage?.toLowerCase().includes('voz');
+    const effectiveMsgText = data.firstMessage?.trim() || (data.mediaUrl ? (data.mediaType === 'audio' ? '🎵 Mensagem de voz' : data.mediaType === 'image' ? '📷 Foto' : data.mediaType === 'video' ? '🎥 Vídeo' : '📄 Mídia') : '');
+
+    if (effectiveMsgText || data.firstMessage || data.mediaUrl) {
+      const isAudio = data.mediaType === 'audio' || (typeof effectiveMsgText === 'string' && effectiveMsgText.includes('🎵')) || (typeof data.firstMessage === 'string' && data.firstMessage.toLowerCase().includes('voz'));
       activities.push({
         id: generateUuid(),
         leadId: newLeadId,
@@ -4711,7 +4734,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         title: data.fromMe 
           ? (isAudio ? 'Mensagem de voz enviada (Celular/Web)' : 'Mensagem enviada via WhatsApp (Celular/Web)') 
           : (isAudio ? 'Mensagem de voz recebida' : 'Mensagem recebida no WhatsApp'),
-        text: data.firstMessage,
+        text: effectiveMsgText || data.firstMessage || '',
         mediaUrl: data.mediaUrl,
         mediaType: data.mediaType,
         authorName: data.fromMe ? 'WhatsApp App / Web' : (data.name || 'Cliente (WhatsApp)'),
@@ -4785,7 +4808,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: data.avatarUrl,
       age: 15,
       group: isTargetPostSale ? 'Pós-Venda' : 'WhatsApp',
-      notes: undefined,
+      notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
       assignedTo: autoSdr ? autoSdr.name : undefined,
@@ -4797,6 +4820,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       tasks: [],
       activities,
       unreadCount: data.fromMe ? 0 : 1,
+      lastInteractionAt: new Date().toISOString(),
+      lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -5129,6 +5154,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             phone: cleanPhone,
             name: isFromMe ? undefined : effectiveSenderName,
             firstMessage: incoming.text,
+            mediaUrl: incoming.mediaUrl,
+            mediaType: incoming.mediaType,
             sourceId: matchedSource?.id,
             avatarUrl: effectiveAvatar || undefined,
             fromMe: isFromMe,

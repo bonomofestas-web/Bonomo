@@ -293,7 +293,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             mediaType = 'image';
             text = text || '✨ Figurinha';
             mediaUrl = mediaUrl || m.stickerMessage.url;
+          } else if (m.viewOnceMessage?.message) {
+            const vo = m.viewOnceMessage.message;
+            if (vo.imageMessage) {
+              mediaType = 'image';
+              text = vo.imageMessage.caption || text || '📷 Foto';
+              mediaUrl = mediaUrl || vo.imageMessage.url;
+            } else if (vo.videoMessage) {
+              mediaType = 'video';
+              text = vo.videoMessage.caption || text || '🎥 Vídeo';
+              mediaUrl = mediaUrl || vo.videoMessage.url;
+            }
+          } else if (m.viewOnceMessageV2?.message) {
+            const vo = m.viewOnceMessageV2.message;
+            if (vo.imageMessage) {
+              mediaType = 'image';
+              text = vo.imageMessage.caption || text || '📷 Foto';
+              mediaUrl = mediaUrl || vo.imageMessage.url;
+            } else if (vo.videoMessage) {
+              mediaType = 'video';
+              text = vo.videoMessage.caption || text || '🎥 Vídeo';
+              mediaUrl = mediaUrl || vo.videoMessage.url;
+            }
+          } else if (m.ephemeralMessage?.message) {
+            const eph = m.ephemeralMessage.message;
+            if (eph.conversation) text = eph.conversation;
+            else if (eph.extendedTextMessage?.text) text = eph.extendedTextMessage.text;
           }
+        }
+
+        // Se ainda não tiver texto, verifica nos campos de nível superior do payload
+        if (!text) {
+          if (typeof payload?.text === 'string' && payload.text.trim()) text = payload.text;
+          else if (typeof payload?.body === 'string' && payload.body.trim()) text = payload.body;
+          else if (typeof payload?.content === 'string' && payload.content.trim()) text = payload.content;
+          else if (typeof payload?.data?.text === 'string' && payload.data.text.trim()) text = payload.data.text;
+          else if (typeof payload?.data?.body === 'string' && payload.data.body.trim()) text = payload.data.body;
+          else if (typeof payload?.data?.content === 'string' && payload.data.content.trim()) text = payload.data.content;
+          else if (typeof payload?.data?.message?.conversation === 'string') text = payload.data.message.conversation;
+          else if (typeof payload?.data?.message?.extendedTextMessage?.text === 'string') text = payload.data.message.extendedTextMessage.text;
+        }
+
+        // Se tiver mídia mas nenhum texto foi extraído, define rótulo descritivo
+        if (!text && mediaUrl) {
+          if (mediaType === 'audio') text = '🎵 Mensagem de voz';
+          else if (mediaType === 'image') text = '📷 Foto';
+          else if (mediaType === 'video') text = '🎥 Vídeo';
+          else if (mediaType === 'document') text = '📄 Documento';
+          else text = '📎 Arquivo de mídia';
         }
 
         if (!text && !mediaUrl) continue;
@@ -431,9 +478,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
+        const isAudio = mediaType === 'audio' || (typeof text === 'string' && text.includes('🎵'));
+
         if (existingLead) {
           // Atualiza o Lead existente com a nova atividade de mensagem na tabela lead_activities
-          const isAudio = mediaType === 'audio' || text.includes('🎵');
           let storedText = text.trim();
           if (mediaUrl && !storedText.startsWith('[media:')) {
             storedText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${storedText}`.trim();
@@ -474,7 +522,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             status: isFromMe ? 'sent' : 'delivered',
           };
 
-          await supabase.from('lead_activities').insert([newActivityRecord]);
+          const { error: actErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
+          if (actErr) {
+            console.error('[Webhook] Erro ao inserir lead_activity para lead existente:', actErr);
+          }
 
           const updatePayload: Record<string, any> = {
             updated_at: new Date().toISOString(),
@@ -506,6 +557,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (vRow?.master_id) venueMasterId = vRow.master_id;
           }
 
+          let creationStoredText = text.trim();
+          if (mediaUrl && !creationStoredText.startsWith('[media:')) {
+            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`.trim();
+          }
+          if (!creationStoredText) {
+            creationStoredText = isAudio ? '🎵 Mensagem de voz' : 'Mensagem recebida no WhatsApp';
+          }
+
+          const initialNoteText = text.trim() || (isAudio ? 'Mensagem de voz' : 'Mensagem no WhatsApp');
+
           const newLead = {
             id: leadId,
             code: leadCode,
@@ -518,7 +579,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             source_name: matchedSource?.name || 'WhatsApp Oficial',
             stage: 'new_lead',
             unread_count: isFromMe ? 0 : 1,
-            notes: isFromMe ? `Conversa iniciada via WhatsApp: "${text.trim()}"` : `Primeira mensagem via WhatsApp: "${text.trim()}"`,
+            notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             last_interaction_at: new Date().toISOString(),
@@ -526,16 +587,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             custom_field_values: isLid ? { whatsappLid: cleanPhone, whatsapp_lid: cleanPhone } : {},
           };
 
-          await supabase.from('leads').insert([newLead]);
-
-          let creationStoredText = text.trim();
-          if (mediaUrl && !creationStoredText.startsWith('[media:')) {
-            creationStoredText = `[media:${mediaUrl}|${mediaType || 'audio'}] ${creationStoredText}`.trim();
+          const { error: leadErr } = await supabase.from('leads').insert([newLead]);
+          if (leadErr) {
+            console.error('[Webhook] Erro ao inserir novo lead:', leadErr);
           }
 
-          const waMessageId = msg.key?.id || msg.id;
-
-          await supabase.from('lead_activities').insert([{
+          const { error: actErr } = await supabase.from('lead_activities').insert([{
             id: crypto.randomUUID(),
             lead_id: leadId,
             timestamp: new Date().toISOString(),
@@ -547,6 +604,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             status: isFromMe ? 'sent' : 'delivered',
           }]);
+          if (actErr) {
+            console.error('[Webhook] Erro ao inserir lead_activity para novo lead:', actErr);
+          }
 
           if (matchedSource?.id) {
             const currentTotal = Number(matchedSource.total_leads || 0) + 1;
