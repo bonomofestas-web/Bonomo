@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   ChevronDown, Trash2, Check, Archive,
   ChevronLeft, ChevronRight, Plus,
@@ -7,7 +7,8 @@ import {
   Globe, ExternalLink, FileText, Copy, Tag,
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
-  Lock, Unlock, AlertTriangle, Send, Edit3
+  Lock, Unlock, AlertTriangle, Send, Edit3,
+  ArrowRightLeft, GitBranch
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -114,6 +115,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [cancellingCommitmentType, setCancellingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [cancellationReason, setCancellationReason] = useState<string>('');
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
+  const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
+  const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isTempDropdownOpen, setIsTempDropdownOpen] = useState(false);
   const [isCreditCardDropdownOpen, setIsCreditCardDropdownOpen] = useState(false);
@@ -161,6 +164,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     setIsEventTypeDropdownOpen(false);
     setIsUrgencyDropdownOpen(false);
     setIsStageDropdownOpen(false);
+    setExpandedFunnelId(null);
     setIsSdrDropdownOpen(false);
     setIsCloserDropdownOpen(false);
     setIsTagDropdownOpen(false);
@@ -340,6 +344,45 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     const idx = funnelStages.findIndex(s => s.id === lead.stage);
     return idx >= 0 ? idx : 0;
   }, [funnelStages, lead.stage]);
+
+  const isFunnelPostSale = useCallback((f: any) => Boolean(
+    f?.isPostSale ||
+    f?.category === 'Pós-Venda' ||
+    f?.category === 'pos_venda' ||
+    f?.name?.toLowerCase().includes('pós-venda') ||
+    f?.name?.toLowerCase().includes('pos-venda') ||
+    f?.name?.toLowerCase().includes('sucesso do cliente')
+  ), []);
+
+  const currentIsPostSale = Boolean(isPostSale || isFunnelPostSale(leadFunnel));
+
+  // Funis visíveis para o usuário, separando estritamente Comercial de Pós-Venda
+  const otherVisibleFunnels = useMemo(() => {
+    return funnels.filter(f => {
+      // Ignora o funil atual (as etapas dele já estão no topo)
+      if (f.id === leadFunnel?.id || f.name === leadFunnel?.name) return false;
+
+      // Isolamento estrito: Comercial nunca vê Pós-Venda e vice-versa
+      const fPostSale = isFunnelPostSale(f);
+      if (currentIsPostSale) {
+        if (!fPostSale) return false;
+      } else {
+        if (fPostSale) return false;
+      }
+
+      // Restrição de unidade para colaboradores comuns
+      if (currentUser?.role !== 'master' && currentUser?.role !== 'admin') {
+        const userVenueIds = (currentUser as any)?.venueIds || [];
+        if (userVenueIds.length > 0 && f.venueId && f.venueId !== 'all') {
+          const funnelVenueIds = Array.isArray((f as any).venueIds) ? (f as any).venueIds : [f.venueId];
+          const hasAccess = funnelVenueIds.some((vId: string) => vId === 'all' || userVenueIds.includes(vId));
+          if (!hasAccess) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [funnels, leadFunnel, currentIsPostSale, isFunnelPostSale, currentUser]);
 
   // ICP / MQL Questions específicas vinculadas a este Funil + Casa de Festas (Unidade)
   const venueMqlQuestions = useMemo(() => {
@@ -1180,18 +1223,39 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 top: 'calc(100% + 5px)',
                 left: 0,
                 right: 0,
+                maxHeight: '440px',
+                overflowY: 'auto',
                 background: '#0F1724',
                 border: '1px solid rgba(20, 169, 215, 0.4)',
                 borderRadius: '10px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.85)',
                 zIndex: 99999,
-                overflow: 'hidden',
-                padding: '4px',
+                padding: '5px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '2px',
               }}
             >
+              {/* Header do Funil Atual */}
+              <div style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                color: '#14A9D7',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '6px 8px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                marginBottom: '2px',
+              }}>
+                <GitBranch size={11} color="#14A9D7" />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Etapas: {leadFunnel?.name || 'Funil Atual'}
+                </span>
+              </div>
+
               {funnelStages.map(stg => {
                 const color = stg.color || '#3B82F6';
                 const isSelected = lead.stage === stg.id;
@@ -1282,6 +1346,191 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   </button>
                 );
               })}
+
+              {/* ── SEÇÃO DE OUTROS FUNIS (COMERCIAL OU PÓS-VENDA) ── */}
+              {otherVisibleFunnels.length > 0 && (
+                <>
+                  <div style={{
+                    marginTop: '8px',
+                    marginBottom: '4px',
+                    padding: '8px 8px 4px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      color: currentIsPostSale ? '#06B6D4' : '#F59E0B',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}>
+                      <ArrowRightLeft size={11} color={currentIsPostSale ? '#06B6D4' : '#F59E0B'} />
+                      <span>{currentIsPostSale ? 'Outros Funis de Pós-Venda' : 'Outros Funis Comerciais'}</span>
+                    </div>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                      {otherVisibleFunnels.length} {otherVisibleFunnels.length === 1 ? 'funil' : 'funis'}
+                    </span>
+                  </div>
+
+                  {otherVisibleFunnels.map(f => {
+                    const isExpanded = expandedFunnelId === f.id;
+                    const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
+                      { id: 'new_lead', name: 'NOVO LEAD', color: '#60A5FA', icon: 'inbox' },
+                      { id: 'in_analysis', name: 'EM ANÁLISE', color: '#FBBF24', icon: 'clock' },
+                    ];
+
+                    return (
+                      <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '2px' }}>
+                        {/* Botão do Nome do Funil */}
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedFunnelId(prev => prev === f.id ? null : f.id);
+                          }}
+                          style={{
+                            padding: '7px 10px',
+                            borderRadius: '6px',
+                            border: isExpanded ? '1px solid rgba(245, 158, 11, 0.5)' : '1px solid rgba(255, 255, 255, 0.06)',
+                            background: isExpanded ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                            color: isExpanded ? '#F59E0B' : '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s ease',
+                            width: '100%',
+                            userSelect: 'none',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isExpanded) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isExpanded) {
+                              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)';
+                            }
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                            {renderFunnelOrStageIcon(f.icon || 'layers', 14, isExpanded ? '#F59E0B' : '#94A3B8')}
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {f.name}
+                            </span>
+                            <span style={{
+                              fontSize: '0.60rem',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'rgba(255, 255, 255, 0.1)',
+                              color: 'var(--adm-text-muted)',
+                              fontWeight: 600,
+                            }}>
+                              {targetStages.length} etapas
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={14}
+                            style={{
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.15s ease',
+                              flexShrink: 0,
+                              opacity: 0.8,
+                            }}
+                          />
+                        </button>
+
+                        {/* Etapas do Funil Selecionado (Abertas automaticamente ao clicar no nome do funil) */}
+                        {isExpanded && (
+                          <div style={{
+                            padding: '4px 0 4px 8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                            borderLeft: '2px dashed rgba(245, 158, 11, 0.4)',
+                            marginLeft: '12px',
+                            marginTop: '2px',
+                            marginBottom: '4px',
+                          }}>
+                            <div style={{ fontSize: '0.62rem', color: '#94A3B8', fontWeight: 600, marginBottom: '2px', paddingLeft: '4px' }}>
+                              Clique na etapa para transferir direto:
+                            </div>
+                            {targetStages.map(targetStg => {
+                              const color = targetStg.color || '#3B82F6';
+                              return (
+                                <button
+                                  key={targetStg.id}
+                                  type="button"
+                                  disabled={isTransferringFunnel}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setIsTransferringFunnel(true);
+                                    try {
+                                      await reassignLeadFunnel(lead.id, f.id, targetStg.id);
+                                      if (onStageChange) {
+                                        onStageChange(targetStg.id as CrmStage);
+                                      }
+                                      setIsStageDropdownOpen(false);
+                                      setExpandedFunnelId(null);
+                                    } finally {
+                                      setIsTransferringFunnel(false);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                                    background: 'rgba(255, 255, 255, 0.04)',
+                                    color: color,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: isTransferringFunnel ? 'wait' : 'pointer',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    textAlign: 'left',
+                                    transition: 'all 0.12s ease',
+                                    width: '100%',
+                                    userSelect: 'none',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = `${color}20`;
+                                    e.currentTarget.style.borderColor = `${color}60`;
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                                    {renderFunnelOrStageIcon(targetStg.icon || targetStg.id, 13, color)}
+                                    <span>{targetStg.name.toUpperCase()}</span>
+                                  </div>
+                                  <span style={{ fontSize: '0.62rem', color: '#10B981', fontWeight: 800 }}>
+                                    Transferir →
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>

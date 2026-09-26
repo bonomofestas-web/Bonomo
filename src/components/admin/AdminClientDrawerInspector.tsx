@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   ChevronDown, Check, ChevronLeft, Heart, 
   Users, Sparkles, ExternalLink, 
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
-  Gift, Clock, Award, Star
+  Gift, Clock, Award, Star,
+  ArrowRightLeft
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -79,11 +80,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   readOnly = false,
 }) => {
   const { 
+    currentUser,
     clients, 
     collaborators, 
     venues, 
     debutantes,
     leads,
+    funnels,
+    reassignLeadFunnel,
     updateClient, 
     linkClientDebutante,
     addDebutanteAccount
@@ -93,6 +97,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
+  const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
+  const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
   const [isSuccessManagerDropdownOpen, setIsSuccessManagerDropdownOpen] = useState(false);
 
   // Subcontatos Form
@@ -120,6 +126,33 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const currentStage = (client?.stage || lead.stage || 'onboarding') as ClientStage;
   const currentStageConfig = POST_SALE_STAGES.find(s => s.id === currentStage) || POST_SALE_STAGES[0];
   const currentStageIndex = POST_SALE_STAGES.findIndex(s => s.id === currentStage);
+
+  const isFunnelPostSale = useCallback((f: any) => Boolean(
+    f?.isPostSale ||
+    f?.category === 'Pós-Venda' ||
+    f?.category === 'pos_venda' ||
+    f?.name?.toLowerCase().includes('pós-venda') ||
+    f?.name?.toLowerCase().includes('pos-venda') ||
+    f?.name?.toLowerCase().includes('sucesso do cliente')
+  ), []);
+
+  const otherPostSaleFunnels = useMemo(() => {
+    return funnels.filter(f => {
+      if (f.id === lead.funnelId) return false;
+      if (!isFunnelPostSale(f)) return false;
+
+      if (currentUser?.role !== 'master' && currentUser?.role !== 'admin') {
+        const userVenueIds = (currentUser as any)?.venueIds || [];
+        if (userVenueIds.length > 0 && f.venueId && f.venueId !== 'all') {
+          const funnelVenueIds = Array.isArray((f as any).venueIds) ? (f as any).venueIds : [f.venueId];
+          const hasAccess = funnelVenueIds.some((vId: string) => vId === 'all' || userVenueIds.includes(vId));
+          if (!hasAccess) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [funnels, lead.funnelId, isFunnelPostSale, currentUser]);
 
   const linkedDebutante = useMemo(() => {
     if (client?.debutanteId) return debutantes.find(d => d.id === client.debutanteId);
@@ -490,12 +523,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               top: 'calc(100% + 5px)',
               left: 0,
               right: 0,
+              maxHeight: '420px',
+              overflowY: 'auto',
               background: 'var(--adm-bg-card)',
               border: '1px solid var(--adm-border)',
               borderRadius: '8px',
               boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
               zIndex: 70,
-              padding: '4px',
+              padding: '5px',
               display: 'flex',
               flexDirection: 'column',
               gap: '2px',
@@ -536,6 +571,155 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                   </div>
                 );
               })}
+
+              {/* ── SEÇÃO DE OUTROS FUNIS DE PÓS-VENDA ── */}
+              {otherPostSaleFunnels.length > 0 && (
+                <>
+                  <div style={{
+                    marginTop: '8px',
+                    marginBottom: '4px',
+                    padding: '8px 8px 4px',
+                    borderTop: '1px solid var(--adm-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      color: '#06B6D4',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}>
+                      <ArrowRightLeft size={11} color="#06B6D4" />
+                      <span>Outros Funis de Pós-Venda</span>
+                    </div>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                      {otherPostSaleFunnels.length} {otherPostSaleFunnels.length === 1 ? 'funil' : 'funis'}
+                    </span>
+                  </div>
+
+                  {otherPostSaleFunnels.map(f => {
+                    const isExpanded = expandedFunnelId === f.id;
+                    const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
+                      { id: 'onboarding', name: 'ONBOARDING', color: '#3B82F6', icon: 'inbox' },
+                    ];
+
+                    return (
+                      <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedFunnelId(prev => prev === f.id ? null : f.id)}
+                          style={{
+                            padding: '7px 10px',
+                            borderRadius: '6px',
+                            border: isExpanded ? '1px solid rgba(6, 182, 212, 0.4)' : '1px solid var(--adm-border)',
+                            background: isExpanded ? 'rgba(6, 182, 212, 0.12)' : 'var(--adm-bg-input)',
+                            color: isExpanded ? '#06B6D4' : 'var(--adm-text-title)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s ease',
+                            width: '100%',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            {renderFunnelOrStageIcon(f.icon || 'layers', 13, isExpanded ? '#06B6D4' : 'var(--adm-text-muted)')}
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {f.name}
+                            </span>
+                            <span style={{
+                              fontSize: '0.58rem',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'var(--adm-border)',
+                              color: 'var(--adm-text-muted)',
+                              fontWeight: 600,
+                            }}>
+                              {targetStages.length} etapas
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={13}
+                            style={{
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.15s ease',
+                              flexShrink: 0,
+                            }}
+                          />
+                        </button>
+
+                        {isExpanded && (
+                          <div style={{
+                            padding: '4px 0 4px 8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                            borderLeft: '2px dashed rgba(6, 182, 212, 0.4)',
+                            marginLeft: '10px',
+                            marginTop: '2px',
+                          }}>
+                            <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', fontWeight: 600, marginBottom: '2px', paddingLeft: '4px' }}>
+                              Clique na etapa para transferir direto:
+                            </div>
+                            {targetStages.map(targetStg => {
+                              const color = targetStg.color || '#3B82F6';
+                              return (
+                                <button
+                                  key={targetStg.id}
+                                  type="button"
+                                  disabled={isTransferringFunnel}
+                                  onClick={async () => {
+                                    setIsTransferringFunnel(true);
+                                    try {
+                                      await reassignLeadFunnel(lead.id, f.id, targetStg.id);
+                                      onStageChange(targetStg.id as ClientStage);
+                                      setIsStageDropdownOpen(false);
+                                      setExpandedFunnelId(null);
+                                    } finally {
+                                      setIsTransferringFunnel(false);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '6px 8px',
+                                    borderRadius: '5px',
+                                    border: '1px solid var(--adm-border)',
+                                    background: 'var(--adm-bg-card)',
+                                    color: color,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: isTransferringFunnel ? 'wait' : 'pointer',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    textAlign: 'left',
+                                    width: '100%',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {renderFunnelOrStageIcon(targetStg.icon || targetStg.id, 12, color)}
+                                    <span>{targetStg.name.toUpperCase()}</span>
+                                  </div>
+                                  <span style={{ fontSize: '0.60rem', color: '#10B981', fontWeight: 800 }}>
+                                    Transferir →
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>
