@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { 
+import {
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   FileText, ChevronRight, ChevronLeft, ChevronDown, Calendar,
   Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus, CheckSquare,
@@ -42,10 +42,10 @@ import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import { 
-  AdminBulkMoveFunnelModal, 
-  AdminBulkMoveStageModal, 
-  AdminBulkAssignModal 
+import {
+  AdminBulkMoveFunnelModal,
+  AdminBulkMoveStageModal,
+  AdminBulkAssignModal
 } from './AdminLeadActionModals';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
@@ -241,16 +241,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   selectedLeadIds: propSelectedLeadIds,
   onSelectedLeadIdsChange,
 }) => {
-  const { 
-    leads, 
+  const {
+    leads,
     clients,
     funnels,
-    venues, 
+    venues,
     sources,
-    collaborators, 
-    currentUser, 
-    activeVenueId, 
-    updateLeadData, 
+    collaborators,
+    currentUser,
+    activeVenueId,
+    updateLeadData,
     updateLeadActivity,
     addLeadNote,
     addClientNote,
@@ -288,8 +288,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(() => {
     if (activeFunnelId) return activeFunnelId;
     if (isPostSale) return 'post_sale_default';
-    const isUserPosVenda = currentUser?.role === 'pos_venda' || 
-      (currentUser as any)?.primarySector === 'pos_venda' || 
+    const isUserPosVenda = currentUser?.role === 'pos_venda' ||
+      (currentUser as any)?.primarySector === 'pos_venda' ||
       (currentUser as any)?.department === 'pos_venda';
     if (isUserPosVenda) return 'post_sale_default';
 
@@ -297,7 +297,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const savedKey = `f5_wa_funnel_${currentUser?.id || 'default'}`;
       const saved = localStorage.getItem(savedKey);
       if (saved) return saved;
-    } catch {}
+    } catch { }
 
     return 'all';
   });
@@ -320,11 +320,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setIsFunnelSelectOpen(false);
     try {
       localStorage.setItem(`f5_wa_funnel_${currentUser?.id || 'default'}`, id);
-    } catch {}
+    } catch { }
   };
 
-  const activeFunnel = (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'post_sale_default') 
-    ? funnels.find(f => f.id === selectedFunnelId) 
+  const activeFunnel = (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'post_sale_default')
+    ? funnels.find(f => f.id === selectedFunnelId)
     : (activeFunnelId ? funnels.find(f => f.id === activeFunnelId) : null);
 
   const isPostSaleFunnel = Boolean(
@@ -358,7 +358,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     try {
       const saved = localStorage.getItem(`f5_wa_sort_${currentUser?.id || 'default'}`);
       if (saved) return saved;
-    } catch {}
+    } catch { }
     return 'waiting_time';
   });
 
@@ -366,7 +366,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setLocalSortBy(val);
     try {
       localStorage.setItem(`f5_wa_sort_${currentUser?.id || 'default'}`, val);
-    } catch {}
+    } catch { }
   };
 
   // Quick Filter Tabs State: 'open' | 'my' | 'all'
@@ -374,7 +374,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     try {
       const saved = localStorage.getItem(`f5_wa_quick_${currentUser?.id || 'default'}`);
       if (saved === 'open' || saved === 'my' || saved === 'all') return saved;
-    } catch {}
+    } catch { }
     return 'open';
   });
 
@@ -382,7 +382,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setQuickFilter(val);
     try {
       localStorage.setItem(`f5_wa_quick_${currentUser?.id || 'default'}`, val);
-    } catch {}
+    } catch { }
   };
 
   // Side Drawer: Lead Inspector (Ficha do Lead)
@@ -420,7 +420,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [docType, setDocType] = useState<ClientDocument['type']>('contract');
   const [docFileUrl, setDocFileUrl] = useState('');
   const [docFileSize, setDocFileSize] = useState('');
-  
+
   // WhatsApp / Note Text
   const [messageText, setMessageText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -608,7 +608,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const toggleLeadSelection = (leadId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setSelectedLeadIds(prev => 
+    setSelectedLeadIds(prev =>
       prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
     );
   };
@@ -777,26 +777,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         tasks: [],
         createdAt: c.createdAt || c.contractDate || new Date().toISOString(),
         updatedAt: c.updatedAt || c.contractDate || new Date().toISOString(),
-          activities: mergedActivities,
-          contacts: (c.contacts && c.contacts.length > 0) ? (c.contacts as any) : [
-            {
-              id: `payer_${c.id}`,
-              name: cPayer,
-              phone: cPhone,
-              email: c.payerEmail || '',
-              role: c.payerRelationship || 'decision_maker',
-              isPrimaryDecisionMaker: true,
-            }
-          ],
-          isClient: true,
-        };
-      });
-    }, [isPostSaleFunnel, clients, leads, activeFunnelId]);
+        activities: mergedActivities,
+        contacts: (c.contacts && c.contacts.length > 0) ? (c.contacts as any) : [
+          {
+            id: `payer_${c.id}`,
+            name: cPayer,
+            phone: cPhone,
+            email: c.payerEmail || '',
+            role: c.payerRelationship || 'decision_maker',
+            isPrimaryDecisionMaker: true,
+          }
+        ],
+        isClient: true,
+      };
+    });
+  }, [isPostSaleFunnel, clients, leads, activeFunnelId]);
 
   const sourceLeads = useMemo(() => {
     if (isPostSaleFunnel) {
       const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
-      const postSaleLeads = (leads || []).filter(l => 
+      const postSaleLeads = (leads || []).filter(l =>
         (l.isClient || l.group === 'Pós-Venda' || (activeFunnel && l.funnelId === activeFunnel.id)) &&
         !existingClientIds.has(l.id)
       );
@@ -808,7 +808,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
     const currentFunnel = activeFunnel;
-    
+
     // For Post-Sale: only filter by global activeVenueId or filterVenueId, never by a commercial funnel's venueId
     const globalVenueFilter = (activeVenueId !== 'all' && activeVenueId !== 'multi') ? activeVenueId : null;
     const targetVenueId = isPostSaleFunnel
@@ -848,7 +848,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           }
         }
       }
-      
+
       if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
@@ -872,12 +872,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }
       } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
         if (isPostSaleFunnel) {
-          const isMyClient = 
+          const isMyClient =
             Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id)) ||
             Boolean(currentUser?.name && (lead.assignedTo?.toLowerCase() === currentUser.name.toLowerCase() || lead.sdrName?.toLowerCase() === currentUser.name.toLowerCase()));
           if (!isMyClient && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         } else {
-          const isMyLead = 
+          const isMyLead =
             Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id)) ||
             Boolean(currentUser?.name && (lead.sdrName === currentUser.name || lead.closerName === currentUser.name || lead.assignedTo === currentUser.name)) ||
             Boolean(currentUser?.id && (lead.participants || []).some(p => p.collaboratorId === currentUser.id));
@@ -1009,15 +1009,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Lista de destinatários disponíveis na ficha com prioridade máxima para o Decisor
   const availableRecipients = useMemo(() => {
     if (!selectedLead) return [];
-    const list: Array<{ 
-      phone: string; 
+    const list: Array<{
+      phone: string;
       name: string;
-      label: string; 
-      role: string; 
+      label: string;
+      role: string;
       roleBadge: string;
-      isDecisor: boolean; 
+      isDecisor: boolean;
       isMain: boolean;
-      avatarUrl?: string; 
+      avatarUrl?: string;
     }> = [];
     const seenPhones = new Set<string>();
     const leadAny = selectedLead as any;
@@ -1292,7 +1292,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (e) e.preventDefault();
     if (!selectedLead) return;
 
-    const title = quickFollowupNote.trim() 
+    const title = quickFollowupNote.trim()
       ? `${selectedLead.name} - ${quickFollowupType}: ${quickFollowupNote.trim()}`
       : `${selectedLead.name} - ${quickFollowupType}`;
 
@@ -1322,7 +1322,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const venueSenderSources = useMemo(() => {
     const allWhatsappSources = (sources || []).filter(
       s => s.type === 'whatsapp_api' &&
-           Boolean(getSourceInstanceToken(s) || (s.configuration as any)?.connectedPhone)
+        Boolean(getSourceInstanceToken(s) || (s.configuration as any)?.connectedPhone)
     );
 
     if (selectedLead?.venueId && selectedLead.venueId !== 'all') {
@@ -1454,15 +1454,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           if (item.isMain) {
             updateLeadData(selectedLead.id, { avatarUrl: pic });
             if (isSupabaseConfigured) {
-              leadService.update(selectedLead.id, { avatarUrl: pic }).catch(() => {});
+              leadService.update(selectedLead.id, { avatarUrl: pic }).catch(() => { });
             }
           } else if (item.contactId) {
-            const updatedContacts = (selectedLead.contacts || []).map((c: any) => 
+            const updatedContacts = (selectedLead.contacts || []).map((c: any) =>
               c.id === item.contactId ? { ...c, avatarUrl: pic } : c
             );
             updateLeadData(selectedLead.id, { contacts: updatedContacts });
             if (isSupabaseConfigured) {
-              leadService.update(selectedLead.id, { contacts: updatedContacts }).catch(() => {});
+              leadService.update(selectedLead.id, { contacts: updatedContacts }).catch(() => { });
             }
           }
         }
@@ -1482,8 +1482,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (isReadOnlyForPosVenda) return true;
     if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') {
       const isAssigned = (selectedLead.sdrId && selectedLead.sdrId === currentUser.id) ||
-                         (selectedLead.closerId && selectedLead.closerId === currentUser.id) ||
-                         (selectedLead.assignedTo && selectedLead.assignedTo === currentUser.name);
+        (selectedLead.closerId && selectedLead.closerId === currentUser.id) ||
+        (selectedLead.assignedTo && selectedLead.assignedTo === currentUser.name);
       return !isAssigned;
     }
     return false;
@@ -1550,7 +1550,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         number: targetPhone,
         presence: 'composing',
         delay: 15,
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     // Se parar de digitar por 8 segundos de inatividade completa, envia 'paused'
@@ -1560,7 +1560,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         uazapiService.sendPresence(activeSenderToken, {
           number: targetPhone,
           presence: 'paused',
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }, 8000);
   };
@@ -1573,7 +1573,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       uazapiService.sendPresence(activeSenderToken, {
         number: oldPhone,
         presence: 'paused',
-      }).catch(() => {});
+      }).catch(() => { });
     }
     currentLeadPhoneRef.current = newPhone;
     setCustomerPresence({ isTyping: false, isRecording: false });
@@ -1646,7 +1646,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       uazapiService.sendPresence(effectiveToken, {
         number: targetPhone,
         presence: 'paused',
-      }).catch(() => {});
+      }).catch(() => { });
 
       try {
         const sendRes = await uazapiService.sendText(effectiveToken, {
@@ -1677,7 +1677,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               .catch(err => console.error('Erro ao salvar mensagem no Supabase:', err));
             leadService.update(selectedLead.id, {
               updatedAt: new Date().toISOString().split('T')[0],
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
 
@@ -1690,11 +1690,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 const finalAvatar = permanentR2Avatar || info.profilePicUrl;
                 updateLeadData(selectedLead.id, { avatarUrl: finalAvatar });
                 if (isSupabaseConfigured) {
-                  leadService.update(selectedLead.id, { avatarUrl: finalAvatar }).catch(() => {});
+                  leadService.update(selectedLead.id, { avatarUrl: finalAvatar }).catch(() => { });
                 }
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       } catch (err: any) {
         console.error('Disparo UAZAPI falhou:', err);
@@ -1717,7 +1717,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         ? 'Nenhum canal de WhatsApp conectado para esta casa de festa. Conecte em Origens.'
         : 'Número de telefone do destinatário inválido ou ausente.';
       console.warn('[WhatsApp Send Warning]:', missingReason, { targetPhone, activeSenderToken });
-      
+
       if (newActivity) {
         const failedActivity: LeadActivity = { ...newActivity, status: 'failed', errorMessage: missingReason };
         const currentActivities = updatedActivities.map(a => a.id === newActivity!.id ? failedActivity : a);
@@ -1788,7 +1788,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       updateLeadData(selectedLead.id, { activities: updatedActivities });
 
       if (isSupabaseConfigured) {
-        leadService.updateActivity(activity.id, { status: 'sent', errorMessage: undefined as any }).catch(() => {});
+        leadService.updateActivity(activity.id, { status: 'sent', errorMessage: undefined as any }).catch(() => { });
       }
     } catch (err: any) {
       console.error('Falha ao reenviar mensagem:', err);
@@ -1806,7 +1806,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       updateLeadData(selectedLead.id, { activities: updatedActivities });
 
       if (isSupabaseConfigured) {
-        leadService.updateActivity(activity.id, { status: 'failed', errorMessage: errMsg }).catch(() => {});
+        leadService.updateActivity(activity.id, { status: 'failed', errorMessage: errMsg }).catch(() => { });
       }
     } finally {
       setRetryingMessageId(null);
@@ -1843,7 +1843,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const currentActivities = targetLead.activities || [];
     const updatedActivities = [...currentActivities, endSessionActivity];
 
-    updateLeadData(targetLead.id, { 
+    updateLeadData(targetLead.id, {
       activities: updatedActivities,
       updatedAt: now,
     });
@@ -1852,7 +1852,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       leadService.addActivity(targetLead.id, endSessionActivity).catch(err => {
         console.error('Erro ao persistir encerramento de conversa no Supabase:', err);
       });
-      leadService.update(targetLead.id, { updatedAt: now }).catch(() => {});
+      leadService.update(targetLead.id, { updatedAt: now }).catch(() => { });
     }
   };
 
@@ -1883,7 +1883,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const baseContract = currentClient?.baseContractValue ?? (selectedLead as any)?.contractValue ?? selectedLead?.dealValue ?? 42000;
   const downPayment = currentClient?.contractDownPayment ?? (selectedLead as any)?.contractDownPayment ?? 0;
   const installmentsRemaining = currentClient?.contractInstallmentsRemaining ?? Math.max(0, baseContract - downPayment);
-  
+
   const clientUpsells = useMemo<ClientUpsellSale[]>(() => {
     return (currentClient?.upsellSales || (selectedLead as any)?.upsellSales || []) as ClientUpsellSale[];
   }, [currentClient, selectedLead]);
@@ -2129,7 +2129,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           const updated = [base64, ...prev.filter(s => s !== base64)].slice(0, 30);
           try {
             localStorage.setItem('f5_custom_stickers', JSON.stringify(updated));
-          } catch {}
+          } catch { }
           return updated;
         });
       }
@@ -2174,7 +2174,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         number: targetPhone,
         presence: 'recording',
         delay: 60,
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -2201,7 +2201,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.stop();
-      } catch {}
+      } catch { }
     }
     if (audioStreamRef.current) {
       audioStreamRef.current.getTracks().forEach(t => t.stop());
@@ -2216,14 +2216,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       uazapiService.sendPresence(activeSenderToken, {
         number: targetPhone,
         presence: 'paused',
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
   const stopAndSendAudio = () => {
     if (!selectedLead) return;
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    
+
     const durationStr = `${Math.floor(recordingSeconds / 60)}:${(recordingSeconds % 60).toString().padStart(2, '0')}`;
     const author = currentUser?.name || 'Equipe Comercial';
 
@@ -2328,7 +2328,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Timeline Activities (Chat do WhatsApp - Exclusivamente mensagens de conversação e anotações internas)
   const timelineActivities = useMemo(() => {
     if (!selectedLead?.activities) return [];
-    
+
     // Filtra estritamente apenas mensagens de chat e notas de conversa (remove logs de CRM como status_change, creation, assignment, validation, realocação de funil)
     const chatOnly = selectedLead.activities.filter(a => {
       // 1. Rejeita tipos de eventos internos de CRM
@@ -2358,8 +2358,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
 
       return (
-        a.type === 'contact' || 
-        a.type === 'note' || 
+        a.type === 'contact' ||
+        a.type === 'note' ||
         (a as any).type === 'whatsapp' ||
         (a as any).metadata?.isSessionEnd
       );
@@ -2397,12 +2397,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente)
   const historyActivities = useMemo(() => {
     if (!selectedLead?.activities) return [];
-    const items = selectedLead.activities.filter(a => 
-      a.type === 'note' || 
-      a.type === 'status_change' || 
-      a.type === 'assignment' || 
-      a.type === 'creation' || 
-      a.type === 'deal_closed' || 
+    const items = selectedLead.activities.filter(a =>
+      a.type === 'note' ||
+      a.type === 'status_change' ||
+      a.type === 'assignment' ||
+      a.type === 'creation' ||
+      a.type === 'deal_closed' ||
       a.type === 'validation' ||
       a.type === 'task_created' ||
       a.type === 'task_completed'
@@ -2438,7 +2438,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const icpRating = useMemo(() => {
     if (!selectedLead || !hasIcpConfigured(selectedLead)) return null;
     const hasAnswers = Boolean(
-      selectedLead.mqlAnswers && 
+      selectedLead.mqlAnswers &&
       Object.keys(selectedLead.mqlAnswers).some(k => Boolean(selectedLead.mqlAnswers![k]))
     );
     if (!hasAnswers && (selectedLead.mqlScore === undefined || selectedLead.mqlScore === 0)) {
@@ -2477,7 +2477,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       fontFamily: "'Plus Jakarta Sans', sans-serif",
       position: 'relative',
     }}>
-      
+
       {/* ── COLUNA 1: LISTA DE CONVERSAS / LEADS ───────────────────────── */}
       <div style={{
         width: '340px',
@@ -2598,8 +2598,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontSize: '0.85rem' }}>{isPostSaleFunnel ? '👑' : (activeFunnel?.icon || '🎯')}</span>
                     <span>
-                      {selectedFunnelId === 'all' 
-                        ? 'Todos os Funis Comerciais' 
+                      {selectedFunnelId === 'all'
+                        ? 'Todos os Funis Comerciais'
                         : (selectedFunnelId === 'post_sale_default' || selectedFunnelId === 'post_sale'
                           ? 'Sucesso do Cliente (Pós-Venda)'
                           : (activeFunnel?.name || 'Funil Comercial'))}
@@ -2788,136 +2788,136 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   />
                 </div>
 
-            {/* Filter Toggle Button */}
-            <div ref={filterDropdownRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                title={isFilterActive ? 'Filtros ativos' : 'Filtrar conversas'}
-                style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '10px',
-                  border: isFilterActive ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-                  background: isFilterActive ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
-                  color: isFilterActive ? 'var(--adm-accent)' : '#9E988D',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <SlidersHorizontal size={17} />
-              </button>
+                {/* Filter Toggle Button */}
+                <div ref={filterDropdownRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                    title={isFilterActive ? 'Filtros ativos' : 'Filtrar conversas'}
+                    style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '10px',
+                      border: isFilterActive ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                      background: isFilterActive ? 'var(--adm-accent-bg)' : 'var(--adm-bg-card)',
+                      color: isFilterActive ? 'var(--adm-accent)' : '#9E988D',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <SlidersHorizontal size={17} />
+                  </button>
 
-              {/* Filter Popover Dropdown */}
-              {isFilterDropdownOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '8px',
-                  width: '280px',
-                  background: '#141118',
-                  border: '1px solid rgba(212, 175, 55, 0.35)',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.8)',
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#FFF' }}>Filtros & Ordenação</span>
-                    {isFilterActive && (
-                      <button
-                        type="button"
-                        onClick={resetFilters}
-                        style={{ background: 'transparent', border: 'none', color: '#D4AF37', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        Limpar
-                      </button>
-                    )}
-                  </div>
+                  {/* Filter Popover Dropdown */}
+                  {isFilterDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '8px',
+                      width: '280px',
+                      background: '#141118',
+                      border: '1px solid rgba(212, 175, 55, 0.35)',
+                      borderRadius: '16px',
+                      padding: '16px',
+                      boxShadow: '0 16px 40px rgba(0,0,0,0.8)',
+                      zIndex: 9999,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#FFF' }}>Filtros & Ordenação</span>
+                        {isFilterActive && (
+                          <button
+                            type="button"
+                            onClick={resetFilters}
+                            style={{ background: 'transparent', border: 'none', color: '#D4AF37', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Limpar
+                          </button>
+                        )}
+                      </div>
 
-                  {/* Ordenação Local com Prioridade de Tempo de Espera */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                      Ordenar Conversas
-                    </label>
-                    <select
-                      value={localSortBy}
-                      onChange={(e) => handleUpdateSortBy(e.target.value)}
-                      className="adm-input"
-                      style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
-                    >
-                      <option value="waiting_time">⏱️ Tempo de Espera (Prioridade)</option>
-                      <option value="recent">🕒 Mensagens Recentes</option>
-                      <option value="oldest">⏳ Mensagens Antigas</option>
-                      <option value="name_asc">🔤 Nome (A - Z)</option>
-                      <option value="temperature">🔥 Temperatura do Lead</option>
-                    </select>
-                  </div>
+                      {/* Ordenação Local com Prioridade de Tempo de Espera */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
+                          Ordenar Conversas
+                        </label>
+                        <select
+                          value={localSortBy}
+                          onChange={(e) => handleUpdateSortBy(e.target.value)}
+                          className="adm-input"
+                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                        >
+                          <option value="waiting_time">⏱️ Tempo de Espera (Prioridade)</option>
+                          <option value="recent">🕒 Mensagens Recentes</option>
+                          <option value="oldest">⏳ Mensagens Antigas</option>
+                          <option value="name_asc">🔤 Nome (A - Z)</option>
+                          <option value="temperature">🔥 Temperatura do Lead</option>
+                        </select>
+                      </div>
 
-                  {/* Filter: Venue */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                      Casa de Festa
-                    </label>
-                    <select
-                      value={filterVenueId}
-                      onChange={(e) => setFilterVenueId(e.target.value)}
-                      className="adm-input"
-                      style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
-                    >
-                      <option value="all">Todas as Casas</option>
-                      {venues.map(v => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                      {/* Filter: Venue */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
+                          Casa de Festa
+                        </label>
+                        <select
+                          value={filterVenueId}
+                          onChange={(e) => setFilterVenueId(e.target.value)}
+                          className="adm-input"
+                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                        >
+                          <option value="all">Todas as Casas</option>
+                          {venues.map(v => (
+                            <option key={v.id} value={v.id}>{v.name}</option>
+                          ))}
+                        </select>
+                      </div>
 
-                  {/* Filter: Collaborator */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                      Responsável Comercial
-                    </label>
-                    <select
-                      value={filterCollaboratorId}
-                      onChange={(e) => setFilterCollaboratorId(e.target.value)}
-                      className="adm-input"
-                      style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
-                    >
-                      <option value="all">Todos os Atendentes</option>
-                      {collaborators.map(c => (
-                        <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
-                      ))}
-                    </select>
-                  </div>
+                      {/* Filter: Collaborator */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
+                          Responsável Comercial
+                        </label>
+                        <select
+                          value={filterCollaboratorId}
+                          onChange={(e) => setFilterCollaboratorId(e.target.value)}
+                          className="adm-input"
+                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                        >
+                          <option value="all">Todos os Atendentes</option>
+                          {collaborators.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
+                          ))}
+                        </select>
+                      </div>
 
-                  {/* Filter: Temperature */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                      Temperatura do Lead
-                    </label>
-                    <select
-                      value={filterTemperature}
-                      onChange={(e) => setFilterTemperature(e.target.value)}
-                      className="adm-input"
-                      style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
-                    >
-                      <option value="all">Todas as Temperaturas</option>
-                      <option value="hot">Quente (Alta Probabilidade)</option>
-                      <option value="warm">Morno (Em Negociação)</option>
-                      <option value="cold">Frio (Inicial)</option>
-                    </select>
-                  </div>
+                      {/* Filter: Temperature */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
+                          Temperatura do Lead
+                        </label>
+                        <select
+                          value={filterTemperature}
+                          onChange={(e) => setFilterTemperature(e.target.value)}
+                          className="adm-input"
+                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                        >
+                          <option value="all">Todas as Temperaturas</option>
+                          <option value="hot">Quente (Alta Probabilidade)</option>
+                          <option value="warm">Morno (Em Negociação)</option>
+                          <option value="cold">Frio (Inicial)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
             </>
           )}
         </div>
@@ -2950,11 +2950,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               const isAudioMsg = (
                 lastMessageActivity?.mediaType === 'audio' ||
-                cleanedText.toLowerCase().includes('[áudio]') || 
-                cleanedText.toLowerCase().includes('[audio]') || 
+                cleanedText.toLowerCase().includes('[áudio]') ||
+                cleanedText.toLowerCase().includes('[audio]') ||
                 cleanedText.includes('🎵') ||
-                cleanedText.startsWith('data:audio') || 
-                cleanedText.includes('.mp3') || 
+                cleanedText.startsWith('data:audio') ||
+                cleanedText.includes('.mp3') ||
                 cleanedText.includes('.ogg') ||
                 cleanedText.startsWith('{"URL"') ||
                 cleanedText.includes('mmg.whatsapp.net') ||
@@ -2965,8 +2965,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const isImageMsg = (
                 !isAudioMsg && (
                   lastMessageActivity?.mediaType === 'image' ||
-                  cleanedText.toLowerCase().includes('[imagem]') || 
-                  cleanedText.toLowerCase().includes('[foto]') || 
+                  cleanedText.toLowerCase().includes('[imagem]') ||
+                  cleanedText.toLowerCase().includes('[foto]') ||
                   cleanedText.includes('📷') ||
                   cleanedText.startsWith('data:image') ||
                   /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(cleanedText)
@@ -2976,8 +2976,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const isVideoMsg = (
                 !isAudioMsg && !isImageMsg && (
                   lastMessageActivity?.mediaType === 'video' ||
-                  cleanedText.toLowerCase().includes('[vídeo]') || 
-                  cleanedText.toLowerCase().includes('[video]') || 
+                  cleanedText.toLowerCase().includes('[vídeo]') ||
+                  cleanedText.toLowerCase().includes('[video]') ||
                   cleanedText.includes('🎥') ||
                   cleanedText.includes('🎬') ||
                   cleanedText.startsWith('data:video') ||
@@ -2988,8 +2988,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const isDocMsg = (
                 !isAudioMsg && !isImageMsg && !isVideoMsg && (
                   lastMessageActivity?.mediaType === 'document' ||
-                  cleanedText.toLowerCase().includes('[documento]') || 
-                  cleanedText.toLowerCase().includes('[arquivo]') || 
+                  cleanedText.toLowerCase().includes('[documento]') ||
+                  cleanedText.toLowerCase().includes('[arquivo]') ||
                   cleanedText.includes('📄') ||
                   /\.(pdf|docx?|xlsx?|pptx?|txt|zip)(\?.*)?$/i.test(cleanedText)
                 )
@@ -3021,7 +3021,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
               const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
-              
+
               const isIndication = lead.source === 'indicacao' || Boolean(lead.debutanteName && lead.debutanteName !== 'Indicação Externa' && lead.debutanteName !== 'WhatsApp Direto');
               const rawOrigin = lead.subSource || lead.sourceName || (lead.source === 'whatsapp' ? 'WhatsApp' : lead.source === 'instagram' ? 'Instagram' : lead.source === 'parceria' ? 'Parceria' : lead.source === 'evento_externo' ? 'Evento Externo' : lead.source);
               const originLabel = isIndication ? 'Indicação' : (rawOrigin === 'Direto' ? null : rawOrigin);
@@ -3034,17 +3034,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const isLeadSelectedInMulti = selectedLeadIds.includes(lead.id);
               const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
 
-              const itemBg = (isMultiSelectMode && isLeadSelectedInMulti) 
-                ? 'rgba(99, 102, 241, 0.12)' 
+              const itemBg = (isMultiSelectMode && isLeadSelectedInMulti)
+                ? 'rgba(99, 102, 241, 0.12)'
                 : hasSlaAlert
-                ? (isSelected ? (sla.level === 'red' ? 'rgba(239, 68, 68, 0.12)' : sla.level === 'orange' ? 'rgba(249, 115, 22, 0.10)' : 'rgba(234, 179, 8, 0.08)') : sla.cardBg)
-                : (isSelected ? 'var(--adm-accent-bg)' : 'transparent');
+                  ? (isSelected ? (sla.level === 'red' ? 'rgba(239, 68, 68, 0.12)' : sla.level === 'orange' ? 'rgba(249, 115, 22, 0.10)' : 'rgba(234, 179, 8, 0.08)') : sla.cardBg)
+                  : (isSelected ? 'var(--adm-accent-bg)' : 'transparent');
 
-              const itemBorderLeft = (isMultiSelectMode && isLeadSelectedInMulti) 
-                ? '3px solid var(--adm-accent, #6366F1)' 
+              const itemBorderLeft = (isMultiSelectMode && isLeadSelectedInMulti)
+                ? '3px solid var(--adm-accent, #6366F1)'
                 : hasSlaAlert
-                ? (isSelected ? `4px solid ${sla.color}` : `3px solid ${sla.color}`)
-                : (isSelected ? '3px solid var(--adm-accent)' : '3px solid transparent');
+                  ? (isSelected ? `4px solid ${sla.color}` : `3px solid ${sla.color}`)
+                  : (isSelected ? '3px solid var(--adm-accent)' : '3px solid transparent');
 
               return (
                 <div
@@ -3088,7 +3088,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 >
                   {/* Multi-Select Checkbox */}
                   {isMultiSelectMode && (
-                    <div 
+                    <div
                       onClick={(e) => toggleLeadSelection(lead.id, e)}
                       style={{
                         paddingTop: '8px',
@@ -3101,7 +3101,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       <input
                         type="checkbox"
                         checked={isLeadSelectedInMulti}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         style={{
                           cursor: 'pointer',
                           accentColor: 'var(--adm-accent, #6366F1)',
@@ -3385,8 +3385,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               const d = new Date(lastTime);
                               const now = new Date();
                               const isToday = d.toDateString() === now.toDateString();
-                              return isToday 
-                                ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                              return isToday
+                                ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                 : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
                             })() : ''}
                           </div>
@@ -3917,7 +3917,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             )}
 
             {/* ── TIMELINE DINÂMICA CONECTADA À ABA DO COMPOSER ── */}
-            <div 
+            <div
               ref={timelineContainerRef}
               style={{
                 flex: 1,
@@ -3927,11 +3927,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 flexDirection: 'column',
                 gap: '4px',
                 background: composerTab === 'whatsapp'
-                  ? (isDarkMode 
-                      ? '#0b141a' 
-                      : '#efeae2')
+                  ? (isDarkMode
+                    ? '#0b141a'
+                    : '#efeae2')
                   : 'radial-gradient(ellipse at 50% 10%, rgba(212, 175, 55, 0.03) 0%, transparent 60%)',
-            }}>
+              }}>
               {/* 1. ABA WHATSAPP: Exibe histórico de mensagens com layout bilateral */}
               {composerTab === 'whatsapp' && (
                 <>
@@ -3943,32 +3943,32 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </div>
                   ) : (
                     timelineActivities.map((act, idx) => {
-                      const isIncoming = act.authorId === 'lead' || 
-                                         act.authorName?.toLowerCase().includes('lead') || 
-                                         act.authorName?.toLowerCase().includes('cliente') || 
-                                         act.title?.toLowerCase().includes('recebid') || 
-                                       (act.type === 'creation' && !act.authorName?.includes('API'));
-                                       
-                      const isBot = act.authorId === 'system_bot' || 
-                                    act.authorName?.toLowerCase().includes('bot') || 
-                                    act.authorName?.toLowerCase().includes('robô') || 
-                                    act.authorName?.toLowerCase().includes('roleta');
+                      const isIncoming = act.authorId === 'lead' ||
+                        act.authorName?.toLowerCase().includes('lead') ||
+                        act.authorName?.toLowerCase().includes('cliente') ||
+                        act.title?.toLowerCase().includes('recebid') ||
+                        (act.type === 'creation' && !act.authorName?.includes('API'));
+
+                      const isBot = act.authorId === 'system_bot' ||
+                        act.authorName?.toLowerCase().includes('bot') ||
+                        act.authorName?.toLowerCase().includes('robô') ||
+                        act.authorName?.toLowerCase().includes('roleta');
 
                       const checkIsIncoming = (a: LeadActivity | null) => {
                         if (!a) return false;
-                        return a.authorId === 'lead' || 
-                               a.authorName?.toLowerCase().includes('lead') || 
-                               a.authorName?.toLowerCase().includes('cliente') || 
-                               a.title?.toLowerCase().includes('recebid') || 
-                               (a.type === 'creation' && !a.authorName?.includes('API'));
+                        return a.authorId === 'lead' ||
+                          a.authorName?.toLowerCase().includes('lead') ||
+                          a.authorName?.toLowerCase().includes('cliente') ||
+                          a.title?.toLowerCase().includes('recebid') ||
+                          (a.type === 'creation' && !a.authorName?.includes('API'));
                       };
 
                       const checkIsBot = (a: LeadActivity | null) => {
                         if (!a) return false;
-                        return a.authorId === 'system_bot' || 
-                               a.authorName?.toLowerCase().includes('bot') || 
-                               a.authorName?.toLowerCase().includes('robô') || 
-                               a.authorName?.toLowerCase().includes('roleta');
+                        return a.authorId === 'system_bot' ||
+                          a.authorName?.toLowerCase().includes('bot') ||
+                          a.authorName?.toLowerCase().includes('robô') ||
+                          a.authorName?.toLowerCase().includes('roleta');
                       };
 
                       const prevAct = idx > 0 ? timelineActivities[idx - 1] : null;
@@ -3985,8 +3985,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         const d1 = new Date(prevAct.timestamp);
                         const d2 = new Date(act.timestamp);
                         return d1.getFullYear() !== d2.getFullYear() ||
-                               d1.getMonth() !== d2.getMonth() ||
-                               d1.getDate() !== d2.getDate();
+                          d1.getMonth() !== d2.getMonth() ||
+                          d1.getDate() !== d2.getDate();
                       })();
 
                       const dateDividerText = isDifferentDayFromPrev && act.timestamp ? formatWhatsAppDateDivider(act.timestamp) : '';
@@ -4057,10 +4057,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         return (
                           <React.Fragment key={act.id}>
                             {renderDateDivider()}
-                            <div style={{ 
-                              width: '100%', 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <div style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
                               justifyContent: 'center',
                               gap: '12px',
                               margin: '16px 0 12px 0',
@@ -4140,9 +4140,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const isInstagramMsg = Boolean(msgRawContent && /https?:\/\/(www\.)?instagram\.com/i.test(msgRawContent));
                       const instagramMsgUrl = msgRawContent.match(/https?:\/\/(?:www\.)?instagram\.com[^\s]*/i)?.[0] || msgRawContent;
                       const isAudioMsg = Boolean(
-                        effectiveMediaType === 'audio' || 
+                        effectiveMediaType === 'audio' ||
                         (effectiveMediaUrl && (
-                          effectiveMediaUrl.startsWith('data:audio') || 
+                          effectiveMediaUrl.startsWith('data:audio') ||
                           /\.(ogg|mp3|opus|wav|m4a|aac)(\?.*)?$/i.test(effectiveMediaUrl) ||
                           (effectiveMediaUrl.includes('mmg.whatsapp.net') && (effectiveText.includes('🎵') || effectiveText.includes('voz')))
                         ))
@@ -4155,7 +4155,248 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             {renderDateDivider()}
                             <div
                               style={{
-                              alignSelf: 'flex-start',
+                                alignSelf: 'flex-start',
+                                maxWidth: '75%',
+                                display: 'flex',
+                                alignItems: 'flex-end',
+                                gap: '8px',
+                                margin: isSameAsPrev ? '1px 0' : '6px 0 1px 0',
+                              }}
+                            >
+                              {/* Avatar do Lead: só exibe no último balão do grupo consecutivo */}
+                              {!isSameAsNext ? (
+                                (selectedLead as any).avatarUrl ? (
+                                  <img
+                                    src={(selectedLead as any).avatarUrl}
+                                    alt={selectedLead.name}
+                                    style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', border: isDarkMode ? '1.5px solid rgba(255,255,255,0.1)' : '1.5px solid rgba(0,0,0,0.1)', flexShrink: 0 }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : '#e0e7ff', color: '#3B82F6', fontWeight: 800, fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1.5px solid rgba(59, 130, 246, 0.35)' }}>
+                                    {(selectedLead.name || 'L').charAt(0).toUpperCase()}
+                                  </div>
+                                )
+                              ) : (
+                                <div style={{ width: '30px', flexShrink: 0 }} />
+                              )}
+
+                              {/* Conteúdo: Sticker Solto vs Balão Clássico */}
+                              {isSticker && effectiveMediaUrl ? (
+                                <div
+                                  style={{ display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer' }}
+                                  onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: 'Figurinha' })}
+                                >
+                                  <img
+                                    src={effectiveMediaUrl}
+                                    alt="Figurinha"
+                                    style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
+                                  />
+                                  <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                </div>
+                              ) : (
+                                <div style={{
+                                  background: isDarkMode ? '#202c33' : '#ffffff',
+                                  border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
+                                  borderRadius: isSameAsPrev ? '12px' : '14px 14px 14px 2px',
+                                  padding: '7px 11px',
+                                  color: isDarkMode ? '#e9edef' : '#111b21',
+                                  boxShadow: isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '3px',
+                                }}>
+                                  {!isSameAsPrev && (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isDarkMode ? '#53bdeb' : '#128c7e' }}>
+                                        {selectedLead.name || act.authorName || 'Cliente'}
+                                      </span>
+                                      <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>
+                                        {formattedTime}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
+                                  {isInstagramMsg ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '300px' }}>
+                                      <a
+                                        href={instagramMsgUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          borderRadius: '10px',
+                                          overflow: 'hidden',
+                                          border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.08)',
+                                          background: isDarkMode ? '#1e293b' : '#ffffff',
+                                          textDecoration: 'none',
+                                          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                                          transition: 'transform 0.15s ease',
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                                      >
+                                        <div style={{
+                                          padding: '10px 12px',
+                                          background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          color: '#ffffff'
+                                        }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <InstagramIcon size={17} />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.01em' }}>Instagram</span>
+                                          </div>
+                                          <ExternalLink size={14} />
+                                        </div>
+                                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isDarkMode ? '#f1f5f9' : '#1e293b' }}>
+                                            Publicação ou Reel do Instagram
+                                          </span>
+                                          <span style={{ fontSize: '0.70rem', color: isDarkMode ? '#94a3b8' : '#64748b', wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                            {instagramMsgUrl}
+                                          </span>
+                                        </div>
+                                      </a>
+                                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', paddingRight: '2px' }}>
+                                        <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                      </div>
+                                    </div>
+                                  ) : isAudioMsg ? (
+                                    <WhatsAppAudioMessage
+                                      src={effectiveMediaUrl}
+                                      durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
+                                      isIncoming={true}
+                                      authorName={selectedLead.name}
+                                      avatarUrl={(selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl}
+                                      formattedTime={formattedTime}
+                                      isDarkMode={isDarkMode}
+                                      status="read"
+                                    />
+                                  ) : effectiveMediaType === 'image' && effectiveMediaUrl ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <div
+                                        style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
+                                        onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.text || 'Foto' })}
+                                      >
+                                        <img
+                                          src={act.mediaUrl}
+                                          alt={act.text || 'Foto'}
+                                          style={{
+                                            maxWidth: '280px',
+                                            maxHeight: '280px',
+                                            width: '100%',
+                                            borderRadius: '8px',
+                                            objectFit: 'cover',
+                                            display: 'block',
+                                            background: 'rgba(0,0,0,0.05)',
+                                          }}
+                                        />
+                                        {/* Selo translúcido de hora no canto inferior direito */}
+                                        <div style={{
+                                          position: 'absolute',
+                                          bottom: '6px',
+                                          right: '6px',
+                                          padding: '2px 7px',
+                                          borderRadius: '10px',
+                                          background: 'rgba(0, 0, 0, 0.45)',
+                                          backdropFilter: 'blur(4px)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          color: '#ffffff',
+                                          fontSize: '0.62rem',
+                                          fontWeight: 500,
+                                        }}>
+                                          <span>{formattedTime}</span>
+                                        </div>
+                                      </div>
+                                      {act.text && act.text !== '📷 Foto' && (
+                                        <div style={{ fontSize: '0.84rem', lineHeight: 1.4, color: isDarkMode ? '#e9edef' : '#111b21', padding: '2px 4px' }}>
+                                          {renderFormattedTextWithLinks(act.text, isDarkMode)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : act.mediaType === 'video' && act.mediaUrl ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      <div
+                                        onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'video', title: act.text || 'Vídeo' })}
+                                        style={{ position: 'relative', cursor: 'pointer', maxWidth: '280px', maxHeight: '240px', borderRadius: '8px', overflow: 'hidden', background: '#000' }}
+                                      >
+                                        <video src={act.mediaUrl} style={{ width: '100%', maxHeight: '240px', objectFit: 'cover', display: 'block' }} />
+                                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+                                          <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+                                            <Play size={20} style={{ marginLeft: '3px' }} fill="#fff" />
+                                          </div>
+                                        </div>
+                                        {/* Selo translúcido de hora no canto inferior direito */}
+                                        <div style={{
+                                          position: 'absolute',
+                                          bottom: '6px',
+                                          right: '6px',
+                                          padding: '2px 7px',
+                                          borderRadius: '10px',
+                                          background: 'rgba(0, 0, 0, 0.45)',
+                                          backdropFilter: 'blur(4px)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          color: '#ffffff',
+                                          fontSize: '0.62rem',
+                                          fontWeight: 500,
+                                        }}>
+                                          <span>{formattedTime}</span>
+                                        </div>
+                                      </div>
+                                      {act.text && act.text !== '🎥 Vídeo' && (
+                                        <div style={{ fontSize: '0.84rem', lineHeight: 1.4, color: isDarkMode ? '#e9edef' : '#111b21', padding: '2px 4px' }}>
+                                          {renderFormattedTextWithLinks(act.text, isDarkMode)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : act.mediaType === 'document' && act.mediaUrl ? (
+                                    <WhatsAppDocumentMessage
+                                      url={act.mediaUrl}
+                                      filename={act.text}
+                                      isIncoming={true}
+                                      formattedTime={formattedTime}
+                                      isDarkMode={isDarkMode}
+                                      status="read"
+                                    />
+                                  ) : (
+                                    <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
+                                      <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
+                                      {isSameAsPrev && (
+                                        <span style={{ fontSize: '0.60rem', color: isDarkMode ? '#8696a0' : '#667781', flexShrink: 0 }}>{formattedTime}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </React.Fragment>
+                        );
+                      }
+
+                      // Balão à Direita (Usuário Logado no F5 ou WhatsApp Celular/Web Oficial)
+                      const isExternalWa = act.authorName === 'WhatsApp App / Web' ||
+                        act.authorId === 'whatsapp_mobile' ||
+                        act.authorAvatarUrl === 'whatsapp_brand' ||
+                        act.title?.toLowerCase().includes('celular') ||
+                        act.title?.toLowerCase().includes('web');
+
+                      const authorAvatar = isExternalWa ? undefined : (act.authorAvatarUrl || currentUser?.avatarUrl);
+                      const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
+                      const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
+
+                      return (
+                        <React.Fragment key={act.id}>
+                          {renderDateDivider()}
+                          <div
+                            style={{
+                              alignSelf: 'flex-end',
                               maxWidth: '75%',
                               display: 'flex',
                               alignItems: 'flex-end',
@@ -4163,56 +4404,58 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               margin: isSameAsPrev ? '1px 0' : '6px 0 1px 0',
                             }}
                           >
-                            {/* Avatar do Lead: só exibe no último balão do grupo consecutivo */}
-                            {!isSameAsNext ? (
-                              (selectedLead as any).avatarUrl ? (
-                                <img
-                                  src={(selectedLead as any).avatarUrl}
-                                  alt={selectedLead.name}
-                                  style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover', border: isDarkMode ? '1.5px solid rgba(255,255,255,0.1)' : '1.5px solid rgba(0,0,0,0.1)', flexShrink: 0 }}
-                                />
-                              ) : (
-                                <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : '#e0e7ff', color: '#3B82F6', fontWeight: 800, fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1.5px solid rgba(59, 130, 246, 0.35)' }}>
-                                  {(selectedLead.name || 'L').charAt(0).toUpperCase()}
-                                </div>
-                              )
-                            ) : (
-                              <div style={{ width: '30px', flexShrink: 0 }} />
-                            )}
-
                             {/* Conteúdo: Sticker Solto vs Balão Clássico */}
-                            {isSticker && effectiveMediaUrl ? (
+                            {isSticker && act.mediaUrl ? (
                               <div
-                                style={{ display: 'flex', flexDirection: 'column', gap: '4px', cursor: 'pointer' }}
-                                onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: 'Figurinha' })}
+                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', cursor: 'pointer' }}
+                                onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: 'Figurinha' })}
                               >
                                 <img
-                                  src={effectiveMediaUrl}
+                                  src={act.mediaUrl}
                                   alt="Figurinha"
                                   style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
                                 />
-                                <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                  <CheckCircle2 size={11} color="#53bdeb" />
+                                </div>
                               </div>
                             ) : (
                               <div style={{
-                                background: isDarkMode ? '#202c33' : '#ffffff',
-                                border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
-                                borderRadius: isSameAsPrev ? '12px' : '14px 14px 14px 2px',
+                                background: isFailedMsg
+                                  ? (isDarkMode ? 'rgba(239, 68, 68, 0.22)' : '#fee2e2')
+                                  : (isDarkMode ? '#005c4b' : '#d9fdd3'),
+                                border: isFailedMsg
+                                  ? (isDarkMode ? '1.5px solid #EF4444' : '1.5px solid #ef4444')
+                                  : (isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none'),
+                                borderRadius: isSameAsPrev ? '12px' : '14px 14px 2px 14px',
                                 padding: '7px 11px',
                                 color: isDarkMode ? '#e9edef' : '#111b21',
-                                boxShadow: isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)',
+                                boxShadow: isFailedMsg
+                                  ? '0 2px 10px rgba(239, 68, 68, 0.3)'
+                                  : (isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)'),
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '3px',
+                                gap: '4px',
+                                position: 'relative',
                               }}>
                                 {!isSameAsPrev && (
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
-                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isDarkMode ? '#53bdeb' : '#128c7e' }}>
-                                      {selectedLead.name || act.authorName || 'Cliente'}
-                                    </span>
-                                    <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>
-                                      {formattedTime}
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#d9fdd3' : '#008069') }}>
+                                        {authorName}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+                                      <span style={{ fontSize: '0.62rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>
+                                        {formattedTime}
+                                      </span>
+                                      {isFailedMsg ? (
+                                        <AlertCircle size={13} color="#EF4444" />
+                                      ) : (
+                                        <CheckCircle2 size={11} color="#53bdeb" />
+                                      )}
+                                    </div>
                                   </div>
                                 )}
 
@@ -4262,22 +4505,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     </a>
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', paddingRight: '2px' }}>
                                       <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                      {isFailedMsg ? (
+                                        <AlertCircle size={13} color="#EF4444" />
+                                      ) : (
+                                        <CheckCircle2 size={11} color="#53bdeb" />
+                                      )}
                                     </div>
                                   </div>
                                 ) : isAudioMsg ? (
                                   <WhatsAppAudioMessage
                                     src={effectiveMediaUrl}
                                     durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
-                                    isIncoming={true}
-                                    authorName={selectedLead.name}
-                                    avatarUrl={(selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl}
+                                    isIncoming={false}
+                                    authorName={authorName}
+                                    avatarUrl={authorAvatar}
                                     formattedTime={formattedTime}
                                     isDarkMode={isDarkMode}
-                                    status="read"
+                                    status={act.status === 'failed' ? 'failed' : 'read'}
                                   />
-                                ) : effectiveMediaType === 'image' && effectiveMediaUrl ? (
+                                ) : act.mediaType === 'image' && act.mediaUrl ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <div 
+                                    <div
                                       style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
                                       onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.text || 'Foto' })}
                                     >
@@ -4311,6 +4559,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         fontWeight: 500,
                                       }}>
                                         <span>{formattedTime}</span>
+                                        <CheckCircle2 size={11} color="#53bdeb" />
                                       </div>
                                     </div>
                                     {act.text && act.text !== '📷 Foto' && (
@@ -4348,6 +4597,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         fontWeight: 500,
                                       }}>
                                         <span>{formattedTime}</span>
+                                        <CheckCircle2 size={11} color="#53bdeb" />
                                       </div>
                                     </div>
                                     {act.text && act.text !== '🎥 Vídeo' && (
@@ -4360,397 +4610,147 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <WhatsAppDocumentMessage
                                     url={act.mediaUrl}
                                     filename={act.text}
-                                    isIncoming={true}
+                                    isIncoming={false}
                                     formattedTime={formattedTime}
                                     isDarkMode={isDarkMode}
-                                    status="read"
+                                    status={act.status === 'failed' ? 'failed' : 'read'}
                                   />
                                 ) : (
                                   <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
                                     <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
                                     {isSameAsPrev && (
-                                      <span style={{ fontSize: '0.60rem', color: isDarkMode ? '#8696a0' : '#667781', flexShrink: 0 }}>{formattedTime}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                                        <span style={{ fontSize: '0.60rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>{formattedTime}</span>
+                                        {isFailedMsg ? (
+                                          <AlertCircle size={10} color="#EF4444" />
+                                        ) : (
+                                          <CheckCircle2 size={10} color="#53bdeb" />
+                                        )}
+                                      </div>
                                     )}
+                                  </div>
+                                )}
+
+                                {/* Card de Falha e Ação Direta para Tentar Novamente */}
+                                {isFailedMsg && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      marginTop: '6px',
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      background: isDarkMode ? 'rgba(0, 0, 0, 0.45)' : 'rgba(255, 255, 255, 0.85)',
+                                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '6px',
+                                      textAlign: 'left',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#EF4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <AlertCircle size={12} /> Falha no Envio
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const errText = act.errorMessage || 'Falha ao enviar mensagem no WhatsApp.';
+                                          navigator.clipboard.writeText(errText);
+                                          setCopiedErrorId(act.id);
+                                          setTimeout(() => setCopiedErrorId(null), 2000);
+                                        }}
+                                        title="Copiar mensagem do erro"
+                                        style={{
+                                          background: 'rgba(239, 68, 68, 0.15)',
+                                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                                          color: isDarkMode ? '#FCA5A5' : '#DC2626',
+                                          borderRadius: '5px',
+                                          padding: '2px 6px',
+                                          fontSize: '0.62rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                        }}
+                                      >
+                                        {copiedErrorId === act.id ? <Check size={10} color="#10B981" /> : <Copy size={10} />}
+                                        <span>{copiedErrorId === act.id ? 'Copiado' : 'Copiar'}</span>
+                                      </button>
+                                    </div>
+
+                                    <div style={{ fontSize: '0.70rem', color: isDarkMode ? '#FCA5A5' : '#991B1B', lineHeight: 1.35, wordBreak: 'break-word', fontWeight: 500 }}>
+                                      {act.errorMessage || 'A API do WhatsApp não confirmou o envio desta mensagem.'}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      disabled={retryingMessageId === act.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRetryMessage(act);
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        background: '#EF4444',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        borderRadius: '6px',
+                                        padding: '7px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        cursor: retryingMessageId === act.id ? 'wait' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '6px',
+                                        boxShadow: '0 2px 4px rgba(239, 68, 68, 0.35)',
+                                        opacity: retryingMessageId === act.id ? 0.7 : 1,
+                                        transition: 'all 0.15s ease',
+                                      }}
+                                    >
+                                      <RefreshCw size={11} className={retryingMessageId === act.id ? 'animate-spin' : ''} />
+                                      <span>{retryingMessageId === act.id ? 'Reenviando...' : 'Tentar Novamente'}</span>
+                                    </button>
                                   </div>
                                 )}
                               </div>
                             )}
+
+                            {/* Avatar do Autor: Se for WhatsApp App / Web Oficial externo, exibe ícone do WhatsApp */}
+                            {!isSameAsNext ? (
+                              isExternalWa ? (
+                                <div
+                                  title="Mensagem enviada pelo celular ou WhatsApp Web"
+                                  style={{
+                                    width: '30px',
+                                    height: '30px',
+                                    borderRadius: '50%',
+                                    background: '#25D366',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    border: '1.5px solid #25D366',
+                                    boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
+                                  }}
+                                >
+                                  <WhatsAppBrandIcon size={16} color="#FFFFFF" />
+                                </div>
+                              ) : (
+                                <SafeAvatar
+                                  src={authorAvatar}
+                                  name={authorName}
+                                  size={30}
+                                  border="1.5px solid #00a884"
+                                />
+                              )
+                            ) : (
+                              <div style={{ width: '30px', flexShrink: 0 }} />
+                            )}
                           </div>
                         </React.Fragment>
                       );
-                    }
-
-                    // Balão à Direita (Usuário Logado no F5 ou WhatsApp Celular/Web Oficial)
-                    const isExternalWa = act.authorName === 'WhatsApp App / Web' || 
-                                         act.authorId === 'whatsapp_mobile' || 
-                                         act.authorAvatarUrl === 'whatsapp_brand' ||
-                                         act.title?.toLowerCase().includes('celular') ||
-                                         act.title?.toLowerCase().includes('web');
-
-                    const authorAvatar = isExternalWa ? undefined : (act.authorAvatarUrl || currentUser?.avatarUrl);
-                    const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
-                    const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
-
-                    return (
-                      <React.Fragment key={act.id}>
-                        {renderDateDivider()}
-                        <div
-                          style={{
-                            alignSelf: 'flex-end',
-                            maxWidth: '75%',
-                            display: 'flex',
-                            alignItems: 'flex-end',
-                            gap: '8px',
-                            margin: isSameAsPrev ? '1px 0' : '6px 0 1px 0',
-                          }}
-                        >
-                          {/* Conteúdo: Sticker Solto vs Balão Clássico */}
-                          {isSticker && act.mediaUrl ? (
-                            <div
-                              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', cursor: 'pointer' }}
-                              onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: 'Figurinha' })}
-                            >
-                              <img
-                                src={act.mediaUrl}
-                                alt="Figurinha"
-                                style={{ maxWidth: '140px', maxHeight: '140px', objectFit: 'contain', background: 'transparent' }}
-                              />
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
-                                <CheckCircle2 size={11} color="#53bdeb" />
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{
-                              background: isFailedMsg 
-                                ? (isDarkMode ? 'rgba(239, 68, 68, 0.22)' : '#fee2e2') 
-                                : (isDarkMode ? '#005c4b' : '#d9fdd3'),
-                              border: isFailedMsg 
-                                ? (isDarkMode ? '1.5px solid #EF4444' : '1.5px solid #ef4444') 
-                                : (isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none'),
-                              borderRadius: isSameAsPrev ? '12px' : '14px 14px 2px 14px',
-                              padding: '7px 11px',
-                              color: isDarkMode ? '#e9edef' : '#111b21',
-                              boxShadow: isFailedMsg 
-                                ? '0 2px 10px rgba(239, 68, 68, 0.3)' 
-                                : (isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)'),
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '4px',
-                              position: 'relative',
-                            }}>
-                              {!isSameAsPrev && (
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#d9fdd3' : '#008069') }}>
-                                      {authorName}
-                                    </span>
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
-                                    <span style={{ fontSize: '0.62rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>
-                                      {formattedTime}
-                                    </span>
-                                    {isFailedMsg ? (
-                                      <AlertCircle size={13} color="#EF4444" />
-                                    ) : (
-                                      <CheckCircle2 size={11} color="#53bdeb" />
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
-                              {isInstagramMsg ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '300px' }}>
-                                  <a
-                                    href={instagramMsgUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      borderRadius: '10px',
-                                      overflow: 'hidden',
-                                      border: isDarkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.08)',
-                                      background: isDarkMode ? '#1e293b' : '#ffffff',
-                                      textDecoration: 'none',
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                                      transition: 'transform 0.15s ease',
-                                    }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-                                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
-                                  >
-                                    <div style={{
-                                      padding: '10px 12px',
-                                      background: 'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      color: '#ffffff'
-                                    }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <InstagramIcon size={17} />
-                                        <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.01em' }}>Instagram</span>
-                                      </div>
-                                      <ExternalLink size={14} />
-                                    </div>
-                                    <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isDarkMode ? '#f1f5f9' : '#1e293b' }}>
-                                        Publicação ou Reel do Instagram
-                                      </span>
-                                      <span style={{ fontSize: '0.70rem', color: isDarkMode ? '#94a3b8' : '#64748b', wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                        {instagramMsgUrl}
-                                      </span>
-                                    </div>
-                                  </a>
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', paddingRight: '2px' }}>
-                                    <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
-                                    {isFailedMsg ? (
-                                      <AlertCircle size={13} color="#EF4444" />
-                                    ) : (
-                                      <CheckCircle2 size={11} color="#53bdeb" />
-                                    )}
-                                  </div>
-                                </div>
-                              ) : isAudioMsg ? (
-                                <WhatsAppAudioMessage
-                                  src={effectiveMediaUrl}
-                                  durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
-                                  isIncoming={false}
-                                  authorName={authorName}
-                                  avatarUrl={authorAvatar}
-                                  formattedTime={formattedTime}
-                                  isDarkMode={isDarkMode}
-                                  status={act.status === 'failed' ? 'failed' : 'read'}
-                                />
-                              ) : act.mediaType === 'image' && act.mediaUrl ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  <div 
-                                    style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
-                                    onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.text || 'Foto' })}
-                                  >
-                                    <img
-                                      src={act.mediaUrl}
-                                      alt={act.text || 'Foto'}
-                                      style={{
-                                        maxWidth: '280px',
-                                        maxHeight: '280px',
-                                        width: '100%',
-                                        borderRadius: '8px',
-                                        objectFit: 'cover',
-                                        display: 'block',
-                                        background: 'rgba(0,0,0,0.05)',
-                                      }}
-                                    />
-                                    {/* Selo translúcido de hora no canto inferior direito */}
-                                    <div style={{
-                                      position: 'absolute',
-                                      bottom: '6px',
-                                      right: '6px',
-                                      padding: '2px 7px',
-                                      borderRadius: '10px',
-                                      background: 'rgba(0, 0, 0, 0.45)',
-                                      backdropFilter: 'blur(4px)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      color: '#ffffff',
-                                      fontSize: '0.62rem',
-                                      fontWeight: 500,
-                                    }}>
-                                      <span>{formattedTime}</span>
-                                      <CheckCircle2 size={11} color="#53bdeb" />
-                                    </div>
-                                  </div>
-                                  {act.text && act.text !== '📷 Foto' && (
-                                    <div style={{ fontSize: '0.84rem', lineHeight: 1.4, color: isDarkMode ? '#e9edef' : '#111b21', padding: '2px 4px' }}>
-                                      {renderFormattedTextWithLinks(act.text, isDarkMode)}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : act.mediaType === 'video' && act.mediaUrl ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  <div
-                                    onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'video', title: act.text || 'Vídeo' })}
-                                    style={{ position: 'relative', cursor: 'pointer', maxWidth: '280px', maxHeight: '240px', borderRadius: '8px', overflow: 'hidden', background: '#000' }}
-                                  >
-                                    <video src={act.mediaUrl} style={{ width: '100%', maxHeight: '240px', objectFit: 'cover', display: 'block' }} />
-                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
-                                      <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
-                                        <Play size={20} style={{ marginLeft: '3px' }} fill="#fff" />
-                                      </div>
-                                    </div>
-                                    {/* Selo translúcido de hora no canto inferior direito */}
-                                    <div style={{
-                                      position: 'absolute',
-                                      bottom: '6px',
-                                      right: '6px',
-                                      padding: '2px 7px',
-                                      borderRadius: '10px',
-                                      background: 'rgba(0, 0, 0, 0.45)',
-                                      backdropFilter: 'blur(4px)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      color: '#ffffff',
-                                      fontSize: '0.62rem',
-                                      fontWeight: 500,
-                                    }}>
-                                      <span>{formattedTime}</span>
-                                      <CheckCircle2 size={11} color="#53bdeb" />
-                                    </div>
-                                  </div>
-                                  {act.text && act.text !== '🎥 Vídeo' && (
-                                    <div style={{ fontSize: '0.84rem', lineHeight: 1.4, color: isDarkMode ? '#e9edef' : '#111b21', padding: '2px 4px' }}>
-                                      {renderFormattedTextWithLinks(act.text, isDarkMode)}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : act.mediaType === 'document' && act.mediaUrl ? (
-                                <WhatsAppDocumentMessage
-                                  url={act.mediaUrl}
-                                  filename={act.text}
-                                  isIncoming={false}
-                                  formattedTime={formattedTime}
-                                  isDarkMode={isDarkMode}
-                                  status={act.status === 'failed' ? 'failed' : 'read'}
-                                />
-                              ) : (
-                                <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
-                                  <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
-                                  {isSameAsPrev && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
-                                      <span style={{ fontSize: '0.60rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>{formattedTime}</span>
-                                      {isFailedMsg ? (
-                                        <AlertCircle size={10} color="#EF4444" />
-                                      ) : (
-                                        <CheckCircle2 size={10} color="#53bdeb" />
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Card de Falha e Ação Direta para Tentar Novamente */}
-                              {isFailedMsg && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{
-                                    marginTop: '6px',
-                                    padding: '8px 10px',
-                                    borderRadius: '8px',
-                                    background: isDarkMode ? 'rgba(0, 0, 0, 0.45)' : 'rgba(255, 255, 255, 0.85)',
-                                    border: '1px solid rgba(239, 68, 68, 0.45)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '6px',
-                                    textAlign: 'left',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#EF4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <AlertCircle size={12} /> Falha no Envio
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const errText = act.errorMessage || 'Falha ao enviar mensagem no WhatsApp.';
-                                        navigator.clipboard.writeText(errText);
-                                        setCopiedErrorId(act.id);
-                                        setTimeout(() => setCopiedErrorId(null), 2000);
-                                      }}
-                                      title="Copiar mensagem do erro"
-                                      style={{
-                                        background: 'rgba(239, 68, 68, 0.15)',
-                                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                                        color: isDarkMode ? '#FCA5A5' : '#DC2626',
-                                        borderRadius: '5px',
-                                        padding: '2px 6px',
-                                        fontSize: '0.62rem',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                      }}
-                                    >
-                                      {copiedErrorId === act.id ? <Check size={10} color="#10B981" /> : <Copy size={10} />}
-                                      <span>{copiedErrorId === act.id ? 'Copiado' : 'Copiar'}</span>
-                                    </button>
-                                  </div>
-
-                                  <div style={{ fontSize: '0.70rem', color: isDarkMode ? '#FCA5A5' : '#991B1B', lineHeight: 1.35, wordBreak: 'break-word', fontWeight: 500 }}>
-                                    {act.errorMessage || 'A API do WhatsApp não confirmou o envio desta mensagem.'}
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    disabled={retryingMessageId === act.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRetryMessage(act);
-                                    }}
-                                    style={{
-                                      width: '100%',
-                                      background: '#EF4444',
-                                      border: 'none',
-                                      color: '#FFFFFF',
-                                      borderRadius: '6px',
-                                      padding: '7px 10px',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 800,
-                                      cursor: retryingMessageId === act.id ? 'wait' : 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '6px',
-                                      boxShadow: '0 2px 4px rgba(239, 68, 68, 0.35)',
-                                      opacity: retryingMessageId === act.id ? 0.7 : 1,
-                                      transition: 'all 0.15s ease',
-                                    }}
-                                  >
-                                    <RefreshCw size={11} className={retryingMessageId === act.id ? 'animate-spin' : ''} />
-                                    <span>{retryingMessageId === act.id ? 'Reenviando...' : 'Tentar Novamente'}</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Avatar do Autor: Se for WhatsApp App / Web Oficial externo, exibe ícone do WhatsApp */}
-                          {!isSameAsNext ? (
-                            isExternalWa ? (
-                              <div
-                                title="Mensagem enviada pelo celular ou WhatsApp Web"
-                                style={{
-                                  width: '30px',
-                                  height: '30px',
-                                  borderRadius: '50%',
-                                  background: '#25D366',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0,
-                                  border: '1.5px solid #25D366',
-                                  boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
-                                }}
-                              >
-                                <WhatsAppBrandIcon size={16} color="#FFFFFF" />
-                              </div>
-                            ) : (
-                              <SafeAvatar
-                                src={authorAvatar}
-                                name={authorName}
-                                size={30}
-                                border="1.5px solid #00a884"
-                              />
-                            )
-                          ) : (
-                            <div style={{ width: '30px', flexShrink: 0 }} />
-                          )}
-                        </div>
-                      </React.Fragment>
-                    );
                     })
                   )}
 
@@ -4816,8 +4816,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   historyActivities.map((act, idx) => {
                     // Identifica se é nota advinda de Follow-up / Tarefa
                     const isTaskOrFollowUpNote = Boolean(
-                      act.type === 'task_completed' || 
-                      act.type === 'task_created' || 
+                      act.type === 'task_completed' ||
+                      act.type === 'task_created' ||
                       (act as any).customProperties?.isFollowUp ||
                       (act as any).customProperties?.taskId ||
                       (act as any).taskId ||
@@ -4831,14 +4831,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                     // Identifica se é ação automática do sistema/auditoria
                     const isAutomaticNote = !isTaskOrFollowUpNote && (
-                      act.type !== 'note' || 
+                      act.type !== 'note' ||
                       (Boolean(act.title) && act.title !== 'Nota Interna' && act.title !== 'Observação registrada') ||
                       Boolean((act as any).isAutomatic)
                     );
 
                     // Identifica se é ação puramente robô/sistema sem colaborador humano
-                    const isPureBotOrSystem = 
-                      act.authorId === 'system_bot' || 
+                    const isPureBotOrSystem =
+                      act.authorId === 'system_bot' ||
                       (!act.authorId && (!act.authorName || act.authorName.toLowerCase().includes('bot') || act.authorName.toLowerCase() === 'sistema'));
 
                     // Verifica se foi feita pelo usuário logado
@@ -4853,7 +4853,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     const authorDisplayName = act.authorName || (isMine ? currentUser?.name : 'Colaborador') || 'Colaborador';
 
                     // Foto do autor
-                    const authorAvatar = isMine 
+                    const authorAvatar = isMine
                       ? (currentUser?.avatarUrl || act.authorAvatarUrl)
                       : act.authorAvatarUrl;
 
@@ -4863,14 +4863,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     // Título da nota
                     const titleLabel = isTaskOrFollowUpNote
                       ? `${authorDisplayName} (Resumo Follow-up)`
-                      : isAutomaticNote 
-                      ? `${authorDisplayName} (Nota Automática do Sistema)`
-                      : `${authorDisplayName} (Nota Interna)`;
+                      : isAutomaticNote
+                        ? `${authorDisplayName} (Nota Automática do Sistema)`
+                        : `${authorDisplayName} (Nota Interna)`;
 
                     // Formatação de data/hora
                     const actDate = new Date(act.timestamp);
-                    const timeStr = isNaN(actDate.getTime()) 
-                      ? '' 
+                    const timeStr = isNaN(actDate.getTime())
+                      ? ''
                       : actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                     const prevAct = idx > 0 ? historyActivities[idx - 1] : null;
@@ -4882,8 +4882,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const d1 = new Date(prevAct.timestamp);
                       const d2 = new Date(act.timestamp);
                       return d1.getFullYear() !== d2.getFullYear() ||
-                             d1.getMonth() !== d2.getMonth() ||
-                             d1.getDate() !== d2.getDate();
+                        d1.getMonth() !== d2.getMonth() ||
+                        d1.getDate() !== d2.getDate();
                     })();
 
                     const dateDividerText = isDifferentDayFromPrev && act.timestamp ? formatWhatsAppDateDivider(act.timestamp) : '';
@@ -4957,13 +4957,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               overflow: 'hidden',
                               flexShrink: 0,
                             }}>
-                              <img 
-                                src="/logo_f5.png" 
-                                alt="F5" 
+                              <img
+                                src="/logo_f5.png"
+                                alt="F5"
                                 onError={(e) => {
                                   (e.target as HTMLElement).style.display = 'none';
                                 }}
-                                style={{ width: '22px', height: '22px', objectFit: 'contain' }} 
+                                style={{ width: '22px', height: '22px', objectFit: 'contain' }}
                               />
                               <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#8B5CF6' }}>F5</span>
                             </div>
@@ -5000,260 +5000,260 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                     // 2. Anotação de Usuário (Follow-up / Tarefa, Nota Interna Manual ou Auditoria do Sistema)
                     // Alinhada à DIREITA se for do usuário logado (isMine), e à ESQUERDA se for de outro colaborador
-                    const noteThemeColor = isTaskOrFollowUpNote 
-                      ? '#F59E0B' 
-                      : isAutomaticNote 
-                      ? '#8B5CF6' 
-                      : '#0284C7';
+                    const noteThemeColor = isTaskOrFollowUpNote
+                      ? '#F59E0B'
+                      : isAutomaticNote
+                        ? '#8B5CF6'
+                        : '#0284C7';
 
                     const noteBg = isTaskOrFollowUpNote
                       ? (isMine ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)')
                       : isAutomaticNote
-                      ? (isMine 
-                          ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(99, 102, 241, 0.12) 100%)' 
+                        ? (isMine
+                          ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(99, 102, 241, 0.12) 100%)'
                           : 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(139, 92, 246, 0.08) 100%)')
-                      : (isMine ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-input)');
+                        : (isMine ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-input)');
 
                     const noteBorder = isTaskOrFollowUpNote
                       ? '1.5px solid rgba(245, 158, 11, 0.45)'
                       : isAutomaticNote
-                      ? '1.5px solid rgba(139, 92, 246, 0.40)'
-                      : (isMine ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid var(--adm-border)');
+                        ? '1.5px solid rgba(139, 92, 246, 0.40)'
+                        : (isMine ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid var(--adm-border)');
 
                     return (
                       <React.Fragment key={act.id}>
                         {renderDateDivider()}
                         <div
                           style={{
-                          alignSelf: isMine ? 'flex-end' : 'flex-start',
-                          maxWidth: '82%',
-                          display: 'flex',
-                          flexDirection: isMine ? 'row-reverse' : 'row',
-                          alignItems: 'flex-start',
-                          gap: '10px',
-                          margin: '5px 0',
-                        }}
-                      >
-                        {/* Foto / Avatar do Colaborador */}
-                        {authorAvatar ? (
-                          <img
-                            src={authorAvatar}
-                            alt={authorDisplayName}
-                            style={{
+                            alignSelf: isMine ? 'flex-end' : 'flex-start',
+                            maxWidth: '82%',
+                            display: 'flex',
+                            flexDirection: isMine ? 'row-reverse' : 'row',
+                            alignItems: 'flex-start',
+                            gap: '10px',
+                            margin: '5px 0',
+                          }}
+                        >
+                          {/* Foto / Avatar do Colaborador */}
+                          {authorAvatar ? (
+                            <img
+                              src={authorAvatar}
+                              alt={authorDisplayName}
+                              style={{
+                                width: '34px',
+                                height: '34px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                                border: `1.5px solid ${noteThemeColor}`,
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <div style={{
                               width: '34px',
                               height: '34px',
                               borderRadius: '50%',
-                              objectFit: 'cover',
+                              background: isTaskOrFollowUpNote
+                                ? 'rgba(245, 158, 11, 0.18)'
+                                : isAutomaticNote
+                                  ? 'rgba(139, 92, 246, 0.18)'
+                                  : 'rgba(2, 132, 199, 0.15)',
                               border: `1.5px solid ${noteThemeColor}`,
+                              color: noteThemeColor,
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                               flexShrink: 0,
-                            }}
-                          />
-                        ) : (
-                          <div style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '50%',
-                            background: isTaskOrFollowUpNote
-                              ? 'rgba(245, 158, 11, 0.18)'
-                              : isAutomaticNote
-                              ? 'rgba(139, 92, 246, 0.18)'
-                              : 'rgba(2, 132, 199, 0.15)',
-                            border: `1.5px solid ${noteThemeColor}`,
-                            color: noteThemeColor,
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            {(authorDisplayName || 'U').slice(0, 2).toUpperCase()}
-                          </div>
-                        )}
-
-                        {/* Balão da Anotação */}
-                        <div style={{
-                          background: noteBg,
-                          border: noteBorder,
-                          borderRadius: '14px',
-                          borderTopRightRadius: isMine ? '3px' : '14px',
-                          borderTopLeftRadius: isMine ? '14px' : '3px',
-                          padding: '10px 14px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
-                          boxShadow: isTaskOrFollowUpNote
-                            ? '0 2px 8px rgba(245, 158, 11, 0.12)'
-                            : isAutomaticNote 
-                            ? '0 2px 8px rgba(139, 92, 246, 0.12)' 
-                            : '0 1px 3px rgba(0,0,0,0.05)',
-                        }}>
-                          {/* Header do Balão: Nome + Tipo de Nota + Botão Ver Tarefa + Horário */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                            <span style={{ 
-                              fontSize: '0.72rem', 
-                              fontWeight: 700, 
-                              color: noteThemeColor, 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: '6px' 
                             }}>
-                              {isTaskOrFollowUpNote ? (
-                                <Calendar size={12} color="#F59E0B" />
-                              ) : isAutomaticNote ? (
-                                <Zap size={12} color="#8B5CF6" />
-                              ) : (
-                                <FileText size={12} color="#0284C7" />
-                              )}
-                              <span>{titleLabel}</span>
-                            </span>
+                              {(authorDisplayName || 'U').slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {isTaskOrFollowUpNote && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const foundTask = tasks.find(t => t.id === linkedTaskId || (t.leadId === selectedLead?.id && t.isFollowUp));
-                                    if (foundTask) {
-                                      setSelectedTaskForDetail(foundTask);
-                                    } else {
-                                      // Fallback gracioso
-                                      setSelectedTaskForDetail({
-                                        id: linkedTaskId || act.id,
-                                        title: act.title || 'Follow-up do Lead',
-                                        type: 'follow_up',
-                                        status: 'completed',
-                                        priority: 'medium',
-                                        leadId: selectedLead?.id,
-                                        assignedToId: act.authorId,
-                                        assignedToName: act.authorName,
-                                        dueDate: act.timestamp?.split('T')[0] || new Date().toISOString().split('T')[0],
-                                        dueTime: '12:00',
-                                        resolution: act.text,
-                                        isFollowUp: true,
-                                      } as any);
-                                    }
+                          {/* Balão da Anotação */}
+                          <div style={{
+                            background: noteBg,
+                            border: noteBorder,
+                            borderRadius: '14px',
+                            borderTopRightRadius: isMine ? '3px' : '14px',
+                            borderTopLeftRadius: isMine ? '14px' : '3px',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                            boxShadow: isTaskOrFollowUpNote
+                              ? '0 2px 8px rgba(245, 158, 11, 0.12)'
+                              : isAutomaticNote
+                                ? '0 2px 8px rgba(139, 92, 246, 0.12)'
+                                : '0 1px 3px rgba(0,0,0,0.05)',
+                          }}>
+                            {/* Header do Balão: Nome + Tipo de Nota + Botão Ver Tarefa + Horário */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                color: noteThemeColor,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}>
+                                {isTaskOrFollowUpNote ? (
+                                  <Calendar size={12} color="#F59E0B" />
+                                ) : isAutomaticNote ? (
+                                  <Zap size={12} color="#8B5CF6" />
+                                ) : (
+                                  <FileText size={12} color="#0284C7" />
+                                )}
+                                <span>{titleLabel}</span>
+                              </span>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {isTaskOrFollowUpNote && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const foundTask = tasks.find(t => t.id === linkedTaskId || (t.leadId === selectedLead?.id && t.isFollowUp));
+                                      if (foundTask) {
+                                        setSelectedTaskForDetail(foundTask);
+                                      } else {
+                                        // Fallback gracioso
+                                        setSelectedTaskForDetail({
+                                          id: linkedTaskId || act.id,
+                                          title: act.title || 'Follow-up do Lead',
+                                          type: 'follow_up',
+                                          status: 'completed',
+                                          priority: 'medium',
+                                          leadId: selectedLead?.id,
+                                          assignedToId: act.authorId,
+                                          assignedToName: act.authorName,
+                                          dueDate: act.timestamp?.split('T')[0] || new Date().toISOString().split('T')[0],
+                                          dueTime: '12:00',
+                                          resolution: act.text,
+                                          isFollowUp: true,
+                                        } as any);
+                                      }
+                                    }}
+                                    title="Visualizar detalhes desta tarefa / follow-up"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '2px 7px',
+                                      borderRadius: '5px',
+                                      background: 'rgba(245, 158, 11, 0.18)',
+                                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                                      color: '#F59E0B',
+                                      fontSize: '0.62rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.28)')}
+                                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.18)')}
+                                  >
+                                    <CheckSquare size={10} />
+                                    <span>Ver Tarefa</span>
+                                  </button>
+                                )}
+
+                                <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
+                                  {timeStr}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Conteúdo da Anotação: Áudio, Imagem, Vídeo, Documento ou Texto */}
+                            {act.mediaType === 'audio' || (act.mediaUrl && (act.mediaUrl.startsWith('data:audio') || act.mediaUrl.endsWith('.ogg') || act.mediaUrl.endsWith('.mp3') || act.mediaUrl.endsWith('.opus') || act.mediaUrl.endsWith('.wav') || act.mediaUrl.includes('.ogg?') || act.mediaUrl.includes('.mp3?'))) ? (
+                              <div style={{ marginTop: '4px' }}>
+                                <WhatsAppAudioMessage
+                                  src={act.mediaUrl}
+                                  isIncoming={!isMine}
+                                  authorName={authorDisplayName}
+                                  avatarUrl={authorAvatar}
+                                  formattedTime={timeStr}
+                                  isDarkMode={isDarkMode}
+                                />
+                              </div>
+                            ) : act.mediaType === 'image' && act.mediaUrl ? (
+                              <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <img
+                                  src={act.mediaUrl}
+                                  alt="Anexo"
+                                  onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.title || 'Foto em anotação' })}
+                                  style={{
+                                    maxWidth: '280px',
+                                    maxHeight: '220px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    objectFit: 'cover',
+                                    border: '1px solid var(--adm-border)',
                                   }}
-                                  title="Visualizar detalhes desta tarefa / follow-up"
+                                />
+                                {cleanText && (
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                                    {renderFormattedTextWithLinks(cleanText)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : act.mediaType === 'video' && act.mediaUrl ? (
+                              <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <video
+                                  src={act.mediaUrl}
+                                  controls
+                                  style={{
+                                    maxWidth: '300px',
+                                    maxHeight: '220px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--adm-border)',
+                                  }}
+                                />
+                                {cleanText && (
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                                    {renderFormattedTextWithLinks(cleanText)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : act.mediaType === 'document' && act.mediaUrl ? (
+                              <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <a
+                                  href={act.mediaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '2px 7px',
-                                    borderRadius: '5px',
-                                    background: 'rgba(245, 158, 11, 0.18)',
-                                    border: '1px solid rgba(245, 158, 11, 0.4)',
-                                    color: '#F59E0B',
-                                    fontSize: '0.62rem',
+                                    gap: '8px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    background: 'var(--adm-bg-card)',
+                                    border: '1px solid var(--adm-border)',
+                                    color: 'var(--adm-accent, #6366F1)',
+                                    textDecoration: 'none',
+                                    fontSize: '0.78rem',
                                     fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
                                   }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.28)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.18)')}
                                 >
-                                  <CheckSquare size={10} />
-                                  <span>Ver Tarefa</span>
-                                </button>
-                              )}
-
-                              <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
-                                {timeStr}
-                              </span>
-                            </div>
+                                  <FileText size={16} />
+                                  <span>{cleanText || 'Visualizar documento anexado'}</span>
+                                  <ExternalLink size={12} />
+                                </a>
+                              </div>
+                            ) : (
+                              <div style={{
+                                fontSize: '0.8rem',
+                                color: 'var(--adm-text-body)',
+                                lineHeight: '1.45',
+                                whiteSpace: 'pre-wrap',
+                                fontWeight: isAutomaticNote ? 500 : 400,
+                              }}>
+                                {renderFormattedTextWithLinks(cleanText)}
+                              </div>
+                            )}
                           </div>
-
-                          {/* Conteúdo da Anotação: Áudio, Imagem, Vídeo, Documento ou Texto */}
-                          {act.mediaType === 'audio' || (act.mediaUrl && (act.mediaUrl.startsWith('data:audio') || act.mediaUrl.endsWith('.ogg') || act.mediaUrl.endsWith('.mp3') || act.mediaUrl.endsWith('.opus') || act.mediaUrl.endsWith('.wav') || act.mediaUrl.includes('.ogg?') || act.mediaUrl.includes('.mp3?'))) ? (
-                            <div style={{ marginTop: '4px' }}>
-                              <WhatsAppAudioMessage
-                                src={act.mediaUrl}
-                                isIncoming={!isMine}
-                                authorName={authorDisplayName}
-                                avatarUrl={authorAvatar}
-                                formattedTime={timeStr}
-                                isDarkMode={isDarkMode}
-                              />
-                            </div>
-                          ) : act.mediaType === 'image' && act.mediaUrl ? (
-                            <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <img
-                                src={act.mediaUrl}
-                                alt="Anexo"
-                                onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.title || 'Foto em anotação' })}
-                                style={{
-                                  maxWidth: '280px',
-                                  maxHeight: '220px',
-                                  borderRadius: '8px',
-                                  cursor: 'pointer',
-                                  objectFit: 'cover',
-                                  border: '1px solid var(--adm-border)',
-                                }}
-                              />
-                              {cleanText && (
-                                <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
-                                  {renderFormattedTextWithLinks(cleanText)}
-                                </div>
-                              )}
-                            </div>
-                          ) : act.mediaType === 'video' && act.mediaUrl ? (
-                            <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <video
-                                src={act.mediaUrl}
-                                controls
-                                style={{
-                                  maxWidth: '300px',
-                                  maxHeight: '220px',
-                                  borderRadius: '8px',
-                                  border: '1px solid var(--adm-border)',
-                                }}
-                              />
-                              {cleanText && (
-                                <div style={{ fontSize: '0.8rem', color: 'var(--adm-text-body)', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
-                                  {renderFormattedTextWithLinks(cleanText)}
-                                </div>
-                              )}
-                            </div>
-                          ) : act.mediaType === 'document' && act.mediaUrl ? (
-                            <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <a
-                                href={act.mediaUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  padding: '8px 12px',
-                                  borderRadius: '8px',
-                                  background: 'var(--adm-bg-card)',
-                                  border: '1px solid var(--adm-border)',
-                                  color: 'var(--adm-accent, #6366F1)',
-                                  textDecoration: 'none',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                <FileText size={16} />
-                                <span>{cleanText || 'Visualizar documento anexado'}</span>
-                                <ExternalLink size={12} />
-                              </a>
-                            </div>
-                          ) : (
-                            <div style={{ 
-                              fontSize: '0.8rem', 
-                              color: 'var(--adm-text-body)', 
-                              lineHeight: '1.45', 
-                              whiteSpace: 'pre-wrap',
-                              fontWeight: isAutomaticNote ? 500 : 400,
-                            }}>
-                              {renderFormattedTextWithLinks(cleanText)}
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </React.Fragment>
-                  );
+                      </React.Fragment>
+                    );
                   })
                 )
               )}
@@ -5271,7 +5271,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <span>{isPostSaleFunnel ? 'Tarefas & Agendamentos' : 'Follow-ups do Lead'}</span>
                       </h3>
                       <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                        {isPostSaleFunnel 
+                        {isPostSaleFunnel
                           ? 'Acompanhamento de prazos, compromissos e pendências operacionais deste cliente'
                           : 'Histórico e próximos contatos / follow-ups agendados com este lead'}
                       </p>
@@ -6401,128 +6401,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
               </div>
             ) : (
-            <div style={{
-              padding: '10px 16px 14px 16px',
-              borderTop: '1px solid var(--adm-border)',
-              background: 'var(--adm-bg-input)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            }}>
-              {/* Tab Selector Pills (5 Abas Unificadas) */}
               <div style={{
+                padding: '10px 16px 14px 16px',
+                borderTop: '1px solid var(--adm-border)',
+                background: 'var(--adm-bg-input)',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                borderBottom: '1px solid var(--adm-border)',
-                paddingBottom: '8px',
-                overflowX: 'auto',
+                flexDirection: 'column',
+                gap: '8px',
               }}>
-                {/* 1. WhatsApp */}
-                <button
-                  type="button"
-                  onClick={() => setComposerTab('whatsapp')}
-                  style={{
-                    padding: '5px 11px',
-                    borderRadius: '8px',
-                    background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                    border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
-                    color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
-                    fontSize: '0.74rem',
-                    fontWeight: composerTab === 'whatsapp' ? 800 : 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <MessageSquare size={13} />
-                  <span>WhatsApp</span>
-                </button>
-
-                {/* 2. Histórico (Anotações & Auditoria) */}
-                <button
-                  type="button"
-                  onClick={() => setComposerTab('notes')}
-                  style={{
-                    padding: '5px 11px',
-                    borderRadius: '8px',
-                    background: composerTab === 'notes' ? 'var(--adm-accent-bg)' : 'transparent',
-                    border: composerTab === 'notes' ? '1px solid var(--adm-accent)' : '1px solid transparent',
-                    color: composerTab === 'notes' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                    fontSize: '0.74rem',
-                    fontWeight: composerTab === 'notes' ? 800 : 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <FileText size={13} />
-                  <span>Histórico</span>
-                  <span style={{
-                    fontSize: '0.64rem',
-                    padding: '1px 5px',
-                    borderRadius: '10px',
-                    background: composerTab === 'notes' ? 'var(--adm-accent)' : 'var(--adm-border)',
-                    color: composerTab === 'notes' ? '#fff' : 'var(--adm-text-muted)',
-                    fontWeight: 700,
-                  }}>
-                    {notesCount}
-                  </span>
-                </button>
-
-                {/* 3. Follow-ups (Leads) ou Tarefas & Agendamentos (Clientes) */}
-                <button
-                  type="button"
-                  onClick={() => setComposerTab('tasks')}
-                  style={{
-                    padding: '5px 11px',
-                    borderRadius: '8px',
-                    background: composerTab === 'tasks' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                    border: composerTab === 'tasks' ? '1px solid #3B82F6' : '1px solid transparent',
-                    color: composerTab === 'tasks' ? '#60A5FA' : 'var(--adm-text-muted)',
-                    fontSize: '0.74rem',
-                    fontWeight: composerTab === 'tasks' ? 800 : 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {isPostSaleFunnel ? <Calendar size={13} /> : <PhoneCall size={13} />}
-                  <span>{isPostSaleFunnel ? 'Tarefas & Agendamentos' : 'Follow-ups'}</span>
-                  <span style={{
-                    fontSize: '0.64rem',
-                    padding: '1px 5px',
-                    borderRadius: '10px',
-                    background: composerTab === 'tasks' ? '#3B82F6' : 'var(--adm-border)',
-                    color: composerTab === 'tasks' ? '#fff' : 'var(--adm-text-muted)',
-                    fontWeight: 700,
-                  }}>
-                    {combinedLeadTasks.length}
-                  </span>
-                </button>
-
-                {/* 4. Vendas & Upsell (Exclusivo Pós-Venda / Clientes) */}
-                {(isPostSaleFunnel || (selectedLead as any).isClient) && (
+                {/* Tab Selector Pills (5 Abas Unificadas) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderBottom: '1px solid var(--adm-border)',
+                  paddingBottom: '8px',
+                  overflowX: 'auto',
+                }}>
+                  {/* 1. WhatsApp */}
                   <button
                     type="button"
-                    onClick={() => setComposerTab('upsell')}
+                    onClick={() => setComposerTab('whatsapp')}
                     style={{
                       padding: '5px 11px',
                       borderRadius: '8px',
-                      background: composerTab === 'upsell' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                      border: composerTab === 'upsell' ? '1px solid #10B981' : '1px solid transparent',
-                      color: composerTab === 'upsell' ? '#10B981' : 'var(--adm-text-muted)',
+                      background: composerTab === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                      border: composerTab === 'whatsapp' ? '1px solid #10B981' : '1px solid transparent',
+                      color: composerTab === 'whatsapp' ? '#10B981' : 'var(--adm-text-muted)',
                       fontSize: '0.74rem',
-                      fontWeight: composerTab === 'upsell' ? 800 : 600,
+                      fontWeight: composerTab === 'whatsapp' ? 800 : 600,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -6531,34 +6438,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <DollarSign size={13} />
-                    <span>Vendas & Upsell</span>
-                    <span style={{
-                      fontSize: '0.64rem',
-                      padding: '1px 5px',
-                      borderRadius: '10px',
-                      background: composerTab === 'upsell' ? '#10B981' : 'var(--adm-border)',
-                      color: composerTab === 'upsell' ? '#fff' : 'var(--adm-text-muted)',
-                      fontWeight: 700,
-                    }}>
-                      {clientUpsells.length}
-                    </span>
+                    <MessageSquare size={13} />
+                    <span>WhatsApp</span>
                   </button>
-                )}
 
-                {/* 5. Documentos & Anexos (Exclusivo Pós-Venda / Clientes) */}
-                {(isPostSaleFunnel || (selectedLead as any).isClient) && (
+                  {/* 2. Histórico (Anotações & Auditoria) */}
                   <button
                     type="button"
-                    onClick={() => setComposerTab('documents')}
+                    onClick={() => setComposerTab('notes')}
                     style={{
                       padding: '5px 11px',
                       borderRadius: '8px',
-                      background: composerTab === 'documents' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-                      border: composerTab === 'documents' ? '1px solid #F59E0B' : '1px solid transparent',
-                      color: composerTab === 'documents' ? '#F59E0B' : 'var(--adm-text-muted)',
+                      background: composerTab === 'notes' ? 'var(--adm-accent-bg)' : 'transparent',
+                      border: composerTab === 'notes' ? '1px solid var(--adm-accent)' : '1px solid transparent',
+                      color: composerTab === 'notes' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                       fontSize: '0.74rem',
-                      fontWeight: composerTab === 'documents' ? 800 : 600,
+                      fontWeight: composerTab === 'notes' ? 800 : 600,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -6567,432 +6462,444 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <Folder size={13} />
-                    <span>Documentos & Anexos</span>
+                    <FileText size={13} />
+                    <span>Histórico</span>
                     <span style={{
                       fontSize: '0.64rem',
                       padding: '1px 5px',
                       borderRadius: '10px',
-                      background: composerTab === 'documents' ? '#F59E0B' : 'var(--adm-border)',
-                      color: composerTab === 'documents' ? '#fff' : 'var(--adm-text-muted)',
+                      background: composerTab === 'notes' ? 'var(--adm-accent)' : 'var(--adm-border)',
+                      color: composerTab === 'notes' ? '#fff' : 'var(--adm-text-muted)',
                       fontWeight: 700,
                     }}>
-                      {clientDocuments.length}
+                      {notesCount}
                     </span>
                   </button>
-                )}
-              </div>
 
-              {/* COMPOSER AREA ACCORDING TO ACTIVE TAB */}
-              {composerTab === 'upsell' ? (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>
-                    <DollarSign size={15} color="#10B981" />
-                    <span>Gestão financeira, contrato base e vendas adicionais deste cliente</span>
-                  </div>
+                  {/* 3. Follow-ups (Leads) ou Tarefas & Agendamentos (Clientes) */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingUpsell(null);
-                      setUpsellTitle('');
-                      setUpsellCategory('foto_video');
-                      setUpsellValue('');
-                      setUpsellPaymentStatus('pago');
-                      setUpsellPaymentMethod('PIX');
-                      setUpsellNotes('');
-                      setIsUpsellModalOpen(true);
-                    }}
+                    onClick={() => setComposerTab('tasks')}
                     style={{
+                      padding: '5px 11px',
+                      borderRadius: '8px',
+                      background: composerTab === 'tasks' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                      border: composerTab === 'tasks' ? '1px solid #3B82F6' : '1px solid transparent',
+                      color: composerTab === 'tasks' ? '#60A5FA' : 'var(--adm-text-muted)',
+                      fontSize: '0.74rem',
+                      fontWeight: composerTab === 'tasks' ? 800 : 600,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '5px',
-                      padding: '6px 12px',
-                      borderRadius: '7px',
-                      border: 'none',
-                      background: '#10B981',
-                      color: '#FFF',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    <Plus size={13} />
-                    <span>+ Registrar Venda Adicional</span>
-                  </button>
-                </div>
-              ) : composerTab === 'documents' ? (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '10px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>
-                    <Folder size={15} color="#F59E0B" />
-                    <span>Repositório de contratos assinados, recibos e documentos do cliente</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocTitle('');
-                      setDocType('contract');
-                      setDocFileUrl('');
-                      setDocFileSize('');
-                      setIsDocModalOpen(true);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '6px 12px',
-                      borderRadius: '7px',
-                      border: 'none',
-                      background: '#F59E0B',
-                      color: '#FFF',
-                      fontSize: '0.74rem',
+                    {isPostSaleFunnel ? <Calendar size={13} /> : <PhoneCall size={13} />}
+                    <span>{isPostSaleFunnel ? 'Tarefas & Agendamentos' : 'Follow-ups'}</span>
+                    <span style={{
+                      fontSize: '0.64rem',
+                      padding: '1px 5px',
+                      borderRadius: '10px',
+                      background: composerTab === 'tasks' ? '#3B82F6' : 'var(--adm-border)',
+                      color: composerTab === 'tasks' ? '#fff' : 'var(--adm-text-muted)',
                       fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Plus size={13} />
-                    <span>+ Adicionar Documento</span>
+                    }}>
+                      {combinedLeadTasks.length}
+                    </span>
                   </button>
-                </div>
-              ) : composerTab === 'tasks' ? (
-                /* 3. COMPOSER: QUICK FOLLOW-UP BAR */
-                <form onSubmit={handleCreateQuickFollowup} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: 'var(--adm-bg-card)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '12px',
-                  padding: '8px 12px',
-                  flexWrap: 'wrap',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <select
-                      value={quickFollowupType}
-                      onChange={(e) => setQuickFollowupType(e.target.value)}
-                      className="adm-input"
-                      style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 8px', fontWeight: 700 }}
+
+                  {/* 4. Vendas & Upsell (Exclusivo Pós-Venda / Clientes) */}
+                  {(isPostSaleFunnel || (selectedLead as any).isClient) && (
+                    <button
+                      type="button"
+                      onClick={() => setComposerTab('upsell')}
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: '8px',
+                        background: composerTab === 'upsell' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                        border: composerTab === 'upsell' ? '1px solid #10B981' : '1px solid transparent',
+                        color: composerTab === 'upsell' ? '#10B981' : 'var(--adm-text-muted)',
+                        fontSize: '0.74rem',
+                        fontWeight: composerTab === 'upsell' ? 800 : 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
                     >
-                      <option value="Ligação WhatsApp">📞 Ligação WhatsApp</option>
-                      <option value="Mensagem WhatsApp">💬 Mensagem</option>
-                      <option value="Reunião / Visita">🤝 Visita / Reunião</option>
-                      <option value="Proposta / Orçamento">📄 Enviar Proposta</option>
-                      <option value="Outro">📌 Outro Follow-up</option>
-                    </select>
-                  </div>
+                      <DollarSign size={13} />
+                      <span>Vendas & Upsell</span>
+                      <span style={{
+                        fontSize: '0.64rem',
+                        padding: '1px 5px',
+                        borderRadius: '10px',
+                        background: composerTab === 'upsell' ? '#10B981' : 'var(--adm-border)',
+                        color: composerTab === 'upsell' ? '#fff' : 'var(--adm-text-muted)',
+                        fontWeight: 700,
+                      }}>
+                        {clientUpsells.length}
+                      </span>
+                    </button>
+                  )}
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input
-                      type="date"
-                      value={quickFollowupDate}
-                      onChange={(e) => setQuickFollowupDate(e.target.value)}
-                      className="adm-input"
-                      style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px' }}
-                    />
-                    <input
-                      type="time"
-                      value={quickFollowupTime}
-                      onChange={(e) => setQuickFollowupTime(e.target.value)}
-                      className="adm-input"
-                      style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px', width: '80px' }}
-                    />
-                  </div>
+                  {/* 5. Documentos & Anexos (Exclusivo Pós-Venda / Clientes) */}
+                  {(isPostSaleFunnel || (selectedLead as any).isClient) && (
+                    <button
+                      type="button"
+                      onClick={() => setComposerTab('documents')}
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: '8px',
+                        background: composerTab === 'documents' ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                        border: composerTab === 'documents' ? '1px solid #F59E0B' : '1px solid transparent',
+                        color: composerTab === 'documents' ? '#F59E0B' : 'var(--adm-text-muted)',
+                        fontSize: '0.74rem',
+                        fontWeight: composerTab === 'documents' ? 800 : 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Folder size={13} />
+                      <span>Documentos & Anexos</span>
+                      <span style={{
+                        fontSize: '0.64rem',
+                        padding: '1px 5px',
+                        borderRadius: '10px',
+                        background: composerTab === 'documents' ? '#F59E0B' : 'var(--adm-border)',
+                        color: composerTab === 'documents' ? '#fff' : 'var(--adm-text-muted)',
+                        fontWeight: 700,
+                      }}>
+                        {clientDocuments.length}
+                      </span>
+                    </button>
+                  )}
+                </div>
 
-                  <input
-                    type="text"
-                    value={quickFollowupNote}
-                    onChange={(e) => setQuickFollowupNote(e.target.value)}
-                    placeholder="Resumo do follow-up (opcional)..."
-                    className="adm-input"
-                    style={{ flex: 1, minWidth: '160px', height: '36px', borderRadius: '8px', fontSize: '0.76rem' }}
-                  />
-
-                  <button
-                    type="submit"
-                    className="adm-btn-primary"
-                    style={{
-                      height: '36px',
-                      padding: '0 14px',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      background: '#3B82F6',
-                    }}
-                  >
-                    <Plus size={14} />
-                    <span>Agendar Follow-up</span>
-                  </button>
-                </form>
-              ) : composerTab === 'notes' ? (
-                /* 4. COMPOSER: ANOTAÇÕES MULTIMÍDIA COM GRAVADOR DE VOZ E COMPRESSÃO */
-                isNoteRecording ? (
+                {/* COMPOSER AREA ACCORDING TO ACTIVE TAB */}
+                {composerTab === 'upsell' ? (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    background: '#202c33',
-                    borderRadius: '24px',
-                    padding: '6px 14px',
-                    gap: '12px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                    padding: '8px 12px',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
                   }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>
+                      <DollarSign size={15} color="#10B981" />
+                      <span>Gestão financeira, contrato base e vendas adicionais deste cliente</span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
-                        if (noteRecordingTimerRef.current) clearInterval(noteRecordingTimerRef.current);
-                        if (noteMediaRecorderRef.current && noteMediaRecorderRef.current.state !== 'inactive') {
-                          noteMediaRecorderRef.current.stop();
-                        }
-                        if (noteAudioStreamRef.current) {
-                          noteAudioStreamRef.current.getTracks().forEach(t => t.stop());
-                        }
-                        setIsNoteRecording(false);
-                        setIsNoteAudioPaused(false);
-                        setNoteRecordingSeconds(0);
+                        setEditingUpsell(null);
+                        setUpsellTitle('');
+                        setUpsellCategory('foto_video');
+                        setUpsellValue('');
+                        setUpsellPaymentStatus('pago');
+                        setUpsellPaymentMethod('PIX');
+                        setUpsellNotes('');
+                        setIsUpsellModalOpen(true);
                       }}
-                      title="Cancelar gravação de áudio"
                       style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#8696a0',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        borderRadius: '50%',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
+                        gap: '5px',
+                        padding: '6px 12px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#10B981',
+                        color: '#FFF',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
                       }}
                     >
-                      <Trash2 size={18} />
+                      <Plus size={13} />
+                      <span>+ Registrar Venda Adicional</span>
                     </button>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: '#ef4444',
-                        boxShadow: isNoteAudioPaused ? 'none' : '0 0 8px #ef4444',
-                        animation: isNoteAudioPaused ? 'none' : 'pulse 1.2s infinite',
-                      }} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
-                        {Math.floor(noteRecordingSeconds / 60)}:{(noteRecordingSeconds % 60).toString().padStart(2, '0')}
-                      </span>
+                  </div>
+                ) : composerTab === 'documents' ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '10px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>
+                      <Folder size={15} color="#F59E0B" />
+                      <span>Repositório de contratos assinados, recibos e documentos do cliente</span>
                     </div>
-
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: '24px', overflow: 'hidden' }}>
-                      {[4, 8, 14, 20, 12, 18, 22, 16, 10, 18, 24, 14, 8, 16, 22, 12, 6, 15, 20, 10].map((h, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            width: '3px',
-                            borderRadius: '2px',
-                            backgroundColor: isNoteAudioPaused ? '#8696a0' : 'var(--adm-accent, #6366F1)',
-                            height: isNoteAudioPaused ? '4px' : `${Math.max(4, (h * ((noteRecordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
-                            transition: 'height 0.15s ease',
-                          }}
-                        />
-                      ))}
-                    </div>
-
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!noteMediaRecorderRef.current || !selectedLead) return;
-                        if (noteRecordingTimerRef.current) clearInterval(noteRecordingTimerRef.current);
-                        const recorder = noteMediaRecorderRef.current;
-                        recorder.onstop = () => {
-                          const audioBlob = new Blob(noteAudioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            const dataUrl = reader.result as string;
-                            const act: LeadActivity = {
-                              id: generateUuid(),
-                              leadId: selectedLead.id,
-                              timestamp: new Date().toISOString(),
-                              type: 'note',
-                              title: 'Áudio Gravado na Nota',
-                              text: `Nota de voz gravada (${Math.floor(noteRecordingSeconds / 60)}:${(noteRecordingSeconds % 60).toString().padStart(2, '0')})`,
-                              mediaUrl: dataUrl,
-                              mediaType: 'audio',
-                              authorName: currentUser?.name || 'Colaborador',
-                              authorId: currentUser?.id,
-                              authorAvatarUrl: currentUser?.avatarUrl,
-                            };
-                            if (addLeadActivity) addLeadActivity(selectedLead.id, act);
-                            else addLeadNote(selectedLead.id, act.text || 'Nota de voz gravada');
-                          };
-                          reader.readAsDataURL(audioBlob);
+                      onClick={() => {
+                        setDocTitle('');
+                        setDocType('contract');
+                        setDocFileUrl('');
+                        setDocFileSize('');
+                        setIsDocModalOpen(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '6px 12px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#F59E0B',
+                        color: '#FFF',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={13} />
+                      <span>+ Adicionar Documento</span>
+                    </button>
+                  </div>
+                ) : composerTab === 'tasks' ? (
+                  /* 3. COMPOSER: QUICK FOLLOW-UP BAR */
+                  <form onSubmit={handleCreateQuickFollowup} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '12px',
+                    padding: '8px 12px',
+                    flexWrap: 'wrap',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <select
+                        value={quickFollowupType}
+                        onChange={(e) => setQuickFollowupType(e.target.value)}
+                        className="adm-input"
+                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 8px', fontWeight: 700 }}
+                      >
+                        <option value="Ligação WhatsApp">📞 Ligação WhatsApp</option>
+                        <option value="Mensagem WhatsApp">💬 Mensagem</option>
+                        <option value="Reunião / Visita">🤝 Visita / Reunião</option>
+                        <option value="Proposta / Orçamento">📄 Enviar Proposta</option>
+                        <option value="Outro">📌 Outro Follow-up</option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        type="date"
+                        value={quickFollowupDate}
+                        onChange={(e) => setQuickFollowupDate(e.target.value)}
+                        className="adm-input"
+                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px' }}
+                      />
+                      <input
+                        type="time"
+                        value={quickFollowupTime}
+                        onChange={(e) => setQuickFollowupTime(e.target.value)}
+                        className="adm-input"
+                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px', width: '80px' }}
+                      />
+                    </div>
+
+                    <input
+                      type="text"
+                      value={quickFollowupNote}
+                      onChange={(e) => setQuickFollowupNote(e.target.value)}
+                      placeholder="Resumo do follow-up (opcional)..."
+                      className="adm-input"
+                      style={{ flex: 1, minWidth: '160px', height: '36px', borderRadius: '8px', fontSize: '0.76rem' }}
+                    />
+
+                    <button
+                      type="submit"
+                      className="adm-btn-primary"
+                      style={{
+                        height: '36px',
+                        padding: '0 14px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        background: '#3B82F6',
+                      }}
+                    >
+                      <Plus size={14} />
+                      <span>Agendar Follow-up</span>
+                    </button>
+                  </form>
+                ) : composerTab === 'notes' ? (
+                  /* 4. COMPOSER: ANOTAÇÕES MULTIMÍDIA COM GRAVADOR DE VOZ E COMPRESSÃO */
+                  isNoteRecording ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: '#202c33',
+                      borderRadius: '24px',
+                      padding: '6px 14px',
+                      gap: '12px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (noteRecordingTimerRef.current) clearInterval(noteRecordingTimerRef.current);
+                          if (noteMediaRecorderRef.current && noteMediaRecorderRef.current.state !== 'inactive') {
+                            noteMediaRecorderRef.current.stop();
+                          }
                           if (noteAudioStreamRef.current) {
                             noteAudioStreamRef.current.getTracks().forEach(t => t.stop());
                           }
-                        };
-                        recorder.stop();
-                        setIsNoteRecording(false);
-                        setIsNoteAudioPaused(false);
-                        setNoteRecordingSeconds(0);
-                      }}
-                      title="Salvar áudio na nota"
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--adm-accent, #6366F1)',
-                        border: 'none',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
-                      }}
-                    >
-                      <Send size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSendMessage} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {/* Quick Preset Pills */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      {['Tentativa 1 (Sem resposta)', 'Tentativa 2 (Caixa postal)', 'Orçamento enviado', 'Visita confirmada'].map(preset => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setMessageText(prev => prev ? `${prev} - ${preset}` : preset)}
-                          style={{
-                            background: 'var(--adm-bg-card)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '6px',
-                            padding: '3px 8px',
-                            fontSize: '0.68rem',
-                            color: 'var(--adm-text-muted)',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          + {preset}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* Botão de Anexo na Nota */}
-                      <button
-                        type="button"
-                        onClick={() => noteMediaInputRef.current?.click()}
-                        title="Anexar foto ou vídeo na nota (comprimido em WebP)"
+                          setIsNoteRecording(false);
+                          setIsNoteAudioPaused(false);
+                          setNoteRecordingSeconds(0);
+                        }}
+                        title="Cancelar gravação de áudio"
                         style={{
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '10px',
-                          width: '42px',
-                          height: '42px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#8696a0',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '50%',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: 'var(--adm-text-muted)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
                         }}
                       >
-                        <ImageIcon size={18} />
+                        <Trash2 size={18} />
                       </button>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ef4444',
+                          boxShadow: isNoteAudioPaused ? 'none' : '0 0 8px #ef4444',
+                          animation: isNoteAudioPaused ? 'none' : 'pulse 1.2s infinite',
+                        }} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
+                          {Math.floor(noteRecordingSeconds / 60)}:{(noteRecordingSeconds % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', height: '24px', overflow: 'hidden' }}>
+                        {[4, 8, 14, 20, 12, 18, 22, 16, 10, 18, 24, 14, 8, 16, 22, 12, 6, 15, 20, 10].map((h, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              width: '3px',
+                              borderRadius: '2px',
+                              backgroundColor: isNoteAudioPaused ? '#8696a0' : 'var(--adm-accent, #6366F1)',
+                              height: isNoteAudioPaused ? '4px' : `${Math.max(4, (h * ((noteRecordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
+                              transition: 'height 0.15s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
 
                       <button
                         type="button"
-                        onClick={() => noteDocInputRef.current?.click()}
-                        title="Anexar documento na nota"
-                        style={{
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '10px',
-                          width: '42px',
-                          height: '42px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--adm-text-muted)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <FileText size={18} />
-                      </button>
-
-                      <input
-                        type="text"
-                        value={messageText}
-                        onChange={(e) => setMessageText(e.target.value)}
-                        placeholder="Escreva uma nota interna sobre o atendimento deste lead..."
-                        className="adm-input"
-                        style={{ flex: 1, height: '42px', borderRadius: '12px', fontSize: '0.82rem' }}
-                      />
-
-                      {messageText.trim().length > 0 ? (
-                        <button
-                          type="submit"
-                          className="adm-btn-primary"
-                          style={{
-                            height: '42px',
-                            padding: '0 16px',
-                            borderRadius: '12px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            fontSize: '0.78rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Check size={14} />
-                          <span>Salvar Nota</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                              noteAudioStreamRef.current = stream;
-                              noteAudioChunksRef.current = [];
-                              const mediaRecorder = new MediaRecorder(stream);
-                              noteMediaRecorderRef.current = mediaRecorder;
-                              mediaRecorder.ondataavailable = (e) => {
-                                if (e.data && e.data.size > 0) {
-                                  noteAudioChunksRef.current.push(e.data);
-                                }
+                        onClick={async () => {
+                          if (!noteMediaRecorderRef.current || !selectedLead) return;
+                          if (noteRecordingTimerRef.current) clearInterval(noteRecordingTimerRef.current);
+                          const recorder = noteMediaRecorderRef.current;
+                          recorder.onstop = () => {
+                            const audioBlob = new Blob(noteAudioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                              const dataUrl = reader.result as string;
+                              const act: LeadActivity = {
+                                id: generateUuid(),
+                                leadId: selectedLead.id,
+                                timestamp: new Date().toISOString(),
+                                type: 'note',
+                                title: 'Áudio Gravado na Nota',
+                                text: `Nota de voz gravada (${Math.floor(noteRecordingSeconds / 60)}:${(noteRecordingSeconds % 60).toString().padStart(2, '0')})`,
+                                mediaUrl: dataUrl,
+                                mediaType: 'audio',
+                                authorName: currentUser?.name || 'Colaborador',
+                                authorId: currentUser?.id,
+                                authorAvatarUrl: currentUser?.avatarUrl,
                               };
-                              mediaRecorder.start(200);
-                              setIsNoteRecording(true);
-                              setIsNoteAudioPaused(false);
-                              setNoteRecordingSeconds(0);
-                              noteRecordingTimerRef.current = setInterval(() => {
-                                setNoteRecordingSeconds(prev => prev + 1);
-                              }, 1000);
-                            } catch {
-                              alert('Permissão de microfone necessária para gravar áudio na nota.');
+                              if (addLeadActivity) addLeadActivity(selectedLead.id, act);
+                              else addLeadNote(selectedLead.id, act.text || 'Nota de voz gravada');
+                            };
+                            reader.readAsDataURL(audioBlob);
+                            if (noteAudioStreamRef.current) {
+                              noteAudioStreamRef.current.getTracks().forEach(t => t.stop());
                             }
-                          }}
-                          title="Gravar nota de voz"
+                          };
+                          recorder.stop();
+                          setIsNoteRecording(false);
+                          setIsNoteAudioPaused(false);
+                          setNoteRecordingSeconds(0);
+                        }}
+                        title="Salvar áudio na nota"
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          backgroundColor: 'var(--adm-accent, #6366F1)',
+                          border: 'none',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
+                        }}
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSendMessage} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Quick Preset Pills */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {['Tentativa 1 (Sem resposta)', 'Tentativa 2 (Caixa postal)', 'Orçamento enviado', 'Visita confirmada'].map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setMessageText(prev => prev ? `${prev} - ${preset}` : preset)}
+                            style={{
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '3px 8px',
+                              fontSize: '0.68rem',
+                              color: 'var(--adm-text-muted)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + {preset}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Botão de Anexo na Nota */}
+                        <button
+                          type="button"
+                          onClick={() => noteMediaInputRef.current?.click()}
+                          title="Anexar foto ou vídeo na nota (comprimido em WebP)"
                           style={{
                             background: 'var(--adm-bg-card)',
                             border: '1px solid var(--adm-border)',
@@ -7007,1095 +6914,1188 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             flexShrink: 0,
                           }}
                         >
-                          <Mic size={18} />
+                          <ImageIcon size={18} />
                         </button>
-                      )}
-                    </div>
-                  </form>
-                )
-              ) : (
-                /* 3. COMPOSER: WHATSAPP REAL (Áudios 2, 3, 4 e Prints 1, 2, 3) */
-                isRecording ? (
-                  /* ── BARRA DE GRAVAÇÃO DE ÁUDIO AO VIVO ESTILO WHATSAPP WEB REAL (Print 3) ── */
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: '#202c33',
-                    borderRadius: '24px',
-                    padding: '6px 14px',
-                    gap: '12px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
-                  }}>
-                    {/* Botão de Lixeira (Cancelar e Descartar Áudio) */}
-                    <button
-                      type="button"
-                      onClick={cancelRecording}
-                      title="Cancelar gravação"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#8696a0',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'color 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#8696a0'}
-                    >
-                      <Trash2 size={18} />
-                    </button>
 
-                    {/* Ponto Vermelho Pulsante + Cronômetro 0:00 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: '#ef4444',
-                        boxShadow: isAudioPaused ? 'none' : '0 0 8px #ef4444',
-                        animation: isAudioPaused ? 'none' : 'pulse 1.2s infinite',
-                      }} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
-                        {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                      </span>
-                    </div>
-
-                    {/* Visualizador de Ondas de Áudio / Waveform Animado */}
-                    <div style={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '3px',
-                      height: '24px',
-                      overflow: 'hidden',
-                    }}>
-                      {[4, 8, 14, 20, 12, 18, 22, 16, 10, 18, 24, 14, 8, 16, 22, 12, 6, 15, 20, 10].map((h, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            width: '3px',
-                            borderRadius: '2px',
-                            backgroundColor: isAudioPaused ? '#8696a0' : '#00a884',
-                            height: isAudioPaused ? '4px' : `${Math.max(4, (h * ((recordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
-                            transition: 'height 0.15s ease',
-                          }}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Botão Pausar / Retomar Gravação */}
-                    <button
-                      type="button"
-                      onClick={isAudioPaused ? resumeAudioRecording : pauseAudioRecording}
-                      title={isAudioPaused ? "Retomar gravação" : "Pausar gravação"}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#8696a0',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {isAudioPaused ? <Play size={18} color="#00a884" /> : <Pause size={18} color="#ef4444" />}
-                    </button>
-
-                    {/* Botão Verde de Envio Direto (Sem preview intermediário) */}
-                    <button
-                      type="button"
-                      onClick={stopAndSendAudio}
-                      title="Enviar áudio agora"
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        backgroundColor: '#00a884',
-                        border: 'none',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(0, 168, 132, 0.4)',
-                        transition: 'transform 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    >
-                      <Send size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  /* ── BARRA DE INPUT ARREDONDADA ESTILO WHATSAPP WEB REAL (Print 1 & 2) ── */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
-                    {/* Linha Superior: Remetente WhatsApp & Destinatário Decisor */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                      {/* Remetente WhatsApp Conectado (Isolado por Casa de Festa) */}
-                      <div ref={senderDropdownRef} style={{ position: 'relative' }}>
                         <button
                           type="button"
-                          onClick={() => setIsSenderDropdownOpen(prev => !prev)}
+                          onClick={() => noteDocInputRef.current?.click()}
+                          title="Anexar documento na nota"
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '7px',
                             background: 'var(--adm-bg-card)',
-                            padding: '4px 10px',
-                            borderRadius: '8px',
-                            border: isSenderDisconnected ? '1px solid rgba(239, 68, 68, 0.4)' : isSenderDropdownOpen ? '1px solid #10B981' : '1px solid var(--adm-border)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '10px',
+                            width: '42px',
+                            height: '42px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--adm-text-muted)',
                             cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                            flexShrink: 0,
                           }}
                         >
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                            Disparado por:
-                          </span>
-
-                          {/* WhatsApp Avatar ou Logo fica DEPOIS do texto 'Disparado por:' e ANTES do nome */}
-                          {(() => {
-                            const activeAvatar = getSourceAvatar(activeSenderSource);
-                            if (activeAvatar) {
-                              return (
-                                <img
-                                  src={activeAvatar}
-                                  alt="WhatsApp"
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    flexShrink: 0,
-                                    border: `1px solid ${isSenderDisconnected ? '#EF4444' : '#10B981'}`
-                                  }}
-                                />
-                              );
-                            }
-                            return (
-                              <div style={{
-                                width: '18px',
-                                height: '18px',
-                                borderRadius: '50%',
-                                background: isSenderDisconnected ? '#EF4444' : '#25D366',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}>
-                                <WhatsAppBrandIcon size={11} color="#FFFFFF" />
-                              </div>
-                            );
-                          })()}
-
-                          {activeSenderSource ? (() => {
-                            const info = getSourceCleanLabel(activeSenderSource);
-                            const online = !isSenderDisconnected;
-                            return (
-                              <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                fontWeight: 800,
-                                fontSize: '0.72rem',
-                                color: online ? (isDarkMode ? '#34D399' : '#059669') : '#EF4444',
-                              }}>
-                                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: online ? '#10B981' : '#EF4444', display: 'inline-block' }} />
-                                <span>{info.cleanName}</span>
-                                {info.formattedPhone && (
-                                  <span style={{ opacity: 0.85, fontWeight: 700 }}>• {info.formattedPhone}</span>
-                                )}
-                              </span>
-                            );
-                          })() : (
-                            <span style={{ fontSize: '0.70rem', fontWeight: 700, color: '#EF4444' }}>
-                              Nenhuma instância disponível
-                            </span>
-                          )}
-
-                          {venueSenderSources.length > 1 && (
-                            <ChevronDown 
-                              size={13} 
-                              style={{ 
-                                transform: isSenderDropdownOpen ? 'rotate(180deg)' : 'rotate(0)', 
-                                transition: 'transform 0.15s ease',
-                                color: 'var(--adm-text-muted)',
-                                marginLeft: '2px'
-                              }} 
-                            />
-                          )}
+                          <FileText size={18} />
                         </button>
 
-                        {/* Popup Dropdown de Instâncias */}
-                        {isSenderDropdownOpen && venueSenderSources.length > 0 && (
-                          <div style={{
-                            position: 'absolute',
-                            bottom: 'calc(100% + 6px)',
-                            left: 0,
-                            zIndex: 9999,
-                            minWidth: '330px',
-                            background: 'var(--adm-bg-card, #1e293b)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '12px',
-                            boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
-                            padding: '6px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            animation: 'fadeIn 0.15s ease-out',
-                          }}>
-                            <div style={{ padding: '6px 8px 4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Selecione a Instância de Disparo
-                            </div>
+                        <input
+                          type="text"
+                          value={messageText}
+                          onChange={(e) => setMessageText(e.target.value)}
+                          placeholder="Escreva uma nota interna sobre o atendimento deste lead..."
+                          className="adm-input"
+                          style={{ flex: 1, height: '42px', borderRadius: '12px', fontSize: '0.82rem' }}
+                        />
 
-                            {venueSenderSources.map(src => {
-                              const isOnline = isSourceOnline(src);
-                              const isSelected = activeSenderSource?.id === src.id;
-                              const info = getSourceCleanLabel(src);
-                              const vName = venues.find(v => v.id === src.venueId)?.name;
-                              const instanceAvatar = getSourceAvatar(src);
-
-                              return (
-                                <div
-                                  key={src.id}
-                                  onClick={() => {
-                                    if (!isOnline) return; // Impede selecionar desconectado
-                                    setSelectedSenderSourceId(src.id);
-                                    if (selectedLead) {
-                                      manuallySelectedSenderLeadIdRef.current = selectedLead.id;
-                                    }
-                                    setIsSenderDropdownOpen(false);
-                                  }}
-                                  title={!isOnline ? 'Instância desconectada. Reconecte em Configurações > Origens.' : `Disparar por ${info.cleanName}`}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: '10px',
-                                    padding: '8px 10px',
-                                    borderRadius: '8px',
-                                    cursor: isOnline ? 'pointer' : 'not-allowed',
-                                    opacity: isOnline ? 1 : 0.85,
-                                    background: isSelected 
-                                      ? (isDarkMode ? 'rgba(16, 185, 129, 0.18)' : '#ecfdf5')
-                                      : !isOnline 
-                                        ? 'rgba(239, 68, 68, 0.08)' 
-                                        : 'transparent',
-                                    border: isSelected 
-                                      ? '1.5px solid rgba(16, 185, 129, 0.5)' 
-                                      : !isOnline 
-                                        ? '1.5px solid rgba(239, 68, 68, 0.35)' 
-                                        : '1px solid transparent',
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (isOnline && !isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (isOnline && !isSelected) e.currentTarget.style.background = 'transparent';
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
-                                    {instanceAvatar ? (
-                                      <SafeAvatar name={info.cleanName} src={instanceAvatar} size={28} />
-                                    ) : (
-                                      <div style={{
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '50%',
-                                        background: isOnline ? '#25D366' : '#EF4444',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        flexShrink: 0,
-                                        boxShadow: isOnline ? '0 1px 4px rgba(37, 211, 102, 0.3)' : '0 1px 4px rgba(239, 68, 68, 0.3)',
-                                      }}>
-                                        <WhatsAppBrandIcon size={16} color="#FFFFFF" />
-                                      </div>
-                                    )}
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isOnline ? 'var(--adm-text-title)' : '#EF4444' }}>
-                                          {info.cleanName}
-                                        </span>
-                                        {vName && (
-                                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
-                                            {vName}
-                                          </span>
-                                        )}
-                                      </div>
-                                      {info.formattedPhone && (
-                                        <span style={{ fontSize: '0.70rem', color: isOnline ? 'var(--adm-text-muted)' : '#EF4444', fontWeight: 600 }}>
-                                          {info.formattedPhone}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                    <span style={{
-                                      fontSize: '0.64rem',
-                                      fontWeight: 800,
-                                      padding: '2px 8px',
-                                      borderRadius: '6px',
-                                      background: isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                      color: isOnline ? '#10B981' : '#EF4444',
-                                      border: `1px solid ${isOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                                    }}>
-                                      {isOnline ? 'Online' : 'Desconectada'}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Seletor de Contato / Destinatário */}
-                      {availableRecipients.length > 0 && (
-                        <div ref={recipientDropdownRef} style={{ position: 'relative' }}>
-                          {availableRecipients.length === 1 ? (
-                            <div style={{
-                              display: 'inline-flex',
+                        {messageText.trim().length > 0 ? (
+                          <button
+                            type="submit"
+                            className="adm-btn-primary"
+                            style={{
+                              height: '42px',
+                              padding: '0 16px',
+                              borderRadius: '12px',
+                              display: 'flex',
                               alignItems: 'center',
                               gap: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Check size={14} />
+                            <span>Salvar Nota</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                noteAudioStreamRef.current = stream;
+                                noteAudioChunksRef.current = [];
+                                const mediaRecorder = new MediaRecorder(stream);
+                                noteMediaRecorderRef.current = mediaRecorder;
+                                mediaRecorder.ondataavailable = (e) => {
+                                  if (e.data && e.data.size > 0) {
+                                    noteAudioChunksRef.current.push(e.data);
+                                  }
+                                };
+                                mediaRecorder.start(200);
+                                setIsNoteRecording(true);
+                                setIsNoteAudioPaused(false);
+                                setNoteRecordingSeconds(0);
+                                noteRecordingTimerRef.current = setInterval(() => {
+                                  setNoteRecordingSeconds(prev => prev + 1);
+                                }, 1000);
+                              } catch {
+                                alert('Permissão de microfone necessária para gravar áudio na nota.');
+                              }
+                            }}
+                            title="Gravar nota de voz"
+                            style={{
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '10px',
+                              width: '42px',
+                              height: '42px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--adm-text-muted)',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Mic size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  )
+                ) : (
+                  /* 3. COMPOSER: WHATSAPP REAL (Áudios 2, 3, 4 e Prints 1, 2, 3) */
+                  isRecording ? (
+                    /* ── BARRA DE GRAVAÇÃO DE ÁUDIO AO VIVO ESTILO WHATSAPP WEB REAL (Print 3) ── */
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: '#202c33',
+                      borderRadius: '24px',
+                      padding: '6px 14px',
+                      gap: '12px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                    }}>
+                      {/* Botão de Lixeira (Cancelar e Descartar Áudio) */}
+                      <button
+                        type="button"
+                        onClick={cancelRecording}
+                        title="Cancelar gravação"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#8696a0',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'color 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#8696a0'}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+
+                      {/* Ponto Vermelho Pulsante + Cronômetro 0:00 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ef4444',
+                          boxShadow: isAudioPaused ? 'none' : '0 0 8px #ef4444',
+                          animation: isAudioPaused ? 'none' : 'pulse 1.2s infinite',
+                        }} />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
+                          {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+
+                      {/* Visualizador de Ondas de Áudio / Waveform Animado */}
+                      <div style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '3px',
+                        height: '24px',
+                        overflow: 'hidden',
+                      }}>
+                        {[4, 8, 14, 20, 12, 18, 22, 16, 10, 18, 24, 14, 8, 16, 22, 12, 6, 15, 20, 10].map((h, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              width: '3px',
+                              borderRadius: '2px',
+                              backgroundColor: isAudioPaused ? '#8696a0' : '#00a884',
+                              height: isAudioPaused ? '4px' : `${Math.max(4, (h * ((recordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
+                              transition: 'height 0.15s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Botão Pausar / Retomar Gravação */}
+                      <button
+                        type="button"
+                        onClick={isAudioPaused ? resumeAudioRecording : pauseAudioRecording}
+                        title={isAudioPaused ? "Retomar gravação" : "Pausar gravação"}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#8696a0',
+                          cursor: 'pointer',
+                          padding: '6px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {isAudioPaused ? <Play size={18} color="#00a884" /> : <Pause size={18} color="#ef4444" />}
+                      </button>
+
+                      {/* Botão Verde de Envio Direto (Sem preview intermediário) */}
+                      <button
+                        type="button"
+                        onClick={stopAndSendAudio}
+                        title="Enviar áudio agora"
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          backgroundColor: '#00a884',
+                          border: 'none',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 8px rgba(0, 168, 132, 0.4)',
+                          transition: 'transform 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── BARRA DE INPUT ARREDONDADA ESTILO WHATSAPP WEB REAL (Print 1 & 2) ── */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
+                      {/* Linha Superior: Remetente WhatsApp & Destinatário Decisor */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* Remetente WhatsApp Conectado (Isolado por Casa de Festa) */}
+                        <div ref={senderDropdownRef} style={{ position: 'relative' }}>
+                          <button
+                            type="button"
+                            onClick={() => setIsSenderDropdownOpen(prev => !prev)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '7px',
                               background: 'var(--adm-bg-card)',
                               padding: '4px 10px',
                               borderRadius: '8px',
-                              border: '1px solid var(--adm-border)',
-                            }}>
-                              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                Enviado para:
-                              </span>
+                              border: isSenderDisconnected ? '1px solid rgba(239, 68, 68, 0.4)' : isSenderDropdownOpen ? '1px solid #10B981' : '1px solid var(--adm-border)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                            }}
+                          >
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                              Disparado por:
+                            </span>
 
-                              {/* Foto / Avatar do destinatário antes do nome */}
-                              {availableRecipients[0].avatarUrl || selectedLead?.avatarUrl ? (
-                                <img
-                                  src={availableRecipients[0].avatarUrl || selectedLead?.avatarUrl}
-                                  alt={availableRecipients[0].name}
-                                  style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    borderRadius: '50%',
-                                    objectFit: 'cover',
-                                    flexShrink: 0,
-                                    border: '1px solid #10B981'
-                                  }}
-                                />
-                              ) : (
+                            {/* WhatsApp Avatar ou Logo fica DEPOIS do texto 'Disparado por:' e ANTES do nome */}
+                            {(() => {
+                              const activeAvatar = getSourceAvatar(activeSenderSource);
+                              if (activeAvatar) {
+                                return (
+                                  <img
+                                    src={activeAvatar}
+                                    alt="WhatsApp"
+                                    style={{
+                                      width: '18px',
+                                      height: '18px',
+                                      borderRadius: '50%',
+                                      objectFit: 'cover',
+                                      flexShrink: 0,
+                                      border: `1px solid ${isSenderDisconnected ? '#EF4444' : '#10B981'}`
+                                    }}
+                                  />
+                                );
+                              }
+                              return (
                                 <div style={{
                                   width: '18px',
                                   height: '18px',
                                   borderRadius: '50%',
-                                  background: 'rgba(16, 185, 129, 0.2)',
-                                  color: '#10B981',
+                                  background: isSenderDisconnected ? '#EF4444' : '#25D366',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  fontSize: '0.60rem',
-                                  fontWeight: 800,
                                   flexShrink: 0,
-                                  border: '1px solid #10B981'
                                 }}>
-                                  {(availableRecipients[0].name || 'C').slice(0, 1).toUpperCase()}
+                                  <WhatsAppBrandIcon size={11} color="#FFFFFF" />
                                 </div>
-                              )}
+                              );
+                            })()}
 
-                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span>{availableRecipients[0].name}</span>
-                                {availableRecipients[0].phone && (
-                                  <span style={{ opacity: 0.85, fontWeight: 700 }}>• {formatPhone(availableRecipients[0].phone)}</span>
-                                )}
-                              </span>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setIsRecipientDropdownOpen(prev => !prev)}
-                                style={{
+                            {activeSenderSource ? (() => {
+                              const info = getSourceCleanLabel(activeSenderSource);
+                              const online = !isSenderDisconnected;
+                              return (
+                                <span style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '6px',
-                                  background: 'var(--adm-bg-card)',
-                                  padding: '4px 10px',
-                                  borderRadius: '8px',
-                                  border: isRecipientDropdownOpen ? '1px solid #10B981' : '1px solid var(--adm-border)',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
-                                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                  gap: '5px',
+                                  fontWeight: 800,
+                                  fontSize: '0.72rem',
+                                  color: online ? (isDarkMode ? '#34D399' : '#059669') : '#EF4444',
+                                }}>
+                                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: online ? '#10B981' : '#EF4444', display: 'inline-block' }} />
+                                  <span>{info.cleanName}</span>
+                                  {info.formattedPhone && (
+                                    <span style={{ opacity: 0.85, fontWeight: 700 }}>• {info.formattedPhone}</span>
+                                  )}
+                                </span>
+                              );
+                            })() : (
+                              <span style={{ fontSize: '0.70rem', fontWeight: 700, color: '#EF4444' }}>
+                                Nenhuma instância disponível
+                              </span>
+                            )}
+
+                            {venueSenderSources.length > 1 && (
+                              <ChevronDown
+                                size={13}
+                                style={{
+                                  transform: isSenderDropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
+                                  transition: 'transform 0.15s ease',
+                                  color: 'var(--adm-text-muted)',
+                                  marginLeft: '2px'
                                 }}
-                              >
+                              />
+                            )}
+                          </button>
+
+                          {/* Popup Dropdown de Instâncias */}
+                          {isSenderDropdownOpen && venueSenderSources.length > 0 && (
+                            <div style={{
+                              position: 'absolute',
+                              bottom: 'calc(100% + 6px)',
+                              left: 0,
+                              zIndex: 9999,
+                              minWidth: '330px',
+                              background: 'var(--adm-bg-card, #1e293b)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '12px',
+                              boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
+                              padding: '6px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                              animation: 'fadeIn 0.15s ease-out',
+                            }}>
+                              <div style={{ padding: '6px 8px 4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Selecione a Instância de Disparo
+                              </div>
+
+                              {venueSenderSources.map(src => {
+                                const isOnline = isSourceOnline(src);
+                                const isSelected = activeSenderSource?.id === src.id;
+                                const info = getSourceCleanLabel(src);
+                                const vName = venues.find(v => v.id === src.venueId)?.name;
+                                const instanceAvatar = getSourceAvatar(src);
+
+                                return (
+                                  <div
+                                    key={src.id}
+                                    onClick={() => {
+                                      if (!isOnline) return; // Impede selecionar desconectado
+                                      setSelectedSenderSourceId(src.id);
+                                      if (selectedLead) {
+                                        manuallySelectedSenderLeadIdRef.current = selectedLead.id;
+                                      }
+                                      setIsSenderDropdownOpen(false);
+                                    }}
+                                    title={!isOnline ? 'Instância desconectada. Reconecte em Configurações > Origens.' : `Disparar por ${info.cleanName}`}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: '10px',
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      cursor: isOnline ? 'pointer' : 'not-allowed',
+                                      opacity: isOnline ? 1 : 0.85,
+                                      background: isSelected
+                                        ? (isDarkMode ? 'rgba(16, 185, 129, 0.18)' : '#ecfdf5')
+                                        : !isOnline
+                                          ? 'rgba(239, 68, 68, 0.08)'
+                                          : 'transparent',
+                                      border: isSelected
+                                        ? '1.5px solid rgba(16, 185, 129, 0.5)'
+                                        : !isOnline
+                                          ? '1.5px solid rgba(239, 68, 68, 0.35)'
+                                          : '1px solid transparent',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (isOnline && !isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (isOnline && !isSelected) e.currentTarget.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
+                                      {instanceAvatar ? (
+                                        <SafeAvatar name={info.cleanName} src={instanceAvatar} size={28} />
+                                      ) : (
+                                        <div style={{
+                                          width: '28px',
+                                          height: '28px',
+                                          borderRadius: '50%',
+                                          background: isOnline ? '#25D366' : '#EF4444',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          flexShrink: 0,
+                                          boxShadow: isOnline ? '0 1px 4px rgba(37, 211, 102, 0.3)' : '0 1px 4px rgba(239, 68, 68, 0.3)',
+                                        }}>
+                                          <WhatsAppBrandIcon size={16} color="#FFFFFF" />
+                                        </div>
+                                      )}
+
+                                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isOnline ? 'var(--adm-text-title)' : '#EF4444' }}>
+                                            {info.cleanName}
+                                          </span>
+                                          {vName && (
+                                            <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)' }}>
+                                              {vName}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {info.formattedPhone && (
+                                          <span style={{ fontSize: '0.70rem', color: isOnline ? 'var(--adm-text-muted)' : '#EF4444', fontWeight: 600 }}>
+                                            {info.formattedPhone}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                      <span style={{
+                                        fontSize: '0.64rem',
+                                        fontWeight: 800,
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        background: isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                        color: isOnline ? '#10B981' : '#EF4444',
+                                        border: `1px solid ${isOnline ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                      }}>
+                                        {isOnline ? 'Online' : 'Desconectada'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Seletor de Contato / Destinatário */}
+                        {availableRecipients.length > 0 && (
+                          <div ref={recipientDropdownRef} style={{ position: 'relative' }}>
+                            {availableRecipients.length === 1 ? (
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: 'var(--adm-bg-card)',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--adm-border)',
+                              }}>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
                                   Enviado para:
                                 </span>
 
-                                {(() => {
-                                  const currentRec = availableRecipients.find(r => (selectedRecipientPhone || selectedLead?.phone) === r.phone) || availableRecipients[0];
-                                  const recAvatar = currentRec.avatarUrl || selectedLead?.avatarUrl;
+                                {/* Foto / Avatar do destinatário antes do nome */}
+                                {availableRecipients[0].avatarUrl || selectedLead?.avatarUrl ? (
+                                  <img
+                                    src={availableRecipients[0].avatarUrl || selectedLead?.avatarUrl}
+                                    alt={availableRecipients[0].name}
+                                    style={{
+                                      width: '18px',
+                                      height: '18px',
+                                      borderRadius: '50%',
+                                      objectFit: 'cover',
+                                      flexShrink: 0,
+                                      border: '1px solid #10B981'
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '50%',
+                                    background: 'rgba(16, 185, 129, 0.2)',
+                                    color: '#10B981',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.60rem',
+                                    fontWeight: 800,
+                                    flexShrink: 0,
+                                    border: '1px solid #10B981'
+                                  }}>
+                                    {(availableRecipients[0].name || 'C').slice(0, 1).toUpperCase()}
+                                  </div>
+                                )}
 
-                                  return (
-                                    <>
-                                      {recAvatar ? (
-                                        <img
-                                          src={recAvatar}
-                                          alt={currentRec.name}
-                                          style={{
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>{availableRecipients[0].name}</span>
+                                  {availableRecipients[0].phone && (
+                                    <span style={{ opacity: 0.85, fontWeight: 700 }}>• {formatPhone(availableRecipients[0].phone)}</span>
+                                  )}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsRecipientDropdownOpen(prev => !prev)}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--adm-bg-card)',
+                                    padding: '4px 10px',
+                                    borderRadius: '8px',
+                                    border: isRecipientDropdownOpen ? '1px solid #10B981' : '1px solid var(--adm-border)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                  }}
+                                >
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                                    Enviado para:
+                                  </span>
+
+                                  {(() => {
+                                    const currentRec = availableRecipients.find(r => (selectedRecipientPhone || selectedLead?.phone) === r.phone) || availableRecipients[0];
+                                    const recAvatar = currentRec.avatarUrl || selectedLead?.avatarUrl;
+
+                                    return (
+                                      <>
+                                        {recAvatar ? (
+                                          <img
+                                            src={recAvatar}
+                                            alt={currentRec.name}
+                                            style={{
+                                              width: '18px',
+                                              height: '18px',
+                                              borderRadius: '50%',
+                                              objectFit: 'cover',
+                                              flexShrink: 0,
+                                              border: '1px solid #10B981'
+                                            }}
+                                          />
+                                        ) : (
+                                          <div style={{
                                             width: '18px',
                                             height: '18px',
                                             borderRadius: '50%',
-                                            objectFit: 'cover',
+                                            background: 'rgba(16, 185, 129, 0.2)',
+                                            color: '#10B981',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '0.60rem',
+                                            fontWeight: 800,
                                             flexShrink: 0,
                                             border: '1px solid #10B981'
-                                          }}
-                                        />
-                                      ) : (
-                                        <div style={{
-                                          width: '18px',
-                                          height: '18px',
-                                          borderRadius: '50%',
-                                          background: 'rgba(16, 185, 129, 0.2)',
-                                          color: '#10B981',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          fontSize: '0.60rem',
-                                          fontWeight: 800,
-                                          flexShrink: 0,
-                                          border: '1px solid #10B981'
-                                        }}>
-                                          {(currentRec.name || 'C').slice(0, 1).toUpperCase()}
-                                        </div>
-                                      )}
-
-                                      <span style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        color: '#10B981',
-                                      }}>
-                                        <span>{currentRec.name}</span>
-                                        {currentRec.phone && (
-                                          <span style={{ opacity: 0.85, fontWeight: 700 }}>• {formatPhone(currentRec.phone)}</span>
+                                          }}>
+                                            {(currentRec.name || 'C').slice(0, 1).toUpperCase()}
+                                          </div>
                                         )}
-                                      </span>
-                                    </>
-                                  );
-                                })()}
-                                <ChevronDown 
-                                  size={13} 
-                                  style={{ 
-                                    transform: isRecipientDropdownOpen ? 'rotate(180deg)' : 'rotate(0)', 
-                                    transition: 'transform 0.15s ease',
-                                    color: 'var(--adm-text-muted)',
-                                    marginLeft: '2px'
-                                  }} 
-                                />
-                              </button>
 
-                              {/* Dropdown Menu de Destinatários */}
-                              {isRecipientDropdownOpen && (
-                                <div style={{
-                                  position: 'absolute',
-                                  bottom: 'calc(100% + 6px)',
-                                  right: 0,
-                                  zIndex: 9999,
-                                  minWidth: '290px',
-                                  background: 'var(--adm-bg-card, #1e293b)',
-                                  border: '1px solid var(--adm-border)',
-                                  borderRadius: '12px',
-                                  boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
-                                  padding: '6px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '4px',
-                                  animation: 'fadeIn 0.15s ease-out',
-                                }}>
-                                  <div style={{ padding: '6px 8px 4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Selecione o Destinatário
-                                  </div>
-
-                                  {availableRecipients.map((rec) => {
-                                    const isSelected = (selectedRecipientPhone || selectedLead?.phone) === rec.phone;
-                                    return (
-                                      <div
-                                        key={rec.phone}
-                                        onClick={() => {
-                                          setSelectedRecipientPhone(rec.phone);
-                                          setIsRecipientDropdownOpen(false);
-                                        }}
-                                        style={{
-                                          display: 'flex',
+                                        <span style={{
+                                          display: 'inline-flex',
                                           alignItems: 'center',
-                                          justifyContent: 'space-between',
-                                          gap: '10px',
-                                          padding: '8px 10px',
-                                          borderRadius: '8px',
-                                          cursor: 'pointer',
-                                          background: isSelected 
-                                            ? (isDarkMode ? 'rgba(16, 185, 129, 0.18)' : '#ecfdf5')
-                                            : 'transparent',
-                                          border: isSelected 
-                                            ? '1.5px solid rgba(16, 185, 129, 0.5)' 
-                                            : '1px solid transparent',
-                                          transition: 'all 0.15s ease',
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          if (!isSelected) e.currentTarget.style.background = 'transparent';
-                                        }}
-                                      >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
-                                          <SafeAvatar
-                                            name={rec.name}
-                                            src={rec.avatarUrl}
-                                            size={28}
-                                          />
+                                          gap: '5px',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 800,
+                                          color: '#10B981',
+                                        }}>
+                                          <span>{currentRec.name}</span>
+                                          {currentRec.phone && (
+                                            <span style={{ opacity: 0.85, fontWeight: 700 }}>• {formatPhone(currentRec.phone)}</span>
+                                          )}
+                                        </span>
+                                      </>
+                                    );
+                                  })()}
+                                  <ChevronDown
+                                    size={13}
+                                    style={{
+                                      transform: isRecipientDropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
+                                      transition: 'transform 0.15s ease',
+                                      color: 'var(--adm-text-muted)',
+                                      marginLeft: '2px'
+                                    }}
+                                  />
+                                </button>
 
-                                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                                {rec.name}
-                                              </span>
-                                              {rec.isMain && (
-                                                <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', fontWeight: 800 }}>
-                                                  Principal
+                                {/* Dropdown Menu de Destinatários */}
+                                {isRecipientDropdownOpen && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    bottom: 'calc(100% + 6px)',
+                                    right: 0,
+                                    zIndex: 9999,
+                                    minWidth: '290px',
+                                    background: 'var(--adm-bg-card, #1e293b)',
+                                    border: '1px solid var(--adm-border)',
+                                    borderRadius: '12px',
+                                    boxShadow: '0 12px 28px rgba(0,0,0,0.28)',
+                                    padding: '6px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                    animation: 'fadeIn 0.15s ease-out',
+                                  }}>
+                                    <div style={{ padding: '6px 8px 4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                      Selecione o Destinatário
+                                    </div>
+
+                                    {availableRecipients.map((rec) => {
+                                      const isSelected = (selectedRecipientPhone || selectedLead?.phone) === rec.phone;
+                                      return (
+                                        <div
+                                          key={rec.phone}
+                                          onClick={() => {
+                                            setSelectedRecipientPhone(rec.phone);
+                                            setIsRecipientDropdownOpen(false);
+                                          }}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '10px',
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            background: isSelected
+                                              ? (isDarkMode ? 'rgba(16, 185, 129, 0.18)' : '#ecfdf5')
+                                              : 'transparent',
+                                            border: isSelected
+                                              ? '1.5px solid rgba(16, 185, 129, 0.5)'
+                                              : '1px solid transparent',
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1 }}>
+                                            <SafeAvatar
+                                              name={rec.name}
+                                              src={rec.avatarUrl}
+                                              size={28}
+                                            />
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                                  {rec.name}
                                                 </span>
-                                              )}
-                                              {rec.roleBadge && rec.roleBadge !== 'Principal' && rec.roleBadge !== 'Contato' && (
-                                                <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)', fontWeight: 700 }}>
-                                                  {rec.roleBadge}
-                                                </span>
-                                              )}
-                                              {rec.isDecisor && (
-                                                <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.15)', color: '#D4AF37', fontWeight: 800 }}>
-                                                  Decisor
+                                                {rec.isMain && (
+                                                  <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', fontWeight: 800 }}>
+                                                    Principal
+                                                  </span>
+                                                )}
+                                                {rec.roleBadge && rec.roleBadge !== 'Principal' && rec.roleBadge !== 'Contato' && (
+                                                  <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--adm-bg-input)', color: 'var(--adm-text-muted)', border: '1px solid var(--adm-border)', fontWeight: 700 }}>
+                                                    {rec.roleBadge}
+                                                  </span>
+                                                )}
+                                                {rec.isDecisor && (
+                                                  <span style={{ fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.15)', color: '#D4AF37', fontWeight: 800 }}>
+                                                    Decisor
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {rec.phone && (
+                                                <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                                  {formatPhone(rec.phone)}
                                                 </span>
                                               )}
                                             </div>
-                                            {rec.phone && (
-                                              <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                                                {formatPhone(rec.phone)}
-                                              </span>
-                                            )}
                                           </div>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Banner de Alerta se o Remetente Selecionado estiver Desconectado */}
-                    {isSenderDisconnected && activeSenderSource && (
-                      <div style={{
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        border: '1px solid rgba(239, 68, 68, 0.35)',
-                        borderRadius: '10px',
-                        padding: '6px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '8px',
-                        flexWrap: 'wrap',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#EF4444', fontWeight: 700 }}>
-                          <AlertTriangle size={14} color="#EF4444" />
-                          <span>
-                            A instância <strong>{activeSenderSource.name}</strong> está desconectada do WhatsApp.
-                          </span>
-                        </div>
-                        {connectedAlternativeSource && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedSenderSourceId(connectedAlternativeSource.id);
-                              if (selectedLead) {
-                                manuallySelectedSenderLeadIdRef.current = selectedLead.id;
-                              }
-                            }}
-                            style={{
-                              background: '#10B981',
-                              color: '#FFFFFF',
-                              border: 'none',
-                              borderRadius: '6px',
-                              padding: '3px 9px',
-                              fontSize: '0.68rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Zap size={11} />
-                            <span>Mudar para {connectedAlternativeSource.name} (Online)</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Popover de Anexos Suspenso (Documento, Fotos e vídeos, Áudio) */}
-                    {isAttachmentMenuOpen && (
-                      <div
-                        ref={attachmentMenuRef}
-                        style={{
-                          position: 'absolute',
-                          bottom: 'calc(100% + 8px)',
-                          left: '8px',
-                          background: isDarkMode ? '#233138' : '#ffffff',
-                          borderRadius: '16px',
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-                          border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
-                          padding: '8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px',
-                          zIndex: 9999,
-                          minWidth: '180px',
-                        }}
-                      >
-                        {/* 1. Documento (Roxo) */}
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerFileInput('document')}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: isDarkMode ? '#e9edef' : '#111b21',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#7f66ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                            <FileText size={15} />
-                          </div>
-                          <span>Documento</span>
-                        </button>
-
-                        {/* 2. Fotos e vídeos (Azul) */}
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerFileInput('media')}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: isDarkMode ? '#e9edef' : '#111b21',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#007bff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                            <ImageIcon size={15} />
-                          </div>
-                          <span>Fotos e vídeos</span>
-                        </button>
-
-                        {/* 3. Áudio (Laranja) */}
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerFileInput('audio')}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '10px 14px',
-                            borderRadius: '10px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: isDarkMode ? '#e9edef' : '#111b21',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            textAlign: 'left',
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                        >
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ff6b00', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                            <Headphones size={15} />
-                          </div>
-                          <span>Áudio</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Popover de Emojis e Figurinhas (Stickers) Suspenso */}
-                    {isEmojiPickerOpen && (
-                      <div
-                        ref={emojiPickerRef}
-                        style={{
-                          position: 'absolute',
-                          bottom: 'calc(100% + 8px)',
-                          left: '42px',
-                          background: isDarkMode ? '#233138' : '#ffffff',
-                          borderRadius: '16px',
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-                          border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
-                          padding: '10px',
-                          zIndex: 9999,
-                          width: '330px',
-                          boxSizing: 'border-box',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '8px',
-                        }}
-                      >
-                        {/* Seletor de Abas: Emojis vs Figurinhas */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)', paddingBottom: '8px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveEmojiTab('emojis')}
-                            style={{
-                              flex: 1,
-                              padding: '5px 8px',
-                              borderRadius: '8px',
-                              border: 'none',
-                              background: activeEmojiTab === 'emojis' ? '#00a884' : (isDarkMode ? 'rgba(255,255,255,0.06)' : '#f0f2f5'),
-                              color: activeEmojiTab === 'emojis' ? '#fff' : (isDarkMode ? '#8696a0' : '#54656f'),
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '5px',
-                            }}
-                          >
-                            <span>🙂 Emojis</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setActiveEmojiTab('stickers')}
-                            style={{
-                              flex: 1,
-                              padding: '5px 8px',
-                              borderRadius: '8px',
-                              border: 'none',
-                              background: activeEmojiTab === 'stickers' ? '#00a884' : (isDarkMode ? 'rgba(255,255,255,0.06)' : '#f0f2f5'),
-                              color: activeEmojiTab === 'stickers' ? '#fff' : (isDarkMode ? '#8696a0' : '#54656f'),
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '5px',
-                            }}
-                          >
-                            <span>✨ Figurinhas</span>
-                          </button>
-                        </div>
-
-                        {activeEmojiTab === 'emojis' ? (
-                          <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(8, 34px)',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            maxHeight: '220px',
-                            overflowY: 'auto',
-                          }}>
-                            {WHATSAPP_EMOJI_LIST.map((emoji, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => {
-                                  setMessageText(prev => prev + emoji);
-                                  setIsEmojiPickerOpen(false);
-                                }}
-                                style={{
-                                  width: '34px',
-                                  height: '34px',
-                                  padding: 0,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  fontSize: '1.25rem',
-                                  lineHeight: 1,
-                                  cursor: 'pointer',
-                                  borderRadius: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  transition: 'background 0.1s ease',
-                                  userSelect: 'none',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          /* Aba de Figurinhas (Stickers) Limpa & Customizável */
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', paddingRight: '4px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.7rem', color: isDarkMode ? '#8696a0' : '#64748b', fontWeight: 600 }}>Figurinhas da Empresa</span>
-                              <button
-                                type="button"
-                                onClick={() => fileStickerInputRef.current?.click()}
-                                style={{
-                                  background: 'rgba(0, 168, 132, 0.15)',
-                                  border: '1px solid rgba(0, 168, 132, 0.35)',
-                                  color: '#00a884',
-                                  borderRadius: '6px',
-                                  padding: '2px 7px',
-                                  fontSize: '0.66rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                + Nova Figurinha
-                              </button>
-                            </div>
-
-                            <input
-                              ref={fileStickerInputRef}
-                              type="file"
-                              accept="image/png,image/webp,image/jpeg,image/gif"
-                              style={{ display: 'none' }}
-                              onChange={handleUploadCustomSticker}
-                            />
-
-                            {customStickers.length === 0 ? (
-                              <div style={{ textAlign: 'center', padding: '28px 12px', color: isDarkMode ? '#8696a0' : '#64748b' }}>
-                                <div style={{ fontSize: '0.80rem', fontWeight: 700, marginBottom: '4px', color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
-                                  Nenhuma figurinha personalizada ainda
-                                </div>
-                                <div style={{ fontSize: '0.72rem', lineHeight: 1.4 }}>
-                                  Clique em <strong>"+ Nova Figurinha"</strong> para fazer upload de figurinhas oficiais do seu negócio (.png, .webp, .gif).
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                                {customStickers.map((c, i) => (
-                                  <button
-                                    key={i}
-                                    type="button"
-                                    onClick={() => handleSendSticker(c)}
-                                    title={`Enviar figurinha personalizada ${i + 1}`}
-                                    style={{
-                                      padding: '6px',
-                                      borderRadius: '10px',
-                                      background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                                      border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      transition: 'transform 0.15s ease, background 0.15s ease',
-                                      aspectRatio: '1',
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.transform = 'scale(1.06)';
-                                      e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.transform = 'scale(1)';
-                                      e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-                                    }}
-                                  >
-                                    <img
-                                      src={c}
-                                      alt={`Figurinha ${i + 1}`}
-                                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                                    />
-                                  </button>
-                                ))}
-                              </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {/* Cápsula Arredondada Estilo WhatsApp Web */}
-                    <form onSubmit={handleSendMessage} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      background: isDarkMode ? '#202c33' : '#ffffff',
-                      borderRadius: '24px',
-                      padding: '4px 8px 4px 10px',
-                      border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
-                      boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(11,20,26,0.08)',
-                      gap: '8px',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                    }}>
-                      {/* Botão + (Anexos) */}
-                      <button
-                        ref={attachmentButtonRef}
-                        type="button"
-                        onClick={() => {
-                          setIsAttachmentMenuOpen(!isAttachmentMenuOpen);
-                          setIsEmojiPickerOpen(false);
-                        }}
-                        title="Anexar arquivo ou mídia"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: isAttachmentMenuOpen ? '#00a884' : (isDarkMode ? '#8696a0' : '#54656f'),
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '50%',
+                      {/* Banner de Alerta se o Remetente Selecionado estiver Desconectado */}
+                      {isSenderDisconnected && activeSenderSource && (
+                        <div style={{
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          borderRadius: '10px',
+                          padding: '6px 12px',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'color 0.15s ease',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Plus size={20} />
-                      </button>
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#EF4444', fontWeight: 700 }}>
+                            <AlertTriangle size={14} color="#EF4444" />
+                            <span>
+                              A instância <strong>{activeSenderSource.name}</strong> está desconectada do WhatsApp.
+                            </span>
+                          </div>
+                          {connectedAlternativeSource && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSenderSourceId(connectedAlternativeSource.id);
+                                if (selectedLead) {
+                                  manuallySelectedSenderLeadIdRef.current = selectedLead.id;
+                                }
+                              }}
+                              style={{
+                                background: '#10B981',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '3px 9px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Zap size={11} />
+                              <span>Mudar para {connectedAlternativeSource.name} (Online)</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
 
-                      {/* Botão 🙂 (Emojis) */}
-                      <button
-                        ref={emojiButtonRef}
-                        type="button"
-                        onClick={() => {
-                          setIsEmojiPickerOpen(!isEmojiPickerOpen);
-                          setIsAttachmentMenuOpen(false);
-                        }}
-                        title="Inserir emoji"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: isEmojiPickerOpen ? '#00a884' : (isDarkMode ? '#8696a0' : '#54656f'),
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'color 0.15s ease',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Smile size={20} />
-                      </button>
-
-                      {/* Campo de Texto (Enter para Enviar) */}
-                      <input
-                        type="text"
-                        value={messageText}
-                        onChange={(e) => {
-                          setMessageText(e.target.value);
-                          if (composerTab === 'whatsapp') {
-                            triggerComposingPresence();
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage(e);
-                          }
-                        }}
-                        placeholder="Digite uma mensagem"
-                        style={{
-                          flex: 1,
-                          height: '36px',
-                          background: 'transparent',
-                          border: 'none',
-                          outline: 'none',
-                          color: isDarkMode ? '#e9edef' : '#111b21',
-                          fontSize: '0.86rem',
-                          padding: '0 4px',
-                        }}
-                      />
-
-                      {/* Botão Dinâmico: Se tiver texto -> Enviar (#00a884); Se vazio -> Microfone */}
-                      {messageText.trim().length > 0 ? (
-                        <button
-                          type="submit"
-                          title="Enviar mensagem (Enter)"
+                      {/* Popover de Anexos Suspenso (Documento, Fotos e vídeos, Áudio) */}
+                      {isAttachmentMenuOpen && (
+                        <div
+                          ref={attachmentMenuRef}
                           style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '50%',
-                            backgroundColor: '#00a884',
-                            border: 'none',
-                            color: '#fff',
+                            position: 'absolute',
+                            bottom: 'calc(100% + 8px)',
+                            left: '8px',
+                            background: isDarkMode ? '#233138' : '#ffffff',
+                            borderRadius: '16px',
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
+                            padding: '8px',
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(0, 168, 132, 0.3)',
-                            flexShrink: 0,
+                            flexDirection: 'column',
+                            gap: '4px',
+                            zIndex: 9999,
+                            minWidth: '180px',
                           }}
                         >
-                          <Send size={16} />
-                        </button>
-                      ) : (
+                          {/* 1. Documento (Roxo) */}
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerFileInput('document')}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#e9edef' : '#111b21',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#7f66ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                              <FileText size={15} />
+                            </div>
+                            <span>Documento</span>
+                          </button>
+
+                          {/* 2. Fotos e vídeos (Azul) */}
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerFileInput('media')}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#e9edef' : '#111b21',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#007bff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                              <ImageIcon size={15} />
+                            </div>
+                            <span>Fotos e vídeos</span>
+                          </button>
+
+                          {/* 3. Áudio (Laranja) */}
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerFileInput('audio')}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#e9edef' : '#111b21',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#ff6b00', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                              <Headphones size={15} />
+                            </div>
+                            <span>Áudio</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Popover de Emojis e Figurinhas (Stickers) Suspenso */}
+                      {isEmojiPickerOpen && (
+                        <div
+                          ref={emojiPickerRef}
+                          style={{
+                            position: 'absolute',
+                            bottom: 'calc(100% + 8px)',
+                            left: '42px',
+                            background: isDarkMode ? '#233138' : '#ffffff',
+                            borderRadius: '16px',
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+                            border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                            padding: '10px',
+                            zIndex: 9999,
+                            width: '330px',
+                            boxSizing: 'border-box',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                          }}
+                        >
+                          {/* Seletor de Abas: Emojis vs Figurinhas */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)', paddingBottom: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmojiTab('emojis')}
+                              style={{
+                                flex: 1,
+                                padding: '5px 8px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                background: activeEmojiTab === 'emojis' ? '#00a884' : (isDarkMode ? 'rgba(255,255,255,0.06)' : '#f0f2f5'),
+                                color: activeEmojiTab === 'emojis' ? '#fff' : (isDarkMode ? '#8696a0' : '#54656f'),
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              <span>🙂 Emojis</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setActiveEmojiTab('stickers')}
+                              style={{
+                                flex: 1,
+                                padding: '5px 8px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                background: activeEmojiTab === 'stickers' ? '#00a884' : (isDarkMode ? 'rgba(255,255,255,0.06)' : '#f0f2f5'),
+                                color: activeEmojiTab === 'stickers' ? '#fff' : (isDarkMode ? '#8696a0' : '#54656f'),
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              <span>✨ Figurinhas</span>
+                            </button>
+                          </div>
+
+                          {activeEmojiTab === 'emojis' ? (
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(8, 34px)',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              maxHeight: '220px',
+                              overflowY: 'auto',
+                            }}>
+                              {WHATSAPP_EMOJI_LIST.map((emoji, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => {
+                                    setMessageText(prev => prev + emoji);
+                                    setIsEmojiPickerOpen(false);
+                                  }}
+                                  style={{
+                                    width: '34px',
+                                    height: '34px',
+                                    padding: 0,
+                                    background: 'transparent',
+                                    border: 'none',
+                                    fontSize: '1.25rem',
+                                    lineHeight: 1,
+                                    cursor: 'pointer',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'background 0.1s ease',
+                                    userSelect: 'none',
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            /* Aba de Figurinhas (Stickers) Limpa & Customizável */
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', paddingRight: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.7rem', color: isDarkMode ? '#8696a0' : '#64748b', fontWeight: 600 }}>Figurinhas da Empresa</span>
+                                <button
+                                  type="button"
+                                  onClick={() => fileStickerInputRef.current?.click()}
+                                  style={{
+                                    background: 'rgba(0, 168, 132, 0.15)',
+                                    border: '1px solid rgba(0, 168, 132, 0.35)',
+                                    color: '#00a884',
+                                    borderRadius: '6px',
+                                    padding: '2px 7px',
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  + Nova Figurinha
+                                </button>
+                              </div>
+
+                              <input
+                                ref={fileStickerInputRef}
+                                type="file"
+                                accept="image/png,image/webp,image/jpeg,image/gif"
+                                style={{ display: 'none' }}
+                                onChange={handleUploadCustomSticker}
+                              />
+
+                              {customStickers.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '28px 12px', color: isDarkMode ? '#8696a0' : '#64748b' }}>
+                                  <div style={{ fontSize: '0.80rem', fontWeight: 700, marginBottom: '4px', color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
+                                    Nenhuma figurinha personalizada ainda
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', lineHeight: 1.4 }}>
+                                    Clique em <strong>"+ Nova Figurinha"</strong> para fazer upload de figurinhas oficiais do seu negócio (.png, .webp, .gif).
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                  {customStickers.map((c, i) => (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => handleSendSticker(c)}
+                                      title={`Enviar figurinha personalizada ${i + 1}`}
+                                      style={{
+                                        padding: '6px',
+                                        borderRadius: '10px',
+                                        background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                                        border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        transition: 'transform 0.15s ease, background 0.15s ease',
+                                        aspectRatio: '1',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1.06)';
+                                        e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.transform = 'scale(1)';
+                                        e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+                                      }}
+                                    >
+                                      <img
+                                        src={c}
+                                        alt={`Figurinha ${i + 1}`}
+                                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Cápsula Arredondada Estilo WhatsApp Web */}
+                      <form onSubmit={handleSendMessage} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: isDarkMode ? '#202c33' : '#ffffff',
+                        borderRadius: '24px',
+                        padding: '4px 8px 4px 10px',
+                        border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
+                        boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(11,20,26,0.08)',
+                        gap: '8px',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}>
+                        {/* Botão + (Anexos) */}
                         <button
+                          ref={attachmentButtonRef}
                           type="button"
-                          onClick={startAudioRecording}
-                          title="Gravar mensagem de voz"
+                          onClick={() => {
+                            setIsAttachmentMenuOpen(!isAttachmentMenuOpen);
+                            setIsEmojiPickerOpen(false);
+                          }}
+                          title="Anexar arquivo ou mídia"
                           style={{
                             background: 'transparent',
                             border: 'none',
-                            color: isDarkMode ? '#8696a0' : '#54656f',
+                            color: isAttachmentMenuOpen ? '#00a884' : (isDarkMode ? '#8696a0' : '#54656f'),
                             cursor: 'pointer',
                             padding: '6px',
                             borderRadius: '50%',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            transition: 'color 0.15s ease',
                             flexShrink: 0,
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.color = '#00a884'}
-                          onMouseLeave={(e) => e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f'}
                         >
-                          <Mic size={20} />
+                          <Plus size={20} />
                         </button>
-                      )}
-                    </form>
-                  </div>
-                )
-              )}
-            </div>
+
+                        {/* Botão 🙂 (Emojis) */}
+                        <button
+                          ref={emojiButtonRef}
+                          type="button"
+                          onClick={() => {
+                            setIsEmojiPickerOpen(!isEmojiPickerOpen);
+                            setIsAttachmentMenuOpen(false);
+                          }}
+                          title="Inserir emoji"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: isEmojiPickerOpen ? '#00a884' : (isDarkMode ? '#8696a0' : '#54656f'),
+                            cursor: 'pointer',
+                            padding: '6px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'color 0.15s ease',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Smile size={20} />
+                        </button>
+
+                        {/* Campo de Texto (Enter para Enviar) */}
+                        <input
+                          type="text"
+                          value={messageText}
+                          onChange={(e) => {
+                            setMessageText(e.target.value);
+                            if (composerTab === 'whatsapp') {
+                              triggerComposingPresence();
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage(e);
+                            }
+                          }}
+                          placeholder="Digite uma mensagem"
+                          style={{
+                            flex: 1,
+                            height: '36px',
+                            background: 'transparent',
+                            border: 'none',
+                            outline: 'none',
+                            color: isDarkMode ? '#e9edef' : '#111b21',
+                            fontSize: '0.86rem',
+                            padding: '0 4px',
+                          }}
+                        />
+
+                        {/* Botão Dinâmico: Se tiver texto -> Enviar (#00a884); Se vazio -> Microfone */}
+                        {messageText.trim().length > 0 ? (
+                          <button
+                            type="submit"
+                            title="Enviar mensagem (Enter)"
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '50%',
+                              backgroundColor: '#00a884',
+                              border: 'none',
+                              color: '#fff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 8px rgba(0, 168, 132, 0.3)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Send size={16} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={startAudioRecording}
+                            title="Gravar mensagem de voz"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#8696a0' : '#54656f',
+                              cursor: 'pointer',
+                              padding: '6px',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#00a884'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f'}
+                          >
+                            <Mic size={20} />
+                          </button>
+                        )}
+                      </form>
+                    </div>
+                  )
+                )}
+              </div>
             )}
           </>
         ) : (

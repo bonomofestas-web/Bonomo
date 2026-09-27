@@ -352,28 +352,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const candidateOwner = (payload.owner || payload.phone || payload.connectedPhone || payload.fromMePhone || '').replace(/\D/g, '');
 
         if (candidateToken) {
-          const { data: src } = await supabase
+          const { data: srcs } = await supabase
             .from('sources')
             .select('*')
             .or(`whatsapp_instance_id.eq.${candidateToken},configuration->>token.eq.${candidateToken},configuration->>instanceToken.eq.${candidateToken},configuration->>instanceKey.eq.${candidateToken}`)
-            .maybeSingle();
-          matchedSource = src;
+            .order('created_at', { ascending: true })
+            .limit(1);
+          matchedSource = srcs?.[0] || null;
         }
 
         if (!matchedSource && candidateOwner) {
-          const { data: src } = await supabase
+          const { data: srcs } = await supabase
             .from('sources')
             .select('*')
             .or(`whatsapp_instance_id.eq.${candidateOwner},configuration->>connectedPhone.eq.${candidateOwner}`)
-            .maybeSingle();
-          matchedSource = src;
+            .order('created_at', { ascending: true })
+            .limit(1);
+          matchedSource = srcs?.[0] || null;
         }
 
         if (!matchedSource && candidateInstanceName) {
           const { data: srcs } = await supabase
             .from('sources')
             .select('*')
-            .eq('type', 'whatsapp_api');
+            .eq('type', 'whatsapp_api')
+            .order('created_at', { ascending: true });
           matchedSource = (srcs || []).find((s: any) => 
             s.name?.toLowerCase().includes(candidateInstanceName.toLowerCase()) ||
             s.whatsapp_instance_id?.includes(candidateInstanceName) ||
@@ -601,8 +604,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const leadId = crypto.randomUUID();
           const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)' && senderName !== 'WhatsApp App / Web') ? senderName.trim() : leadCode;
-          const venueId = matchedSource?.venue_id || 'v1';
-          const funnelId = matchedSource?.funnel_id || 'comercial';
+          let venueId = matchedSource?.venue_id;
+          let funnelId = matchedSource?.funnel_id;
+
+          // Se a origem não tiver funil associado ou for 'comercial', busca o funil comercial real da unidade
+          if (!funnelId || funnelId === 'comercial') {
+            let fQuery = supabase.from('commercial_funnels').select('id, venue_id, master_id');
+            if (venueId) {
+              fQuery = fQuery.eq('venue_id', venueId);
+            } else if (tenantMasterId) {
+              fQuery = fQuery.eq('master_id', tenantMasterId);
+            }
+            const { data: fallbackFunnels } = await fQuery.order('created_at', { ascending: true }).limit(1);
+            if (fallbackFunnels && fallbackFunnels[0]) {
+              funnelId = fallbackFunnels[0].id;
+              if (!venueId) venueId = fallbackFunnels[0].venue_id;
+            }
+          }
+          if (!venueId) venueId = 'v1';
+          if (!funnelId) funnelId = 'comercial';
 
           // Localiza o masterId da casa para garantir isolamento por tenant no banco
           let venueMasterId: string | null = tenantMasterId;

@@ -4731,7 +4731,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
     
     let matchedSubSource: string | undefined = undefined;
-    let targetFunnelId = data.initialFunnelId || waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId)?.id) || 'comercial';
+    let targetFunnelId = data.initialFunnelId || waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId && !f.isPostSale)?.id) || funnels.find(f => !f.isPostSale)?.id || 'comercial';
 
     if (waSource && data.firstMessage && !data.initialFunnelId) {
       const match = sourceService.matchWhatsAppSubSource(waSource, data.firstMessage);
@@ -4982,7 +4982,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (connectedPhone && incomingOwner && connectedPhone === incomingOwner) return true;
           if (incomingInstName && s.name.toLowerCase().includes(incomingInstName)) return true;
           return false;
-        }) || currentSources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
+        });
 
         const rawJid = incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || incoming.rawPayload?.chatId || '';
         const rawLid = (isLidIdentifier(incoming.senderPhone) ? incoming.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
@@ -5206,7 +5206,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             sourceId: matchedSource?.id,
             avatarUrl: effectiveAvatar || undefined,
             fromMe: isFromMe,
-            initialFunnelId: isTargetPostSale ? 'post_sale_default' : undefined,
+            initialFunnelId: matchedSource?.funnelId || (isTargetPostSale ? 'post_sale_default' : undefined),
             initialStage: isTargetPostSale ? ('new_lead' as any) : undefined,
           });
 
