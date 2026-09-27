@@ -260,6 +260,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // Modo de Seleção Múltipla
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const boardRef = useRef<HTMLDivElement>(null);
 
   // Estados de Ações e Interatividades dos Cards
   const [activeClientMenuId, setActiveClientMenuId] = useState<string | null>(null);
@@ -541,6 +542,15 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (boardRef.current) {
+      const rect = boardRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (x < 75) {
+        boardRef.current.scrollLeft -= 16;
+      } else if (rect.width - x < 75) {
+        boardRef.current.scrollLeft += 16;
+      }
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetStage: ClientStage) => {
@@ -1139,13 +1149,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         ) : viewMode === 'kanban' ? (
           /* Kanban Board */
           <div 
+            ref={boardRef}
             style={{
               display: 'flex',
               flexDirection: 'row',
-              alignItems: 'flex-start',
+              alignItems: 'stretch',
               gap: '12px',
               overflowX: 'auto',
-              overflowY: 'auto',
+              overflowY: 'hidden',
               flex: 1,
               height: 'calc(100vh - 110px)',
               maxHeight: 'calc(100vh - 110px)',
@@ -1153,7 +1164,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               paddingLeft: '4px',
               paddingRight: '24px',
               paddingTop: '6px',
-              paddingBottom: '32px',
+              paddingBottom: '16px',
               boxSizing: 'border-box',
             }}
             className="custom-scrollbar"
@@ -1184,10 +1195,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      alignSelf: 'flex-start',
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 15,
+                      alignSelf: 'stretch',
+                      height: '100%',
                       width: '40px',
                       minWidth: '40px',
                       maxWidth: '40px',
@@ -1198,8 +1207,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       gap: '10px',
                       transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                       animation: 'fadeIn 0.18s ease-out',
-                      minHeight: '340px',
                       userSelect: 'none',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -1262,15 +1271,17 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     borderRadius: 0,
                     display: 'flex',
                     flexDirection: 'column',
-                    alignSelf: 'flex-start',
+                    alignSelf: 'stretch',
+                    height: '100%',
                     gap: '6px',
                     boxShadow: 'none',
                     position: 'relative',
-                    overflow: isSlim ? 'hidden' : 'visible',
+                    overflow: 'hidden',
                     transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), flex 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxSizing: 'border-box',
                   }}
                 >
-                  {/* Column Header (Sticky) */}
+                  {/* Column Header (Fixo no topo da coluna) */}
                   <div 
                     onClick={() => toggleColumnCollapse(column.id)}
                     title={`Clique para minimizar a etapa "${column.title.toUpperCase()}"`}
@@ -1286,10 +1297,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       gap: '2px',
                       cursor: 'pointer',
                       userSelect: 'none',
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 20,
                       flexShrink: 0,
+                      zIndex: 2,
                       boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                       overflow: 'hidden',
                       whiteSpace: 'nowrap',
@@ -1361,13 +1370,18 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     </span>
                   </div>
 
-                  {/* Cards Container */}
+                  {/* Cards Container - Rolagem vertical independente por coluna */}
                   <div 
+                    className="custom-scrollbar"
                     style={{
-                      padding: 0,
+                      padding: '2px 4px 20px 2px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '6px',
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
                       opacity: isSlim ? 0 : 1,
                       transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
                       transition: 'opacity 0.20s ease, transform 0.20s ease',

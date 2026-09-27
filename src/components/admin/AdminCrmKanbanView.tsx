@@ -1135,6 +1135,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (boardRef.current) {
+      const rect = boardRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (x < 75) {
+        boardRef.current.scrollLeft -= 16;
+      } else if (rect.width - x < 75) {
+        boardRef.current.scrollLeft += 16;
+      }
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetStage: string) => {
@@ -2742,10 +2751,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               style={{
                 display: 'flex',
                 flexDirection: 'row',
-                alignItems: 'flex-start',
+                alignItems: 'stretch',
                 gap: '12px',
                 overflowX: 'auto',
-                overflowY: 'auto',
+                overflowY: 'hidden',
                 flex: 1,
                 height: 'calc(100vh - 110px)',
                 maxHeight: 'calc(100vh - 110px)',
@@ -2753,7 +2762,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 paddingLeft: '16px',
                 paddingRight: '40px',
                 paddingTop: '8px',
-                paddingBottom: '40px',
+                paddingBottom: '16px',
                 boxSizing: 'border-box',
                 cursor: isDraggingBoard ? 'grabbing' : 'grab',
                 userSelect: isDraggingBoard ? 'none' : 'auto',
@@ -2793,10 +2802,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        alignSelf: 'flex-start',
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 15,
+                        alignSelf: 'stretch',
+                        height: '100%',
                         width: '40px',
                         minWidth: '40px',
                         maxWidth: '40px',
@@ -2807,8 +2814,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         gap: '10px',
                         transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                         animation: 'fadeIn 0.18s ease-out',
-                        minHeight: '340px',
                         userSelect: 'none',
+                        boxSizing: 'border-box',
                       }}
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -2867,7 +2874,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       borderRadius: 0,
                       display: 'flex',
                       flexDirection: 'column',
-                      alignSelf: 'flex-start',
+                      alignSelf: 'stretch',
+                      height: '100%',
                       width: isSlim ? '40px' : '280px',
                       minWidth: isSlim ? '40px' : '280px',
                       maxWidth: isSlim ? '40px' : '280px',
@@ -2875,11 +2883,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       gap: '6px',
                       boxShadow: 'none',
                       position: 'relative',
-                      overflow: isSlim ? 'hidden' : 'visible',
+                      overflow: 'hidden',
                       transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), flex 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxSizing: 'border-box',
                     }}
                   >
-                    {/* Column Header - Sticky / Fixo no topo do Board durante a rolagem vertical da tela */}
+                    {/* Column Header - Fixo no topo da coluna */}
                     <div 
                       onClick={() => toggleColumnCollapse(col.id)}
                       title={`Clique para minimizar a etapa "${col.title.toUpperCase()}"`}
@@ -2895,10 +2904,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         gap: '2px',
                         cursor: 'pointer',
                         userSelect: 'none',
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 20,
                         flexShrink: 0,
+                        zIndex: 2,
                         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                         overflow: 'hidden',
                         whiteSpace: 'nowrap',
@@ -3043,27 +3050,38 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </span>
                     </div>
 
-                    {/* Cards Container (Direto no background, com animação simétrica suave de recolher e expandir) */}
-                    <div style={{
-                      padding: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '6px',
-                      opacity: isSlim ? 0 : 1,
-                      transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
-                      transition: 'opacity 0.20s ease, transform 0.20s ease',
-                      pointerEvents: isSlim ? 'none' : 'auto',
-                    }}>
+                    {/* Cards Container - Rolagem vertical independente por coluna */}
+                    <div 
+                      className="custom-scrollbar"
+                      style={{
+                        padding: '2px 4px 20px 2px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        opacity: isSlim ? 0 : 1,
+                        transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
+                        transition: 'opacity 0.20s ease, transform 0.20s ease',
+                        pointerEvents: isSlim ? 'none' : 'auto',
+                      }}
+                    >
                       {columnLeads.length === 0 ? (
                         <div style={{
                           textAlign: 'center',
-                          padding: '16px 6px',
+                          padding: '24px 8px',
                           color: 'var(--adm-text-muted)',
-                          fontSize: '0.65rem',
+                          fontSize: '0.68rem',
                           border: '1.5px dashed var(--adm-border)',
                           borderRadius: '8px',
                           lineHeight: 1.4,
                           background: 'transparent',
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}>
                           Arraste um lead para cá
                         </div>
