@@ -362,21 +362,21 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       flexDirection: 'column',
       height: '100%',
       width: '100%',
-      background: '#F8FAFC',
-      color: '#0F172A',
+      background: 'var(--adm-bg-app, #F8FAFC)',
+      color: 'var(--adm-text-title, #0F172A)',
       overflow: 'hidden',
       fontFamily: "'Inter', sans-serif",
       boxSizing: 'border-box',
     }}>
-      {/* ── TOP MASTER BAR (Padrão Kommo / amoCRM em Light Mode) ── */}
+      {/* ── TOP MASTER BAR (Padrão Kommo / amoCRM em Light/Dark Mode) ── */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '16px',
         padding: '12px 24px',
-        background: '#FFFFFF',
-        borderBottom: '1px solid #E2E8F0',
+        background: 'var(--adm-bg-card, #FFFFFF)',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
         flexShrink: 0,
         boxSizing: 'border-box',
       }}>
@@ -509,10 +509,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             display: 'flex',
             alignItems: 'center',
             gap: '3px',
-            background: '#F1F5F9',
+            background: 'var(--adm-bg-surface, #F1F5F9)',
             padding: '3px',
             borderRadius: '8px',
-            border: '1px solid #E2E8F0',
+            border: '1px solid var(--adm-border, #E2E8F0)',
           }}>
             {[
               { id: 'all', label: 'Todos' },
@@ -529,8 +529,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   padding: '4px 9px',
                   borderRadius: '6px',
                   border: 'none',
-                  background: sectorFilter === sec.id ? '#FFFFFF' : 'transparent',
-                  color: sectorFilter === sec.id ? '#0284C7' : '#64748B',
+                  background: sectorFilter === sec.id ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                  color: sectorFilter === sec.id ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
                   fontWeight: 700,
                   fontSize: '0.72rem',
                   cursor: 'pointer',
@@ -550,10 +550,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            background: '#F1F5F9',
+            background: 'var(--adm-bg-surface, #F1F5F9)',
             padding: '3px',
             borderRadius: '8px',
-            border: '1px solid #E2E8F0',
+            border: '1px solid var(--adm-border, #E2E8F0)',
           }}>
             <button
               type="button"
@@ -562,8 +562,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: 'none',
-                background: visitsSubFilter === 'all' ? '#FFFFFF' : 'transparent',
-                color: visitsSubFilter === 'all' ? '#0284C7' : '#64748B',
+                background: visitsSubFilter === 'all' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                color: visitsSubFilter === 'all' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
                 fontWeight: 700,
                 fontSize: '0.72rem',
                 cursor: 'pointer',
@@ -579,8 +579,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: 'none',
-                background: visitsSubFilter === 'visit' ? '#FFFFFF' : 'transparent',
-                color: visitsSubFilter === 'visit' ? '#059669' : '#64748B',
+                background: visitsSubFilter === 'visit' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                color: visitsSubFilter === 'visit' ? '#059669' : 'var(--adm-text-muted, #64748B)',
                 fontWeight: 700,
                 fontSize: '0.72rem',
                 cursor: 'pointer',
@@ -600,8 +600,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: 'none',
-                background: visitsSubFilter === 'tasting' ? '#FFFFFF' : 'transparent',
-                color: visitsSubFilter === 'tasting' ? '#D97706' : '#64748B',
+                background: visitsSubFilter === 'tasting' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+                color: visitsSubFilter === 'tasting' ? '#D97706' : 'var(--adm-text-muted, #64748B)',
                 fontWeight: 700,
                 fontSize: '0.72rem',
                 cursor: 'pointer',
@@ -674,17 +674,17 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               marginTop: '8px',
               width: '320px',
               padding: '16px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
               borderRadius: '14px',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.2)',
               zIndex: 999,
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A' }}>Filtros Avançados</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
+                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>Filtros Avançados</span>
                 {hasActiveFilters && (
                   <button
                     type="button"
@@ -698,7 +698,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
               {/* Responsável */}
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Usuário Responsável
                 </label>
                 <select
@@ -708,10 +708,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     width: '100%',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
                     fontSize: '0.78rem',
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     outline: 'none',
                   }}
                 >
@@ -724,7 +724,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
               {/* Tipo de Tarefa */}
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Tipo de Tarefa
                 </label>
                 <select
@@ -734,10 +734,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     width: '100%',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
                     fontSize: '0.78rem',
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     outline: 'none',
                   }}
                 >
@@ -754,7 +754,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
               {/* Banco / Unidade */}
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Banco de Tarefas / Unidade
                 </label>
                 <select
@@ -764,10 +764,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     width: '100%',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
                     fontSize: '0.78rem',
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     outline: 'none',
                   }}
                 >
@@ -780,7 +780,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
               {/* Setor */}
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Setor da Empresa
                 </label>
                 <select
@@ -790,10 +790,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     width: '100%',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
                     fontSize: '0.78rem',
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     outline: 'none',
                   }}
                 >
@@ -807,7 +807,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
               {/* Status */}
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Status
                 </label>
                 <select
@@ -817,10 +817,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     width: '100%',
                     padding: '6px 10px',
                     borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
                     fontSize: '0.78rem',
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     outline: 'none',
                   }}
                 >
@@ -900,7 +900,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
-        background: '#F8FAFC',
+        background: 'var(--adm-bg-app, #F8FAFC)',
       }}>
         {viewMode === 'kanban' && (
           <AdminTasksKanbanView
@@ -977,9 +977,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           animation: 'fadeIn 0.15s ease-out',
         }}>
           <div style={{
-            background: '#FFFFFF',
+            background: 'var(--adm-bg-card, #FFFFFF)',
             borderRadius: '20px',
-            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(226, 232, 240, 0.8)',
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--adm-border, rgba(226, 232, 240, 0.8))',
             maxWidth: '640px',
             width: '100%',
             padding: '28px 32px',
@@ -1005,11 +1005,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   }}>
                     <Plus size={18} strokeWidth={2.5} />
                   </div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.3px' }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0, letterSpacing: '-0.3px' }}>
                     Criar Nova Tarefa
                   </h2>
                 </div>
-                <p style={{ fontSize: '0.82rem', color: '#64748B', margin: 0 }}>
+                <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted, #64748B)', margin: 0 }}>
                   Selecione a categoria para abrir o formulário com a estrutura e campos corretos:
                 </p>
               </div>
@@ -1018,7 +1018,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 type="button"
                 onClick={() => setIsTaskTypeSelectorOpen(false)}
                 style={{
-                  background: '#F1F5F9',
+                  background: 'var(--adm-bg-surface, #F1F5F9)',
                   border: 'none',
                   borderRadius: '10px',
                   width: '32px',
@@ -1027,11 +1027,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  color: '#64748B',
+                  color: 'var(--adm-text-muted, #64748B)',
                   transition: 'all 0.15s ease',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#E2E8F0'; e.currentTarget.style.color = '#0F172A'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#F1F5F9'; e.currentTarget.style.color = '#64748B'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--adm-border, #E2E8F0)'; e.currentTarget.style.color = 'var(--adm-text-title, #0F172A)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--adm-bg-surface, #F1F5F9)'; e.currentTarget.style.color = 'var(--adm-text-muted, #64748B)'; }}
               >
                 <X size={16} />
               </button>
@@ -1047,11 +1047,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               <div
                 onClick={() => openModalForContext('followup', 'Follow-up WhatsApp')}
                 style={{
-                  border: '1.5px solid #E2E8F0',
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
                   borderRadius: '16px',
                   padding: '16px',
                   cursor: 'pointer',
-                  background: '#FFFFFF',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1060,13 +1060,13 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = '#0284C7';
-                  e.currentTarget.style.background = '#F0F9FF';
+                  e.currentTarget.style.background = 'rgba(2, 132, 199, 0.08)';
                   e.currentTarget.style.transform = 'translateY(-2px)';
                   e.currentTarget.style.boxShadow = '0 8px 20px rgba(2, 132, 199, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E2E8F0';
-                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
                 }}
@@ -1097,10 +1097,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   </span>
                 </div>
                 <div>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                     Follow-up Comercial
                   </h4>
-                  <p style={{ margin: 0, fontSize: '0.74rem', color: '#64748B', lineHeight: 1.4 }}>
+                  <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', lineHeight: 1.4 }}>
                     Retorno, negociação e acompanhamento de Leads do CRM.
                   </p>
                 </div>
@@ -1110,11 +1110,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               <div
                 onClick={() => openModalForContext('visits_tastings', 'Visita')}
                 style={{
-                  border: '1.5px solid #E2E8F0',
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
                   borderRadius: '16px',
                   padding: '16px',
                   cursor: 'pointer',
-                  background: '#FFFFFF',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1123,13 +1123,13 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = '#D97706';
-                  e.currentTarget.style.background = '#FFFBEB';
+                  e.currentTarget.style.background = 'rgba(217, 119, 6, 0.08)';
                   e.currentTarget.style.transform = 'translateY(-2px)';
                   e.currentTarget.style.boxShadow = '0 8px 20px rgba(217, 119, 6, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E2E8F0';
-                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
                 }}
@@ -1160,10 +1160,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   </span>
                 </div>
                 <div>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                     Visita / Degustação
                   </h4>
-                  <p style={{ margin: 0, fontSize: '0.74rem', color: '#64748B', lineHeight: 1.4 }}>
+                  <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', lineHeight: 1.4 }}>
                     Agendamento de visita presencial à casa ou degustação de cardápio.
                   </p>
                 </div>
@@ -1173,11 +1173,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               <div
                 onClick={() => openModalForContext('appointments', 'Visita Técnica')}
                 style={{
-                  border: '1.5px solid #E2E8F0',
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
                   borderRadius: '16px',
                   padding: '16px',
                   cursor: 'pointer',
-                  background: '#FFFFFF',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1186,13 +1186,13 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = '#7C3AED';
-                  e.currentTarget.style.background = '#FAF5FF';
+                  e.currentTarget.style.background = 'rgba(124, 58, 237, 0.08)';
                   e.currentTarget.style.transform = 'translateY(-2px)';
                   e.currentTarget.style.boxShadow = '0 8px 20px rgba(124, 58, 237, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E2E8F0';
-                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
                 }}
@@ -1223,10 +1223,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   </span>
                 </div>
                 <div>
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                     Compromisso do Cliente
                   </h4>
-                  <p style={{ margin: 0, fontSize: '0.74rem', color: '#64748B', lineHeight: 1.4 }}>
+                  <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', lineHeight: 1.4 }}>
                     Reuniões, ensaios, maquiagem e alinhamentos com debutantes.
                   </p>
                 </div>
@@ -1236,11 +1236,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               <div
                 onClick={() => openModalForContext('all', 'Acompanhar')}
                 style={{
-                  border: '1.5px solid #E2E8F0',
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
                   borderRadius: '16px',
                   padding: '16px',
                   cursor: 'pointer',
-                  background: '#FFFFFF',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1248,14 +1248,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#475569';
-                  e.currentTarget.style.background = '#F8FAFC';
+                  e.currentTarget.style.borderColor = '#0284C7';
+                  e.currentTarget.style.background = 'rgba(2, 132, 199, 0.08)';
                   e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(71, 85, 105, 0.15)';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(2, 132, 199, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E2E8F0';
-                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
                 }}

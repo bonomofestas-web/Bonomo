@@ -945,6 +945,9 @@ export const uazapiService = {
           },
           body: JSON.stringify({
             chatid: chatId,
+            chatId: chatId,
+            remoteJid: chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`,
+            phone: cleanPhone,
             limit,
             order: 'asc',
           }),
@@ -970,6 +973,9 @@ export const uazapiService = {
           },
           body: JSON.stringify({
             chatid: chatId,
+            chatId: chatId,
+            remoteJid: chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`,
+            phone: cleanPhone,
             limit,
             order: 'asc',
           }),
@@ -1049,9 +1055,10 @@ export const uazapiService = {
             continue;
           }
 
-          if (msg.wasSentByApi === true) continue;
-
-          const isFromMe = msg.fromMe === true || msg.key?.fromMe === true;
+          const isFromMe = msg.fromMe === true || msg.fromMe === 'true' || msg.fromMe === 1 ||
+            msg.key?.fromMe === true || msg.key?.fromMe === 'true' || msg.key?.fromMe === 1 ||
+            msg.sender === 'me' || msg.sender === 'user' || msg.source === 'fromMe' ||
+            msg.direction === 'outgoing' || msg.direction === 'outbound';
           let text = '';
           if (typeof msg.message === 'string') text = msg.message;
           else if (typeof msg.text === 'string') text = msg.text;

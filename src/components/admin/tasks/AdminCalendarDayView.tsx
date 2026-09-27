@@ -297,8 +297,8 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
           alignItems: 'center',
           gap: '12px',
           padding: '10px 20px',
-          borderBottom: '1px solid #E2E8F0',
-          background: '#F8FAFC',
+          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
         }}>
           <span style={{
             fontSize: '0.70rem',
@@ -476,7 +476,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                     <span style={{ display: 'flex', flexShrink: 0 }}>{renderTaskTypeIcon(theme.category, 13, theme.primaryColor)}</span>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {task.title}
                     </span>
                   </div>

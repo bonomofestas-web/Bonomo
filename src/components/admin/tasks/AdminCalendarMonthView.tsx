@@ -223,8 +223,8 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
         gridTemplateColumns: 'repeat(7, 1fr)',
         textAlign: 'center',
         padding: '10px 0',
-        background: '#F8FAFC',
-        borderBottom: '1px solid #E2E8F0',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
       }}>
         {weekdays.map((w, i) => (
           <div
@@ -232,8 +232,8 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
             style={{
               fontSize: '0.76rem',
               fontWeight: 800,
-              color: '#64748B',
-              borderRight: i < 6 ? '1px solid #E2E8F0' : 'none',
+              color: 'var(--adm-text-muted, #64748B)',
+              borderRight: i < 6 ? '1px solid var(--adm-border, #E2E8F0)' : 'none',
             }}
           >
             {w}
@@ -331,14 +331,14 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                         border: isOverdue 
                           ? '1px solid #FCA5A5' 
                           : isCompleted 
-                            ? '1px solid #E2E8F0' 
+                            ? '1px solid var(--adm-border, #E2E8F0)' 
                             : `1px solid ${theme.badgeBorder}`,
                         background: isOverdue 
                           ? '#FEF2F2' 
                           : isCompleted 
-                            ? '#F8FAFC' 
+                            ? 'var(--adm-bg-surface, #F8FAFC)' 
                             : theme.badgeBg,
-                        color: '#0F172A',
+                        color: 'var(--adm-text-title, #0F172A)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '2px',
@@ -346,7 +346,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                         boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                       }}
                     >
-                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: isOverdue ? '#991B1B' : '#0F172A' }}>
+                      <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: isOverdue ? '#991B1B' : 'var(--adm-text-title, #0F172A)' }}>
                         {task.title}
                       </div>
                       <div style={{ 

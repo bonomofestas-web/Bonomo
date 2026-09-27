@@ -6,7 +6,7 @@ import {
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
-  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video
+  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -606,6 +606,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
+
+
   const toggleLeadSelection = (leadId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setSelectedLeadIds(prev =>
@@ -859,10 +861,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
       // 1. Funnel & Venue Matching
       if (!isPostSaleFunnel) {
-        if (currentFunnel && lead.funnelId) {
+        if (currentFunnel) {
           const leadFunnelMatches =
             lead.funnelId === currentFunnel.id ||
-            lead.funnelId.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim();
+            lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
+            (!lead.funnelId && currentFunnel.isPrimary);
           if (!leadFunnelMatches) {
             if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
           }
@@ -872,9 +875,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       // Se o usuário filtrou explicitamente por uma casa específica no dropdown de filtro:
       if (filterVenueId !== 'all' && lead.venueId && lead.venueId !== filterVenueId) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
-      } else if (!isPostSaleFunnel && currentFunnel && funnelAllowedVenues) {
+      } else if (!isPostSaleFunnel && currentFunnel) {
         // Aceita qualquer lead pertencente à casa principal OU às casas compartilhadas deste funil comercial (ex: ERL / Rose)
-        if (lead.venueId && !funnelAllowedVenues.has(lead.venueId)) {
+        if (funnelAllowedVenues && lead.venueId && !funnelAllowedVenues.has(lead.venueId)) {
           if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
       } else if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
@@ -1031,6 +1034,73 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
+
+  // Download manual sob demanda de mídia recuperada (Economia de Storage)
+  const [downloadingMediaIds, setDownloadingMediaIds] = useState<Set<string>>(new Set());
+
+  const handleManualDownloadMedia = async (act: LeadActivity) => {
+    if (!selectedLead || downloadingMediaIds.has(act.id)) return;
+    const messageId = act.metadata?.messageId || act.metadata?.id || (act.metadata as any)?.key?.id || act.id;
+    const instanceToken = act.metadata?.instanceToken ||
+      (selectedLead as any)?.metadata?.instanceToken ||
+      (selectedLead?.sourceId && sources?.find(s => s.id === selectedLead.sourceId)?.whatsappInstanceId) ||
+      sources?.find(s => s.type === 'whatsapp_api' && s.whatsappInstanceId)?.whatsappInstanceId ||
+      '';
+
+    if (!instanceToken) {
+      alert('Não foi possível identificar a instância do WhatsApp para baixar a mídia.');
+      return;
+    }
+
+    setDownloadingMediaIds(prev => new Set(prev).add(act.id));
+
+    try {
+      const res = await whatsappMediaService.ingestTransientMedia({
+        instanceToken,
+        messageId,
+        instanceId: instanceToken,
+        transcribeAudio: false,
+      });
+
+      if (res.permanentR2Url) {
+        const updatedActivities = (selectedLead.activities || []).map(a => {
+          if (a.id === act.id) {
+            return {
+              ...a,
+              mediaUrl: res.permanentR2Url,
+              needsManualDownload: false,
+              metadata: {
+                ...(a.metadata || {}),
+                needsManualDownload: false,
+                permanentR2Url: res.permanentR2Url,
+              }
+            };
+          }
+          return a;
+        });
+
+        updateLeadData(selectedLead.id, { activities: updatedActivities });
+        if (isSupabaseConfigured) {
+          leadService.updateActivity(act.id, {
+            mediaUrl: res.permanentR2Url,
+            metadata: {
+              ...(act.metadata || {}),
+              needsManualDownload: false,
+              permanentR2Url: res.permanentR2Url,
+            }
+          }).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      alert(`Falha ao baixar mídia: ${err.message || 'Mídia indisponível no servidor do WhatsApp'}`);
+    } finally {
+      setDownloadingMediaIds(prev => {
+        const next = new Set(prev);
+        next.delete(act.id);
+        return next;
+      });
+    }
+  };
 
   // Lista de destinatários disponíveis na ficha com prioridade máxima para o Decisor
   const availableRecipients = useMemo(() => {
@@ -4180,6 +4250,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         );
                       }
 
+                      const needsManualDownload = Boolean(act.needsManualDownload || (act as any).metadata?.needsManualDownload);
                       let effectiveMediaUrl = act.mediaUrl;
                       let effectiveMediaType: LeadActivity['mediaType'] = act.mediaType;
                       let effectiveText = act.text || '';
@@ -4294,7 +4365,73 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   )}
 
                                   {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
-                                  {isInstagramMsg ? (
+                                  {needsManualDownload ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                      <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '12px',
+                                        padding: '8px 12px',
+                                        borderRadius: '10px',
+                                        background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                                        minWidth: '220px',
+                                        maxWidth: '290px',
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                          <div style={{
+                                            width: '34px',
+                                            height: '34px',
+                                            borderRadius: '50%',
+                                            background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: isDarkMode ? '#8696a0' : '#64748b',
+                                            flexShrink: 0,
+                                          }}>
+                                            {isAudioMsg ? <Mic size={18} /> : (effectiveMediaType === 'image' || act.mediaType === 'image') ? <Camera size={18} /> : (effectiveMediaType === 'video' || act.mediaType === 'video') ? <Video size={18} /> : <FileText size={18} />}
+                                          </div>
+                                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                            <span style={{ fontSize: '0.80rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111b21', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                              {isAudioMsg ? 'Mensagem de voz' : (effectiveMediaType === 'image' || act.mediaType === 'image') ? 'Foto' : (effectiveMediaType === 'video' || act.mediaType === 'video') ? 'Vídeo' : (act.text || 'Documento')}
+                                            </span>
+                                            <span style={{ fontSize: '0.67rem', color: isDarkMode ? '#8696a0' : '#64748b' }}>
+                                              {downloadingMediaIds.has(act.id) ? 'Baixando...' : 'Mídia recuperada'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleManualDownloadMedia(act)}
+                                          disabled={downloadingMediaIds.has(act.id)}
+                                          title="Baixar mídia"
+                                          style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '50%',
+                                            border: isDarkMode ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)',
+                                            background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                                            color: isDarkMode ? '#d1d7db' : '#54656f',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: downloadingMediaIds.has(act.id) ? 'wait' : 'pointer',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {downloadingMediaIds.has(act.id) ? (
+                                            <Loader2 size={16} className="animate-spin" />
+                                          ) : (
+                                            <Download size={16} />
+                                          )}
+                                        </button>
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: '2px' }}>
+                                        <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                      </div>
+                                    </div>
+                                  ) : isInstagramMsg ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '300px' }}>
                                       <a
                                         href={instagramMsgUrl}
@@ -4537,7 +4674,74 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 )}
 
                                 {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
-                                {isInstagramMsg ? (
+                                {needsManualDownload ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: '12px',
+                                      padding: '8px 12px',
+                                      borderRadius: '10px',
+                                      background: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)',
+                                      minWidth: '220px',
+                                      maxWidth: '290px',
+                                    }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          width: '34px',
+                                          height: '34px',
+                                          borderRadius: '50%',
+                                          background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          color: isDarkMode ? '#8696a0' : '#64748b',
+                                          flexShrink: 0,
+                                        }}>
+                                          {isAudioMsg ? <Mic size={18} /> : (effectiveMediaType === 'image' || act.mediaType === 'image') ? <Camera size={18} /> : (effectiveMediaType === 'video' || act.mediaType === 'video') ? <Video size={18} /> : <FileText size={18} />}
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                          <span style={{ fontSize: '0.80rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111b21', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                            {isAudioMsg ? 'Mensagem de voz' : (effectiveMediaType === 'image' || act.mediaType === 'image') ? 'Foto' : (effectiveMediaType === 'video' || act.mediaType === 'video') ? 'Vídeo' : (act.text || 'Documento')}
+                                          </span>
+                                          <span style={{ fontSize: '0.67rem', color: isDarkMode ? '#8696a0' : '#64748b' }}>
+                                            {downloadingMediaIds.has(act.id) ? 'Baixando...' : 'Mídia recuperada'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleManualDownloadMedia(act)}
+                                        disabled={downloadingMediaIds.has(act.id)}
+                                        title="Baixar mídia"
+                                        style={{
+                                          width: '32px',
+                                          height: '32px',
+                                          borderRadius: '50%',
+                                          border: isDarkMode ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)',
+                                          background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                                          color: isDarkMode ? '#d1d7db' : '#54656f',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          cursor: downloadingMediaIds.has(act.id) ? 'wait' : 'pointer',
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {downloadingMediaIds.has(act.id) ? (
+                                          <Loader2 size={16} className="animate-spin" />
+                                        ) : (
+                                          <Download size={16} />
+                                        )}
+                                      </button>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', paddingRight: '2px' }}>
+                                      <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
+                                      <CheckCircle2 size={11} color="#53bdeb" />
+                                    </div>
+                                  </div>
+                                ) : isInstagramMsg ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '300px' }}>
                                     <a
                                       href={instagramMsgUrl}

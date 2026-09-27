@@ -72,6 +72,55 @@ function extractRealWhatsAppPhone(msg: any, payload?: any): string {
   return "";
 }
 
+function extractRecipientWhatsAppPhone(msg: any, payload?: any): string {
+  const candidates: any[] = [
+    msg?.chatid,
+    msg?.chatId,
+    msg?.chat,
+    msg?.to,
+    msg?.recipient,
+    msg?.recipientPn,
+    msg?.key?.cleanedParticipantPn,
+    msg?.key?.remoteJidPn,
+    msg?.key?.participantPn,
+    msg?.key?.remoteJid,
+    msg?.remoteJid,
+    msg?.sender_pn,
+    payload?.chatid,
+    payload?.chatId,
+    payload?.to,
+    payload?.recipient,
+    payload?.remoteJid,
+    payload?.data?.chatid,
+    payload?.data?.chatId,
+    payload?.data?.to,
+    payload?.data?.recipient,
+    payload?.data?.remoteJid,
+  ];
+
+  for (const c of candidates) {
+    if (!c || typeof c !== "string") continue;
+    if (c.includes("@lid") || c.includes("@g.us") || c.includes("@newsletter") || c.includes("@broadcast")) continue;
+    const cleanWithoutDevice = c.replace(/:\d+@/, "@").replace(/:\d+.*$/, "");
+    const clean = cleanWithoutDevice.replace(/@.*$/, "").replace(/\D/g, "");
+    if (clean.length >= 10 && clean.length <= 13) {
+      return clean;
+    }
+  }
+
+  for (const c of candidates) {
+    if (!c || typeof c !== "string") continue;
+    if (c.includes("@g.us") || c.includes("@newsletter") || c.includes("@broadcast")) continue;
+    const cleanWithoutDevice = c.replace(/:\d+@/, "@").replace(/:\d+.*$/, "");
+    const clean = cleanWithoutDevice.replace(/@.*$/, "").replace(/\D/g, "");
+    if (clean.length >= 8 && clean.length <= 13) {
+      return clean;
+    }
+  }
+
+  return "";
+}
+
 function extractSenderName(msg: any, payload?: any): string {
   const candidates = [
     msg?.pushName,
@@ -146,6 +195,11 @@ serve(async (req) => {
 
       console.log(`[Edge Function UAZAPI] Event: ${eventType} | Instance: ${instanceName || instanceToken.substring(0, 8)}`);
 
+      // Ignora eventos de sincronização de histórico para não poluir banco
+      if (eventType === "history" || eventType.includes("history")) {
+        return;
+      }
+
       // Status de conexão
       if (eventType === "connection" || eventType === "status" || eventType.includes("connection")) {
         const rawStatus = (payload.status || payload.state || payload.data?.status || payload.data?.state || (payload.connected === true ? "connected" : ""));
@@ -171,7 +225,9 @@ serve(async (req) => {
         // Se a mensagem foi originada pela API, ignora (evita loops)
         if (payload.wasSentByApi === true || msg.wasSentByApi === true) return;
 
-        const phone = extractRealWhatsAppPhone(msg, payload);
+        const phone = isFromMe
+          ? extractRecipientWhatsAppPhone(msg, payload)
+          : extractRealWhatsAppPhone(msg, payload);
         if (!phone) return;
 
         let text = msg.body || msg.text || msg.conversation || msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";

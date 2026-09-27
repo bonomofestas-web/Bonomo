@@ -437,7 +437,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         <td style={{
                           padding: '12px 16px',
                           fontWeight: 700,
-                          color: isOverdue ? '#EF4444' : isCompleted ? '#94A3B8' : '#0F172A',
+                          color: isOverdue ? '#EF4444' : isCompleted ? 'var(--adm-text-muted, #94A3B8)' : 'var(--adm-text-title, #0F172A)',
                           whiteSpace: 'nowrap',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -505,11 +505,11 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
                         {/* Objeto / Tarefa / Família */}
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.82rem', lineHeight: 1.3, textDecoration: isCompleted ? 'line-through' : 'none' }}>
+                          <div style={{ fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', fontSize: '0.82rem', lineHeight: 1.3, textDecoration: isCompleted ? 'line-through' : 'none' }}>
                             {task.title}
                           </div>
                           {leadOrTargetName && (
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px', fontWeight: 500 }}>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '2px', fontWeight: 500 }}>
                               {leadOrTargetName}
                             </div>
                           )}

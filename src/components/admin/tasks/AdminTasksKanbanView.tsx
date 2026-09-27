@@ -227,13 +227,13 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                   {/* Date and Time */}
                   <div style={{
                     fontSize: '0.70rem',
-                    color: '#64748B',
+                    color: 'var(--adm-text-muted, #64748B)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
                     marginBottom: '8px',
                   }}>
-                    <Clock size={11} color="#94A3B8" style={{ flexShrink: 0 }} />
+                    <Clock size={11} color="var(--adm-text-muted, #94A3B8)" style={{ flexShrink: 0 }} />
                     <span>{formatTaskTime(task)}</span>
                   </div>
 
@@ -245,7 +245,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                     gap: '6px',
                     fontSize: '0.72rem',
                     paddingTop: '6px',
-                    borderTop: '1px solid #F1F5F9',
+                    borderTop: '1px solid var(--adm-border, #F1F5F9)',
                   }}>
                     {/* Sector (in Minhas Tarefas) or Subtype (in Sector view) */}
                     <div style={{
@@ -333,7 +333,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
       overflowX: 'auto',
       padding: '16px 24px',
       boxSizing: 'border-box',
-      background: '#F8FAFC',
+      background: 'var(--adm-bg-app, #F8FAFC)',
     }}>
       {renderColumn(`${entityLabel} Atrasadas`, overdueTasks, '#EF4444')}
       {renderColumn(`${entityLabel} de Hoje`, todayTasks, '#0284C7')}

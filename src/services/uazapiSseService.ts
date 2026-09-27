@@ -161,6 +161,17 @@ export function extractRecipientWhatsAppPhone(msg: any, payload?: any): string {
     }
   }
 
+  // 3. Fallback LID: Se o destinatário estiver apenas identificado por LID, retorna o LID limpo para resolução posterior
+  for (const c of candidates) {
+    if (!c || typeof c !== 'string') continue;
+    if (c.includes('@g.us') || c.includes('@newsletter') || c.includes('@broadcast')) continue;
+    const cleanWithoutDevice = c.replace(/:\d+.*$/, '').replace(/:\d+@/, '@');
+    const clean = cleanWithoutDevice.replace(/@.*$/, '').replace(/\D/g, '');
+    if (clean.length >= 8) {
+      return clean;
+    }
+  }
+
   return '';
 }
 
@@ -297,7 +308,7 @@ class UazapiSseManager {
     try {
       const params = new URLSearchParams({
         token: instanceToken,
-        events: 'chats,messages,messages_update,connection,history,presence,sender',
+        events: 'chats,messages,messages_update,connection,presence,sender',
       });
 
       const sseUrl = `${baseUrl}/sse?${params.toString()}`;
@@ -443,13 +454,24 @@ class UazapiSseManager {
       return;
     }
 
-    // 3. Trata evento de mensagens e histórico de reconexão (history)
+    // Regra de Ouro F5: Adicionar chip não deve restaurar/resgatar histórico de mensagens antigas automaticamente!
+    if (
+      eventType === 'history' ||
+      eventType.includes('history') ||
+      payload.isHistory === true ||
+      payload.event === 'history' ||
+      payload.type === 'history'
+    ) {
+      console.log(`[UAZAPI SSE] Ignorando payload de histórico de mensagens para a instância ${instanceToken.substring(0, 8)}... (recuperação automática desativada)`);
+      return;
+    }
+
+    // 3. Trata evento de mensagens em tempo real
     const isMessageEvent = 
       !eventType ||
       eventType === 'messages' ||
       eventType === 'messages.upsert' ||
       eventType === 'message' ||
-      eventType === 'history' ||
       eventType.includes('message') ||
       eventType.includes('send') ||
       eventType.includes('upsert') ||

@@ -312,16 +312,16 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
       <div style={{
         display: 'flex',
         alignItems: 'stretch',
-        borderBottom: '1px solid #E2E8F0',
-        background: '#F8FAFC',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
         fontSize: '0.78rem',
         fontWeight: 800,
       }}>
         <div style={{
           width: `${GUTTER_WIDTH}px`,
           flexShrink: 0,
-          borderRight: '1px solid #E2E8F0',
-          background: '#F8FAFC',
+          borderRight: '1px solid var(--adm-border, #E2E8F0)',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
         }} />
 
         <div style={{
@@ -505,14 +505,14 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
                         border: isOverdue 
                           ? '1.5px solid #FCA5A5' 
                           : isCompleted 
-                            ? '1px solid #E2E8F0' 
+                            ? '1px solid var(--adm-border, #E2E8F0)' 
                             : `1px solid ${theme.badgeBorder}`,
                         background: isOverdue 
                           ? '#FEF2F2' 
                           : isCompleted 
-                            ? '#F8FAFC' 
+                            ? 'var(--adm-bg-surface, #F8FAFC)' 
                             : theme.badgeBg,
-                        color: '#0F172A',
+                        color: 'var(--adm-text-title, #0F172A)',
                         cursor: 'grab',
                         transition: resizingTaskId === task.id ? 'none' : 'box-shadow 0.15s ease',
                         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
@@ -532,7 +532,7 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
                           overflow: 'hidden', 
                           textOverflow: 'ellipsis', 
                           lineHeight: 1.15, 
-                          color: isOverdue ? '#991B1B' : '#0F172A',
+                          color: isOverdue ? '#991B1B' : 'var(--adm-text-title, #0F172A)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',

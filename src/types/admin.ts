@@ -329,6 +329,8 @@ export interface LeadActivity {
   mediaType?: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker';
   status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   errorMessage?: string;
+  metadata?: Record<string, any>;
+  needsManualDownload?: boolean;
 }
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';

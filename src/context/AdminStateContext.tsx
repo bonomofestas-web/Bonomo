@@ -4988,6 +4988,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         cleanPhone = (resolved.phone || incoming.senderPhone).replace(/\D/g, '');
         effectiveSenderName = resolved.name || incoming.senderName;
         effectiveAvatar = resolved.avatarUrl || incoming.profilePicUrl;
+      } else if (isLidIdentifier(cleanPhone) || incoming.senderPhone.includes('@lid')) {
+        // Se a mensagem foi enviada pelo celular do atendente e o identificador do destinatário for um LID, resolve para o número real!
+        const resolved = await uazapiService.resolveContactPhoneAndProfile(
+          incoming.instanceToken,
+          cleanPhone,
+          incoming.rawPayload
+        );
+        if (resolved.phone && !isLidIdentifier(resolved.phone)) {
+          cleanPhone = resolved.phone.replace(/\D/g, '');
+        }
       }
 
       if (!cleanPhone || cleanPhone.length < 8) return;
@@ -5024,10 +5034,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const tenantVenues = currentVenues.filter(v => (sourceMasterId && v.masterId === sourceMasterId) || v.id === matchedSource?.venueId);
         const tenantVenueIds = new Set(tenantVenues.map(v => v.id));
 
-        // Isola estritamente a lista de leads candidatos para a mesma empresa/master da conexão
+        // Isola a lista de leads candidatos para a mesma empresa/master da conexão
         const tenantLeads = currentLeads.filter(l => {
           if (sourceMasterId && l.masterId && l.masterId !== sourceMasterId) return false;
-          if (tenantVenueIds.size > 0 && l.venueId && !tenantVenueIds.has(l.venueId)) return false;
+          if (tenantVenueIds.size > 0 && l.venueId && !tenantVenueIds.has(l.venueId)) {
+            // Se o funil do lead for compartilhado com uma das casas do tenant (ex: ERL / Rose), não descarta
+            const leadFunnel = funnels.find((f: CommercialFunnel) => f.id === l.funnelId);
+            const isSharedWithTenant = leadFunnel && (
+              (leadFunnel.sharedVenueIds && leadFunnel.sharedVenueIds.some((id: string) => tenantVenueIds.has(id))) ||
+              ((leadFunnel as any).shared_venue_ids && (leadFunnel as any).shared_venue_ids.some((id: string) => tenantVenueIds.has(id)))
+            );
+            if (!isSharedWithTenant) return false;
+          }
           return true;
         });
 
@@ -5409,8 +5427,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           existingLead = matchingLeads[0];
         }
 
-        const isFromMe = msg.fromMe === true;
+        const isFromMe = Boolean(msg.fromMe) || (msg as any).fromMe === 'true' || (msg as any).fromMe === 1 ||
+          msg.rawPayload?.fromMe === true || msg.rawPayload?.key?.fromMe === true || msg.rawPayload?.sender === 'me';
         const isAudio = msg.mediaType === 'audio' || msg.text?.includes('🎵') || msg.text?.toLowerCase().includes('voz');
+        const isMedia = Boolean((msg.mediaType && msg.mediaType !== 'text') || msg.mediaUrl);
         const newAct: LeadActivity = {
           id: generateUuid(),
           leadId: existingLead ? existingLead.id : '',
@@ -5426,6 +5446,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
           authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
           status: isFromMe ? 'sent' : 'delivered',
+          needsManualDownload: isMedia,
+          metadata: {
+            ...msg.rawPayload,
+            isRecovered: true,
+            needsManualDownload: isMedia,
+            instanceToken: msg.instanceToken,
+            messageId: msg.rawPayload?.id || msg.rawPayload?.key?.id,
+          },
         };
 
         if (existingLead) {
