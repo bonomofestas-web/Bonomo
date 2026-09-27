@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Radio, PhoneCall, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar
+  Eye, RotateCcw, Gift, Calendar, GripVertical
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -89,10 +89,34 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     startImpersonation,
     stopImpersonation,
     userPinnedFunnelIds,
+    reorderPinnedFunnels,
   } = useAdminState();
 
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
   const venueDropdownRef = useRef<HTMLDivElement>(null);
+  const [draggedFunnelId, setDraggedFunnelId] = useState<string | null>(null);
+  const [dragOverFunnelId, setDragOverFunnelId] = useState<string | null>(null);
+
+  const handleFunnelDrop = (targetFunnelId: string) => {
+    if (!draggedFunnelId || draggedFunnelId === targetFunnelId) {
+      setDraggedFunnelId(null);
+      setDragOverFunnelId(null);
+      return;
+    }
+
+    const currentOrder = [...(userPinnedFunnelIds || [])];
+    const sourceIndex = currentOrder.indexOf(draggedFunnelId);
+    const targetIndex = currentOrder.indexOf(targetFunnelId);
+
+    if (sourceIndex !== -1 && targetIndex !== -1) {
+      currentOrder.splice(sourceIndex, 1);
+      currentOrder.splice(targetIndex, 0, draggedFunnelId);
+      reorderPinnedFunnels(currentOrder);
+    }
+
+    setDraggedFunnelId(null);
+    setDragOverFunnelId(null);
+  };
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -182,12 +206,13 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
   const visiblePinnedFunnels = useMemo(() => {
     const pinnedIds = userPinnedFunnelIds || [];
-    return funnels.filter(funnel => {
+    const filtered = funnels.filter(funnel => {
       if (!pinnedIds.includes(funnel.id)) return false;
       if (funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda') || funnel.name?.toLowerCase().includes('pos venda')) return false;
       if (!activeVenueId) return true;
       return funnel.venueId === activeVenueId || funnel.venueId === 'all';
     });
+    return filtered.sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
   }, [funnels, userPinnedFunnelIds, activeVenueId]);
 
   const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
@@ -1117,26 +1142,53 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   );
                 }
 
+                const isDraggingThis = draggedFunnelId === f.id;
+                const isDragOverThis = dragOverFunnelId === f.id;
+
                 return (
                   <button
                     key={`pinned-${f.id}`}
                     type="button"
+                    draggable={!isCollapsed}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', f.id);
+                      setDraggedFunnelId(f.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverFunnelId !== f.id) setDragOverFunnelId(f.id);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverFunnelId === f.id) setDragOverFunnelId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleFunnelDrop(f.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedFunnelId(null);
+                      setDragOverFunnelId(null);
+                    }}
                     onClick={() => handleTabClick('crm', f.id)}
+                    title={`Funil: ${f.name} (Arraste para reordenar)`}
                     style={{
                       width: '100%',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '9px',
+                      gap: '7px',
                       padding: '7px 10px',
                       borderRadius: '8px',
-                      background: isFunnelActive ? `${funnelColor}18` : 'transparent',
+                      background: isFunnelActive ? `${funnelColor}18` : isDragOverThis ? 'rgba(212, 175, 55, 0.12)' : 'transparent',
                       border: isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
+                      borderTop: isDragOverThis ? '2px solid var(--adm-accent)' : isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
                       color: isFunnelActive ? funnelColor : 'rgba(255, 255, 255, 0.75)',
                       fontSize: '0.74rem',
                       fontWeight: isFunnelActive ? 700 : 500,
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'all 0.15s ease',
+                      opacity: isDraggingThis ? 0.35 : 1,
                     }}
                     onMouseEnter={(e) => {
                       if (!isFunnelActive) {
@@ -1151,6 +1203,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                       }
                     }}
                   >
+                    <GripVertical size={11} style={{ opacity: 0.35, cursor: 'grab', flexShrink: 0, marginRight: '-3px' }} />
                     <span style={{ display: 'flex', alignItems: 'center' }}>
                       {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#9E988D'))}
                     </span>

@@ -14,13 +14,25 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
   const acts = lead.activities || [];
   if (acts.length === 0) return -1;
 
-  // Filtra apenas atividades de mensagens reais no WhatsApp (exclui notas internas 'note' e eventos de sistema)
+  // Filtra apenas atividades de mensagens reais no WhatsApp (exclui notas internas 'note', eventos de sistema e auditorias de visualização)
   const chatActivities = acts.filter(act => {
+    const titleLower = (act.title || '').toLowerCase();
+    const textLower = (act.text || '').toLowerCase();
+    // Visualização de mensagem NUNCA conta como resposta e não zera o tempo de espera
+    if (
+      (act.type as string) === 'view' ||
+      titleLower.includes('visualizou') ||
+      titleLower.includes('visualizada') ||
+      textLower.includes('visualizou esta mensagem') ||
+      (act as any).metadata?.isViewAudit === true
+    ) {
+      return false;
+    }
+
     if (act.type === 'contact') {
       return Boolean(act.text?.trim() || act.mediaUrl || act.mediaType);
     }
     if (act.type === 'creation' && act.text?.trim()) {
-      const titleLower = (act.title || '').toLowerCase();
       return titleLower.includes('whatsapp') || titleLower.includes('mensagem') || titleLower.includes('recebid');
     }
     return false;
@@ -291,9 +303,19 @@ export interface LeadResponseMetrics {
  */
 export function calculateLeadResponseMetrics(lead: Lead, collaboratorIdSet?: Set<string>): LeadResponseMetrics {
   const acts = (lead.activities || []).filter(act => {
+    const titleLower = (act.title || '').toLowerCase();
+    const textLower = (act.text || '').toLowerCase();
+    if (
+      (act.type as string) === 'view' ||
+      titleLower.includes('visualizou') ||
+      titleLower.includes('visualizada') ||
+      textLower.includes('visualizou esta mensagem') ||
+      (act as any).metadata?.isViewAudit === true
+    ) {
+      return false;
+    }
     if (act.type === 'contact') return Boolean(act.text?.trim() || act.mediaUrl || act.mediaType || (act as any).metadata?.isSessionEnd);
     if (act.type === 'creation' && act.text?.trim()) {
-      const titleLower = (act.title || '').toLowerCase();
       return titleLower.includes('whatsapp') || titleLower.includes('mensagem') || titleLower.includes('recebid');
     }
     return false;

@@ -451,7 +451,7 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
                       top: `${HOUR_HEIGHT / 2}px`,
                       left: 0,
                       right: 0,
-                      borderTop: '1px dashed #F1F5F9',
+                      borderTop: '1px dashed var(--adm-border, #E2E8F0)',
                     }} />
                   </div>
                 ))}

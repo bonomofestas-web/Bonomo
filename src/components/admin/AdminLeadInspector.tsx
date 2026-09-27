@@ -15,6 +15,7 @@ import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
+import { isPhoneMatch } from '../../services/leadService';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { generateUuid } from '../../utils/uuid';
 import type { 
@@ -41,6 +42,14 @@ interface AdminLeadInspectorProps {
   onSelectRecipientPhone?: (phone: string) => void;
 }
 
+const maskCpfInput = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+};
+
 const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string; border: string }> = {
   new_lead:          { label: 'Novo Lead',                    color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',  border: '#60A5FA' },
   in_analysis:       { label: 'Em Análise / Contato',         color: '#FBBF24', bg: 'rgba(251,191,36,0.12)',  border: '#FBBF24' },
@@ -50,6 +59,8 @@ const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string
 };
 
 const CONTACT_ROLE_LABELS: Record<string, string> = {
+  aniversariante: 'Aniversariante',
+  debutante: 'Debutante / Aniversariante',
   mae: 'Mãe',
   pai: 'Pai',
   mother: 'Mãe',
@@ -84,6 +95,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 }) => {
   const { 
     currentUser, 
+    leads,
     collaborators, 
     venues,
     funnels,
@@ -134,7 +146,17 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactCpf, setNewContactCpf] = useState('');
   const [newContactAddress, setNewContactAddress] = useState('');
-  const [newContactRole, setNewContactRole] = useState<LeadContactRole>('mother');
+  const [newContactRole, setNewContactRole] = useState<LeadContactRole>('debutante');
+  const [newContactBirthday, setNewContactBirthday] = useState('');
+  const [newContactEventDate, setNewContactEventDate] = useState('');
+
+  // Trava de conflito de número duplicado
+  const [duplicateConflict, setDuplicateConflict] = useState<{
+    phone: string;
+    existingLead: Lead;
+    target: 'main' | 'subcontact';
+    contactDraft?: Partial<LeadContact>;
+  } | null>(null);
 
   // Tag state
   const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
@@ -483,18 +505,24 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     window.open(`https://wa.me/${fullNum}`, '_blank');
   };
 
-  const handleAddSubContact = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newContactName.trim() || !newContactPhone.trim()) return;
-
+  const executeAddContact = (contactData: {
+    name: string;
+    phone?: string;
+    email?: string;
+    cpf?: string;
+    address?: string;
+    role: LeadContactRole;
+    birthday?: string;
+    eventDate?: string;
+  }) => {
     const contact: LeadContact = {
       id: `cnt_${Date.now()}`,
-      name: newContactName.trim(),
-      phone: newContactPhone.trim(),
-      email: newContactEmail.trim() || undefined,
-      cpf: newContactCpf.trim() || undefined,
-      address: newContactAddress.trim() || undefined,
-      role: newContactRole,
+      name: contactData.name.trim(),
+      phone: contactData.phone?.trim() || '',
+      email: contactData.email?.trim() || undefined,
+      cpf: contactData.cpf?.trim() || undefined,
+      address: contactData.address?.trim() || undefined,
+      role: contactData.role,
       isPrimaryDecisionMaker: false,
     };
 
@@ -508,22 +536,110 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       timestamp: new Date().toISOString(),
       type: 'note',
       title: 'Contato Vinculado Adicionado',
-      text: `Contato vinculado adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${newContactName.trim()}" (${newContactRole}) e telefone ${newContactPhone.trim()} por ${author}.`,
+      text: `Contato vinculado adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${contactData.name.trim()}" (${CONTACT_ROLE_LABELS[contactData.role] || contactData.role})${contactData.phone ? ` e telefone ${contactData.phone.trim()}` : ''} por ${author}.`,
       authorName: author,
       authorId,
       authorAvatarUrl: authorAvatar,
     };
 
-    handleUpdate({ 
+    const updates: Partial<Lead> = {
       contacts: [...(lead.contacts || []), contact],
       activities: [...(lead.activities || []), newContactActivity],
-    });
+    };
+
+    if (contactData.role === 'aniversariante' || contactData.role === 'debutante') {
+      if (contactData.birthday && !lead.birthday) {
+        updates.birthday = contactData.birthday;
+        updates.debutanteBirthDate = contactData.birthday;
+      }
+      if (contactData.eventDate && !lead.eventDate) {
+        updates.eventDate = contactData.eventDate;
+        updates.partyDate = contactData.eventDate;
+      }
+    }
+
+    handleUpdate(updates);
     setNewContactName('');
     setNewContactPhone('');
     setNewContactEmail('');
     setNewContactCpf('');
     setNewContactAddress('');
+    setNewContactBirthday('');
+    setNewContactEventDate('');
     setIsAddingContact(false);
+  };
+
+  const handleAddSubContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContactName.trim()) return;
+
+    const trimmedPhone = newContactPhone.trim();
+    if (trimmedPhone) {
+      const conflict = (leads || []).find(l => l.id !== lead.id && (
+        (l.phone && isPhoneMatch(l.phone, trimmedPhone)) ||
+        (l.contacts || []).some(c => c.phone && isPhoneMatch(c.phone, trimmedPhone))
+      ));
+
+      if (conflict) {
+        setDuplicateConflict({
+          phone: trimmedPhone,
+          existingLead: conflict,
+          target: 'subcontact',
+          contactDraft: {
+            name: newContactName.trim(),
+            phone: trimmedPhone,
+            email: newContactEmail.trim() || undefined,
+            cpf: newContactCpf.trim() || undefined,
+            address: newContactAddress.trim() || undefined,
+            role: newContactRole,
+            birthday: newContactBirthday || undefined,
+            eventDate: newContactEventDate || undefined,
+          } as any
+        });
+        return;
+      }
+    }
+
+    executeAddContact({
+      name: newContactName.trim(),
+      phone: trimmedPhone || undefined,
+      email: newContactEmail.trim() || undefined,
+      cpf: newContactCpf.trim() || undefined,
+      address: newContactAddress.trim() || undefined,
+      role: newContactRole,
+      birthday: newContactBirthday || undefined,
+      eventDate: newContactEventDate || undefined,
+    });
+  };
+
+  const handleResolveDuplicateConflict = (confirmTransfer: boolean) => {
+    if (!duplicateConflict) return;
+
+    if (confirmTransfer) {
+      const { phone, existingLead, target, contactDraft } = duplicateConflict;
+
+      // Desvincula do lead existente anterior
+      const isMainPhone = existingLead.phone && isPhoneMatch(existingLead.phone, phone);
+      if (isMainPhone) {
+        updateLeadData(existingLead.id, { phone: '' });
+      } else {
+        const cleanedContacts = (existingLead.contacts || []).filter(c => !c.phone || !isPhoneMatch(c.phone, phone));
+        updateLeadData(existingLead.id, { contacts: cleanedContacts });
+      }
+
+      if (target === 'main') {
+        handleUpdate({ phone });
+        setDraftPhone(phone);
+      } else if (target === 'subcontact' && contactDraft) {
+        executeAddContact(contactDraft as any);
+      }
+    } else {
+      if (duplicateConflict.target === 'main') {
+        setDraftPhone(lead.phone || '');
+      }
+    }
+
+    setDuplicateConflict(null);
   };
 
   // Designation of Decisor does NOT overwrite the Aniversariante's name or phone!
@@ -773,35 +889,35 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const cardStyle: React.CSSProperties = {
     background: 'var(--adm-bg-card)',
     border: '1px solid var(--adm-border)',
-    borderRadius: '8px',
-    padding: '8px 10px',
+    borderRadius: '10px',
+    padding: '10px 12px',
     margin: 0,
     width: '100%',
     boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
+    gap: '6px',
     fontFamily: "'Plus Jakarta Sans', sans-serif",
-    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
   };
 
   const cardRowStyle: React.CSSProperties = {
     display: 'flex',
-    alignItems: 'flex-start',
-    fontSize: '0.74rem',
-    minHeight: '22px',
-    gap: '6px',
-    paddingTop: '1px',
-    paddingBottom: '1px',
+    alignItems: 'center',
+    fontSize: '0.80rem',
+    minHeight: '26px',
+    gap: '8px',
+    paddingTop: '2px',
+    paddingBottom: '2px',
   };
 
   const cardLabelStyle: React.CSSProperties = {
-    width: '85px',
+    width: '92px',
     flexShrink: 0,
     color: 'var(--adm-text-muted)',
-    fontSize: '0.70rem',
+    fontSize: '0.74rem',
     fontWeight: 600,
-    paddingTop: '2px',
+    paddingTop: '1px',
   };
 
   const cardValueStyle: React.CSSProperties = {
@@ -812,7 +928,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     minWidth: 0,
     wordBreak: 'break-word',
     whiteSpace: 'normal',
-    lineHeight: '1.3',
+    lineHeight: '1.35',
   };
 
   const seamlessInputStyle: React.CSSProperties = {
@@ -822,9 +938,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     border: 'none',
     borderBottom: '1px solid transparent',
     borderRadius: '0',
-    padding: '1px 0',
+    padding: '2px 0',
     color: 'var(--adm-text-title)',
-    fontSize: '0.76rem',
+    fontSize: '0.82rem',
     fontWeight: 600,
     outline: 'none',
     boxSizing: 'border-box',
@@ -2136,7 +2252,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       justifyContent: 'space-between',
                       width: '100%',
                       cursor: !readOnly ? 'pointer' : 'default',
-                      padding: '2px 4px',
+                      padding: '2px 0',
                       borderRadius: '6px',
                       background: isSdrDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
                       transition: 'background 0.15s ease',
@@ -2322,7 +2438,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         justifyContent: 'space-between',
                         width: '100%',
                         cursor: !readOnly ? 'pointer' : 'default',
-                        padding: '2px 4px',
+                        padding: '2px 0',
                         borderRadius: '6px',
                         background: isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
                         transition: 'background 0.15s ease',
@@ -2979,891 +3095,1072 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <span>Aniversariante & Contatos Vinculados</span>
             </div>
 
-            {/* Cartão do Aniversariante & Subcontatos */}
-            <div style={cardStyle}>
-              {/* Header do Contato Aniversariante */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #14A9D7 0%, #0D82A6 100%)',
-                    color: '#FFFFFF',
-                    fontSize: '0.80rem',
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    boxShadow: '0 2px 6px rgba(20,169,215,0.3)',
-                  }}>
-                    {draftName ? (draftName.trim().substring(0, 2).toUpperCase()) : 'AN'}
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input
-                      type="text"
-                      value={draftName}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      onBlur={() => {
-                        if (draftName.trim() && draftName !== lead.name) {
-                          handleUpdate({ name: draftName.trim() });
-                        }
-                      }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                      placeholder="Nome do aniversariante..."
-                      style={{
-                        ...seamlessInputStyle,
-                        fontWeight: 800,
-                        fontSize: '0.90rem',
-                        color: 'var(--adm-text-title)',
-                      }}
-                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                    />
-                  </div>
-                </div>
-
-                {/* Botão de Decisor do Aniversariante (exibido apenas se outro contato for o decisor atual) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                  {(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && !readOnly && (
-                    <button
-                      type="button"
-                      onClick={handleSetLeadAsDecisor}
-                      title="Definir o aniversariante como o decisor"
-                      style={{
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        color: 'var(--adm-text-title)',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
-                    >
-                      Tornar Decisor
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Telefone */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Telefone</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="text"
-                    value={draftPhone}
-                    disabled={effectiveReadOnly}
-                    onChange={(e) => setDraftPhone(maskPhoneInput(e.target.value))}
-                    onBlur={() => {
-                      if (draftPhone !== lead.phone) {
-                        handleUpdate({ phone: draftPhone });
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    placeholder="+55 (21) 99999-9999"
-                    style={seamlessInputStyle}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                  {lead.phone && onSelectRecipientPhone && (
-                    <button
-                      type="button"
-                      onClick={() => onSelectRecipientPhone(lead.phone!)}
-                      title={selectedRecipientPhone === lead.phone ? "Destinatário ativo no chat" : "Definir este número como destinatário para envio"}
-                      style={{
-                        background: selectedRecipientPhone === lead.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
-                        border: `1px solid ${selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-border)'}`,
-                        color: selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)',
-                        borderRadius: '6px',
-                        padding: '3px 7px',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '0.64rem',
-                        fontWeight: 700,
-                        flexShrink: 0,
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <Send size={10} color={selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)'} />
-                      <span>{selectedRecipientPhone === lead.phone ? 'Ativo' : 'Enviar'}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Data de Nascimento / Aniversário */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Aniversário</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="date"
-                    value={draftBirthday}
-                    disabled={effectiveReadOnly}
-                    onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                    onChange={(e) => {
-                      setDraftBirthday(e.target.value);
-                      handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
-                    }}
-                    style={{
-                      ...seamlessInputStyle,
-                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                      color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              {/* Data do Evento */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Data Evento</span>
-                <div style={cardValueStyle}>
-                  <input
-                    type="date"
-                    value={lead.eventDate || lead.partyDate || ''}
-                    disabled={effectiveReadOnly}
-                    onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                    onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
-                    style={{
-                      ...seamlessInputStyle,
-                      cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                      color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                    }}
-                    onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                    onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                  />
-                </div>
-              </div>
-
-              {/* Se o aniversariante for o decisor, exibe E-mail, CPF, Bairro e Endereço contratuais sob demanda */}
-              {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none' && (
-                <>
-                  {/* E-mail */}
-                  {(draftEmail || showEmailField) && (
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>E-mail</span>
-                      <div style={cardValueStyle}>
-                        <input
-                          type="email"
-                          value={draftEmail}
-                          disabled={effectiveReadOnly}
-                          onChange={(e) => setDraftEmail(e.target.value)}
-                          onBlur={() => {
-                            if (draftEmail !== (lead.email || '')) {
-                              handleUpdate({ email: draftEmail.trim() });
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                          placeholder="aniversariante@gmail.com"
-                          style={seamlessInputStyle}
-                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CPF Contratual */}
-                  {(draftCpf || showCpfField) && (
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>CPF Contratual</span>
-                      <div style={cardValueStyle}>
-                        <input
-                          type="text"
-                          value={draftCpf}
-                          disabled={effectiveReadOnly}
-                          onChange={(e) => setDraftCpf(e.target.value)}
-                          onBlur={() => {
-                            if (draftCpf !== (lead.cpf || '')) {
-                              handleUpdate({ cpf: draftCpf.trim() });
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                          placeholder="000.000.000-00"
-                          style={seamlessInputStyle}
-                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bairro */}
-                  {(draftNeighborhood || showNeighborhoodField) && (
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>Bairro</span>
-                      <div style={cardValueStyle}>
-                        <input
-                          type="text"
-                          value={draftNeighborhood}
-                          disabled={effectiveReadOnly}
-                          onChange={(e) => setDraftNeighborhood(e.target.value)}
-                          onBlur={() => {
-                            if (draftNeighborhood !== (lead.neighborhood || '')) {
-                              handleUpdate({ neighborhood: draftNeighborhood.trim() });
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                          placeholder="Ex: Recreio, Barra..."
-                          style={seamlessInputStyle}
-                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Endereço */}
-                  {(draftAddress || showAddressField) && (
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>Endereço</span>
-                      <div style={cardValueStyle}>
-                        <input
-                          type="text"
-                          value={draftAddress}
-                          disabled={effectiveReadOnly}
-                          onChange={(e) => setDraftAddress(e.target.value)}
-                          onBlur={() => {
-                            if (draftAddress !== (lead.address || '')) {
-                              handleUpdate({ address: draftAddress.trim() });
-                            }
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                          placeholder="Rua, número..."
-                          style={seamlessInputStyle}
-                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Decisor */}
-                  {!effectiveReadOnly && (
-                    (!draftEmail && !showEmailField) ||
-                    (!draftCpf && !showCpfField) ||
-                    (!draftNeighborhood && !showNeighborhoodField) ||
-                    (!draftAddress && !showAddressField)
-                  ) && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Adicionar dado:</span>
-                      {!draftEmail && !showEmailField && (
-                        <button
-                          type="button"
-                          onClick={() => setShowEmailField(true)}
-                          style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '0.68rem',
-                            color: 'var(--adm-text-title)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Plus size={10} /> E-mail
-                        </button>
-                      )}
-                      {!draftCpf && !showCpfField && (
-                        <button
-                          type="button"
-                          onClick={() => setShowCpfField(true)}
-                          style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '0.68rem',
-                            color: 'var(--adm-text-title)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Plus size={10} /> CPF
-                        </button>
-                      )}
-                      {!draftNeighborhood && !showNeighborhoodField && (
-                        <button
-                          type="button"
-                          onClick={() => setShowNeighborhoodField(true)}
-                          style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '0.68rem',
-                            color: 'var(--adm-text-title)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Plus size={10} /> Bairro
-                        </button>
-                      )}
-                      {!draftAddress && !showAddressField && (
-                        <button
-                          type="button"
-                          onClick={() => setShowAddressField(true)}
-                          style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
-                            borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '0.68rem',
-                            color: 'var(--adm-text-title)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Plus size={10} /> Endereço
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Decisor (Checkbox Sim / Não para o Aniversariante) */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Decisor</span>
-                <div style={cardValueStyle}>
-                  <label style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                    userSelect: 'none',
-                    padding: '2px 0',
-                  }}>
-                    <input
-                      type="checkbox"
-                      disabled={effectiveReadOnly}
-                      checked={!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none'}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          handleSetLeadAsDecisor();
-                        } else {
-                          const updatedContacts = (lead.contacts || []).map(c => ({ ...c, isPrimaryDecisionMaker: false }));
-                          handleUpdate({ contacts: updatedContacts, primaryContactRole: 'none' });
-                        }
-                      }}
-                      style={{
-                        cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                        accentColor: '#10B981',
-                        width: '14px',
-                        height: '14px',
-                      }}
-                    />
-                    <span style={{
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      color: (!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none') ? '#10B981' : 'var(--adm-text-muted)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}>
-                      {(!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none') ? (
-                        <>
-                          <CheckCircle2 size={13} color="#10B981" />
-                          <span>Sim (Aniversariante é o Decisor)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Clock size={13} color="var(--adm-text-muted)" />
-                          <span>Não (Subcontato é o Decisor)</span>
-                        </>
-                      )}
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Contatos Vinculados Adicionais */}
-              {(lead.contacts || []).map(contact => (
-                <div key={contact.id} style={{
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.4)' : 'var(--adm-border)'}`,
-                  background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.05)' : 'var(--adm-bg-input)',
+            {/* Modal de Conflito de Telefone Duplicado */}
+            {duplicateConflict && (
+              <div style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0, 0, 0, 0.65)',
+                backdropFilter: 'blur(3px)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '16px',
+              }}>
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  maxWidth: '420px',
+                  width: '100%',
+                  padding: '20px',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.4)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '6px',
-                  marginTop: '8px',
+                  gap: '14px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        width: '30px',
-                        height: '30px',
-                        borderRadius: '50%',
-                        background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.15)' : 'rgba(20, 169, 215, 0.15)',
-                        color: contact.isPrimaryDecisionMaker ? '#10B981' : 'var(--adm-accent)',
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.35)' : 'rgba(20, 169, 215, 0.3)'}`,
-                      }}>
-                        {contact.name ? contact.name.substring(0, 2).toUpperCase() : 'CT'}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {contact.name}
-                          </span>
-                          <span style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
-                            color: 'var(--adm-accent)',
-                            background: 'rgba(20, 169, 215, 0.12)',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {CONTACT_ROLE_LABELS[contact.role] || contact.role}
-                          </span>
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                          <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
-                            {formatPhone(contact.phone)}
-                          </span>
-
-                          {contact.phone && onSelectRecipientPhone && (
-                            <button
-                              type="button"
-                              onClick={() => onSelectRecipientPhone(contact.phone)}
-                              title={selectedRecipientPhone === contact.phone ? "Destinatário ativo no chat" : "Definir este contato como destinatário para envio"}
-                              style={{
-                                background: selectedRecipientPhone === contact.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-card)',
-                                border: `1px solid ${selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-border)'}`,
-                                color: selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)',
-                                borderRadius: '5px',
-                                padding: '2px 6px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                fontSize: '0.62rem',
-                                fontWeight: 700,
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <Send size={9} color={selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)'} />
-                              <span>{selectedRecipientPhone === contact.phone ? 'Ativo' : 'Enviar'}</span>
-                            </button>
-                          )}
-
-                          {contact.phone && (
-                            <button
-                              type="button"
-                              onClick={() => handleDirectWhatsApp(contact.phone)}
-                              title="Abrir WhatsApp Externo"
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#25D366',
-                                cursor: 'pointer',
-                                padding: 0,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <MessageSquare size={11} fill="#25D366" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                      {contact.isPrimaryDecisionMaker ? (
-                        <span style={{
-                          fontSize: '0.65rem',
-                          fontWeight: 800,
-                          color: '#10B981',
-                          background: 'rgba(16, 185, 129, 0.12)',
-                          border: '1px solid rgba(16, 185, 129, 0.35)',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          <Check size={11} /> Decisor
-                        </span>
-                      ) : !effectiveReadOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => handleSetPrimaryDecisor(contact)}
-                          style={{
-                            background: 'var(--adm-bg-card)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-title)',
-                            borderRadius: '6px',
-                            padding: '3px 8px',
-                            fontSize: '0.66rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            whiteSpace: 'nowrap',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
-                        >
-                          Tornar Decisor
-                        </button>
-                      ) : null}
-
-                      {!effectiveReadOnly && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSubContact(contact.id)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#EF4444',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                          title="Excluir contato"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Informações Contratuais do Contato / Decisor (Inline, sem prompt!) */}
-                  {(contact.isPrimaryDecisionMaker || contact.cpf || contact.email || contact.address) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{
-                      marginTop: '4px',
-                      padding: '6px 8px',
-                      background: 'var(--adm-bg-card)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      fontSize: '0.70rem',
-                    }}>
-                      {/* CPF */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600, flexShrink: 0 }}>CPF Contratual:</span>
-                        <input
-                          type="text"
-                          placeholder="000.000.000-00"
-                          defaultValue={contact.cpf || ''}
-                          disabled={effectiveReadOnly}
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val !== (contact.cpf || '')) {
-                              const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, cpf: val || undefined } : c);
-                              handleUpdate({ contacts: updated });
-                            }
-                          }}
-                          style={{
-                            ...seamlessInputStyle,
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            textAlign: 'right',
-                            color: 'var(--adm-text-title)',
-                          }}
-                        />
-                      </div>
-
-                      {/* E-mail */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600, flexShrink: 0 }}>E-mail:</span>
-                        <input
-                          type="email"
-                          placeholder="email@contato.com"
-                          defaultValue={contact.email || ''}
-                          disabled={effectiveReadOnly}
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val !== (contact.email || '')) {
-                              const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, email: val || undefined } : c);
-                              handleUpdate({ contacts: updated });
-                            }
-                          }}
-                          style={{
-                            ...seamlessInputStyle,
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            textAlign: 'right',
-                            color: 'var(--adm-text-title)',
-                          }}
-                        />
-                      </div>
-
-                      {/* Endereço */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600, flexShrink: 0 }}>Endereço:</span>
-                        <input
-                          type="text"
-                          placeholder="Endereço do decisor..."
-                          defaultValue={contact.address || ''}
-                          disabled={effectiveReadOnly}
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val !== (contact.address || '')) {
-                              const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, address: val || undefined } : c);
-                              handleUpdate({ contacts: updated });
-                            }
-                          }}
-                          style={{
-                            ...seamlessInputStyle,
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            textAlign: 'right',
-                            color: 'var(--adm-text-title)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Adicionar Contato Button & Formulario Reformulado */}
-              <div style={{ paddingTop: '6px', borderTop: (lead.contacts && lead.contacts.length > 0) ? 'none' : '1px solid var(--adm-border)' }}>
-                {!isAddingContact ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingContact(true)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--adm-text-muted)',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '4px 0',
-                      transition: 'color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = 'var(--adm-text-title)'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
-                  >
-                    <div style={{
-                      width: '24px',
-                      height: '24px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: '50%',
-                      border: '1px dashed var(--adm-border)',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#EF4444',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      flexShrink: 0,
                     }}>
-                      <Plus size={13} />
+                      <Users size={18} />
                     </div>
-                    <span>Adicionar contato</span>
-                  </button>
-                ) : (
-                  <form onSubmit={handleAddSubContact} style={{
-                    padding: '12px 14px',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    marginTop: '8px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                        Novo Contato Vinculado
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        Telefone Já Cadastrado
+                      </h4>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                        Conflito de vínculo de contato
+                      </p>
+                    </div>
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '0.80rem', color: 'var(--adm-text-body)', lineHeight: 1.5 }}>
+                    O telefone <strong>{formatPhone(duplicateConflict.phone)}</strong> já está vinculado ao lead <strong>"{duplicateConflict.existingLead.name}"</strong>.
+                  </p>
+
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
+                    Deseja desvincular este contato do lead anterior e vinculá-lo a este lead atual?
+                  </p>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateConflict(null)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '7px',
+                        background: 'transparent',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.76rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleResolveDuplicateConflict(true)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '7px',
+                        background: 'var(--adm-accent)',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 6px rgba(20, 169, 215, 0.3)',
+                      }}
+                    >
+                      Desvincular e Vincular a este
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* LISTAGEM MODULAR DE CONTATOS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* CARD 1: CONTATO PRINCIPAL (LEAD) */}
+              <div style={cardStyle}>
+                {/* Header do Contato Principal */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #14A9D7 0%, #0D82A6 100%)',
+                      color: '#FFFFFF',
+                      fontSize: '0.80rem',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 6px rgba(20,169,215,0.3)',
+                    }}>
+                      {draftName ? draftName.trim().substring(0, 2).toUpperCase() : 'CT'}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <input
+                        type="text"
+                        value={draftName}
+                        disabled={effectiveReadOnly}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        onBlur={() => {
+                          if (draftName.trim() && draftName !== lead.name) {
+                            handleUpdate({ name: draftName.trim() });
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="Nome do contato principal..."
+                        style={{
+                          ...seamlessInputStyle,
+                          fontWeight: 800,
+                          fontSize: '0.90rem',
+                          color: 'var(--adm-text-title)',
+                        }}
+                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Decisor Badge / Botão */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none' ? (
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 800,
+                        color: '#10B981',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        <Check size={11} /> Decisor
                       </span>
+                    ) : !effectiveReadOnly ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setNewContactName('');
-                          setNewContactPhone('');
-                          setIsAddingContact(false);
-                        }}
-                        title="Descartar"
+                        onClick={handleSetLeadAsDecisor}
                         style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--adm-text-muted)',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          color: 'var(--adm-text-title)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
                           cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          transition: 'color 0.15s ease',
+                          whiteSpace: 'nowrap',
+                          transition: 'all 0.15s ease',
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
                       >
-                        <Trash2 size={13} />
+                        Tornar Decisor
                       </button>
-                    </div>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Nome do responsável..."
-                        value={newContactName}
-                        onChange={(e) => setNewContactName(e.target.value)}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          fontSize: '0.78rem',
-                          color: 'var(--adm-text-title)',
-                          outline: 'none',
-                        }}
-                      />
-                      <input
-                        type="text"
-                        required
-                        placeholder="WhatsApp (ex: 21 99999-9999)..."
-                        value={newContactPhone}
-                        onChange={(e) => setNewContactPhone(maskPhoneInput(e.target.value))}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          fontSize: '0.78rem',
-                          color: 'var(--adm-text-title)',
-                          outline: 'none',
-                        }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="CPF do responsável (opcional)..."
-                        value={newContactCpf}
-                        onChange={(e) => setNewContactCpf(e.target.value)}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          fontSize: '0.78rem',
-                          color: 'var(--adm-text-title)',
-                          outline: 'none',
-                        }}
-                      />
-                      <input
-                        type="email"
-                        placeholder="E-mail do responsável (opcional)..."
-                        value={newContactEmail}
-                        onChange={(e) => setNewContactEmail(e.target.value)}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          fontSize: '0.78rem',
-                          color: 'var(--adm-text-title)',
-                          outline: 'none',
-                        }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Endereço do responsável (opcional)..."
-                        value={newContactAddress}
-                        onChange={(e) => setNewContactAddress(e.target.value)}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          fontSize: '0.78rem',
-                          color: 'var(--adm-text-title)',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
+                    ) : null}
+                  </div>
+                </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px' }}>
-                      <select
-                        value={newContactRole}
-                        onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
+                {/* Papel / Relação do Contato Principal */}
+                <div style={cardRowStyle}>
+                  <span style={cardLabelStyle}>Relação</span>
+                  <div style={cardValueStyle}>
+                    <select
+                      value={lead.primaryContactRole || 'debutante'}
+                      disabled={effectiveReadOnly}
+                      onChange={(e) => handleUpdate({ primaryContactRole: e.target.value as LeadContactRole })}
+                      style={{
+                        ...seamlessInputStyle,
+                        cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                        fontWeight: 700,
+                        color: 'var(--adm-accent)',
+                        background: 'transparent',
+                        padding: '2px 0',
+                      }}
+                    >
+                      <option value="debutante">Aniversariante / Debutante</option>
+                      <option value="mother">Mãe</option>
+                      <option value="father">Pai</option>
+                      <option value="responsavel">Responsável Legal</option>
+                      <option value="noivo">Noivo(a)</option>
+                      <option value="tio">Tio(a)</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Telefone */}
+                <div style={cardRowStyle}>
+                  <span style={cardLabelStyle}>Telefone</span>
+                  <div style={cardValueStyle}>
+                    <input
+                      type="text"
+                      value={draftPhone}
+                      disabled={effectiveReadOnly}
+                      onChange={(e) => setDraftPhone(maskPhoneInput(e.target.value))}
+                      onBlur={() => {
+                        if (draftPhone !== lead.phone) {
+                          handleUpdate({ phone: draftPhone });
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      placeholder="+55 (21) 99999-9999"
+                      style={seamlessInputStyle}
+                      onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                      onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                    />
+                    {lead.phone && onSelectRecipientPhone && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectRecipientPhone(lead.phone!)}
+                        title={selectedRecipientPhone === lead.phone ? "Destinatário ativo no chat" : "Definir este número como destinatário para envio"}
                         style={{
-                          flex: 1,
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          color: 'var(--adm-text-title)',
-                          fontSize: '0.76rem',
-                          borderRadius: '7px',
-                          padding: '6px 10px',
-                          outline: 'none',
+                          background: selectedRecipientPhone === lead.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
+                          border: `1px solid ${selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-border)'}`,
+                          color: selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)',
+                          borderRadius: '6px',
+                          padding: '3px 7px',
                           cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        <option value="mother">Mãe</option>
-                        <option value="father">Pai</option>
-                        <option value="responsavel">Responsável Legal</option>
-                        <option value="noivo">Noivo(a)</option>
-                        <option value="tio">Tio(a)</option>
-                        <option value="outro">Outro</option>
-                      </select>
+                        <Send size={10} color={selectedRecipientPhone === lead.phone ? '#10B981' : 'var(--adm-text-muted)'} />
+                        <span>{selectedRecipientPhone === lead.phone ? 'Ativo' : 'Enviar'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <button
-                          type="submit"
-                          style={{
-                            background: 'var(--adm-accent)',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            borderRadius: '7px',
-                            padding: '6px 14px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
+                {/* Campos de Aniversário & Data Evento: Exibidos APENAS se o papel for Aniversariante/Debutante */}
+                {(lead.primaryContactRole === 'debutante' || !lead.primaryContactRole) && (
+                  <>
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Aniversário</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="date"
+                          value={draftBirthday}
+                          disabled={effectiveReadOnly}
+                          onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                          onChange={(e) => {
+                            setDraftBirthday(e.target.value);
+                            handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
                           }}
-                        >
-                          Salvar
-                        </button>
+                          style={{
+                            ...seamlessInputStyle,
+                            cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                            color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                          }}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
                       </div>
                     </div>
-                  </form>
+
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Data Evento</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="date"
+                          value={lead.eventDate || lead.partyDate || ''}
+                          disabled={effectiveReadOnly}
+                          onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                          onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
+                          style={{
+                            ...seamlessInputStyle,
+                            cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                            color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                          }}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Dados Contratuais Opcionais */}
+                {(draftCpf || showCpfField) && (
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>CPF</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        value={draftCpf}
+                        disabled={effectiveReadOnly}
+                        onChange={(e) => setDraftCpf(maskCpfInput(e.target.value))}
+                        onBlur={() => {
+                          if (draftCpf !== (lead.cpf || '')) {
+                            handleUpdate({ cpf: draftCpf.trim() });
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="000.000.000-00"
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(draftEmail || showEmailField) && (
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>E-mail</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="email"
+                        value={draftEmail}
+                        disabled={effectiveReadOnly}
+                        onChange={(e) => setDraftEmail(e.target.value)}
+                        onBlur={() => {
+                          if (draftEmail !== (lead.email || '')) {
+                            handleUpdate({ email: draftEmail.trim() });
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="email@cliente.com"
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(draftNeighborhood || showNeighborhoodField) && (
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Bairro</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        value={draftNeighborhood}
+                        disabled={effectiveReadOnly}
+                        onChange={(e) => setDraftNeighborhood(e.target.value)}
+                        onBlur={() => {
+                          if (draftNeighborhood !== (lead.neighborhood || '')) {
+                            handleUpdate({ neighborhood: draftNeighborhood.trim() });
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="Bairro..."
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(draftAddress || showAddressField) && (
+                  <div style={cardRowStyle}>
+                    <span style={cardLabelStyle}>Endereço</span>
+                    <div style={cardValueStyle}>
+                      <input
+                        type="text"
+                        value={draftAddress}
+                        disabled={effectiveReadOnly}
+                        onChange={(e) => setDraftAddress(e.target.value)}
+                        onBlur={() => {
+                          if (draftAddress !== (lead.address || '')) {
+                            handleUpdate({ address: draftAddress.trim() });
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        placeholder="Rua, número..."
+                        style={seamlessInputStyle}
+                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Contato Principal */}
+                {!effectiveReadOnly && (
+                  (!draftEmail && !showEmailField) ||
+                  (!draftCpf && !showCpfField) ||
+                  (!draftNeighborhood && !showNeighborhoodField) ||
+                  (!draftAddress && !showAddressField)
+                ) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Dado adicional:</span>
+                    {!draftEmail && !showEmailField && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEmailField(true)}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.68rem',
+                          color: 'var(--adm-text-title)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <Plus size={10} /> E-mail
+                      </button>
+                    )}
+                    {!draftCpf && !showCpfField && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCpfField(true)}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.68rem',
+                          color: 'var(--adm-text-title)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <Plus size={10} /> CPF
+                      </button>
+                    )}
+                    {!draftNeighborhood && !showNeighborhoodField && (
+                      <button
+                        type="button"
+                        onClick={() => setShowNeighborhoodField(true)}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.68rem',
+                          color: 'var(--adm-text-title)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <Plus size={10} /> Bairro
+                      </button>
+                    )}
+                    {!draftAddress && !showAddressField && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddressField(true)}
+                        style={{
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.68rem',
+                          color: 'var(--adm-text-title)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <Plus size={10} /> Endereço
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
+
+              {/* DEMAIS CONTATOS VINCULADOS: CADA UM EM SEU PRÓPRIO CARD MODULAR */}
+              {(lead.contacts || []).map((contact) => {
+                const isAniversariante = contact.role === 'debutante' || (contact.role as any) === 'aniversariante';
+                return (
+                  <div key={contact.id} style={{
+                    ...cardStyle,
+                    border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.45)' : 'var(--adm-border)'}`,
+                    background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.03)' : 'var(--adm-bg-card)',
+                  }}>
+                    {/* Header do Contato Vinculado */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.15)' : 'rgba(20, 169, 215, 0.15)',
+                          color: contact.isPrimaryDecisionMaker ? '#10B981' : 'var(--adm-accent)',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.35)' : 'rgba(20, 169, 215, 0.3)'}`,
+                        }}>
+                          {contact.name ? contact.name.trim().substring(0, 2).toUpperCase() : 'CT'}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                            {contact.name}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        {contact.isPrimaryDecisionMaker ? (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 800,
+                            color: '#10B981',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            <Check size={11} /> Decisor
+                          </span>
+                        ) : !effectiveReadOnly ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSetPrimaryDecisor(contact)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              color: 'var(--adm-text-title)',
+                              borderRadius: '6px',
+                              padding: '3px 8px',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
+                          >
+                            Tornar Decisor
+                          </button>
+                        ) : null}
+
+                        {!effectiveReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubContact(contact.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#EF4444',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '4px',
+                            }}
+                            title="Remover contato"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Relação / Papel do Contato */}
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Relação</span>
+                      <div style={cardValueStyle}>
+                        <select
+                          value={contact.role}
+                          disabled={effectiveReadOnly}
+                          onChange={(e) => {
+                            const newRole = e.target.value as LeadContactRole;
+                            const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, role: newRole } : c);
+                            handleUpdate({ contacts: updated });
+                          }}
+                          style={{
+                            ...seamlessInputStyle,
+                            cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                            fontWeight: 700,
+                            color: 'var(--adm-accent)',
+                            background: 'transparent',
+                            padding: '2px 0',
+                          }}
+                        >
+                          <option value="debutante">Aniversariante / Debutante</option>
+                          <option value="mother">Mãe</option>
+                          <option value="father">Pai</option>
+                          <option value="responsavel">Responsável Legal</option>
+                          <option value="noivo">Noivo(a)</option>
+                          <option value="tio">Tio(a)</option>
+                          <option value="outro">Outro</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Telefone (opcional) */}
+                    <div style={cardRowStyle}>
+                      <span style={cardLabelStyle}>Telefone</span>
+                      <div style={cardValueStyle}>
+                        <input
+                          type="text"
+                          value={contact.phone ? formatPhone(contact.phone) : ''}
+                          disabled={effectiveReadOnly}
+                          placeholder="Sem telefone cadastrado"
+                          onChange={(e) => {
+                            const masked = maskPhoneInput(e.target.value);
+                            const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, phone: masked.replace(/\D/g, '') } : c);
+                            handleUpdate({ contacts: updated });
+                          }}
+                          style={seamlessInputStyle}
+                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                        />
+                        {contact.phone && onSelectRecipientPhone && (
+                          <button
+                            type="button"
+                            onClick={() => onSelectRecipientPhone(contact.phone)}
+                            title={selectedRecipientPhone === contact.phone ? "Destinatário ativo no chat" : "Definir este contato como destinatário para envio"}
+                            style={{
+                              background: selectedRecipientPhone === contact.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
+                              border: `1px solid ${selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-border)'}`,
+                              color: selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)',
+                              borderRadius: '6px',
+                              padding: '3px 7px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.64rem',
+                              fontWeight: 700,
+                              flexShrink: 0,
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Send size={10} color={selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)'} />
+                            <span>{selectedRecipientPhone === contact.phone ? 'Ativo' : 'Enviar'}</span>
+                          </button>
+                        )}
+                        {contact.phone && (
+                          <button
+                            type="button"
+                            onClick={() => handleDirectWhatsApp(contact.phone)}
+                            title="Abrir WhatsApp Externo"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#25D366',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <MessageSquare size={13} fill="#25D366" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Se for Aniversariante, exibir Aniversário e Data do Evento */}
+                    {isAniversariante && (
+                      <>
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>Aniversário</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="date"
+                              value={lead.birthday || lead.debutanteBirthDate || ''}
+                              disabled={effectiveReadOnly}
+                              onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                              onChange={(e) => {
+                                handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
+                              }}
+                              style={{
+                                ...seamlessInputStyle,
+                                cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                                color: (lead.birthday || lead.debutanteBirthDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                              }}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>Data Evento</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="date"
+                              value={lead.eventDate || lead.partyDate || ''}
+                              disabled={effectiveReadOnly}
+                              onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                              onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
+                              style={{
+                                ...seamlessInputStyle,
+                                cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                                color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                              }}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Dados Contratuais Opcionais deste Contato */}
+                    {(contact.cpf || contact.email || contact.address) && (
+                      <div style={{
+                        marginTop: '4px',
+                        padding: '6px 8px',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        fontSize: '0.72rem',
+                      }}>
+                        {contact.cpf && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>CPF:</span>
+                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 700 }}>{contact.cpf}</span>
+                          </div>
+                        )}
+                        {contact.email && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>E-mail:</span>
+                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 600 }}>{contact.email}</span>
+                          </div>
+                        )}
+                        {contact.address && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>Endereço:</span>
+                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 600 }}>{contact.address}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* BOTÃO CIRCULAR (+) CENTRALIZADO FORA DOS RETÂNGULOS */}
+              {!isAddingContact && !effectiveReadOnly && (
+                <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 4px 0' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingContact(true)}
+                    title="Adicionar Contato Vinculado"
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '50%',
+                      border: '1.5px dashed var(--adm-accent)',
+                      background: 'var(--adm-bg-card)',
+                      color: 'var(--adm-accent)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--adm-accent)';
+                      e.currentTarget.style.color = '#FFFFFF';
+                      e.currentTarget.style.transform = 'scale(1.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'var(--adm-bg-card)';
+                      e.currentTarget.style.color = 'var(--adm-accent)';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              )}
+
+              {/* FORMULÁRIO DE ADIÇÃO DE NOVO CONTATO */}
+              {isAddingContact && (
+                <form onSubmit={handleAddSubContact} style={{
+                  ...cardStyle,
+                  border: '1.5px solid var(--adm-accent)',
+                  boxShadow: '0 4px 16px rgba(20, 169, 215, 0.15)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-accent)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Novo Contato Vinculado
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewContactName('');
+                        setNewContactPhone('');
+                        setNewContactCpf('');
+                        setNewContactEmail('');
+                        setNewContactAddress('');
+                        setNewContactBirthday('');
+                        setNewContactEventDate('');
+                        setIsAddingContact(false);
+                      }}
+                      title="Descartar"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        transition: 'color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#EF4444'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--adm-text-muted)'}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nome do contato (obrigatório)..."
+                      value={newContactName}
+                      onChange={(e) => setNewContactName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
+                        color: 'var(--adm-text-title)',
+                        outline: 'none',
+                      }}
+                    />
+
+                    <select
+                      value={newContactRole}
+                      onChange={(e) => setNewContactRole(e.target.value as LeadContactRole)}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="debutante">Aniversariante / Debutante</option>
+                      <option value="mother">Mãe</option>
+                      <option value="father">Pai</option>
+                      <option value="responsavel">Responsável Legal</option>
+                      <option value="noivo">Noivo(a)</option>
+                      <option value="tio">Tio(a)</option>
+                      <option value="outro">Outro</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="WhatsApp (opcional)..."
+                      value={newContactPhone}
+                      onChange={(e) => setNewContactPhone(maskPhoneInput(e.target.value))}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
+                        color: 'var(--adm-text-title)',
+                        outline: 'none',
+                      }}
+                    />
+
+                    {/* Se o papel for Aniversariante, exibir campos de data de Aniversário e Evento */}
+                    {(newContactRole === 'debutante' || (newContactRole as any) === 'aniversariante') && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '3px' }}>
+                            Aniversário
+                          </label>
+                          <input
+                            type="date"
+                            value={newContactBirthday}
+                            onChange={(e) => setNewContactBirthday(e.target.value)}
+                            onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '7px',
+                              padding: '6px 8px',
+                              fontSize: '0.74rem',
+                              color: 'var(--adm-text-title)',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '3px' }}>
+                            Data do Evento
+                          </label>
+                          <input
+                            type="date"
+                            value={newContactEventDate}
+                            onChange={(e) => setNewContactEventDate(e.target.value)}
+                            onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '7px',
+                              padding: '6px 8px',
+                              fontSize: '0.74rem',
+                              color: 'var(--adm-text-title)',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <input
+                      type="text"
+                      placeholder="CPF (opcional)..."
+                      value={newContactCpf}
+                      onChange={(e) => setNewContactCpf(maskCpfInput(e.target.value))}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
+                        color: 'var(--adm-text-title)',
+                        outline: 'none',
+                      }}
+                    />
+
+                    <input
+                      type="email"
+                      placeholder="E-mail (opcional)..."
+                      value={newContactEmail}
+                      onChange={(e) => setNewContactEmail(e.target.value)}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
+                        color: 'var(--adm-text-title)',
+                        outline: 'none',
+                      }}
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Endereço (opcional)..."
+                      value={newContactAddress}
+                      onChange={(e) => setNewContactAddress(e.target.value)}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '7px',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
+                        color: 'var(--adm-text-title)',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingContact(false)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'transparent',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '6px',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        background: 'var(--adm-accent)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '6px 14px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Salvar Contato
+                    </button>
+                  </div>
+                </form>
+              )}
 
               {/* Campos Personalizados: Seção Contatos */}
               {renderCustomFieldsForSection('contact')}

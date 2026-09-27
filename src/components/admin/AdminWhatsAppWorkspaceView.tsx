@@ -50,6 +50,7 @@ import {
 import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
+import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, ClientUpsellSale, ClientDocument } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
@@ -243,6 +244,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 }) => {
   const {
     leads,
+    allLeads,
     clients,
     funnels,
     venues,
@@ -660,16 +662,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Sync initialLeadId prop & maintain inspector open if embedded in funnel
-  useEffect(() => {
-    if (initialLeadId) {
-      setSelectedLeadId(initialLeadId);
-      if (isEmbeddedInFunnel) {
-        setIsInspectorOpen(true);
-      }
-    }
-  }, [initialLeadId, isEmbeddedInFunnel]);
-
   // Sync searchQuery prop
   useEffect(() => {
     if (searchQuery) {
@@ -796,16 +788,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [isPostSaleFunnel, clients, leads, activeFunnelId]);
 
   const sourceLeads = useMemo(() => {
+    const rawLeads = (allLeads && allLeads.length > 0) ? allLeads : leads;
     if (isPostSaleFunnel) {
       const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
-      const postSaleLeads = (leads || []).filter(l =>
+      const postSaleLeads = (rawLeads || []).filter(l =>
         (l.isClient || l.group === 'Pós-Venda' || (activeFunnel && l.funnelId === activeFunnel.id)) &&
         !existingClientIds.has(l.id)
       );
       return [...clientsAsLeads, ...postSaleLeads];
     }
-    return leads;
-  }, [isPostSaleFunnel, clientsAsLeads, leads, activeFunnel]);
+    return rawLeads;
+  }, [isPostSaleFunnel, clientsAsLeads, allLeads, leads, activeFunnel]);
 
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
@@ -881,7 +874,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
       } else if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
-        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+        // Se o lead pertence a um funil compartilhado que inclui targetVenueId, ele deve ser aceito
+        const leadFunnel = funnels.find(f => f.id === lead.funnelId);
+        const isSharedWithTarget = leadFunnel && (
+          leadFunnel.venueId === targetVenueId ||
+          (Array.isArray(leadFunnel.sharedVenueIds) && leadFunnel.sharedVenueIds.includes(targetVenueId)) ||
+          (Array.isArray((leadFunnel as any).shared_venue_ids) && (leadFunnel as any).shared_venue_ids.includes(targetVenueId))
+        );
+        if (!isSharedWithTarget && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       // 2. Ownership / Quick Filter Tabs
@@ -1241,10 +1241,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   }, [selectedLead?.id, availableRecipients]);
 
-  // Marca conversa como lida e emite auditoria se houver mensagens não lidas
+  // Marca conversa como lida e emite auditoria de visualização se houver mensagens não lidas ou pendência de resposta
   useEffect(() => {
-    if (selectedLead && (selectedLead.unreadCount || 0) > 0) {
-      markLeadAsRead(selectedLead.id);
+    if (selectedLead) {
+      const hasUnread = (selectedLead.unreadCount || 0) > 0;
+      const isPending = getLeadPendingWaitingTime(selectedLead) > 0;
+      if (hasUnread || isPending) {
+        markLeadAsRead(selectedLead.id);
+      }
     }
   }, [selectedLead?.id, selectedLead?.unreadCount, markLeadAsRead]);
 
@@ -2244,40 +2248,58 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Real Audio Recording Handlers (MediaRecorder)
   const startAudioRecording = async () => {
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioStreamRef.current = stream;
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-
-        mediaRecorder.start(200);
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Seu navegador não possui suporte para gravação de áudio ou a página não está em HTTPS.');
+        return;
       }
-    } catch (err) {
-      console.warn('Permissão de microfone:', err);
-    }
 
-    setIsRecording(true);
-    setIsAudioPaused(false);
-    setRecordingSeconds(0);
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingSeconds(prev => prev + 1);
-    }, 1000);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
 
-    const targetPhone = selectedRecipientPhone || selectedLead?.phone;
-    if (targetPhone && activeSenderToken) {
-      uazapiService.sendPresence(activeSenderToken, {
-        number: targetPhone,
-        presence: 'recording',
-        delay: 60,
-      }).catch(() => { });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+        ? 'audio/webm; codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
+          ? 'audio/ogg; codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : '';
+
+      const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(200);
+
+      setIsRecording(true);
+      setIsAudioPaused(false);
+      setRecordingSeconds(0);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
+      const targetPhone = selectedRecipientPhone || selectedLead?.phone;
+      if (targetPhone && activeSenderToken) {
+        uazapiService.sendPresence(activeSenderToken, {
+          number: targetPhone,
+          presence: 'recording',
+          delay: 60,
+        }).catch(() => { });
+      }
+    } catch (err: any) {
+      console.warn('Erro ao acessar microfone:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        alert('Permissão de microfone negada. Por favor, habilite o acesso ao microfone nas configurações do seu navegador para gravar áudios.');
+      } else {
+        alert('Não foi possível iniciar a gravação de áudio: ' + (err.message || 'Verifique o microfone'));
+      }
+      setIsRecording(false);
     }
   };
 
@@ -2397,7 +2419,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg; codecs=opus' });
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm; codecs=opus';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const reader = new FileReader();
         reader.onloadend = () => {
           finalizeAndSend(reader.result as string, audioBlob);
@@ -2699,12 +2722,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <span style={{ fontSize: '0.85rem' }}>{isPostSaleFunnel ? '👑' : (activeFunnel?.icon || '🎯')}</span>
+                    <span style={{ fontSize: '0.85rem' }}>
+                      {isPostSaleFunnel ? '👑' : selectedFunnelId === 'all' ? '💬' : (activeFunnel?.icon ? renderFunnelOrStageIcon(activeFunnel.icon, 13, (activeFunnel as any).color || activeFunnel.badgeColor || activeFunnel.stages?.[0]?.color || 'var(--adm-accent)') : '🎯')}
+                    </span>
                     <span>
                       {selectedFunnelId === 'all'
                         ? 'Todos os Funis Comerciais'
                         : (selectedFunnelId === 'post_sale_default' || selectedFunnelId === 'post_sale'
-                          ? 'Sucesso do Cliente (Pós-Venda)'
+                          ? 'Sucesso do Cliente'
                           : (activeFunnel?.name || 'Funil Comercial'))}
                     </span>
                   </div>
@@ -2725,21 +2750,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     zIndex: 9999,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '2px',
-                    maxHeight: '220px',
+                    gap: '3px',
+                    maxHeight: '260px',
                     overflowY: 'auto',
                   }}>
+                    {/* 1. Todos os Funis Comerciais */}
                     <button
                       type="button"
                       onClick={() => handleSelectFunnel('all')}
                       style={{
-                        padding: '6px 10px',
+                        padding: '7px 10px',
                         borderRadius: '6px',
                         background: selectedFunnelId === 'all' ? 'var(--adm-accent-bg)' : 'transparent',
                         border: 'none',
                         color: selectedFunnelId === 'all' ? 'var(--adm-accent)' : 'var(--adm-text-title)',
                         fontSize: '0.74rem',
-                        fontWeight: selectedFunnelId === 'all' ? 800 : 500,
+                        fontWeight: selectedFunnelId === 'all' ? 800 : 600,
                         textAlign: 'left',
                         cursor: 'pointer',
                         display: 'flex',
@@ -2747,56 +2773,99 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         justifyContent: 'space-between',
                       }}
                     >
-                      <span>💬 Todos os Funis Comerciais</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>💬</span>
+                        <span>Todos os Funis Comerciais</span>
+                      </div>
                       {selectedFunnelId === 'all' && <Check size={12} />}
                     </button>
 
+                    {/* 2. Funis Comerciais Individuais com Ícones e Cores */}
+                    {(funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => {
+                      const isSelected = selectedFunnelId === f.id;
+                      const funnelColor = (f as any).color || f.badgeColor || f.stages?.[0]?.color || 'var(--adm-accent)';
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => handleSelectFunnel(f.id)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: isSelected ? `${funnelColor}18` : 'transparent',
+                            border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
+                            color: isSelected ? funnelColor : 'var(--adm-text-title)',
+                            fontSize: '0.74rem',
+                            fontWeight: isSelected ? 800 : 500,
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            transition: 'all 0.12s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <div style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '6px',
+                              background: `${funnelColor}22`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}>
+                              {renderFunnelOrStageIcon(f.icon || 'layers', 12, funnelColor)}
+                            </div>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {f.name}
+                            </span>
+                          </div>
+                          {isSelected && <Check size={12} color={funnelColor} />}
+                        </button>
+                      );
+                    })}
+
+                    {/* 3. Por Fim: Sucesso do Cliente (sem parênteses) */}
                     <button
                       type="button"
                       onClick={() => handleSelectFunnel('post_sale_default')}
                       style={{
-                        padding: '6px 10px',
+                        padding: '7px 10px',
                         borderRadius: '6px',
                         background: isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                        border: 'none',
+                        border: isPostSaleFunnel ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
                         color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-text-title)',
                         fontSize: '0.74rem',
-                        fontWeight: isPostSaleFunnel ? 800 : 500,
+                        fontWeight: isPostSaleFunnel ? 800 : 600,
                         textAlign: 'left',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
+                        marginTop: '2px',
+                        borderTop: '1px solid var(--adm-border)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isPostSaleFunnel) e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isPostSaleFunnel) e.currentTarget.style.background = 'transparent';
                       }}
                     >
-                      <span>👑 Sucesso do Cliente (Pós-Venda)</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>👑</span>
+                        <span>Sucesso do Cliente</span>
+                      </div>
                       {isPostSaleFunnel && <Check size={12} color="#06B6D4" />}
                     </button>
-
-                    {(funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => handleSelectFunnel(f.id)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: selectedFunnelId === f.id ? 'var(--adm-accent-bg)' : 'transparent',
-                          border: 'none',
-                          color: selectedFunnelId === f.id ? 'var(--adm-accent)' : 'var(--adm-text-title)',
-                          fontSize: '0.74rem',
-                          fontWeight: selectedFunnelId === f.id ? 800 : 500,
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <span>{f.icon || '🎯'} {f.name}</span>
-                        {selectedFunnelId === f.id && <Check size={12} />}
-                      </button>
-                    ))}
                   </div>
                 )}
               </div>
@@ -3813,9 +3882,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       {/* ── COLUNA 2: INSPECTOR DO LEAD / CLIENTE (EXPANSÍVEL) ──────────── */}
       {isInspectorOpen && selectedLead && (
         <div style={{
-          width: '430px',
-          minWidth: '380px',
-          maxWidth: '460px',
+          width: '360px',
+          minWidth: '330px',
+          maxWidth: '380px',
           borderRight: '1px solid var(--adm-border)',
           background: 'var(--adm-bg-card)',
           display: 'flex',
@@ -6489,19 +6558,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: '#202c33',
-                  border: '1px solid rgba(0, 168, 132, 0.3)',
+                  background: isDarkMode ? '#202c33' : '#ffffff',
+                  border: isDarkMode ? '1px solid rgba(0, 168, 132, 0.3)' : '1px solid rgba(0, 168, 132, 0.4)',
                   borderRadius: '14px 14px 14px 2px',
                   padding: '8px 14px',
                   color: '#00a884',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                  boxShadow: isDarkMode ? '0 2px 8px rgba(0,0,0,0.25)' : '0 2px 8px rgba(0,0,0,0.08)',
                   margin: '4px 0',
                 }}>
                   {customerPresence.isRecording ? (
                     <>
                       <Mic size={15} color="#00a884" />
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#e9edef' }}>
-                        {selectedLead.name ? `${selectedLead.name} está gravando áudio...` : 'Gravando áudio...'}
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111827' }}>
+                        {selectedLead?.name ? `${selectedLead.name} está gravando áudio...` : 'Gravando áudio...'}
                       </span>
                     </>
                   ) : (
@@ -6511,8 +6580,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00a884' }} />
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00a884' }} />
                       </div>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#e9edef', marginLeft: '4px' }}>
-                        {selectedLead.name ? `${selectedLead.name} está digitando...` : 'Digitando...'}
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isDarkMode ? '#e9edef' : '#111827', marginLeft: '4px' }}>
+                        {selectedLead?.name ? `${selectedLead.name} está digitando...` : 'Digitando...'}
                       </span>
                     </>
                   )}

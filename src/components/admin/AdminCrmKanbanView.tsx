@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Kanban, List, Search, Building2,
   Inbox, Calendar, DollarSign,
-  ChevronDown, ChevronUp, Plus, Layers,
+  ChevronDown, Plus, Layers,
   Users, ArrowRight, X,
   Megaphone, Sparkles, Target,
   Settings, Lock, Pin,
@@ -212,7 +212,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     updateLeadData,
     togglePinFunnel,
     isFunnelPinned,
-    reorderFunnels,
     reassignLeadFunnel,
   } = useAdminState();
 
@@ -703,24 +702,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setIsComoFunnelSettingsOpen(true);
   };
 
-  const handleMoveFunnel = (funnelId: string, direction: 'up' | 'down', e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const listToReorder = [...funnelsList];
-    const currentIndex = listToReorder.findIndex(f => f.id === funnelId);
-    if (currentIndex === -1) return;
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= listToReorder.length) return;
-
-    const [moved] = listToReorder.splice(currentIndex, 1);
-    listToReorder.splice(targetIndex, 0, moved);
-
-    const reordered = listToReorder.map((f, idx) => ({
-      ...f,
-      order: idx,
-    }));
-
-    reorderFunnels(reordered);
-  };
 
   // Computed Funnels List based on Venues, Permissions, and Real-time Leads
   const funnelsList = useMemo(() => {
@@ -1585,86 +1566,69 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   }}
                 >
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        {/* Category Badge */}
-                        {funnel.badge !== 'Indicações do App' && funnel.category !== 'Indicações do App' && (funnel.badge || funnel.category) && (
-                          <span style={{
-                            fontSize: '0.66rem',
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: '16px',
-                            background: `${funnel.badgeColor || '#3B82F6'}18`,
-                            color: funnel.badgeColor || '#3B82F6',
-                            border: `1px solid ${funnel.badgeColor || '#3B82F6'}40`,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            {renderFunnelIcon(funnel.icon || 'target', 11, funnel.badgeColor || '#3B82F6')}
-                            <span>{funnel.badge || funnel.category}</span>
-                          </span>
-                        )}
+                    {/* Top Section: Funnel Visual + Title & Badges + Actions (Pin, Settings) */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1, minWidth: 0 }}>
+                        {/* Funnel Visual Container (Custom Image or Icon) */}
+                        <div style={{ flexShrink: 0, marginTop: '2px' }}>
+                          {renderFunnelVisual(funnel, 16, 36)}
+                        </div>
 
-                        {/* Linked Venues Tags (Calculadas dinamicamente a partir das origens conectadas) */}
-                        {linkedVenues.length > 0 ? (
-                          linkedVenues.map(v => (
-                            <span key={v.id} style={{
-                              fontSize: '0.66rem',
-                              fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: '8px',
-                              background: 'rgba(99, 102, 241, 0.12)',
-                              color: '#818cf8',
-                              border: '1px solid rgba(99, 102, 241, 0.25)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}>
-                              <Building2 size={10} />
-                              <span>{v.name}</span>
-                            </span>
-                          ))
-                        ) : (
-                          <span style={{
-                            fontSize: '0.66rem',
-                            fontWeight: 700,
-                            padding: '2px 7px',
-                            borderRadius: '8px',
-                            background: 'rgba(99, 102, 241, 0.12)',
-                            color: '#818cf8',
-                            border: '1px solid rgba(99, 102, 241, 0.25)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}>
-                            <Building2 size={10} />
-                            <span>{funnel.venueName || 'Todas as Casas'}</span>
-                          </span>
-                        )}
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.25 }}>
+                              {funnel.name}
+                            </h3>
 
-                        {/* Post-Sale Badge */}
-                        {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (
-                          <span style={{
-                            fontSize: '0.66rem',
-                            fontWeight: 800,
-                            padding: '2px 7px',
-                            borderRadius: '8px',
-                            background: 'rgba(6, 182, 212, 0.15)',
-                            color: '#06B6D4',
-                            border: '1px solid rgba(6, 182, 212, 0.35)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}>
-                            <ShieldCheck size={10} />
-                            <span>Pós-Venda</span>
-                          </span>
-                        )}
+                            {/* Category Badge */}
+                            {funnel.badge !== 'Indicações do App' && funnel.category !== 'Indicações do App' && (funnel.badge || funnel.category) && (
+                              <span style={{
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                                padding: '2px 7px',
+                                borderRadius: '12px',
+                                background: `${funnel.badgeColor || '#3B82F6'}18`,
+                                color: funnel.badgeColor || '#3B82F6',
+                                border: `1px solid ${funnel.badgeColor || '#3B82F6'}40`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}>
+                                {renderFunnelIcon(funnel.icon || 'target', 10, funnel.badgeColor || '#3B82F6')}
+                                <span>{funnel.badge || funnel.category}</span>
+                              </span>
+                            )}
+
+                            {/* Post-Sale Badge */}
+                            {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (
+                              <span style={{
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                                padding: '2px 7px',
+                                borderRadius: '8px',
+                                background: 'rgba(6, 182, 212, 0.15)',
+                                color: '#06B6D4',
+                                border: '1px solid rgba(6, 182, 212, 0.35)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}>
+                                <ShieldCheck size={10} />
+                                <span>Pós-Venda</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {funnel.description && (
+                            <p style={{ fontSize: '0.75rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                              {funnel.description}
+                            </p>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Top Right: Pin Button + Settings + Visual */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {/* Top Right: Pin Button + Settings */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         {/* Pin on sidebar button (User-scoped) */}
                         {(() => {
                           const isPinned = isFunnelPinned(funnel.id);
@@ -1680,13 +1644,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 background: isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
                                 border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                                 borderRadius: '8px',
-                                padding: '5px 7px',
+                                padding: '5px 8px',
                                 color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '3px',
-                                fontSize: '0.64rem',
+                                gap: '4px',
+                                fontSize: '0.65rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s ease',
                               }}
@@ -1696,52 +1660,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             </button>
                           );
                         })()}
-
-                        {/* Reorder Buttons */}
-                        {canConfigureFunnels && funnelsList.length > 1 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <button
-                              type="button"
-                              title="Mover funil para cima"
-                              disabled={funnelsList.findIndex(f => f.id === funnel.id) === 0}
-                              onClick={(e) => handleMoveFunnel(funnel.id, 'up', e)}
-                              style={{
-                                background: 'var(--adm-bg-input)',
-                                border: '1px solid var(--adm-border)',
-                                borderRadius: '6px',
-                                padding: '4px',
-                                color: funnelsList.findIndex(f => f.id === funnel.id) === 0 ? 'var(--adm-border)' : 'var(--adm-text-muted)',
-                                cursor: funnelsList.findIndex(f => f.id === funnel.id) === 0 ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <ChevronUp size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Mover funil para baixo"
-                              disabled={funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1}
-                              onClick={(e) => handleMoveFunnel(funnel.id, 'down', e)}
-                              style={{
-                                background: 'var(--adm-bg-input)',
-                                border: '1px solid var(--adm-border)',
-                                borderRadius: '6px',
-                                padding: '4px',
-                                color: funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1 ? 'var(--adm-border)' : 'var(--adm-text-muted)',
-                                cursor: funnelsList.findIndex(f => f.id === funnel.id) === funnelsList.length - 1 ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.15s ease',
-                              }}
-                            >
-                              <ChevronDown size={12} />
-                            </button>
-                          </div>
-                        )}
 
                         {/* Settings button */}
                         {canConfigureFunnels && (
@@ -1753,7 +1671,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               background: 'var(--adm-bg-input)',
                               border: '1px solid var(--adm-border)',
                               borderRadius: '8px',
-                              padding: '5px',
+                              padding: '5px 7px',
                               color: 'var(--adm-text-muted)',
                               cursor: 'pointer',
                               display: 'flex',
@@ -1773,21 +1691,49 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             <Settings size={13} />
                           </button>
                         )}
-
-                        {/* Funnel Visual Container (Custom Image or Icon) */}
-                        {renderFunnelVisual(funnel, 15, 30)}
                       </div>
                     </div>
 
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: '0 0 4px 0', letterSpacing: '-0.3px' }}>
-                      {funnel.name}
-                    </h3>
-                    <p style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', margin: '0 0 10px 0', lineHeight: 1.45 }}>
-                      {funnel.description}
-                    </p>
+                    {/* Metadata Tags: Venues & Privacy */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                      {/* Linked Venues Tags */}
+                      {linkedVenues.length > 0 ? (
+                        linkedVenues.map(v => (
+                          <span key={v.id} style={{
+                            fontSize: '0.64rem',
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: '6px',
+                            background: 'rgba(99, 102, 241, 0.12)',
+                            color: '#818cf8',
+                            border: '1px solid rgba(99, 102, 241, 0.25)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}>
+                            <Building2 size={10} />
+                            <span>{v.name}</span>
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: '6px',
+                          background: 'rgba(99, 102, 241, 0.12)',
+                          color: '#818cf8',
+                          border: '1px solid rgba(99, 102, 241, 0.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}>
+                          <Building2 size={10} />
+                          <span>{funnel.venueName || 'Todas as Casas'}</span>
+                        </span>
+                      )}
 
-                    {/* Privacy / Access Status Badge */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                      {/* Privacy / Access Status Badge */}
                       {funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0 ? (
                         <span style={{
                           fontSize: '0.64rem',

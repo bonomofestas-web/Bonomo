@@ -207,10 +207,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
     } else {
       presenceStatus = {
         label: 'Não Confirmado (0%)',
-        bg: '#F8FAFC',
-        text: '#64748B',
-        border: '#E2E8F0',
-        icon: <Clock size={13} style={{ color: '#94A3B8' }} />,
+        bg: 'var(--adm-bg-surface, #F8FAFC)',
+        text: 'var(--adm-text-muted, #64748B)',
+        border: 'var(--adm-border, #E2E8F0)',
+        icon: <Clock size={13} style={{ color: 'var(--adm-text-muted, #94A3B8)' }} />,
       };
     }
 
@@ -297,10 +297,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                   {/* Single Date Section Header Row */}
                   <tr style={{
                     background: group.isToday 
-                      ? '#EFF6FF' 
-                      : '#F8FAFC',
-                    borderTop: '2px solid #E2E8F0',
-                    borderBottom: '1px solid #E2E8F0',
+                      ? 'rgba(37, 99, 235, 0.12)' 
+                      : 'var(--adm-bg-surface, #F8FAFC)',
+                    borderTop: '2px solid var(--adm-border, #E2E8F0)',
+                    borderBottom: '1px solid var(--adm-border, #E2E8F0)',
                   }}>
                     <td 
                       colSpan={totalColumns} 
@@ -310,11 +310,11 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Calendar size={15} style={{ color: group.isToday ? '#2563EB' : '#64748B' }} />
+                          <Calendar size={15} style={{ color: group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)' }} />
                           <span style={{
                             fontWeight: 800,
                             fontSize: '0.82rem',
-                            color: group.isToday ? '#1D4ED8' : '#1E293B',
+                            color: group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)',
                             letterSpacing: '-0.2px',
                           }}>
                             {group.title}
@@ -608,7 +608,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         {!isVisitsContext && (
                           <td style={{
                             padding: '12px 16px',
-                            color: task.resolution ? '#0F172A' : '#94A3B8',
+                            color: task.resolution ? 'var(--adm-text-title, #0F172A)' : 'var(--adm-text-muted, #94A3B8)',
                             fontStyle: task.resolution ? 'normal' : 'italic',
                             maxWidth: '280px',
                             overflow: 'hidden',

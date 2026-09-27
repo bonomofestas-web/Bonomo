@@ -408,7 +408,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
                 top: `${HOUR_HEIGHT / 2}px`,
                 left: '70px',
                 right: 0,
-                borderTop: '1px dashed #F8FAFC',
+                borderTop: '1px dashed var(--adm-border, #E2E8F0)',
               }} />
             </div>
           ))}

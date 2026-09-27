@@ -64,6 +64,7 @@ import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService'
 import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
+import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -198,6 +199,7 @@ export interface AdminContextType {
   allFunnels: CommercialFunnel[];
   userPinnedFunnelIds: string[];
   togglePinFunnel: (funnelId: string) => void;
+  reorderPinnedFunnels: (reorderedIds: string[]) => void;
   isFunnelPinned: (funnelId: string) => boolean;
   sources: Source[];
   activeVenueId: string | null;
@@ -3050,6 +3052,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const reorderPinnedFunnels = (reorderedIds: string[]) => {
+    const userId = currentUser?.id || 'default';
+    setUserPinnedFunnelIds(reorderedIds);
+    safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(reorderedIds));
+  };
+
   const isFunnelPinned = (funnelId: string): boolean => {
     return userPinnedFunnelIds.includes(funnelId);
   };
@@ -3350,9 +3358,36 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const markLeadAsRead = (leadId: string) => {
     const targetLead = leads.find(l => l.id === leadId);
-    if (!targetLead || (targetLead.unreadCount || 0) <= 0) return;
+    if (!targetLead) return;
 
+    const hasUnread = (targetLead.unreadCount || 0) > 0;
+    const isPendingResponse = getLeadPendingWaitingTime(targetLead) > 0;
+
+    // Se não há mensagens não lidas e também não está pendente de resposta da equipe, não gera auditoria
+    if (!hasUnread && !isPendingResponse) return;
+
+    // Evita flooding se o mesmo colaborador visualizou a menos de 40 segundos e nenhuma mensagem nova entrou
     const author = currentUser?.name || 'Equipe';
+    const recentActs = targetLead.activities || [];
+    const lastAct = recentActs[recentActs.length - 1];
+    if (lastAct && (lastAct.title === 'Mensagem Visualizada' || lastAct.text?.includes('visualizou esta mensagem'))) {
+      const lastTime = new Date(lastAct.timestamp || 0).getTime();
+      const diffSec = (Date.now() - lastTime) / 1000;
+      if (diffSec < 40 && lastAct.authorId === currentUser?.id) {
+        if (hasUnread) {
+          setLeads(prev => {
+            const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+            return updated;
+          });
+          if (isSupabaseConfigured) {
+            leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+          }
+        }
+        return;
+      }
+    }
+
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const auditText = `👁️ ${author} visualizou esta mensagem às ${timeStr}`;
@@ -3361,27 +3396,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       id: generateUuid(),
       leadId,
       timestamp: now.toISOString(),
-      type: 'contact',
+      type: 'note',
       title: 'Mensagem Visualizada',
       text: auditText,
       authorName: author,
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
-    };
+      metadata: { isViewAudit: true },
+    } as any;
 
     setLeads(prev => {
-      let changed = false;
       const updated = prev.map(l => {
-        if (l.id === leadId && (l.unreadCount || 0) > 0) {
-          changed = true;
+        if (l.id === leadId) {
           const merged = mergeAndSortActivities(l.activities || [], [newAct], leadId);
           return { ...l, unreadCount: 0, activities: merged };
         }
         return l;
       });
-      if (changed) {
-        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-      }
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
       return updated;
     });
 
@@ -8079,6 +8111,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       sendCollaboratorInvite,
       userPinnedFunnelIds,
       togglePinFunnel,
+      reorderPinnedFunnels,
       isFunnelPinned,
       forceLogout: (reason?: string) => {
         logout();
