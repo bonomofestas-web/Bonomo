@@ -1138,10 +1138,16 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     if (boardRef.current) {
       const rect = boardRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       if (x < 75) {
-        boardRef.current.scrollLeft -= 16;
+        boardRef.current.scrollLeft -= 18;
       } else if (rect.width - x < 75) {
-        boardRef.current.scrollLeft += 16;
+        boardRef.current.scrollLeft += 18;
+      }
+      if (y < 70) {
+        boardRef.current.scrollTop -= 20;
+      } else if (rect.height - y < 70) {
+        boardRef.current.scrollTop += 20;
       }
     }
   };
@@ -2754,15 +2760,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 alignItems: 'stretch',
                 gap: '12px',
                 overflowX: 'auto',
-                overflowY: 'hidden',
+                overflowY: 'auto',
                 flex: 1,
                 height: 'calc(100vh - 110px)',
                 maxHeight: 'calc(100vh - 110px)',
                 width: '100%',
                 paddingLeft: '16px',
                 paddingRight: '40px',
-                paddingTop: '8px',
-                paddingBottom: '16px',
+                paddingTop: '0px',
+                paddingBottom: '40px',
                 boxSizing: 'border-box',
                 cursor: isDraggingBoard ? 'grabbing' : 'grab',
                 userSelect: isDraggingBoard ? 'none' : 'auto',
@@ -2795,26 +2801,29 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       onClick={() => toggleColumnCollapse(col.id)}
                       title={`Clique para expandir a etapa "${col.title.toUpperCase()}" (${columnLeads.length} leads)`}
                       style={{
-                        background: 'var(--adm-bg-card)',
+                        background: 'var(--adm-bg-card, #1E1A29)',
                         border: '1px solid var(--adm-border)',
                         borderTop: `3px solid ${col.headerColor}`,
                         borderRadius: '8px',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        alignSelf: 'stretch',
-                        height: '100%',
+                        alignSelf: 'flex-start',
+                        position: 'sticky',
+                        top: '0px',
+                        zIndex: 30,
                         width: '40px',
                         minWidth: '40px',
                         maxWidth: '40px',
                         flex: '0 0 40px',
                         padding: '10px 3px',
                         cursor: 'pointer',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
                         gap: '10px',
                         transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                         animation: 'fadeIn 0.18s ease-out',
                         userSelect: 'none',
+                        minHeight: '340px',
                         boxSizing: 'border-box',
                       }}
                     >
@@ -2875,7 +2884,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       display: 'flex',
                       flexDirection: 'column',
                       alignSelf: 'stretch',
-                      height: '100%',
                       width: isSlim ? '40px' : '280px',
                       minWidth: isSlim ? '40px' : '280px',
                       maxWidth: isSlim ? '40px' : '280px',
@@ -2883,30 +2891,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       gap: '6px',
                       boxShadow: 'none',
                       position: 'relative',
-                      overflow: 'hidden',
                       transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), flex 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxSizing: 'border-box',
                     }}
                   >
-                    {/* Column Header - Fixo no topo da coluna */}
+                    {/* Column Header - Fixo Sticky no topo sincronizado */}
                     <div 
                       onClick={() => toggleColumnCollapse(col.id)}
                       title={`Clique para minimizar a etapa "${col.title.toUpperCase()}"`}
                       style={{
-                        padding: '7px 9px',
+                        padding: '8px 10px',
                         borderRadius: '8px',
                         border: '1px solid var(--adm-border)',
                         borderTop: `3px solid ${col.headerColor}`,
                         backgroundColor: 'var(--adm-bg-card, #1E1A29)',
-                        backgroundImage: col.bgColor ? `linear-gradient(${col.bgColor}, ${col.bgColor})` : undefined,
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '2px',
                         cursor: 'pointer',
                         userSelect: 'none',
+                        position: 'sticky',
+                        top: '0px',
+                        zIndex: 30,
                         flexShrink: 0,
-                        zIndex: 2,
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
                         overflow: 'hidden',
                         whiteSpace: 'nowrap',
                       }}
@@ -3050,18 +3058,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </span>
                     </div>
 
-                    {/* Cards Container - Rolagem vertical independente por coluna */}
+                    {/* Cards Container - Sem scroll interno, tudo rola junto no Kanban */}
                     <div 
-                      className="custom-scrollbar"
                       style={{
-                        padding: '2px 4px 20px 2px',
+                        padding: '4px 0 24px 0',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '6px',
                         flex: 1,
-                        minHeight: 0,
-                        overflowY: 'auto',
-                        overflowX: 'hidden',
                         opacity: isSlim ? 0 : 1,
                         transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
                         transition: 'opacity 0.20s ease, transform 0.20s ease',
@@ -3078,6 +3082,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           borderRadius: '8px',
                           lineHeight: 1.4,
                           background: 'transparent',
+                          minHeight: '180px',
                           flex: 1,
                           display: 'flex',
                           alignItems: 'center',
