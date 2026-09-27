@@ -385,10 +385,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
-          background: '#F1F5F9',
+          background: 'var(--adm-bg-surface, #F1F5F9)',
           padding: '4px',
           borderRadius: '10px',
-          border: '1px solid #E2E8F0',
+          border: '1px solid var(--adm-border, #E2E8F0)',
         }}>
           {/* 1. Kanban Mode ||' */}
           <button
@@ -397,9 +397,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              background: viewMode === 'kanban' ? '#FFFFFF' : 'transparent',
-              border: viewMode === 'kanban' ? '1px solid #CBD5E1' : '1px solid transparent',
-              color: viewMode === 'kanban' ? '#0284C7' : '#64748B',
+              background: viewMode === 'kanban' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'kanban' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'kanban' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               fontWeight: 800,
               fontSize: '0.82rem',
@@ -422,9 +422,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              background: viewMode === 'table' ? '#FFFFFF' : 'transparent',
-              border: viewMode === 'table' ? '1px solid #CBD5E1' : '1px solid transparent',
-              color: viewMode === 'table' ? '#0284C7' : '#64748B',
+              background: viewMode === 'table' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'table' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'table' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               fontWeight: 800,
               fontSize: '0.82rem',
@@ -446,9 +446,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              background: viewMode === 'day' ? '#FFFFFF' : 'transparent',
-              border: viewMode === 'day' ? '1px solid #CBD5E1' : '1px solid transparent',
-              color: viewMode === 'day' ? '#0284C7' : '#64748B',
+              background: viewMode === 'day' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'day' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'day' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               fontWeight: 800,
               fontSize: '0.74rem',
@@ -467,9 +467,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              background: viewMode === 'week' ? '#FFFFFF' : 'transparent',
-              border: viewMode === 'week' ? '1px solid #CBD5E1' : '1px solid transparent',
-              color: viewMode === 'week' ? '#0284C7' : '#64748B',
+              background: viewMode === 'week' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'week' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'week' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               fontWeight: 800,
               fontSize: '0.74rem',
@@ -488,9 +488,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             style={{
               padding: '6px 12px',
               borderRadius: '8px',
-              background: viewMode === 'month' ? '#FFFFFF' : 'transparent',
-              border: viewMode === 'month' ? '1px solid #CBD5E1' : '1px solid transparent',
-              color: viewMode === 'month' ? '#0284C7' : '#64748B',
+              background: viewMode === 'month' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'month' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'month' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               fontWeight: 800,
               fontSize: '0.74rem',
@@ -620,7 +620,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         {/* Center-Left: Quick Search & "Novo filtro" Button */}
         <div style={{ flex: 1, maxWidth: '380px', position: 'relative' }} ref={filterDropdownRef}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={15} color="#94A3B8" style={{ position: 'absolute', left: '12px', pointerEvents: 'none' }} />
+            <Search size={15} color="var(--adm-text-muted, #94A3B8)" style={{ position: 'absolute', left: '12px', pointerEvents: 'none' }} />
             <input
               type="text"
               value={searchTerm}
@@ -630,10 +630,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 width: '100%',
                 padding: '8px 80px 8px 36px',
                 borderRadius: '10px',
-                border: '1px solid #CBD5E1',
-                background: '#F8FAFC',
+                border: '1px solid var(--adm-border, #CBD5E1)',
+                background: 'var(--adm-bg-surface, #F8FAFC)',
                 fontSize: '0.80rem',
-                color: '#0F172A',
+                color: 'var(--adm-text-title, #0F172A)',
                 outline: 'none',
                 boxSizing: 'border-box',
               }}

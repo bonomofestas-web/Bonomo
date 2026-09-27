@@ -215,8 +215,8 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: '#FFFFFF',
-      border: '1px solid #E2E8F0',
+      background: 'var(--adm-bg-card, #FFFFFF)',
+      border: '1px solid var(--adm-border, #E2E8F0)',
       borderRadius: '16px',
       margin: '16px 24px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
@@ -227,8 +227,8 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 20px',
-        borderBottom: '1px solid #E2E8F0',
-        background: '#F8FAFC',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -237,9 +237,9 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -249,7 +249,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.2px' }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
             {formattedHeaderDate}
           </span>
 
@@ -259,9 +259,9 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -278,9 +278,9 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
           style={{
             padding: '5px 12px',
             borderRadius: '8px',
-            background: isToday ? '#E0F2FE' : '#FFFFFF',
-            border: isToday ? '1px solid #0284C7' : '1px solid #CBD5E1',
-            color: isToday ? '#0284C7' : '#64748B',
+            background: isToday ? 'rgba(2, 132, 199, 0.15)' : 'var(--adm-bg-card, #FFFFFF)',
+            border: isToday ? '1px solid #0284C7' : '1px solid var(--adm-border, #CBD5E1)',
+            color: isToday ? '#0284C7' : 'var(--adm-text-muted, #64748B)',
             fontSize: '0.74rem',
             fontWeight: 800,
             cursor: 'pointer',
@@ -344,7 +344,7 @@ export const AdminCalendarDayView: React.FC<AdminCalendarDayViewProps> = ({
 
       {/* Timeline Scrollable Grid (07:00 to 23:00 in 30min intervals) */}
       <div 
-        style={{ flex: 1, overflowY: 'auto', position: 'relative', background: '#FFFFFF' }}
+        style={{ flex: 1, overflowY: 'auto', position: 'relative', background: 'var(--adm-bg-card, #FFFFFF)' }}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';

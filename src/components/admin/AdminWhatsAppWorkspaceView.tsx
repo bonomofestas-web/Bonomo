@@ -811,9 +811,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     // For Post-Sale: only filter by global activeVenueId or filterVenueId, never by a commercial funnel's venueId
     const globalVenueFilter = (activeVenueId !== 'all' && activeVenueId !== 'multi') ? activeVenueId : null;
+
+    // Conjunto de unidades autorizadas para o funil ativo (incluindo compartilhamento multi-unidades, ex: ERL / Rose)
+    const funnelAllowedVenues = (() => {
+      if (!currentFunnel || isPostSaleFunnel) return null;
+      const s = new Set<string>();
+      if (currentFunnel.venueId && currentFunnel.venueId !== 'all') {
+        s.add(currentFunnel.venueId);
+      }
+      if (Array.isArray(currentFunnel.sharedVenueIds)) {
+        currentFunnel.sharedVenueIds.forEach(id => s.add(id));
+      }
+      if (Array.isArray((currentFunnel as any).shared_venue_ids)) {
+        (currentFunnel as any).shared_venue_ids.forEach((id: string) => s.add(id));
+      }
+      return s.size > 0 ? s : null;
+    })();
+
     const targetVenueId = isPostSaleFunnel
       ? (filterVenueId !== 'all' ? filterVenueId : globalVenueFilter)
-      : ((currentFunnel?.venueId && currentFunnel.venueId !== 'all') ? currentFunnel.venueId : globalVenueFilter);
+      : (filterVenueId !== 'all' ? filterVenueId : globalVenueFilter);
 
     const term = (isEmbeddedInFunnel && searchQuery) ? searchQuery : searchTerm;
     const hasSearch = Boolean(term && term.trim());
@@ -843,13 +860,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       // 1. Funnel & Venue Matching
       if (!isPostSaleFunnel) {
         if (currentFunnel && lead.funnelId) {
-          if (lead.funnelId !== currentFunnel.id) {
+          const leadFunnelMatches =
+            lead.funnelId === currentFunnel.id ||
+            lead.funnelId.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim();
+          if (!leadFunnelMatches) {
             if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
           }
         }
       }
 
-      if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
+      // Se o usuário filtrou explicitamente por uma casa específica no dropdown de filtro:
+      if (filterVenueId !== 'all' && lead.venueId && lead.venueId !== filterVenueId) {
+        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+      } else if (!isPostSaleFunnel && currentFunnel && funnelAllowedVenues) {
+        // Aceita qualquer lead pertencente à casa principal OU às casas compartilhadas deste funil comercial (ex: ERL / Rose)
+        if (lead.venueId && !funnelAllowedVenues.has(lead.venueId)) {
+          if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+        }
+      } else if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
         if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
@@ -974,29 +1002,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Sincronização inteligente de seleção: preserva a escolha manual do usuário e do lead recém-criado
   useEffect(() => {
-    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban ou criou novo lead), atualiza a seleção
+    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban ou criou novo lead)
     if (initialLeadId && initialLeadId !== lastInitialLeadIdRef.current) {
       lastInitialLeadIdRef.current = initialLeadId;
       setSelectedLeadId(initialLeadId);
       return;
     }
 
-    // Se temos um initialLeadId ativo e ele está presente em filteredLeads mas não está selecionado, seleciona ele
-    if (initialLeadId && selectedLeadId !== initialLeadId && filteredLeads.some(l => l.id === initialLeadId)) {
+    // Se ainda não temos seleção mas temos initialLeadId válido presente em filteredLeads
+    if (!selectedLeadId && initialLeadId && filteredLeads.some(l => l.id === initialLeadId)) {
       setSelectedLeadId(initialLeadId);
       return;
     }
 
-    // Se temos um initialLeadId e ele é a seleção atual, NUNCA reseta para filteredLeads[0]
-    if (initialLeadId && selectedLeadId === initialLeadId) {
+    // Se o lead selecionado ainda existe na lista filtrada, preserva estritamente a escolha manual do usuário!
+    if (selectedLeadId && filteredLeads.some(l => l.id === selectedLeadId)) {
       return;
     }
 
-    // Se a lista mudou e o lead selecionado não existe mais na lista filtrada, seleciona o primeiro
+    // Fallback: se não há seleção ou o lead selecionado saiu do filtro, seleciona o primeiro
     if (filteredLeads.length > 0) {
-      if (!selectedLeadId || !filteredLeads.some(l => l.id === selectedLeadId)) {
-        setSelectedLeadId(filteredLeads[0].id);
-      }
+      setSelectedLeadId(filteredLeads[0].id);
     } else {
       setSelectedLeadId(null);
     }
@@ -1144,6 +1170,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       setSelectedRecipientPhone('');
     }
   }, [selectedLead?.id, availableRecipients]);
+
+  // Marca conversa como lida e emite auditoria se houver mensagens não lidas
+  useEffect(() => {
+    if (selectedLead && (selectedLead.unreadCount || 0) > 0) {
+      markLeadAsRead(selectedLead.id);
+    }
+  }, [selectedLead?.id, selectedLead?.unreadCount, markLeadAsRead]);
 
   const [isSenderDropdownOpen, setIsSenderDropdownOpen] = useState(false);
   const [isRecipientDropdownOpen, setIsRecipientDropdownOpen] = useState(false);
@@ -3391,52 +3424,66 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             })() : ''}
                           </div>
                         </div>
-                        {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
-                          <div style={{
-                            background: '#10B981',
-                            color: '#fff',
-                            fontSize: '0.65rem',
-                            fontWeight: 800,
-                            borderRadius: '10px',
-                            padding: '1px 5px',
-                            minWidth: '18px',
-                            textAlign: 'center',
-                            lineHeight: '1.2',
-                          }}>
-                            {lead.unreadCount}
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    {/* 2. Linha Intermediária: Prévia Real da Mensagem */}
+                    {/* 2. Linha Intermediária: Prévia Real da Mensagem + Badge de Não Lidas na Mesma Linha à Direita */}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      minHeight: '14px',
+                      justifyContent: 'space-between',
+                      gap: '6px',
+                      minHeight: '16px',
                       overflow: 'hidden',
                     }}>
-                      {isAudioMsg ? (
-                        <Mic size={11} color="#10B981" style={{ flexShrink: 0 }} />
-                      ) : isImageMsg ? (
-                        <ImageIcon size={11} color="#3B82F6" style={{ flexShrink: 0 }} />
-                      ) : isVideoMsg ? (
-                        <Video size={11} color="#EC4899" style={{ flexShrink: 0 }} />
-                      ) : isDocMsg ? (
-                        <FileText size={11} color="#8B5CF6" style={{ flexShrink: 0 }} />
-                      ) : null}
-                      <span style={{
-                        fontSize: '0.72rem',
-                        color: (lead.unreadCount && lead.unreadCount > 0) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                        fontWeight: (lead.unreadCount && lead.unreadCount > 0) ? 700 : 500,
-                        whiteSpace: 'nowrap',
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
                         overflow: 'hidden',
-                        textOverflow: 'ellipsis',
                         flex: 1,
+                        minWidth: 0,
                       }}>
-                        {cleanPreviewText || (lastActivity?.title || 'Sem mensagens recentes')}
-                      </span>
+                        {isAudioMsg ? (
+                          <Mic size={11} color="#10B981" style={{ flexShrink: 0 }} />
+                        ) : isImageMsg ? (
+                          <ImageIcon size={11} color="#3B82F6" style={{ flexShrink: 0 }} />
+                        ) : isVideoMsg ? (
+                          <Video size={11} color="#EC4899" style={{ flexShrink: 0 }} />
+                        ) : isDocMsg ? (
+                          <FileText size={11} color="#8B5CF6" style={{ flexShrink: 0 }} />
+                        ) : null}
+                        <span style={{
+                          fontSize: '0.72rem',
+                          color: (lead.unreadCount && lead.unreadCount > 0) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                          fontWeight: (lead.unreadCount && lead.unreadCount > 0) ? 700 : 500,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {cleanPreviewText || (lastActivity?.title || 'Sem mensagens recentes')}
+                        </span>
+                      </div>
+                      {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
+                        <div style={{
+                          background: '#10B981',
+                          color: '#fff',
+                          fontSize: '0.65rem',
+                          fontWeight: 800,
+                          borderRadius: '10px',
+                          padding: '1px 6px',
+                          minWidth: '18px',
+                          height: '18px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textAlign: 'center',
+                          lineHeight: '1',
+                          flexShrink: 0,
+                        }}>
+                          {lead.unreadCount}
+                        </div>
+                      )}
                     </div>
 
                     {/* 3. Linha Inferior: Etiquetas à Esquerda + Avatar do Responsável no Canto Inferior Direito */}
@@ -4097,6 +4144,36 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               <img src="/logo_f5.png" alt="F5" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
                               <div style={{ fontSize: '0.74rem', color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
                                 <strong style={{ color: isDarkMode ? 'var(--adm-accent)' : '#b45309' }}>{act.title || 'Automação F5 System'}:</strong> {act.text}
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      }
+
+                      const isViewAudit = act.title === 'Mensagem Visualizada' || (act.text && act.text.includes('visualizou esta mensagem'));
+                      if (isViewAudit) {
+                        return (
+                          <React.Fragment key={act.id}>
+                            {renderDateDivider()}
+                            <div style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              margin: '6px 0',
+                            }}>
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '3px 12px',
+                                borderRadius: '999px',
+                                background: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+                                color: isDarkMode ? '#8696a0' : '#64748b',
+                                fontSize: '0.68rem',
+                                fontWeight: 500,
+                              }}>
+                                <span>{act.text}</span>
                               </div>
                             </div>
                           </React.Fragment>
@@ -6749,12 +6826,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      background: '#202c33',
+                      background: isDarkMode ? '#202c33' : '#ffffff',
                       borderRadius: '24px',
                       padding: '6px 14px',
                       gap: '12px',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                      border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e2e8f0',
+                      boxShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
                     }}>
                       <button
                         type="button"
@@ -6774,7 +6851,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#8696a0',
+                          color: isDarkMode ? '#8696a0' : '#64748b',
                           cursor: 'pointer',
                           padding: '6px',
                           borderRadius: '50%',
@@ -6795,7 +6872,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           boxShadow: isNoteAudioPaused ? 'none' : '0 0 8px #ef4444',
                           animation: isNoteAudioPaused ? 'none' : 'pulse 1.2s infinite',
                         }} />
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isDarkMode ? '#e9edef' : '#111827', fontFamily: 'monospace' }}>
                           {Math.floor(noteRecordingSeconds / 60)}:{(noteRecordingSeconds % 60).toString().padStart(2, '0')}
                         </span>
                       </div>
@@ -6807,7 +6884,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             style={{
                               width: '3px',
                               borderRadius: '2px',
-                              backgroundColor: isNoteAudioPaused ? '#8696a0' : 'var(--adm-accent, #6366F1)',
+                              backgroundColor: isNoteAudioPaused ? (isDarkMode ? '#8696a0' : '#94a3b8') : 'var(--adm-accent, #6366F1)',
                               height: isNoteAudioPaused ? '4px' : `${Math.max(4, (h * ((noteRecordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
                               transition: 'height 0.15s ease',
                             }}
@@ -7021,12 +7098,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      background: '#202c33',
+                      background: isDarkMode ? '#202c33' : '#ffffff',
                       borderRadius: '24px',
                       padding: '6px 14px',
                       gap: '12px',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+                      border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e2e8f0',
+                      boxShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
                     }}>
                       {/* Botão de Lixeira (Cancelar e Descartar Áudio) */}
                       <button
@@ -7036,7 +7113,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#8696a0',
+                          color: isDarkMode ? '#8696a0' : '#64748b',
                           cursor: 'pointer',
                           padding: '6px',
                           borderRadius: '50%',
@@ -7046,7 +7123,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           transition: 'color 0.15s ease',
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#8696a0'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#64748b'}
                       >
                         <Trash2 size={18} />
                       </button>
@@ -7061,7 +7138,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           boxShadow: isAudioPaused ? 'none' : '0 0 8px #ef4444',
                           animation: isAudioPaused ? 'none' : 'pulse 1.2s infinite',
                         }} />
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e9edef', fontFamily: 'monospace' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isDarkMode ? '#e9edef' : '#111827', fontFamily: 'monospace' }}>
                           {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
                         </span>
                       </div>
@@ -7082,7 +7159,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             style={{
                               width: '3px',
                               borderRadius: '2px',
-                              backgroundColor: isAudioPaused ? '#8696a0' : '#00a884',
+                              backgroundColor: isAudioPaused ? (isDarkMode ? '#8696a0' : '#94a3b8') : '#00a884',
                               height: isAudioPaused ? '4px' : `${Math.max(4, (h * ((recordingSeconds % 3 + 1) * 0.4 + 0.3)))}px`,
                               transition: 'height 0.15s ease',
                             }}
@@ -7098,7 +7175,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: '#8696a0',
+                          color: isDarkMode ? '#8696a0' : '#64748b',
                           cursor: 'pointer',
                           padding: '6px',
                           borderRadius: '50%',

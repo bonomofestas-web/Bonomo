@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, UserPlus, Phone, User, DollarSign, Building2, 
-  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders 
+  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { LeadSource, CrmStage } from '../../types/admin';
@@ -28,11 +28,16 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   const { 
     venues, 
     funnels, 
+    allFunnels,
     sources, 
     activeVenueId, 
     currentUser,
     createLead 
   } = useAdminState();
+
+  const funnelsPool = useMemo(() => {
+    return (allFunnels && allFunnels.length > 0) ? allFunnels : funnels;
+  }, [allFunnels, funnels]);
 
   const [mode, setMode] = useState<'quick' | 'full'>('quick');
   const [name, setName] = useState('');
@@ -49,19 +54,19 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   // Localiza o funil atual em que o usuário está
   const targetFunnel = useMemo(() => {
     if (defaultFunnelId) {
-      const found = funnels.find(f => 
+      const found = funnelsPool.find(f => 
         f.id === defaultFunnelId || 
         f.name.toLowerCase().trim() === defaultFunnelId.toLowerCase().trim()
       );
       if (found) return found;
     }
     if (currentFunnelName) {
-      const found = funnels.find(f => f.name.toLowerCase().trim() === currentFunnelName.toLowerCase().trim());
+      const found = funnelsPool.find(f => f.name.toLowerCase().trim() === currentFunnelName.toLowerCase().trim());
       if (found) return found;
     }
     // Fallback: funil primário comercial ou primeiro disponível
-    return funnels.find(f => f.isPrimary && !f.isPostSale) || funnels.find(f => !f.isPostSale) || funnels[0] || null;
-  }, [funnels, defaultFunnelId, currentFunnelName]);
+    return funnelsPool.find(f => f.isPrimary && !f.isPostSale) || funnelsPool.find(f => !f.isPostSale) || funnelsPool[0] || null;
+  }, [funnelsPool, defaultFunnelId, currentFunnelName]);
 
   // Nome de exibição do funil
   const displayFunnelName = currentFunnelName || targetFunnel?.name || 'Funil Comercial';
@@ -102,12 +107,19 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     setEstimatedBudget('');
     setNotes('');
 
-    // Determinar a casa de festas padrão
-    const initialVenue = allowedVenuesForFunnel.length === 1
-      ? allowedVenuesForFunnel[0].id
-      : (defaultVenueId && defaultVenueId !== 'all'
-        ? defaultVenueId
-        : (activeVenueId && activeVenueId !== 'all' ? activeVenueId : (allowedVenuesForFunnel[0]?.id || venues[0]?.id || '')));
+    // Determinar a casa de festas padrão: se o funil alvo estiver vinculado a uma casa específica, prioriza ela
+    let initialVenue = '';
+    if (targetFunnel?.venueId && targetFunnel.venueId !== 'all') {
+      initialVenue = targetFunnel.venueId;
+    } else if (allowedVenuesForFunnel.length === 1) {
+      initialVenue = allowedVenuesForFunnel[0].id;
+    } else if (defaultVenueId && defaultVenueId !== 'all') {
+      initialVenue = defaultVenueId;
+    } else if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+      initialVenue = activeVenueId;
+    } else {
+      initialVenue = allowedVenuesForFunnel[0]?.id || venues[0]?.id || '';
+    }
     setVenueId(initialVenue);
 
     setSource('cadastro_interno');
@@ -170,7 +182,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
       return;
     }
 
-    const finalFunnelId = targetFunnel?.id || defaultFunnelId || funnels[0]?.id || '';
+    const finalFunnelId = defaultFunnelId || targetFunnel?.id || funnelsPool[0]?.id || '';
 
     setIsSubmitting(true);
 
@@ -288,22 +300,23 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
               <h2 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
                 {mode === 'quick' ? 'Cadastro Rápido de Lead' : 'Cadastro Personalizado de Lead'}
               </h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                  Inserindo no:
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                 <span 
                   style={{
                     fontSize: '0.72rem',
                     fontWeight: 700,
-                    color: '#0284C7',
-                    background: 'rgba(2, 132, 199, 0.08)',
-                    padding: '2px 7px',
-                    borderRadius: '5px',
-                    border: '1px solid rgba(2, 132, 199, 0.2)',
+                    color: targetFunnel?.badgeColor || 'var(--adm-accent, #0284C7)',
+                    background: targetFunnel?.badgeColor ? `${targetFunnel.badgeColor}18` : 'rgba(2, 132, 199, 0.08)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: `1px solid ${targetFunnel?.badgeColor ? `${targetFunnel.badgeColor}35` : 'rgba(2, 132, 199, 0.2)'}`,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
                   }}
                 >
-                  {displayFunnelName}{isVenueFixedByFunnel ? ` • ${fixedVenueName}` : ''}
+                  <GitBranch size={11} />
+                  <span>Destino: <strong>{displayFunnelName}</strong>{isVenueFixedByFunnel ? ` • ${fixedVenueName}` : ''}</span>
                 </span>
               </div>
             </div>

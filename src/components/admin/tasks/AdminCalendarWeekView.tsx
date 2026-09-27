@@ -231,8 +231,8 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: '#FFFFFF',
-      border: '1px solid #E2E8F0',
+      background: 'var(--adm-bg-card, #FFFFFF)',
+      border: '1px solid var(--adm-border, #E2E8F0)',
       borderRadius: '16px',
       margin: '16px 24px',
       userSelect: 'none',
@@ -245,8 +245,8 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 20px',
-        borderBottom: '1px solid #E2E8F0',
-        background: '#F8FAFC',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -255,9 +255,9 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -267,7 +267,7 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.2px' }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
             {weekRangeLabel}
           </span>
 
@@ -277,9 +277,9 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -296,9 +296,9 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
           style={{
             padding: '5px 12px',
             borderRadius: '8px',
-            background: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            color: '#64748B',
+            background: 'var(--adm-bg-card, #FFFFFF)',
+            border: '1px solid var(--adm-border, #CBD5E1)',
+            color: 'var(--adm-text-muted, #64748B)',
             fontSize: '0.74rem',
             fontWeight: 800,
             cursor: 'pointer',
@@ -356,15 +356,15 @@ export const AdminCalendarWeekView: React.FC<AdminCalendarWeekViewProps> = ({
         overflowY: 'auto',
         display: 'flex',
         position: 'relative',
-        background: '#FFFFFF',
+        background: 'var(--adm-bg-card, #FFFFFF)',
       }}>
         {/* Time Gutter (Left) with 30-min sub-markers */}
         <div style={{
           width: `${GUTTER_WIDTH}px`,
           flexShrink: 0,
-          borderRight: '1px solid #E2E8F0',
+          borderRight: '1px solid var(--adm-border, #E2E8F0)',
           userSelect: 'none',
-          background: '#F8FAFC',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
         }}>
           {hours.map(hour => (
             <div

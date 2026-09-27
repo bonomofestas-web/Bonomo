@@ -253,25 +253,25 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
       <div style={{
-        background: '#0F111A',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
+        background: 'var(--adm-bg-card, #FFFFFF)',
+        border: '1px solid var(--adm-border, #E2E8F0)',
         borderRadius: '16px',
         width: '100%',
         maxWidth: '560px',
         maxHeight: '92vh',
         overflowY: 'auto',
-        boxShadow: '0 24px 60px rgba(0, 0, 0, 0.6)',
+        boxShadow: '0 24px 60px rgba(0, 0, 0, 0.3)',
         display: 'flex',
         flexDirection: 'column',
       }}>
         {/* Cabeçalho */}
         <div style={{
           padding: '18px 22px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%)',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
@@ -288,11 +288,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               {type === 'visit' ? <CalendarIcon size={20} /> : <Utensils size={20} />}
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#FFFFFF' }}>
+              <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
                 Agendar {type === 'visit' ? 'Visita Comercial' : 'Degustação'}
               </h3>
-              <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '2px 0 0 0' }}>
-                Lead: <strong style={{ color: '#FFFFFF' }}>{lead.name}</strong> • {targetVenue?.name || 'Unidade'}
+              <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)', margin: '2px 0 0 0' }}>
+                Lead: <strong style={{ color: 'var(--adm-text-title, #0F172A)' }}>{lead.name}</strong> • {targetVenue?.name || 'Unidade'}
               </p>
             </div>
           </div>
@@ -302,7 +302,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#94A3B8',
+              color: 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
               padding: '6px',
               borderRadius: '8px',
@@ -322,9 +322,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               style={{
                 padding: '9px 12px',
                 borderRadius: '10px',
-                border: `1.5px solid ${type === 'visit' ? '#38BDF8' : 'rgba(255,255,255,0.1)'}`,
-                background: type === 'visit' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.03)',
-                color: type === 'visit' ? '#38BDF8' : '#94A3B8',
+                border: `1.5px solid ${type === 'visit' ? '#38BDF8' : 'var(--adm-border, #E2E8F0)'}`,
+                background: type === 'visit' ? 'rgba(56, 189, 248, 0.15)' : 'var(--adm-bg-surface, #F8FAFC)',
+                color: type === 'visit' ? '#38BDF8' : 'var(--adm-text-muted, #64748B)',
                 fontSize: '0.80rem',
                 fontWeight: 800,
                 display: 'flex',
@@ -345,9 +345,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               style={{
                 padding: '9px 12px',
                 borderRadius: '10px',
-                border: `1.5px solid ${type === 'tasting' ? '#F59E0B' : 'rgba(255,255,255,0.1)'}`,
-                background: type === 'tasting' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255,255,255,0.03)',
-                color: type === 'tasting' ? '#F59E0B' : '#94A3B8',
+                border: `1.5px solid ${type === 'tasting' ? '#F59E0B' : 'var(--adm-border, #E2E8F0)'}`,
+                background: type === 'tasting' ? 'rgba(245, 158, 11, 0.15)' : 'var(--adm-bg-surface, #F8FAFC)',
+                color: type === 'tasting' ? '#F59E0B' : 'var(--adm-text-muted, #64748B)',
                 fontSize: '0.80rem',
                 fontWeight: 800,
                 display: 'flex',
@@ -389,22 +389,22 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           {/* Calendário Visual Interativo de Seleção de Data */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CalendarIcon size={13} color={themeColor} />
                 <span>Selecione a Data Disponível</span>
               </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '0.66rem', color: '#94A3B8', marginRight: '6px', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted, #64748B)', marginRight: '6px', fontWeight: 600 }}>
                   Cinza = Indisponível / Lotado
                 </span>
                 <button
                   type="button"
                   onClick={handlePrevMonth}
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
+                    border: '1px solid var(--adm-border, #E2E8F0)',
                     borderRadius: '6px',
-                    color: '#FFFFFF',
+                    color: 'var(--adm-text-title, #0F172A)',
                     width: '24px',
                     height: '24px',
                     display: 'flex',
@@ -415,17 +415,17 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 >
                   <ChevronLeft size={13} />
                 </button>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', minWidth: '110px', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', minWidth: '110px', textAlign: 'center' }}>
                   {formattedMonthTitle}
                 </span>
                 <button
                   type="button"
                   onClick={handleNextMonth}
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
+                    border: '1px solid var(--adm-border, #E2E8F0)',
                     borderRadius: '6px',
-                    color: '#FFFFFF',
+                    color: 'var(--adm-text-title, #0F172A)',
                     width: '24px',
                     height: '24px',
                     display: 'flex',
@@ -441,8 +441,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
             {/* Grid dos Dias */}
             <div style={{
-              background: '#141622',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'var(--adm-bg-surface, #F8FAFC)',
+              border: '1px solid var(--adm-border, #E2E8F0)',
               borderRadius: '12px',
               padding: '10px',
             }}>
@@ -479,18 +479,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         border: isSelected 
                           ? `1.5px solid ${themeColor}`
                           : isAvailable 
-                          ? '1px solid rgba(255, 255, 255, 0.15)' 
-                          : '1px solid rgba(255, 255, 255, 0.04)',
+                          ? '1px solid var(--adm-border, #E2E8F0)' 
+                          : '1px solid transparent',
                         background: isSelected
                           ? themeColor
                           : isAvailable
-                          ? 'rgba(255, 255, 255, 0.05)'
-                          : 'rgba(255, 255, 255, 0.02)',
+                          ? 'var(--adm-bg-card, #FFFFFF)'
+                          : 'transparent',
                         color: isSelected
-                          ? '#0F172A'
-                          : isAvailable
                           ? '#FFFFFF'
-                          : '#475569',
+                          : isAvailable
+                          ? 'var(--adm-text-title, #0F172A)'
+                          : 'var(--adm-text-muted, #94A3B8)',
                         cursor: isAvailable ? 'pointer' : 'not-allowed',
                         display: 'flex',
                         flexDirection: 'column',
@@ -523,7 +523,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           {/* Horários Disponíveis para a Data Selecionada */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#E2E8F0' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)' }}>
                 Horários Disponíveis em {selectedDate ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '...'}
               </label>
               {dayAvailability.slots.length > 0 && (
@@ -548,12 +548,12 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               </div>
             ) : dayAvailability.slots.length === 0 ? (
               <div style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px dashed rgba(255,255,255,0.15)',
+                background: 'var(--adm-bg-surface, #F8FAFC)',
+                border: '1px dashed var(--adm-border, #E2E8F0)',
                 borderRadius: '10px',
                 padding: '12px',
                 textAlign: 'center',
-                color: '#94A3B8',
+                color: 'var(--adm-text-muted, #64748B)',
                 fontSize: '0.76rem',
               }}>
                 Nenhum horário liberado nesta data.
@@ -577,13 +577,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                       style={{
                         padding: '8px 10px',
                         borderRadius: '8px',
-                        border: `1.5px solid ${isSelected ? themeColor : isAvail ? 'rgba(255,255,255,0.15)' : 'rgba(239,68,68,0.25)'}`,
+                        border: `1.5px solid ${isSelected ? themeColor : isAvail ? 'var(--adm-border, #E2E8F0)' : 'rgba(239,68,68,0.25)'}`,
                         background: isSelected 
                           ? (type === 'visit' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(245, 158, 11, 0.25)')
                           : isAvail 
-                          ? '#1A1824' 
+                          ? 'var(--adm-bg-card, #FFFFFF)' 
                           : 'rgba(239, 68, 68, 0.05)',
-                        color: isSelected ? '#FFFFFF' : isAvail ? '#FFFFFF' : '#64748B',
+                        color: isSelected ? 'var(--adm-text-title, #0F172A)' : isAvail ? 'var(--adm-text-title, #0F172A)' : 'var(--adm-text-muted, #94A3B8)',
                         cursor: isAvail ? 'pointer' : 'not-allowed',
                         display: 'flex',
                         flexDirection: 'column',
@@ -597,7 +597,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         <Clock size={12} />
                         {slot.time}
                       </span>
-                      <span style={{ fontSize: '0.62rem', color: isAvail ? '#94A3B8' : '#EF4444' }}>
+                      <span style={{ fontSize: '0.62rem', color: isAvail ? 'var(--adm-text-muted, #64748B)' : '#EF4444' }}>
                         {isAvail ? `${slot.remainingPax} PAX restantes` : 'Esgotado'}
                       </span>
                     </button>
@@ -611,7 +611,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {/* Campo Oficial PAX com Botões de Ajuste Rápido */}
             <div>
-              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
                 <Users size={13} color={themeColor} />
                 <span>Contagem de PAX (Total)</span>
               </label>
@@ -623,9 +623,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     width: '34px',
                     height: '36px',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: '#1A1824',
-                    color: '#FFFFFF',
+                    border: '1px solid var(--adm-border, #E2E8F0)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
+                    color: 'var(--adm-text-title, #0F172A)',
                     fontSize: '1rem',
                     fontWeight: 800,
                     cursor: 'pointer',
@@ -644,9 +644,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     height: '36px',
                     textAlign: 'center',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: '#1A1824',
-                    color: '#FFFFFF',
+                    border: '1px solid var(--adm-border, #E2E8F0)',
+                    background: 'var(--adm-bg-card, #FFFFFF)',
+                    color: 'var(--adm-text-title, #0F172A)',
                     fontSize: '0.90rem',
                     fontWeight: 900,
                     outline: 'none',
@@ -660,9 +660,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     width: '34px',
                     height: '36px',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: '#1A1824',
-                    color: '#FFFFFF',
+                    border: '1px solid var(--adm-border, #E2E8F0)',
+                    background: 'var(--adm-bg-surface, #F8FAFC)',
+                    color: 'var(--adm-text-title, #0F172A)',
                     fontSize: '1rem',
                     fontWeight: 800,
                     cursor: 'pointer',
@@ -671,14 +671,14 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   +
                 </button>
               </div>
-              <span style={{ fontSize: '0.62rem', color: '#94A3B8', marginTop: '3px', display: 'block' }}>
+              <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '3px', display: 'block' }}>
                 Lead + familiares presentes
               </span>
             </div>
 
             {/* Responsável pelo Atendimento */}
             <div>
-              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
                 <UserCheck size={13} color={themeColor} />
                 <span>Responsável</span>
               </label>
@@ -690,9 +690,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   height: '36px',
                   padding: '6px 10px',
                   borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: '#1A1824',
-                  color: '#FFFFFF',
+                  border: '1px solid var(--adm-border, #E2E8F0)',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  color: 'var(--adm-text-title, #0F172A)',
                   fontSize: '0.80rem',
                   outline: 'none',
                   boxSizing: 'border-box',
@@ -710,7 +710,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
           {/* Observações */}
           <div>
-            <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#E2E8F0', display: 'block', marginBottom: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)', display: 'block', marginBottom: '6px' }}>
               Observações / Preferências
             </label>
             <textarea
@@ -722,9 +722,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 width: '100%',
                 padding: '8px 12px',
                 borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: '#1A1824',
-                color: '#FFFFFF',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                background: 'var(--adm-bg-card, #FFFFFF)',
+                color: 'var(--adm-text-title, #0F172A)',
                 fontSize: '0.78rem',
                 outline: 'none',
                 resize: 'none',
@@ -760,8 +760,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 padding: '8px 16px',
                 borderRadius: '8px',
                 background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#94A3B8',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                color: 'var(--adm-text-muted, #64748B)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',

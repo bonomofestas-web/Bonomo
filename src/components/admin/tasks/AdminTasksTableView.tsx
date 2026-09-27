@@ -230,9 +230,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: '#FFFFFF',
+      background: 'var(--adm-bg-card, #FFFFFF)',
       borderRadius: '16px',
-      border: '1px solid #E2E8F0',
+      border: '1px solid var(--adm-border, #E2E8F0)',
       margin: '16px 24px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
     }}>
@@ -248,11 +248,11 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
             position: 'sticky',
             top: 0,
             zIndex: 10,
-            background: '#F8FAFC',
-            borderBottom: '1px solid #E2E8F0',
+            background: 'var(--adm-bg-surface, #F8FAFC)',
+            borderBottom: '1px solid var(--adm-border, #E2E8F0)',
             fontSize: '0.70rem',
             fontWeight: 800,
-            color: '#64748B',
+            color: 'var(--adm-text-muted, #64748B)',
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
           }}>
@@ -369,24 +369,24 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     const sdrAvatar = sdrCollab?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(sdrName)}&background=D97706&color=FFFFFF`;
 
                     // Dynamic row background based on presence in Visitas & Degustações
-                    let rowBg = idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA';
-                    let rowHoverBg = '#F0F9FF';
+                    let rowBg = idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)';
+                    let rowHoverBg = 'var(--adm-bg-surface, #F0F9FF)';
 
                     if (isVisitsContext && visitData) {
                       if (visitData.positiveCount === 2) {
-                        rowBg = '#F0FDF4'; // pastel green
-                        rowHoverBg = '#DCFCE7';
+                        rowBg = 'rgba(16, 185, 129, 0.12)';
+                        rowHoverBg = 'rgba(16, 185, 129, 0.2)';
                       } else if (visitData.positiveCount === 1) {
-                        rowBg = '#F0F9FF'; // pastel blue
-                        rowHoverBg = '#E0F2FE';
+                        rowBg = 'rgba(2, 132, 199, 0.12)';
+                        rowHoverBg = 'rgba(2, 132, 199, 0.2)';
                       } else {
-                        rowBg = idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA';
-                        rowHoverBg = '#F1F5F9';
+                        rowBg = idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)';
+                        rowHoverBg = 'var(--adm-bg-surface, #F1F5F9)';
                       }
                     }
 
                     if (isCompleted) {
-                      rowBg = '#F8FAFC';
+                      rowBg = 'var(--adm-bg-surface, #F8FAFC)';
                     }
 
                     return (
@@ -394,7 +394,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         key={task.id}
                         onClick={() => onOpenTask(task)}
                         style={{
-                          borderBottom: '1px solid #F1F5F9',
+                          borderBottom: '1px solid var(--adm-border, #F1F5F9)',
                           background: rowBg,
                           cursor: 'pointer',
                           transition: 'background 0.12s ease',

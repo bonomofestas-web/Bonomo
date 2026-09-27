@@ -140,8 +140,8 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      background: '#FFFFFF',
-      border: '1px solid #E2E8F0',
+      background: 'var(--adm-bg-card, #FFFFFF)',
+      border: '1px solid var(--adm-border, #E2E8F0)',
       borderRadius: '16px',
       margin: '16px 24px',
       userSelect: 'none',
@@ -154,8 +154,8 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '10px 20px',
-        borderBottom: '1px solid #E2E8F0',
-        background: '#F8FAFC',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
@@ -164,9 +164,9 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -176,7 +176,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
             <ChevronLeft size={16} />
           </button>
 
-          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.2px' }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', letterSpacing: '-0.2px' }}>
             {formattedMonthHeader}
           </span>
 
@@ -186,9 +186,9 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
             style={{
               padding: '6px',
               borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              color: '#334155',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -205,9 +205,9 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
           style={{
             padding: '5px 12px',
             borderRadius: '8px',
-            background: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            color: '#64748B',
+            background: 'var(--adm-bg-card, #FFFFFF)',
+            border: '1px solid var(--adm-border, #CBD5E1)',
+            color: 'var(--adm-text-muted, #64748B)',
             fontSize: '0.74rem',
             fontWeight: 800,
             cursor: 'pointer',
@@ -248,7 +248,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
         gridAutoRows: 'minmax(110px, 1fr)',
-        background: '#FFFFFF',
+        background: 'var(--adm-bg-card, #FFFFFF)',
       }}>
         {calendarDays.map((cell, index) => {
           const dayTasks = tasks.filter(t => t.dueDate === cell.dateStr);
@@ -264,25 +264,25 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 transition: 'background 0.15s ease',
-                background: !cell.isCurrentMonth ? '#F8FAFC' : cell.isToday ? '#EFF6FF' : '#FFFFFF',
-                borderRight: (index + 1) % 7 !== 0 ? '1px solid #E2E8F0' : 'none',
-                borderBottom: '1px solid #E2E8F0',
+                background: !cell.isCurrentMonth ? 'var(--adm-bg-surface, #F8FAFC)' : cell.isToday ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-card, #FFFFFF)',
+                borderRight: (index + 1) % 7 !== 0 ? '1px solid var(--adm-border, #E2E8F0)' : 'none',
+                borderBottom: '1px solid var(--adm-border, #E2E8F0)',
                 opacity: !cell.isCurrentMonth ? 0.6 : 1,
                 cursor: 'pointer',
                 boxSizing: 'border-box',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = cell.isToday ? '#DBEAFE' : '#F1F5F9';
+                e.currentTarget.style.background = cell.isToday ? 'rgba(2, 132, 199, 0.2)' : 'var(--adm-bg-surface, #F1F5F9)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = !cell.isCurrentMonth ? '#F8FAFC' : cell.isToday ? '#EFF6FF' : '#FFFFFF';
+                e.currentTarget.style.background = !cell.isCurrentMonth ? 'var(--adm-bg-surface, #F8FAFC)' : cell.isToday ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-card, #FFFFFF)';
               }}
               title="Clique para ver o dia detalhado"
             >
               {/* Day Number / Month Label */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                 {cell.monthLabel ? (
-                  <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748B' }}>
+                  <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted, #64748B)' }}>
                     {cell.monthLabel}
                   </span>
                 ) : <span />}
@@ -298,7 +298,7 @@ export const AdminCalendarMonthView: React.FC<AdminCalendarMonthViewProps> = ({
                     justifyContent: 'center',
                     borderRadius: '50%',
                     background: cell.isToday ? '#0284C7' : 'transparent',
-                    color: cell.isToday ? '#FFFFFF' : cell.isCurrentMonth ? '#0F172A' : '#94A3B8',
+                    color: cell.isToday ? '#FFFFFF' : cell.isCurrentMonth ? 'var(--adm-text-title, #0F172A)' : 'var(--adm-text-muted, #94A3B8)',
                   }}
                 >
                   {cell.dayNumber}

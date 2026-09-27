@@ -111,13 +111,13 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
             fontSize: '0.82rem',
             fontWeight: 800,
             letterSpacing: '0.6px',
-            color: '#0F172A',
+            color: 'var(--adm-text-title, #0F172A)',
             textTransform: 'uppercase',
             margin: 0,
           }}>
             {title}
           </h2>
-          <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600, marginTop: '2px', display: 'block' }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', fontWeight: 600, marginTop: '2px', display: 'block' }}>
             {columnTasks.length} {columnTasks.length === 1 ? 'item' : 'itens'}
           </span>
         </div>
@@ -134,11 +134,11 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
             <div style={{
               padding: '32px 16px',
               textAlign: 'center',
-              border: '1px dashed #CBD5E1',
+              border: '1px dashed var(--adm-border, #CBD5E1)',
               borderRadius: '12px',
-              color: '#94A3B8',
+              color: 'var(--adm-text-muted, #94A3B8)',
               fontSize: '0.78rem',
-              background: '#FFFFFF',
+              background: 'var(--adm-bg-card, #FFFFFF)',
             }}>
               Nenhum item para este período
             </div>
@@ -165,15 +165,15 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                     padding: '12px 14px',
                     borderRadius: '12px',
                     border: isCompleted 
-                      ? '1px solid #E2E8F0' 
+                      ? '1px solid var(--adm-border, #E2E8F0)' 
                       : isOverdue 
                         ? '1.5px solid #FCA5A5' 
-                        : '1px solid #E2E8F0',
+                        : '1px solid var(--adm-border, #E2E8F0)',
                     background: isCompleted 
-                      ? '#F8FAFC' 
+                      ? 'var(--adm-bg-surface, #F8FAFC)' 
                       : isOverdue 
-                        ? '#FEF2F2' 
-                        : '#FFFFFF',
+                        ? 'rgba(239, 68, 68, 0.1)' 
+                        : 'var(--adm-bg-card, #FFFFFF)',
                     cursor: 'pointer',
                     transition: 'border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -216,7 +216,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                   <div style={{
                     fontSize: '0.84rem',
                     fontWeight: 800,
-                    color: '#0F172A',
+                    color: 'var(--adm-text-title, #0F172A)',
                     lineHeight: 1.3,
                     marginBottom: '6px',
                     paddingRight: (isOverdue || isCompleted) ? '18px' : '0',

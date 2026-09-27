@@ -195,6 +195,7 @@ export interface AdminContextType {
   benefitsCatalog: BenefitCatalogItem[];
   vipCatalog: VipRewardCatalogItem[];
   funnels: CommercialFunnel[];
+  allFunnels: CommercialFunnel[];
   userPinnedFunnelIds: string[];
   togglePinFunnel: (funnelId: string) => void;
   isFunnelPinned: (funnelId: string) => boolean;
@@ -3348,12 +3349,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const markLeadAsRead = (leadId: string) => {
+    const targetLead = leads.find(l => l.id === leadId);
+    if (!targetLead || (targetLead.unreadCount || 0) <= 0) return;
+
+    const author = currentUser?.name || 'Equipe';
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const auditText = `👁️ ${author} visualizou esta mensagem às ${timeStr}`;
+
+    const newAct: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now.toISOString(),
+      type: 'contact',
+      title: 'Mensagem Visualizada',
+      text: auditText,
+      authorName: author,
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+    };
+
     setLeads(prev => {
       let changed = false;
       const updated = prev.map(l => {
         if (l.id === leadId && (l.unreadCount || 0) > 0) {
           changed = true;
-          return { ...l, unreadCount: 0 };
+          const merged = mergeAndSortActivities(l.activities || [], [newAct], leadId);
+          return { ...l, unreadCount: 0, activities: merged };
         }
         return l;
       });
@@ -3362,6 +3384,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return updated;
     });
+
+    if (isSupabaseConfigured) {
+      leadService.update(leadId, { unreadCount: 0 }).catch(err => {
+        console.warn('Erro ao zerar unreadCount no Supabase:', err);
+      });
+      leadService.addActivity(leadId, newAct).catch(err => {
+        console.warn('Erro ao salvar auditoria de visualização no Supabase:', err);
+      });
+    }
   };
 
   // ── Leads Desindexados & Realocação de Funil ────────────────────────────────
@@ -5485,8 +5516,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const newLeadId = generateUuid();
     const leadCode = generateLeadCode();
     const cleanName = data.name && data.name.trim() !== '' ? data.name.trim() : leadCode;
-
-    const isValUuid = (val?: string | null) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
     
     // Resolve o funil de destino: aceita tanto UUID quanto Nome do funil
     let resolvedFunnelId = '';
@@ -5498,7 +5527,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       );
       if (matched) {
         resolvedFunnelId = matched.id;
-      } else if (isValUuid(data.funnelId)) {
+      } else {
+        // Preserva estritamente o funnelId informado
         resolvedFunnelId = data.funnelId;
       }
     }
@@ -8014,6 +8044,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       stopImpersonation,
       allLeads: leads,
       allTasks: tasks,
+      allFunnels: funnels,
       addMasterAccount,
       toggleMasterAccountStatus,
       isInitialSyncComplete,
