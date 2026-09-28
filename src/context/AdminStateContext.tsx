@@ -2171,6 +2171,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [scopedVenues, activeVenueId]);
 
+  // Auto-cura de integridade de tenant: purga do cache local e da memória qualquer lead que pertença a outro master
+  useEffect(() => {
+    if (!scopedMasterId || scopedVenues.length === 0) return;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+
+    setLeads(prev => {
+      const cleaned = prev.filter(l => {
+        if (l.masterId && l.masterId !== scopedMasterId) return false;
+        if (l.venueId && !masterVenueIds.has(l.venueId)) return false;
+        return true;
+      });
+      if (cleaned.length !== prev.length) {
+        console.log(`[Auto-Cura Multi-Tenant] ${prev.length - cleaned.length} lead(s) de outro tenant foram expurgados.`);
+        safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(cleaned));
+      }
+      return cleaned;
+    });
+  }, [scopedMasterId, scopedVenues]);
+
   // Colaboradores da Equipe do Tenant Ativo
   const scopedCollaborators = useMemo(() => {
     if (!currentUser || !scopedMasterId) return [];
