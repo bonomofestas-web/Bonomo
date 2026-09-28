@@ -254,7 +254,10 @@ body {
 }
 
 /* Dark Theme Variables (Clean Executive Slate & Tech Aqua) */
-.admin-theme-dark {
+.admin-theme-dark,
+body.admin-theme-dark,
+html.dark {
+  color-scheme: dark;
   --adm-bg-app: #080C14;
   --adm-bg-sidebar: #0B111A;
   --adm-bg-header: #0B111A;
@@ -281,6 +284,25 @@ body {
   --adm-gold-bg: rgba(217, 119, 6, 0.12);
   --adm-table-stripe: #0A0F17;
   --adm-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.admin-theme-dark select,
+.admin-theme-dark input,
+.admin-theme-dark textarea,
+.admin-theme-dark option,
+.admin-theme-dark optgroup {
+  color-scheme: dark;
+}
+
+.admin-theme-dark select option {
+  background-color: #0F1724;
+  color: #FFFFFF;
+}
+
+.admin-theme-dark input[type="date"]::-webkit-calendar-picker-indicator,
+.admin-theme-dark input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.85);
+  cursor: pointer;
 }
 
 /* Light Theme Variables (Executive Minimalist Clean) */

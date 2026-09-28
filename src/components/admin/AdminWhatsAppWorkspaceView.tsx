@@ -6,7 +6,8 @@ import {
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
-  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera
+  ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
+  Target
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -250,6 +251,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     sources,
     collaborators,
     currentUser,
+    theme,
     activeVenueId,
     updateLeadData,
     updateLeadActivity,
@@ -525,7 +527,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const isDarkMode = currentUser?.theme === 'dark' || (typeof document !== 'undefined' && document.body.classList.contains('admin-theme-dark'));
+  const isDarkMode = theme === 'dark' || currentUser?.theme === 'dark' || (typeof document !== 'undefined' && (document.body.classList.contains('admin-theme-dark') || document.documentElement.classList.contains('dark') || document.querySelector('.admin-theme-dark') !== null));
 
   // Tooltip de erro de mensagem
   const [copiedErrorId, setCopiedErrorId] = useState<string | null>(null);
@@ -2734,10 +2736,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <span style={{ fontSize: '0.85rem' }}>
-                      {isPostSaleFunnel ? '👑' : selectedFunnelId === 'all' ? '💬' : (activeFunnel?.icon ? renderFunnelOrStageIcon(activeFunnel.icon, 13, (activeFunnel as any).color || activeFunnel.badgeColor || activeFunnel.stages?.[0]?.color || 'var(--adm-accent)') : '🎯')}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {isPostSaleFunnel ? (
+                        <Users size={14} color="#06B6D4" />
+                      ) : selectedFunnelId === 'all' ? (
+                        <Target size={14} color="var(--adm-accent)" />
+                      ) : (
+                        renderFunnelOrStageIcon(
+                          activeFunnel?.icon || 'layers',
+                          14,
+                          (activeFunnel as any)?.color || activeFunnel?.badgeColor || 'var(--adm-accent)'
+                        )
+                      )}
+                    </div>
                     <span>
                       {selectedFunnelId === 'all'
                         ? 'Todos os Funis Comerciais'
@@ -2787,7 +2799,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>💬</span>
+                        <Target size={14} color="var(--adm-accent)" />
                         <span>Todos os Funis Comerciais</span>
                       </div>
                       {selectedFunnelId === 'all' && <Check size={12} />}
@@ -2846,7 +2858,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       );
                     })}
 
-                    {/* 3. Por Fim: Sucesso do Cliente (sem parênteses) */}
+                    {/* 3. Por Fim: Sucesso do Cliente */}
                     <button
                       type="button"
                       onClick={() => handleSelectFunnel('post_sale_default')}
@@ -2874,7 +2886,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>👑</span>
+                        <Users size={14} color="#06B6D4" />
                         <span>Sucesso do Cliente</span>
                       </div>
                       {isPostSaleFunnel && <Check size={12} color="#06B6D4" />}

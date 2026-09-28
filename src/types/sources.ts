@@ -59,7 +59,7 @@ export interface Source {
   venueId: string; // Casa de Festa obrigatória
   name: string;
   type: SourceType;
-  funnelId: string; // 1 único funil de destino obrigatório
+  funnelId?: string; // Funil de destino opcional (se vazio, leads chegam sem funil)
   whatsappInstanceId?: string;
   status: 'active' | 'inactive';
   slug?: string;

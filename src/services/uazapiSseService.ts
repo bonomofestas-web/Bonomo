@@ -332,16 +332,15 @@ class UazapiSseManager {
       eventSource.onerror = (err) => {
         console.warn(`[UAZAPI SSE Error on ${instanceToken.substring(0, 8)}...]:`, err);
         
-        // Fecha e remove a conexão morta
+        // Fecha e remove o stream HTTP transitório local sem marcar a sessão do WhatsApp como desconectada
         try { eventSource.close(); } catch {}
         this.activeStreams.delete(instanceToken);
-        this.connectionListeners.forEach(fn => fn(instanceToken, 'disconnected'));
 
-        // Agenda reconexão automática em 2.5s
+        // Agenda reconexão automática do stream em 2.5s
         if (!this.reconnectTimers.has(instanceToken)) {
           const timer = setTimeout(() => {
             this.reconnectTimers.delete(instanceToken);
-            console.log(`[UAZAPI SSE] Tentando reconectar instância ${instanceToken.substring(0, 8)}...`);
+            console.log(`[UAZAPI SSE] Tentando reconectar stream HTTP da instância ${instanceToken.substring(0, 8)}...`);
             this.connect(instanceToken);
           }, 2500);
           this.reconnectTimers.set(instanceToken, timer);

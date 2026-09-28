@@ -1539,12 +1539,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   onClick={() => handleSelectFunnel(funnel.id)}
                   className="saas-card"
                   style={{
-                    borderRadius: '18px',
-                    padding: '20px',
+                    borderRadius: '16px',
+                    padding: '14px 16px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: '16px',
+                    gap: '10px',
                     cursor: 'pointer',
                     border: funnel.isPrimary ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
                     background: funnel.isPrimary 
@@ -1552,90 +1552,71 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       : 'var(--adm-bg-card)',
                     transition: 'all 0.2s ease',
                     position: 'relative',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.06)'
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.05)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.borderColor = funnel.badgeColor || 'var(--adm-accent)';
-                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.15)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.borderColor = funnel.isPrimary ? 'var(--adm-accent)' : 'var(--adm-border)';
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.06)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.05)';
                   }}
                 >
                   <div>
-                    {/* Top Section: Funnel Visual + Title & Badges + Actions (Pin, Settings) */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1, minWidth: 0 }}>
-                        {/* Funnel Visual Container (Custom Image or Icon) */}
-                        <div style={{ flexShrink: 0, marginTop: '2px' }}>
-                          {renderFunnelVisual(funnel, 16, 36)}
+                    {/* Linha Superior 100% Alinhada: Ícone + Nome + Badge Pós-Venda + [Fixar] + [Configurações] */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <div style={{ flexShrink: 0 }}>
+                          {renderFunnelVisual(funnel, 15, 32)}
                         </div>
 
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                            <h3 style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0, letterSpacing: '-0.3px', lineHeight: 1.25 }}>
-                              {funnel.name}
-                            </h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                          <h3 style={{
+                            fontSize: '0.95rem',
+                            fontWeight: 800,
+                            color: 'var(--adm-text-title)',
+                            margin: 0,
+                            letterSpacing: '-0.2px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }} title={funnel.name}>
+                            {funnel.name}
+                          </h3>
 
-                            {/* Category Badge */}
-                            {funnel.badge !== 'Indicações do App' && funnel.category !== 'Indicações do App' && (funnel.badge || funnel.category) && (
-                              <span style={{
-                                fontSize: '0.64rem',
-                                fontWeight: 800,
-                                padding: '2px 7px',
-                                borderRadius: '12px',
-                                background: `${funnel.badgeColor || '#3B82F6'}18`,
-                                color: funnel.badgeColor || '#3B82F6',
-                                border: `1px solid ${funnel.badgeColor || '#3B82F6'}40`,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}>
-                                {renderFunnelIcon(funnel.icon || 'target', 10, funnel.badgeColor || '#3B82F6')}
-                                <span>{funnel.badge || funnel.category}</span>
-                              </span>
-                            )}
-
-                            {/* Post-Sale Badge */}
-                            {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (
-                              <span style={{
-                                fontSize: '0.64rem',
-                                fontWeight: 800,
-                                padding: '2px 7px',
-                                borderRadius: '8px',
-                                background: 'rgba(6, 182, 212, 0.15)',
-                                color: '#06B6D4',
-                                border: '1px solid rgba(6, 182, 212, 0.35)',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                              }}>
-                                <ShieldCheck size={10} />
-                                <span>Pós-Venda</span>
-                              </span>
-                            )}
-                          </div>
-
-                          {funnel.description && (
-                            <p style={{ fontSize: '0.75rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                              {funnel.description}
-                            </p>
+                          {/* Post-Sale Badge discreto */}
+                          {(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda')) && (
+                            <span style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              padding: '1px 6px',
+                              borderRadius: '6px',
+                              background: 'rgba(6, 182, 212, 0.15)',
+                              color: '#06B6D4',
+                              border: '1px solid rgba(6, 182, 212, 0.35)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              flexShrink: 0,
+                            }}>
+                              <ShieldCheck size={9} />
+                              <span>Pós-Venda</span>
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Top Right: Pin Button + Settings */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        {/* Pin on sidebar button (User-scoped) */}
+                      {/* Top Right: Pin Button + Settings (Alinhados na mesma linha) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
                         {(() => {
                           const isPinned = isFunnelPinned(funnel.id);
                           return (
                             <button
                               type="button"
-                              title={isPinned ? "Desafixar do meu Workspace (Sidebar)" : "Fixar no meu Workspace (Sidebar)"}
+                              title={isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace"}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 togglePinFunnel(funnel.id);
@@ -1643,25 +1624,24 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               style={{
                                 background: isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
                                 border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                                borderRadius: '8px',
-                                padding: '5px 8px',
+                                borderRadius: '7px',
+                                padding: '4px 7px',
                                 color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '0.65rem',
+                                gap: '3px',
+                                fontSize: '0.64rem',
                                 fontWeight: 700,
                                 transition: 'all 0.15s ease',
                               }}
                             >
-                              <Pin size={11} style={{ transform: isPinned ? 'rotate(45deg)' : 'none' }} />
+                              <Pin size={10} style={{ transform: isPinned ? 'rotate(45deg)' : 'none' }} />
                               <span>{isPinned ? 'Fixado' : 'Fixar'}</span>
                             </button>
                           );
                         })()}
 
-                        {/* Settings button */}
                         {canConfigureFunnels && (
                           <button
                             type="button"
@@ -1670,8 +1650,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                             style={{
                               background: 'var(--adm-bg-input)',
                               border: '1px solid var(--adm-border)',
-                              borderRadius: '8px',
-                              padding: '5px 7px',
+                              borderRadius: '7px',
+                              padding: '4px 6px',
                               color: 'var(--adm-text-muted)',
                               cursor: 'pointer',
                               display: 'flex',
@@ -1688,47 +1668,75 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                               e.currentTarget.style.borderColor = 'var(--adm-border)';
                             }}
                           >
-                            <Settings size={13} />
+                            <Settings size={12} />
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Metadata Tags: Venues & Privacy */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    {/* Bloco de Métricas (Pipeline, Oportunidades, Conversão) MAIS ACIMA */}
+                    <div style={{
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '7px 10px',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '4px',
+                      textAlign: 'center',
+                      marginBottom: '8px',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Oportunidades</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '1px' }}>{funnel.leadCount}</div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--adm-border)', borderRight: '1px solid var(--adm-border)' }}>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipeline</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#10B981', marginTop: '1px' }}>
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(funnel.openPipelineValue)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Conversão</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-accent)', marginTop: '1px' }}>{funnel.conversionRate}%</div>
+                      </div>
+                    </div>
+
+                    {/* Tags de Casa de Festa e Permissões ABAIXO das métricas */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
                       {/* Linked Venues Tags */}
                       {linkedVenues.length > 0 ? (
                         linkedVenues.map(v => (
                           <span key={v.id} style={{
-                            fontSize: '0.64rem',
+                            fontSize: '0.62rem',
                             fontWeight: 700,
-                            padding: '2px 7px',
+                            padding: '2px 6px',
                             borderRadius: '6px',
                             background: 'rgba(99, 102, 241, 0.12)',
                             color: '#818cf8',
                             border: '1px solid rgba(99, 102, 241, 0.25)',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px',
+                            gap: '3px',
                           }}>
-                            <Building2 size={10} />
+                            <Building2 size={9} />
                             <span>{v.name}</span>
                           </span>
                         ))
                       ) : (
                         <span style={{
-                          fontSize: '0.64rem',
+                          fontSize: '0.62rem',
                           fontWeight: 700,
-                          padding: '2px 7px',
+                          padding: '2px 6px',
                           borderRadius: '6px',
                           background: 'rgba(99, 102, 241, 0.12)',
                           color: '#818cf8',
                           border: '1px solid rgba(99, 102, 241, 0.25)',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '3px',
                         }}>
-                          <Building2 size={10} />
+                          <Building2 size={9} />
                           <span>{funnel.venueName || 'Todas as Casas'}</span>
                         </span>
                       )}
@@ -1736,71 +1744,53 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       {/* Privacy / Access Status Badge */}
                       {funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0 ? (
                         <span style={{
-                          fontSize: '0.64rem',
+                          fontSize: '0.62rem',
                           fontWeight: 800,
-                          padding: '2px 7px',
+                          padding: '2px 6px',
                           borderRadius: '6px',
                           background: 'rgba(234, 179, 8, 0.15)',
                           color: '#EAB308',
                           border: '1px solid rgba(234, 179, 8, 0.35)',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '3px',
                         }}>
                           <Lock size={9} />
-                          <span>Acesso Restrito ({funnel.allowedCollaboratorIds.length} Colaboradores)</span>
+                          <span>Acesso Restrito ({funnel.allowedCollaboratorIds.length})</span>
                         </span>
                       ) : funnel.allowedRoles && funnel.allowedRoles.length > 0 && !(funnel.allowedRoles as string[]).includes('all') ? (
                         <span style={{
-                          fontSize: '0.64rem',
+                          fontSize: '0.62rem',
                           fontWeight: 800,
-                          padding: '2px 7px',
+                          padding: '2px 6px',
                           borderRadius: '6px',
                           background: 'rgba(59, 130, 246, 0.15)',
                           color: '#60A5FA',
                           border: '1px solid rgba(59, 130, 246, 0.35)',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '3px',
                         }}>
                           <Lock size={9} />
-                          <span>Setor: {funnel.allowedRoles.map(r => r === 'pos_venda' ? 'Pós-Venda' : r === 'admin' || r === 'master' ? 'Gerência' : 'Comercial').filter((v, i, a) => a.indexOf(v) === i).join(', ')}</span>
+                          <span>{funnel.allowedRoles.map(r => r === 'pos_venda' ? 'Pós-Venda' : r === 'admin' || r === 'master' ? 'Gerência' : 'Comercial').filter((v, i, a) => a.indexOf(v) === i).join(', ')}</span>
                         </span>
                       ) : (
                         <span style={{
-                          fontSize: '0.64rem',
+                          fontSize: '0.62rem',
                           fontWeight: 700,
-                          padding: '2px 7px',
+                          padding: '2px 6px',
                           borderRadius: '6px',
                           background: 'var(--adm-bg-input)',
                           color: 'var(--adm-text-muted)',
                           border: '1px solid var(--adm-border)',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '3px',
                         }}>
                           <Users size={9} />
-                          <span>Aberto para Todo o Time</span>
+                          <span>Todo o Time</span>
                         </span>
                       )}
-                    </div>
-                  </div>
-
-                  {/* KPI Numbers */}
-                  <div style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '12px', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', textAlign: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Oportunidades</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '2px' }}>{funnel.leadCount}</div>
-                    </div>
-                    <div style={{ borderLeft: '1px solid var(--adm-border)', borderRight: '1px solid var(--adm-border)' }}>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipeline R$</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#10B981', marginTop: '2px' }}>
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(funnel.openPipelineValue)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Conversão</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 900, color: 'var(--adm-accent)', marginTop: '2px' }}>{funnel.conversionRate}%</div>
                     </div>
                   </div>
 

@@ -129,20 +129,8 @@ export const AdminSourcesView: React.FC = () => {
             }).catch(() => {});
           }
         } catch (err) {
-          console.warn(`[AdminSourcesView] Falha ao consultar status da instância ${src.name}:`, err);
-          setLiveStatuses(prev => ({
-            ...prev,
-            [src.id]: { status: 'disconnected', lastChecked: Date.now() }
-          }));
-          if (config.connectionStatus !== 'disconnected' || config.isConnected !== false) {
-            updateSource(src.id, {
-              configuration: {
-                ...config,
-                connectionStatus: 'disconnected',
-                isConnected: false,
-              }
-            }).catch(() => {});
-          }
+          console.warn(`[AdminSourcesView] Falha transitória ao consultar status da instância ${src.name}:`, err);
+          // Não sobrescreve o banco com falso 'disconnected' em caso de oscilação transitória de rede
         }
       }
     } finally {
@@ -555,13 +543,15 @@ export const AdminSourcesView: React.FC = () => {
                   const avatar = live?.avatar || config.connectedAvatar;
                   const hasNeverConnected = !config.connectedPhone && !source.whatsappInstanceId && !isConnected;
 
-                  // Alertas de Pendência (Desconectada ou Sem Funil Padrão)
-                  const hasMissingFunnel = !source.funnelId || !funnel;
+                  // Alerta de Desconexão real do WhatsApp
                   const hasDisconnectionAlert = source.type === 'whatsapp_api' && (isDisconnected || !isConnected);
-                  const hasAlert = hasMissingFunnel || hasDisconnectionAlert;
+                  const hasAlert = hasDisconnectionAlert;
 
-                  // Condição estrita de Status Ativado: Funil vinculado e WhatsApp 100% conectado
-                  const isFullyActive = source.status === 'active' && !hasMissingFunnel && (source.type !== 'whatsapp_api' || isConnected);
+                  // Miniatura segura da casa de festa
+                  const venueImage = venue ? (venue.ballroomImageUrl || venue.bannerImageUrl || (venue as any).facadeImageUrl) : undefined;
+
+                  // Status ativo pleno
+                  const isFullyActive = source.status === 'active' && (source.type !== 'whatsapp_api' || isConnected);
 
                   return (
                     <tr
@@ -579,18 +569,12 @@ export const AdminSourcesView: React.FC = () => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       title="Clique na origem para abrir a tela de edição e configurações"
                     >
-                      {/* Nome & Slug com Símbolo de Alerta */}
+                      {/* Nome & Slug com Símbolo de Alerta se desconectado */}
                       <td style={{ padding: '14px 18px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {hasAlert && (
                             <span 
-                              title={
-                                hasMissingFunnel && hasDisconnectionAlert
-                                  ? "Atenção: Origem desconectada e sem funil comercial vinculado!"
-                                  : hasMissingFunnel
-                                    ? "Atenção: Origem sem funil comercial padrão vinculado!"
-                                    : "Atenção: WhatsApp desconectado ou com falha de conexão!"
-                              }
+                              title="Atenção: WhatsApp desconectado ou com falha de conexão!"
                               style={{ 
                                 display: 'inline-flex', 
                                 alignItems: 'center', 
@@ -620,58 +604,79 @@ export const AdminSourcesView: React.FC = () => {
                         {renderTypeBadge(source.type)}
                       </td>
 
-                      {/* Casa */}
+                      {/* Casa de Festa com Miniatura/Logo */}
                       <td style={{ padding: '14px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--adm-text-body)' }}>
-                          <Building2 size={14} color="var(--adm-accent)" />
-                          <span>{venue?.name || 'Geral'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {venueImage ? (
+                            <img
+                              src={venueImage}
+                              alt={venue?.name || 'Casa'}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '8px',
+                                objectFit: 'cover',
+                                border: '1px solid var(--adm-border)',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <div style={{
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '8px',
+                              background: 'rgba(212, 175, 55, 0.12)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--adm-accent)',
+                              flexShrink: 0,
+                            }}>
+                              <Building2 size={15} />
+                            </div>
+                          )}
+                          <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', fontSize: '0.82rem' }}>
+                            {venue?.name || 'Geral'}
+                          </span>
                         </div>
                       </td>
 
                       {/* Funil de Destino */}
                       <td style={{ padding: '14px 18px' }}>
-                        {source.funnelId && funnel ? (
+                        {source.funnelId && funnel ? (() => {
+                          const fColor = funnel.badgeColor || (funnel as any)?.color || '#D4AF37';
+                          return (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              background: `${fColor}18`,
+                              border: `1px solid ${fColor}40`,
+                              color: fColor,
+                              fontWeight: 700,
+                              fontSize: '0.74rem',
+                            }}>
+                              {funnel.isPostSale ? <Crown size={13} /> : <Target size={13} />}
+                              <span>{funnel.name}</span>
+                            </span>
+                          );
+                        })() : (
                           <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '5px',
-                            padding: '3px 8px',
+                            padding: '4px 10px',
                             borderRadius: '8px',
-                            background: 'rgba(212, 175, 55, 0.1)',
-                            border: '1px solid rgba(212, 175, 55, 0.25)',
-                            color: 'var(--adm-accent)',
+                            background: 'rgba(100, 116, 139, 0.1)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-muted)',
                             fontWeight: 600,
                             fontSize: '0.72rem',
                           }}>
-                            <Target size={12} color="var(--adm-accent)" /> {funnel.name}
+                            ⚪ Sem Funil Definido
                           </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSourceToEdit(source);
-                              setIsEditing(true);
-                            }}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '5px 10px',
-                              borderRadius: '8px',
-                              background: 'rgba(239, 68, 68, 0.15)',
-                              border: '1px solid #EF4444',
-                              color: '#EF4444',
-                              fontWeight: 800,
-                              fontSize: '0.72rem',
-                              cursor: 'pointer',
-                              animation: 'pulsePendingAlert 2s infinite ease-in-out',
-                            }}
-                            title="Clique para vincular esta origem a um funil comercial"
-                          >
-                            <AlertTriangle size={13} color="#EF4444" />
-                            <span>⚠️ Funil Pendente (Clique para vincular)</span>
-                          </button>
                         )}
                       </td>
 

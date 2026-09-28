@@ -103,7 +103,17 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       setName(sourceToEdit.name || '');
       setVenueId(sourceToEdit.venueId || (venues[0]?.id || ''));
       setType((sourceToEdit.type === 'form' ? 'form' : 'whatsapp_api'));
-      setFunnelId(sourceToEdit.funnelId || '');
+
+      // Verifica se o funil vinculado possui caixa de entrada ativa
+      const initialFunnelId = sourceToEdit.funnelId || '';
+      const matchedFunnel = funnels.find(f => f.id === initialFunnelId);
+      if (matchedFunnel && matchedFunnel.isEntryStageActive === false) {
+        // Se o funil não tem caixa de entrada ativa, a origem vem desvinculada por padrão
+        setFunnelId('');
+      } else {
+        setFunnelId(initialFunnelId);
+      }
+
       setWhatsappInstanceId(sourceToEdit.whatsappInstanceId || '');
       setSlug(sourceToEdit.slug || '');
       setStatus(sourceToEdit.status || 'active');
@@ -305,10 +315,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
     }
     if (!venueId) {
       setErrorMsg('Selecione uma Casa de Festa.');
-      return null;
-    }
-    if (!funnelId) {
-      setErrorMsg('Selecione o Funil de Destino padrão.');
       return null;
     }
 
@@ -779,9 +785,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
 
           {/* Funil de Destino Principal */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
-              Funil de Destino Automático *
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                Funil de Destino Automático
+              </label>
+              <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                (Opcional / Desvinculável)
+              </span>
+            </div>
             <select
               value={funnelId}
               onChange={(e) => setFunnelId(e.target.value)}
@@ -798,27 +809,65 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                 boxSizing: 'border-box',
                 cursor: 'pointer',
               }}
-              required
             >
-              <option value="" disabled>Selecione o Funil de Destino...</option>
+              <option value="">⚪ Sem Funil Definido (Desvincular)</option>
               <optgroup label="🎯 Funis Comerciais">
                 {commercialFunnels.map(f => (
-                  <option key={f.id} value={f.id}>🎯 {f.name}</option>
+                  <option key={f.id} value={f.id}>
+                    🎯 {f.name} {f.isEntryStageActive === false ? '⚠️ (Sem Caixa de Entrada)' : ''}
+                  </option>
                 ))}
               </optgroup>
               <optgroup label="👑 Sucesso do Cliente (Pós-Venda)">
                 {postSaleFunnels.length > 0 ? (
                   postSaleFunnels.map(f => (
-                    <option key={f.id} value={f.id}>👑 {f.name}</option>
+                    <option key={f.id} value={f.id}>
+                      👑 {f.name} {f.isEntryStageActive === false ? '⚠️ (Sem Caixa de Entrada)' : ''}
+                    </option>
                   ))
                 ) : (
                   <option value="post_sale_default">👑 Sucesso do Cliente (Pós-Venda Padrão)</option>
                 )}
               </optgroup>
             </select>
-            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
-              Novos leads serão inseridos na 1ª etapa deste funil imediatamente.
-            </div>
+            
+            {!funnelId ? (
+              <div style={{
+                marginTop: '8px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(100, 116, 139, 0.08)',
+                border: '1px solid var(--adm-border)',
+                fontSize: '0.73rem',
+                color: 'var(--adm-text-muted)',
+                lineHeight: '1.4',
+              }}>
+                ⚪ <strong>Origem Desvinculada:</strong> Novos leads captados entrarão no sistema como <strong>Sem Funil</strong> (desindexados), garantindo que nenhum contato seja perdido e podendo ser alocados manualmente pela equipe.
+              </div>
+            ) : (() => {
+              const selectedF = funnels.find(f => f.id === funnelId);
+              if (selectedF && selectedF.isEntryStageActive === false) {
+                return (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    fontSize: '0.73rem',
+                    color: '#F59E0B',
+                    lineHeight: '1.4',
+                  }}>
+                    ⚠️ <strong>Atenção:</strong> O funil selecionado possui a <em>Caixa de Entrada</em> desativada. Se preferir não alocar leads diretamente nas etapas negociadas, desvincule a origem selecionando a opção <em>Sem Funil Definido</em>.
+                  </div>
+                );
+              }
+              return (
+                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
+                  Novos leads serão inseridos na 1ª etapa deste funil imediatamente.
+                </div>
+              );
+            })()}
           </div>
 
           {/* Status (Apenas na edição de uma origem já cadastrada) */}

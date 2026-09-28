@@ -295,7 +295,7 @@ export const sourceService = {
   /**
    * Identifica a sub-origem e o funil de destino com base na mensagem de entrada do WhatsApp
    */
-  matchWhatsAppSubSource(source: Source, messageText: string): { subSource?: string; funnelId: string } {
+  matchWhatsAppSubSource(source: Source, messageText: string): { subSource?: string; funnelId?: string } {
     const defaultFunnelId = source.funnelId;
     if (!messageText || !source.configuration?.subSources || source.configuration.subSources.length === 0) {
       return { subSource: undefined, funnelId: defaultFunnelId };

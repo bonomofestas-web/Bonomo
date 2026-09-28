@@ -98,6 +98,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
 
+  // Sincroniza tema dark/light no body e html
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (theme === 'dark') {
+        document.body.classList.add('admin-theme-dark');
+        document.body.classList.remove('admin-theme-light');
+        document.documentElement.classList.add('dark');
+      } else {
+        document.body.classList.add('admin-theme-light');
+        document.body.classList.remove('admin-theme-dark');
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, [theme]);
+
   // Close popovers on click outside
   useEffect(() => {
     const handleDocumentClick = (e: MouseEvent) => {
