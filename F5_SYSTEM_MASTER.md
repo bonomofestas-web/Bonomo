@@ -69,22 +69,22 @@ Permitir que o proprietário e sua equipe gerenciem **todas as suas casas de fes
 
 ---
 
-## 4. Matriz de Perfis de Acesso & Governança (Roles)
+## 4. Matriz de Perfis de Acesso & Governança (Roles Simplificada)
 
-O sistema conta com uma estrutura hierárquica de permissões com base no cargo do colaborador:
+A governança do F5 System foi **simplificada** para refletir a realidade operacional das redes de eventos, organizando os colaboradores por setores de trabalho:
 
-| Perfil / Role | Descrição e Escopo de Acesso |
-| :--- | :--- |
-| **`dev`** | Desenvolvedor raiz com acesso irrestrito, console de Feature Flags, ferramentas de diagnóstico e dados brutos. |
-| **`master`** | Sócios e Diretores da rede. Acesso total a todas as unidades, métricas consolidadas, metas globais e auditoria financeira. |
-| **`admin`** | Administrador geral com poderes de gestão sobre colaboradores, unidades e operações do sistema. |
-| **`gerencia`** | Gerentes de operação e atendimento, responsáveis por supervisionar equipes e rotinas diárias. |
-| **`comercial`** | Liderança comercial com visão abrangente de funis, taxas de conversão e desempenho dos vendedores. |
-| **`crm`** | Operador de pipeline, responsável pelo enriquecimento de dados e movimentação de leads. |
-| **`sdr`** | Pré-vendedor focado em triagem rápida, qualificação (ICP / MQL) e agendamento da 1ª reunião/visita. |
-| **`closer`** | Vendedor focado em negociação, visitas presenciais, elaboração de propostas e fechamento de contratos. |
-| **`pos_venda`** | Especialista em atendimento após a assinatura do contrato, jornada do cliente e alinhamento do evento. |
-| **`financeiro`** | Responsável por contas a pagar, receber, cobrança, emissão de faturas e fluxo de caixa. |
+| Perfil / Role | Status | Descrição e Escopo de Acesso |
+| :--- | :---: | :--- |
+| **`master`** | **Ativo** | **Sócios e Diretores da Rede.** Acesso total a todas as unidades (`venues`) do tenant, métricas executivas consolidadas, metas globais, faturamento e gestão geral de colaboradores e casas de festa. |
+| **`gerencia` / `admin`** | **Ativo** | **Gerência de Operação e Unidade.** Gestão e supervisão das rotinas diárias, distribuição de equipe e acompanhamento dos setores comercial e pós-venda nas casas atribuídas. |
+| **`comercial`** | **Ativo** | **Equipe Comercial Unificada.** Atendimento completo aos clientes em potencial, operação do CRM, WhatsApp Workspace, qualificação de leads, agendamento de degustações/visitas e fechamento de contratos de eventos. *(Unifica e substitui os antigos papéis granulares de SDR, Closer e CRM)*. |
+| **`pos_venda`** | **Ativo** | **Pós-Venda & Sucesso do Cliente.** Acompanhamento após a assinatura do contrato, gestão das debutantes/anfitriãs, catálogo de benefícios, alinhamento técnico do evento e experiência das famílias até o grande dia. |
+| **`financeiro`** | **Em Breve** | **Gestão Financeira Centralizada.** Módulo em desenvolvimento para controle de contas a pagar, faturas de contratos a receber, fluxo de caixa por unidade, comissões de vendas e DRE gerencial. |
+| **`dev`** | **Sistema** | **Desenvolvedor Raiz (Engenharia).** Acesso técnico irrestrito, console de Feature Flags e diagnóstico de dados. |
+
+> 🔒 **Regra de Segurança do Perfil `dev`:**  
+> A role de Desenvolvedor **NÃO pode ser criada nem atribuída através da interface ou telas de cadastro de colaboradores do sistema**.  
+> Sua ativação é restrita e só pode ser efetuada **diretamente via banco de dados** (`is_dev = true` ou `role = 'dev'`), impedindo que gerentes ou usuários atribuam privilégios de engenharia acidentalmente pelo painel.
 
 ---
 
