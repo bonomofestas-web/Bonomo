@@ -3468,17 +3468,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const hasUnread = (targetLead.unreadCount || 0) > 0;
     const isPendingResponse = getLeadPendingWaitingTime(targetLead) > 0;
 
-    // Se não há mensagens não lidas e também não está pendente de resposta da equipe, não gera auditoria
-    if (!hasUnread && !isPendingResponse) return;
-
-    // Evita flooding se o mesmo colaborador visualizou a menos de 40 segundos e nenhuma mensagem nova entrou
-    const author = currentUser?.name || 'Equipe';
+    // Verifica se a conversa está encerrada
     const recentActs = targetLead.activities || [];
+    const isSessionEnded = recentActs.some(a => {
+      const meta = (a as any).metadata;
+      const titleLower = (a.title || '').toLowerCase();
+      return meta?.isSessionEnd === true || titleLower.includes('conversa encerrada') || titleLower.includes('atendimento finalizado');
+    });
+
+    // Se NÃO está pendente de resposta da equipe ou a conversa está encerrada:
+    // Apenas zera o unreadCount se houver e NUNCA gera auditoria de visualização!
+    if (!isPendingResponse || isSessionEnded) {
+      if (hasUnread) {
+        setLeads(prev => {
+          const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+          return updated;
+        });
+        if (isSupabaseConfigured) {
+          leadService.update(leadId, { unreadCount: 0 }).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // Evita duplicidade se o mesmo colaborador já visualizou recentemente e nenhuma mensagem nova do cliente entrou
+    const author = currentUser?.name || 'Equipe';
     const lastAct = recentActs[recentActs.length - 1];
     if (lastAct && (lastAct.title === 'Mensagem Visualizada' || lastAct.text?.includes('visualizou esta mensagem'))) {
-      const lastTime = new Date(lastAct.timestamp || 0).getTime();
-      const diffSec = (Date.now() - lastTime) / 1000;
-      if (diffSec < 40 && lastAct.authorId === currentUser?.id) {
+      if (lastAct.authorId === currentUser?.id) {
         if (hasUnread) {
           setLeads(prev => {
             const updated = prev.map(l => l.id === leadId ? { ...l, unreadCount: 0 } : l);

@@ -13,6 +13,7 @@ import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
 import { APP_VERSION, type FeatureFlagId } from '../../types/admin';
 import type { Venue } from '../../types/admin';
+import { getLeadPendingWaitingTime } from '../../utils/leadSorting';
 
 export type AdminTabType = 
   | 'home'
@@ -80,6 +81,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     activeVenueId, 
     setActiveVenueId,
     funnels,
+    leads,
     hasUnconfiguredSources,
     unconfiguredSourcesCount,
     unindexedLeadsCount,
@@ -91,6 +93,32 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     userPinnedFunnelIds,
     reorderPinnedFunnels,
   } = useAdminState();
+
+  // Contagem de conversas de WhatsApp pendentes aguardando resposta para o usuário logado
+  const myPendingConversationsCount = useMemo(() => {
+    if (!currentUser || !leads || leads.length === 0) return 0;
+    const currentUserId = currentUser.id;
+    const currentUserNameLower = (currentUser.name || '').trim().toLowerCase();
+
+    const collabIdSet = new Set((collaborators || []).map(c => c.id));
+    if (currentUserId) collabIdSet.add(currentUserId);
+
+    let count = 0;
+    for (const lead of leads) {
+      const isAssignedToMe =
+        lead.sdrId === currentUserId ||
+        lead.closerId === currentUserId ||
+        (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === currentUserNameLower);
+
+      if (!isAssignedToMe) continue;
+
+      const waitTime = getLeadPendingWaitingTime(lead, collabIdSet);
+      if (waitTime > 0) {
+        count++;
+      }
+    }
+    return count;
+  }, [currentUser, leads, collaborators]);
 
   const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
   const venueDropdownRef = useRef<HTMLDivElement>(null);
@@ -382,6 +410,33 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               boxShadow: '0 0 6px rgba(245, 158, 11, 0.9)',
             }} />
           )}
+          {item.id === 'whatsapp' && myPendingConversationsCount > 0 && (
+            <span
+              title={`${myPendingConversationsCount} conversa(s) pendente(s) aguardando sua resposta`}
+              style={{
+                position: 'absolute',
+                top: '-2px',
+                right: '-2px',
+                minWidth: '16px',
+                height: '16px',
+                padding: '0 4px',
+                borderRadius: '9999px',
+                background: '#EF4444',
+                color: '#FFFFFF',
+                fontSize: '0.60rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 8px rgba(239, 68, 68, 0.8)',
+                border: '1.5px solid #1E293B',
+                lineHeight: 1,
+                zIndex: 2,
+              }}
+            >
+              {myPendingConversationsCount > 99 ? '99+' : myPendingConversationsCount}
+            </span>
+          )}
           {isActive && (
             <span style={{
               position: 'absolute',
@@ -485,6 +540,29 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             >
               <AlertTriangle size={11} />
               {unindexedLeadsCount}
+            </span>
+          )}
+          {item.id === 'whatsapp' && myPendingConversationsCount > 0 && (
+            <span
+              title={`${myPendingConversationsCount} conversa(s) pendente(s) aguardando sua resposta`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '18px',
+                height: '18px',
+                padding: '0 5px',
+                borderRadius: '9999px',
+                background: '#EF4444',
+                color: '#FFFFFF',
+                fontSize: '0.65rem',
+                fontWeight: 800,
+                boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              {myPendingConversationsCount > 99 ? '99+' : myPendingConversationsCount}
             </span>
           )}
         </span>

@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target
+  Target, Lock, RotateCcw
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -606,6 +606,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       alert(`Erro ao sincronizar mensagens: ${err.message || 'Falha de conexão com a instância'}`);
     } finally {
       setIsSyncingHistory(false);
+    }
+  };
+
+  // Recuperação sob demanda de mensagens com chave pendente [Undecryptable]
+  const [resyncingLeadIds, setResyncingLeadIds] = useState<Set<string>>(new Set());
+  const lastUndecryptableAutoResyncRef = useRef<Record<string, number>>({});
+
+  const handleResyncUndecryptable = async (targetLead: Lead) => {
+    if (!targetLead?.id || resyncingLeadIds.has(targetLead.id)) return;
+    setResyncingLeadIds(prev => new Set(prev).add(targetLead.id));
+    try {
+      await syncWhatsAppHistoryGap({ timeWindowMinutes: 360, createMissingLeads: false });
+    } catch (err) {
+      console.warn('[Resync Undecryptable Warning]:', err);
+    } finally {
+      setResyncingLeadIds(prev => {
+        const next = new Set(prev);
+        next.delete(targetLead.id);
+        return next;
+      });
     }
   };
 
@@ -1256,16 +1276,61 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   }, [selectedLead?.id, availableRecipients]);
 
-  // Marca conversa como lida e emite auditoria de visualização se houver mensagens não lidas ou pendência de resposta
+  // Ref para garantir que o gatilho de visualização ocorra exclusivamente na ABERTURA da conversa e não fique marcando repetidamente
+  const openedLeadForViewRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (selectedLead) {
-      const hasUnread = (selectedLead.unreadCount || 0) > 0;
-      const isPending = getLeadPendingWaitingTime(selectedLead) > 0;
-      if (hasUnread || isPending) {
+    if (!selectedLead?.id) return;
+
+    // Se já processou a abertura desta conversa, não repete enquanto a conversa continuar selecionada
+    if (openedLeadForViewRef.current === selectedLead.id) {
+      return;
+    }
+    openedLeadForViewRef.current = selectedLead.id;
+
+    // 1. Se a conversa está encerrada, não marca visualização
+    const acts = selectedLead.activities || [];
+    const isSessionEnded = acts.some(a => {
+      const meta = (a as any).metadata;
+      const titleLower = (a.title || '').toLowerCase();
+      return meta?.isSessionEnd === true || titleLower.includes('conversa encerrada') || titleLower.includes('atendimento finalizado');
+    });
+
+    if (isSessionEnded) {
+      if ((selectedLead.unreadCount || 0) > 0) {
         markLeadAsRead(selectedLead.id);
       }
+      return;
     }
-  }, [selectedLead?.id, selectedLead?.unreadCount, markLeadAsRead]);
+
+    // 2. Verifica se há tempo de espera pendente do cliente (se o atendente/equipe foi o último a responder, retorna -1)
+    const collabIdSet = new Set((collaborators || []).map(c => c.id));
+    if (currentUser?.id) collabIdSet.add(currentUser.id);
+    const waitingTime = getLeadPendingWaitingTime(selectedLead, collabIdSet);
+
+    // Marca visualização APENAS se houver mensagem pendente de resposta da equipe
+    if (waitingTime > 0) {
+      markLeadAsRead(selectedLead.id);
+    } else if ((selectedLead.unreadCount || 0) > 0) {
+      markLeadAsRead(selectedLead.id);
+    }
+
+    // 3. Auto-recuperação pontual de mensagens [Undecryptable] ao abrir a conversa (máximo 1x a cada 120s por lead, sem loops excessivos)
+    const hasUndecryptable = acts.some(a => {
+      const textLower = (a.text || '').toLowerCase();
+      const titleLower = (a.title || '').toLowerCase();
+      return textLower.includes('[undecryptable]') || textLower.includes('não foi possível descriptografar') ||
+             titleLower.includes('[undecryptable]') || titleLower.includes('não foi possível descriptografar');
+    });
+
+    if (hasUndecryptable) {
+      const lastAttempt = lastUndecryptableAutoResyncRef.current[selectedLead.id] || 0;
+      if (Date.now() - lastAttempt > 120000) {
+        lastUndecryptableAutoResyncRef.current[selectedLead.id] = Date.now();
+        syncWhatsAppHistoryGap({ timeWindowMinutes: 360, createMissingLeads: false }).catch(() => {});
+      }
+    }
+  }, [selectedLead?.id, collaborators, currentUser?.id, markLeadAsRead]);
 
   const [isSenderDropdownOpen, setIsSenderDropdownOpen] = useState(false);
   const [isRecipientDropdownOpen, setIsRecipientDropdownOpen] = useState(false);
@@ -1611,14 +1676,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return false;
   }, [selectedLead, isManager, isReadOnlyForPosVenda, currentUser]);
 
-  // Auto-scroll chat to bottom
+  // Controle de rolagem do chat para não prender o usuário quando ele sobe para ler mensagens antigas
+  const isUserScrolledUpRef = useRef<boolean>(false);
+  const lastScrolledLeadIdRef = useRef<string | null>(null);
+  const lastScrolledTabRef = useRef<string | null>(null);
+
+  const handleTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Se o usuário rolou mais de 70px do fundo, marcamos como scrolled up para NÃO puxar para baixo
+    isUserScrolledUpRef.current = distanceFromBottom > 70;
+  }, []);
+
+  // Auto-scroll inteligente: só força scroll para o fim se trocou de lead/aba, ou se o usuário NÃO subiu a rolagem
   useEffect(() => {
-    if (selectedLeadId && (composerTab === 'whatsapp' || composerTab === 'notes')) {
+    if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) {
+      return;
+    }
+
+    const isDifferentLead = lastScrolledLeadIdRef.current !== selectedLeadId;
+    const isDifferentTab = lastScrolledTabRef.current !== composerTab;
+
+    if (isDifferentLead || isDifferentTab) {
+      lastScrolledLeadIdRef.current = selectedLeadId;
+      lastScrolledTabRef.current = composerTab;
+      isUserScrolledUpRef.current = false;
       scrollToBottom('auto');
-      const timer = setTimeout(() => scrollToBottom('auto'), 120);
+      const timer = setTimeout(() => scrollToBottom('auto'), 100);
       return () => clearTimeout(timer);
     }
-  }, [selectedLeadId, composerTab, selectedLead?.activities, scrollToBottom]);
+
+    // Se o usuário rolou para cima para ler mensagens antigas, NUNCA força scroll para o fim!
+    if (isUserScrolledUpRef.current) {
+      return;
+    }
+
+    // Mantém no final se novas mensagens chegarem e o usuário já estiver na parte inferior
+    scrollToBottom('smooth');
+  }, [selectedLeadId, composerTab, selectedLead?.activities?.length, scrollToBottom]);
 
   // Controle de Presença em Tempo Real (Digitando... / Gravando áudio...) isolado por telefone de contato
   const lastPresenceTimeRef = useRef<number>(0);
@@ -2470,7 +2565,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const timelineActivities = useMemo(() => {
     if (!selectedLead?.activities) return [];
 
-    // Filtra estritamente apenas mensagens de chat e notas de conversa (remove logs de CRM como status_change, creation, assignment, validation, realocação de funil)
+    // Filtra estritamente apenas mensagens reais trocadas com o lead e marcadores transitórios de caixa de mensagem (visualização e encerramento de sessão)
     const chatOnly = selectedLead.activities.filter(a => {
       // 1. Rejeita tipos de eventos internos de CRM
       if (
@@ -2485,7 +2580,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         return false;
       }
 
-      // 2. Proteção textual defensiva: bloqueia logs de sistema mesmo se gravados como contact
+      // 2. Proteção textual defensiva: bloqueia logs de auditoria e propriedades de CRM mesmo se gravados como contact ou note
       const rawLower = `${a.title || ''} ${a.text || ''}`.toLowerCase();
       if (
         rawLower.includes('realocado de') ||
@@ -2493,16 +2588,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         rawLower.includes('lead cadastrado via') ||
         rawLower.includes('lead migrado do funil') ||
         rawLower.includes('realocação de funil') ||
-        rawLower.includes('etapa alterada')
+        rawLower.includes('etapa alterada') ||
+        rawLower.includes('valor de venda') ||
+        rawLower.includes('valor de entrada') ||
+        rawLower.includes('data do evento alterada') ||
+        rawLower.includes('urgência alterada') ||
+        rawLower.includes('follow-up concluído') ||
+        rawLower.includes('tarefa agendada')
       ) {
         return false;
       }
 
+      // Marcadores específicos de caixa de mensagem (visualização ou encerramento de sessão)
+      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
+      const isSessionEnd = (a as any).metadata?.isSessionEnd === true || rawLower.includes('conversa encerrada') || rawLower.includes('atendimento finalizado');
+
+      if (isViewAudit || isSessionEnd) {
+        return true;
+      }
+
+      // Apenas mensagens reais de WhatsApp (não notas internas de CRM)
       return (
         a.type === 'contact' ||
-        a.type === 'note' ||
-        (a as any).type === 'whatsapp' ||
-        (a as any).metadata?.isSessionEnd
+        (a as any).type === 'whatsapp'
       );
     });
 
@@ -2535,19 +2643,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return deduped;
   }, [selectedLead?.activities]);
 
-  // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente)
+  // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente e sem marcadores de caixa de mensagem)
   const historyActivities = useMemo(() => {
     if (!selectedLead?.activities) return [];
-    const items = selectedLead.activities.filter(a =>
-      a.type === 'note' ||
-      a.type === 'status_change' ||
-      a.type === 'assignment' ||
-      a.type === 'creation' ||
-      a.type === 'deal_closed' ||
-      a.type === 'validation' ||
-      a.type === 'task_created' ||
-      a.type === 'task_completed'
-    );
+    const items = selectedLead.activities.filter(a => {
+      // Exclui marcadores transitórios de caixa de mensagem (visualização e encerramento de sessão não são histórico do CRM)
+      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
+      const isSessionEnd = (a as any).metadata?.isSessionEnd === true || (a.title && a.title.toLowerCase().includes('conversa encerrada')) || (a.title && a.title.toLowerCase().includes('atendimento finalizado'));
+
+      if (isViewAudit || isSessionEnd) {
+        return false;
+      }
+
+      return (
+        a.type === 'note' ||
+        a.type === 'status_change' ||
+        a.type === 'assignment' ||
+        a.type === 'creation' ||
+        a.type === 'deal_closed' ||
+        a.type === 'validation' ||
+        a.type === 'task_created' ||
+        a.type === 'task_completed'
+      );
+    });
     const sorted = [...items].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     // Deduplicação inteligente de ações do histórico
@@ -4130,6 +4248,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             {/* ── TIMELINE DINÂMICA CONECTADA À ABA DO COMPOSER ── */}
             <div
               ref={timelineContainerRef}
+              onScroll={handleTimelineScroll}
               style={{
                 flex: 1,
                 overflowY: 'auto',
@@ -4675,7 +4794,57 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     />
                                   ) : (
                                     <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
-                                      <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
+                                      {Boolean(
+                                        (act.text && (act.text.includes('[Undecryptable]') || act.text.toLowerCase().includes('não foi possível descriptografar'))) ||
+                                        (act.title && (act.title.includes('[Undecryptable]') || act.title.toLowerCase().includes('não foi possível descriptografar')))
+                                      ) ? (
+                                        <div style={{
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '6px',
+                                          padding: '6px 8px',
+                                          borderRadius: '8px',
+                                          background: isDarkMode ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+                                          border: '1px solid rgba(245, 158, 11, 0.35)',
+                                          minWidth: '220px',
+                                          maxWidth: '310px',
+                                        }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Lock size={13} color="#F59E0B" />
+                                            <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#F59E0B' }}>
+                                              Criptografia Ponta a Ponta
+                                            </span>
+                                          </div>
+                                          <div style={{ fontSize: '0.72rem', lineHeight: 1.35, color: isDarkMode ? '#e2e8f0' : '#334155' }}>
+                                            Não foi possível descriptografar esta mensagem no momento da recepção. Abra o WhatsApp no celular para sincronizar as chaves.
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px', paddingTop: '4px', borderTop: '1px dashed rgba(245, 158, 11, 0.25)' }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => selectedLead && handleResyncUndecryptable(selectedLead)}
+                                              disabled={Boolean(selectedLead && resyncingLeadIds.has(selectedLead.id))}
+                                              style={{
+                                                background: 'rgba(245, 158, 11, 0.18)',
+                                                border: '1px solid rgba(245, 158, 11, 0.45)',
+                                                borderRadius: '6px',
+                                                padding: '3px 8px',
+                                                color: isDarkMode ? '#FDE68A' : '#B45309',
+                                                fontSize: '0.66rem',
+                                                fontWeight: 700,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                cursor: selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'wait' : 'pointer',
+                                              }}
+                                            >
+                                              <RotateCcw size={10} className={selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'animate-spin' : ''} />
+                                              <span>{selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'Sincronizando...' : 'Sincronizar mensagem'}</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
+                                      )}
                                       {isSameAsPrev && (
                                         <span style={{ fontSize: '0.60rem', color: isDarkMode ? '#8696a0' : '#667781', flexShrink: 0 }}>{formattedTime}</span>
                                       )}
@@ -4992,7 +5161,57 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   />
                                 ) : (
                                   <div style={{ fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: isDarkMode ? '#e9edef' : '#111b21', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '8px' }}>
-                                    <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
+                                    {Boolean(
+                                      (act.text && (act.text.includes('[Undecryptable]') || act.text.toLowerCase().includes('não foi possível descriptografar'))) ||
+                                      (act.title && (act.title.includes('[Undecryptable]') || act.title.toLowerCase().includes('não foi possível descriptografar')))
+                                    ) ? (
+                                      <div style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px',
+                                        padding: '6px 8px',
+                                        borderRadius: '8px',
+                                        background: isDarkMode ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+                                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                                        minWidth: '220px',
+                                        maxWidth: '310px',
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <Lock size={13} color="#F59E0B" />
+                                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#F59E0B' }}>
+                                            Criptografia Ponta a Ponta
+                                          </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', lineHeight: 1.35, color: isDarkMode ? '#e2e8f0' : '#334155' }}>
+                                          Não foi possível descriptografar esta mensagem no momento do envio. Abra o WhatsApp no celular para sincronizar as chaves.
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px', paddingTop: '4px', borderTop: '1px dashed rgba(245, 158, 11, 0.25)' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => selectedLead && handleResyncUndecryptable(selectedLead)}
+                                            disabled={Boolean(selectedLead && resyncingLeadIds.has(selectedLead.id))}
+                                            style={{
+                                              background: 'rgba(245, 158, 11, 0.18)',
+                                              border: '1px solid rgba(245, 158, 11, 0.45)',
+                                              borderRadius: '6px',
+                                              padding: '3px 8px',
+                                              color: isDarkMode ? '#FDE68A' : '#B45309',
+                                              fontSize: '0.66rem',
+                                              fontWeight: 700,
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                              cursor: selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'wait' : 'pointer',
+                                            }}
+                                          >
+                                            <RotateCcw size={10} className={selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'animate-spin' : ''} />
+                                            <span>{selectedLead && resyncingLeadIds.has(selectedLead.id) ? 'Sincronizando...' : 'Sincronizar mensagem'}</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span>{renderFormattedTextWithLinks(act.text || act.title, isDarkMode)}</span>
+                                    )}
                                     {isSameAsPrev && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
                                         <span style={{ fontSize: '0.60rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>{formattedTime}</span>
@@ -5345,8 +5564,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                             {/* Balão do Sistema */}
                             <div style={{
-                              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(139, 92, 246, 0.12) 100%)',
-                              border: '1px solid rgba(139, 92, 246, 0.35)',
+                              background: isDarkMode ? 'rgba(139, 92, 246, 0.14)' : 'rgba(139, 92, 246, 0.08)',
+                              border: '1.5px solid rgba(139, 92, 246, 0.35)',
                               borderRadius: '14px',
                               borderTopLeftRadius: '3px',
                               padding: '10px 14px',
@@ -5375,6 +5594,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                     // 2. Anotação de Usuário (Follow-up / Tarefa, Nota Interna Manual ou Auditoria do Sistema)
                     // Alinhada à DIREITA se for do usuário logado (isMine), e à ESQUERDA se for de outro colaborador
+                    // Cores idênticas e perfeitamente legíveis para representar a mesma categoria em ambos os lados
                     const noteThemeColor = isTaskOrFollowUpNote
                       ? '#F59E0B'
                       : isAutomaticNote
@@ -5382,18 +5602,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         : '#0284C7';
 
                     const noteBg = isTaskOrFollowUpNote
-                      ? (isMine ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)')
+                      ? (isDarkMode ? 'rgba(245, 158, 11, 0.14)' : 'rgba(245, 158, 11, 0.10)')
                       : isAutomaticNote
-                        ? (isMine
-                          ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(99, 102, 241, 0.12) 100%)'
-                          : 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(139, 92, 246, 0.08) 100%)')
-                        : (isMine ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-input)');
+                        ? (isDarkMode ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.10)')
+                        : (isDarkMode ? 'rgba(2, 132, 199, 0.15)' : 'rgba(2, 132, 199, 0.10)');
 
                     const noteBorder = isTaskOrFollowUpNote
                       ? '1.5px solid rgba(245, 158, 11, 0.45)'
                       : isAutomaticNote
                         ? '1.5px solid rgba(139, 92, 246, 0.40)'
-                        : (isMine ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid var(--adm-border)');
+                        : '1.5px solid rgba(2, 132, 199, 0.35)';
 
                     return (
                       <React.Fragment key={act.id}>

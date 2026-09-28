@@ -3361,22 +3361,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                           <Eye size={7} />
                                         </span>
                                       )}
-                                      {Boolean(lead.unreadCount && lead.unreadCount > 0) && (
-                                        <span style={{
-                                          background: '#10B981',
-                                          color: '#fff',
-                                          fontSize: '0.55rem',
-                                          fontWeight: 800,
-                                          borderRadius: '8px',
-                                          padding: '1px 4px',
-                                          minWidth: '14px',
-                                          textAlign: 'center',
-                                          lineHeight: '1.2',
-                                          flexShrink: 0,
-                                        }} title={`${lead.unreadCount} nova(s) mensagem(ns)`}>
-                                          {lead.unreadCount}
-                                        </span>
-                                      )}
                                     </div>
                                     {lead.phone && (
                                       <span style={{
