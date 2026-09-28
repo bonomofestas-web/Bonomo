@@ -2252,14 +2252,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [sources, scopedVenues, activeVenueId, currentUser]);
 
   // Perguntas ICP do Tenant Ativo
+  // Perguntas ICP do Tenant Ativo
   const scopedMqlQuestions = useMemo(() => {
     if (!currentUser) return mqlQuestions;
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    const masterFunnelIds = new Set(scopedFunnels.map(f => f.id));
+
     if (activeVenueId && activeVenueId !== 'all') {
       return mqlQuestions.filter(q => q.venueId === activeVenueId || (q.venueIds && q.venueIds.includes(activeVenueId)));
     }
-    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    return mqlQuestions.filter(q => (Boolean(q.venueId) && masterVenueIds.has(q.venueId!)) || (q.venueIds && q.venueIds.some(id => masterVenueIds.has(id))) || Boolean(q.funnelId) || (q.funnelIds && q.funnelIds.length > 0));
-  }, [mqlQuestions, scopedVenues, activeVenueId, currentUser]);
+    return mqlQuestions.filter(q => {
+      if (q.venueId && masterVenueIds.has(q.venueId)) return true;
+      if (q.venueIds && q.venueIds.some(id => masterVenueIds.has(id))) return true;
+      if (q.funnelId && masterFunnelIds.has(q.funnelId)) return true;
+      if (q.funnelIds && q.funnelIds.some(id => masterFunnelIds.has(id))) return true;
+      if ((q as any).masterId && (q as any).masterId === scopedMasterId) return true;
+      return false;
+    });
+  }, [mqlQuestions, scopedVenues, scopedFunnels, scopedMasterId, activeVenueId, currentUser]);
 
   // Modelos de Jornada do Tenant Ativo (estritamente isolados por casa ativa / tenant)
   const scopedTemplates = useMemo(() => {
@@ -2324,7 +2334,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [tasks, scopedVenues, scopedMasterId, leads, clients, activeVenueId, currentUser]);
 
-  // Agendamentos / Visitas do Tenant Ativo
+  // Agendamentos / Visitas do Tenant Ativo (Vazamento zero: nunca expõe agendamentos órfãos a terceiros)
   const scopedAppointments = useMemo(() => {
     if (!currentUser || !scopedMasterId) return appointments;
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
@@ -2332,9 +2342,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
         return a.venueId === activeVenueId;
       }
-      return a.venueId ? masterVenueIds.has(a.venueId) : true;
+      if (a.venueId) return masterVenueIds.has(a.venueId);
+      if (a.leadId) {
+        const l = leads.find(lead => lead.id === a.leadId);
+        return Boolean(l && (l.masterId === scopedMasterId || (l.venueId && masterVenueIds.has(l.venueId))));
+      }
+      return (a as any).masterId === scopedMasterId;
     });
-  }, [appointments, scopedVenues, activeVenueId, currentUser]);
+  }, [appointments, scopedVenues, scopedMasterId, leads, activeVenueId, currentUser]);
 
   // ── Developer Exclusive Methods ─────────────────────────────────────────────
   const addMasterAccount = (name: string, email: string): string => {
@@ -2497,6 +2512,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateCollaborator = (id: string, data: Partial<Collaborator>) => {
+    // Trava de tenant: apenas colaboradores do próprio tenant podem ser editados
+    const targetCollab = scopedCollaborators.find(c => c.id === id);
+    if (!targetCollab) {
+      alert('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
+      return;
+    }
+
     // RBAC: Gerentes não podem editar o próprio perfil na lista nem perfis de outros gerentes/superiores
     const isManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
     if (isManager) {
@@ -2504,8 +2526,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         alert('Acesso Negado: Gerentes não podem alterar seu próprio perfil na lista de colaboradores.');
         return;
       }
-      const targetCollab = collaborators.find(c => c.id === id);
-      if (targetCollab && ['master', 'admin', 'gerencia', 'dev'].includes(targetCollab.role)) {
+      if (['master', 'admin', 'gerencia', 'dev'].includes(targetCollab.role)) {
         alert('Acesso Negado: Gerentes não podem editar outros gerentes ou superiores.');
         return;
       }
@@ -2532,11 +2553,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteCollaborator = (id: string, reassignToId?: string | null) => {
+    // Trava de tenant: apenas colaboradores do próprio tenant podem ser excluídos
+    const targetCollab = scopedCollaborators.find(c => c.id === id);
+    if (!targetCollab) {
+      alert('Acesso Negado: O colaborador selecionado não pertence à sua rede.');
+      return;
+    }
+
+    if (reassignToId) {
+      const isAssigneeInTenant = scopedCollaborators.some(c => c.id === reassignToId);
+      if (!isAssigneeInTenant) {
+        alert('Acesso Negado: O colaborador de destino não pertence à sua rede.');
+        return;
+      }
+    }
+
     deletedCollabIdsRef.current.add(id);
-    const targetCollab = collaborators.find(c => c.id === id);
     const targetName = targetCollab?.name;
     const targetCleanEmail = targetCollab?.email?.toLowerCase().trim();
-    const newCollab = reassignToId ? collaborators.find(c => c.id === reassignToId) : null;
+    const newCollab = reassignToId ? scopedCollaborators.find(c => c.id === reassignToId) : null;
 
     // 1. PRESERVAÇÃO COMERCIAL: Reatribui ou desvincula LEADS
     setLeads(prev => {
@@ -2826,6 +2861,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const updateVenue = async (id: string, venueData: Partial<Venue>) => {
+    const venue = scopedVenues.find(v => v.id === id);
+    if (!venue) {
+      alert('Acesso Negado: Esta casa de festa não pertence à sua rede.');
+      return;
+    }
+
     setVenues(prev => {
       const updated = prev.map(v => v.id === id ? { ...v, ...venueData } : v);
       safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(updated));
@@ -2837,9 +2878,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteVenue = async (id: string): Promise<{ success: boolean; message?: string; activeDebutantesCount?: number }> => {
-    const venue = venues.find(v => v.id === id);
+    const venue = scopedVenues.find(v => v.id === id);
     if (!venue) {
-      return { success: false, message: 'Casa de festa não encontrada.' };
+      return { success: false, message: 'Acesso Negado: Esta casa de festa não pertence à sua rede ou não foi encontrada.' };
     }
 
     // REGRA DE SEGURANÇA 1: Não podem existir debutantes com jornadas ativas vinculadas a esta casa
@@ -3072,7 +3113,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return [];
       }
     }
-    return ['41d857a5-107e-4607-908c-7ebd5ba32cc9']; // Default SDR se não personalizado
+    return [];
   });
 
   useEffect(() => {
@@ -3105,6 +3146,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const isFunnelPinned = (funnelId: string): boolean => {
+    if (userPinnedFunnelIds.length === 0 && scopedFunnels.length > 0) {
+      return funnelId === scopedFunnels[0].id;
+    }
     return userPinnedFunnelIds.includes(funnelId);
   };
 
@@ -3185,10 +3229,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return updated;
       });
 
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && scopedMasterId) {
         supabase
           .from('leads')
           .update({ funnel_id: id })
+          .eq('master_id', scopedMasterId)
           .or(`funnel_id.eq.${id},funnel_id.eq.${oldName}`)
           .then(({ error }) => {
             if (error) console.warn('[updateFunnel] Erro ao sincronizar leads com novo nome do funil:', error);
@@ -3200,8 +3245,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteFunnel = (id: string) => {
-    // Validação de proteção: proibido excluir se houver apenas 1 funil ativo na conta
-    if (funnels.length <= 1) {
+    // 1. Trava estrita de tenant: impede que um usuário exclua funis de outra rede
+    const targetFunnel = scopedFunnels.find(f => f.id === id);
+    if (!targetFunnel) {
+      alert("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
+      return;
+    }
+
+    // 2. Validação de proteção: proibido excluir se houver apenas 1 funil ativo na conta do tenant
+    if (scopedFunnels.length <= 1) {
       alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
       return;
     }
@@ -3234,15 +3286,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     destinationFunnelId: string,
     stageMapping: Record<string, string>
   ): Promise<{ success: boolean; migratedLeadsCount: number; updatedSourcesCount: number }> => {
-    if (funnels.length <= 1) {
+    // 1. Trava estrita de tenant: impede que um usuário exclua funis de outra rede
+    const funnelToDelete = scopedFunnels.find(f => f.id === funnelId);
+    if (!funnelToDelete) {
+      alert("Acesso Negado: Você não possui permissão para excluir funis que pertencem a outra rede.");
+      return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
+    }
+
+    if (scopedFunnels.length <= 1) {
       alert("Você não pode excluir este funil, pois é obrigatório ter ao menos um funil ativo na sua conta.");
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
-    const funnelToDelete = funnels.find(f => f.id === funnelId);
     const isUnassigned = destinationFunnelId === 'unassigned' || !destinationFunnelId;
-    const destFunnel = isUnassigned ? null : funnels.find(f => f.id === destinationFunnelId);
-    if (!funnelToDelete || (!isUnassigned && !destFunnel)) {
+    const destFunnel = isUnassigned ? null : scopedFunnels.find(f => f.id === destinationFunnelId);
+    if (!isUnassigned && !destFunnel) {
+      alert("Acesso Negado: O funil de destino da migração não pertence à sua rede.");
       return { success: false, migratedLeadsCount: 0, updatedSourcesCount: 0 };
     }
 
@@ -3480,8 +3539,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [scopedLeads, scopedFunnels]);
 
   const reassignLeadFunnel = async (leadId: string, destinationFunnelId: string, stageId?: string): Promise<boolean> => {
-    const targetLead = leads.find(l => l.id === leadId);
-    const destFunnel = funnels.find(f => f.id === destinationFunnelId);
+    const targetLead = scopedLeads.find(l => l.id === leadId);
+    const destFunnel = scopedFunnels.find(f => f.id === destinationFunnelId);
     if (!targetLead || !destFunnel) return false;
 
     const defaultStage = (stageId || destFunnel.stages?.[0]?.id || 'in_analysis') as CrmStage;
@@ -4910,30 +4969,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     }
 
-    const targetVenueId = (isUuid(data.venueId) ? data.venueId : null)
-      || (waSource?.venueId && isUuid(waSource.venueId) ? waSource.venueId : null)
-      || (isUuid(activeVenueId) ? activeVenueId : null)
-      || venues.find(v => isUuid(v.id))?.id
-      || 'b2222222-2222-2222-2222-222222222222';
+    const targetVenueId = (isUuid(data.venueId) && scopedVenues.some(v => v.id === data.venueId) ? data.venueId : null)
+      || (waSource?.venueId && isUuid(waSource.venueId) && scopedVenues.some(v => v.id === waSource.venueId) ? waSource.venueId : null)
+      || (isUuid(activeVenueId) && scopedVenues.some(v => v.id === activeVenueId) ? activeVenueId : null)
+      || (scopedVenues.length > 0 ? scopedVenues[0].id : null)
+      || (currentUser?.venueIds?.[0] || 'all');
 
-    const targetVenue = venues.find(v => v.id === targetVenueId);
-    const resolvedMasterId = targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+    const resolvedMasterId = scopedMasterId || currentUser?.id;
 
-    // Garante que o funil padrão para leads de entrada seja comercial (e não pós-venda)
-    const commercialFunnelForVenue = funnels.find(f => 
+    // Garante que o funil padrão para leads de entrada seja comercial (e não pós-venda) e pertença ao tenant
+    const commercialFunnelForVenue = scopedFunnels.find(f => 
       !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda' &&
-      (f.venueId === targetVenueId || (f.venueId === 'all' && (f.masterId === resolvedMasterId || !f.masterId)))
+      (f.venueId === targetVenueId || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenueId)))
     );
 
-    const matchedFunnel = (data.initialFunnelId && isUuid(data.initialFunnelId) ? funnels.find(f => f.id === data.initialFunnelId) : null)
-      || funnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
+    const matchedFunnel = (data.initialFunnelId && isUuid(data.initialFunnelId) ? scopedFunnels.find(f => f.id === data.initialFunnelId) : null)
+      || scopedFunnels.find(f => (f.id === targetFunnelId || f.name === targetFunnelId) && isUuid(f.id))
       || commercialFunnelForVenue
-      || funnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
-      || funnels.find(f => isUuid(f.id));
+      || scopedFunnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
+      || (scopedFunnels.length > 0 ? scopedFunnels[0] : null);
 
     const validFunnelId = (data.initialFunnelId && isUuid(data.initialFunnelId))
       ? data.initialFunnelId
-      : (matchedFunnel && !matchedFunnel.isPostSale ? matchedFunnel.id : (commercialFunnelForVenue?.id || '41d857a5-107e-4607-908c-7ebd5ba32cc9'));
+      : (matchedFunnel && !matchedFunnel.isPostSale ? matchedFunnel.id : (commercialFunnelForVenue?.id || (scopedFunnels[0]?.id || 'comercial')));
 
     const isTargetPostSale = Boolean(
       targetFunnelId === 'post_sale_default' ||
@@ -5639,13 +5697,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    // Se ainda não encontrou o funil, pega o funil comercial padrão da unidade ou do master
+    // Se ainda não encontrou o funil, pega o funil comercial padrão da unidade ou do master (do tenant ativo)
     if (!resolvedFunnelId) {
-      const fallback = funnels.find(f => !f.isPostSale && (f.venueId === data.venueId || f.venueId === 'all'));
+      const fallback = scopedFunnels.find(f => !f.isPostSale && (f.venueId === data.venueId || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(data.venueId))));
       if (fallback) {
         resolvedFunnelId = fallback.id;
-      } else if (funnels.length > 0) {
-        resolvedFunnelId = funnels[0].id;
+      } else if (scopedFunnels.length > 0) {
+        resolvedFunnelId = scopedFunnels[0].id;
       }
     }
 
@@ -5702,8 +5760,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     }
 
-    const targetVenue = venues.find(v => v.id === data.venueId);
-    const resolvedMasterId = targetVenue?.masterId || (targetVenue as any)?.master_id || scopedMasterId || currentUser?.id;
+    const resolvedMasterId = scopedMasterId || currentUser?.id;
 
     const newLead: Lead = {
       id: newLeadId,
@@ -5879,15 +5936,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
 
-    // 2. Trava de segurança financeira e operacional: leads ganhos (won) ou perdidos (lost) não podem ser excluídos
-    const targetLead = leadsRef.current.find(l => l.id === leadId);
-    if (targetLead) {
-      const isWon = targetLead.stage === 'contract_signed' || (targetLead.stage as string) === 'deal_closed';
-      const isLost = targetLead.stage === 'lost';
-      if (isWon || isLost) {
-        alert('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
-        return;
-      }
+    // 2. Trava de isolamento de tenant: garante que o lead pertence estritamente à rede do usuário
+    const targetLead = scopedLeads.find(l => l.id === leadId);
+    if (!targetLead) {
+      alert('Acesso Negado: O lead selecionado não pertence à sua rede ou não existe.');
+      return;
+    }
+
+    // 3. Trava de segurança financeira e operacional: leads ganhos (won) ou perdidos (lost) não podem ser excluídos
+    const isWon = targetLead.stage === 'contract_signed' || (targetLead.stage as string) === 'deal_closed';
+    const isLost = targetLead.stage === 'lost';
+    if (isWon || isLost) {
+      alert('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
+      return;
     }
 
     deletedLeadIdsRef.current.add(leadId);
@@ -5917,12 +5978,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return;
     }
 
-    // 2. Filtra leads que NÃO podem ser excluídos (ganhos ou perdidos)
+    // 2. Trava de isolamento de tenant: apenas leads pertencentes ao tenant ativo podem ser processados
+    const scopedIds = new Set(scopedLeads.map(l => l.id));
+    const safeLeadIds = leadIds.filter(id => scopedIds.has(id));
+    if (safeLeadIds.length === 0) {
+      alert('Acesso Negado: Nenhum dos leads selecionados pertence à sua rede.');
+      return;
+    }
+
+    // 3. Filtra leads que NÃO podem ser excluídos (ganhos ou perdidos)
     const currentLeads = leadsRef.current;
     const blockedLeads: Lead[] = [];
     const validIdsToDelete: string[] = [];
 
-    leadIds.forEach(id => {
+    safeLeadIds.forEach(id => {
       const lead = currentLeads.find(l => l.id === id);
       if (lead) {
         const isWon = lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed';

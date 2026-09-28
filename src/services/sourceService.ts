@@ -104,11 +104,7 @@ export const sourceService = {
     try {
       const sourceId = source.id && isUuid(source.id) ? source.id : generateUuid();
       
-      let safeVenueId = (source.venueId && source.venueId !== 'all' && isUuid(source.venueId)) ? source.venueId : null;
-      if (!safeVenueId) {
-        const { data: vList } = await supabase.from('venues').select('id').limit(1);
-        safeVenueId = vList?.[0]?.id || 'b2222222-2222-2222-2222-222222222222';
-      }
+      const safeVenueId = (source.venueId && source.venueId !== 'all' && isUuid(source.venueId)) ? source.venueId : null;
 
       const payload: any = {
         id: sourceId,
@@ -128,15 +124,6 @@ export const sourceService = {
         .upsert(payload)
         .select()
         .single();
-
-      if (error && (error.code === '23502' || error.message?.includes('funnel_id'))) {
-        // Fallback de compatibilidade caso a coluna do banco ainda possua restrição NOT NULL
-        const { data: anyF } = await supabase.from('commercial_funnels').select('id').limit(1);
-        payload.funnel_id = anyF?.[0]?.id || null;
-        const retry = await supabase.from('sources').upsert(payload).select().single();
-        data = retry.data;
-        error = retry.error;
-      }
 
       if (error) {
         console.error('Erro ao salvar origem:', error);

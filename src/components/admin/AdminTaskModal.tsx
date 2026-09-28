@@ -153,15 +153,14 @@ export const AdminTaskModal: React.FC<AdminTaskModalProps> = ({
     const lead = leads.find(l => l.id === selectedLeadId);
     const debutante = debutantes.find(d => d.id === selectedDebutanteId);
 
-    const masterFallbackUuid = 'a0000000-0000-0000-0000-000000000001';
-    const effectiveUserId = (currentUser?.id && currentUser.id !== 'master') ? currentUser.id : masterFallbackUuid;
+    const effectiveUserId = currentUser?.id || collaborators[0]?.id || '';
 
     let finalAssignedIds = assignedToIds;
     if (!isManager && currentUser?.id && !finalAssignedIds.includes(currentUser.id)) {
       finalAssignedIds = [...finalAssignedIds, currentUser.id];
     }
     if (finalAssignedIds.length === 0) {
-      finalAssignedIds = [effectiveUserId];
+      finalAssignedIds = effectiveUserId ? [effectiveUserId] : [];
     }
 
     const taskData = {

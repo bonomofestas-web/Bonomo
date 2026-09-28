@@ -785,12 +785,11 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     const client = (clients || []).find(c => c.id === selectedClientId);
     const sdrCollab = collaborators.find(c => c.id === sdrAssigneeId);
 
-    const masterFallbackUuid = 'a0000000-0000-0000-0000-000000000001';
-    const effectiveUserId = (currentUser?.id && currentUser.id !== 'master') ? currentUser.id : masterFallbackUuid;
+    const effectiveUserId = currentUser?.id || collaborators[0]?.id || '';
 
     const finalAssignedIds = assignedToIds.length > 0 
       ? assignedToIds 
-      : [effectiveUserId];
+      : (effectiveUserId ? [effectiveUserId] : []);
 
     const effectiveDatabaseId = 
       contextInfo.key === 'followup' ? 'db_followup' :
