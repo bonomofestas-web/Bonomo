@@ -244,7 +244,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 }) => {
   const {
     leads,
-    allLeads,
     clients,
     funnels,
     venues,
@@ -788,7 +787,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [isPostSaleFunnel, clients, leads, activeFunnelId]);
 
   const sourceLeads = useMemo(() => {
-    const rawLeads = (allLeads && allLeads.length > 0) ? allLeads : leads;
+    const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
     if (isPostSaleFunnel) {
       const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
       const postSaleLeads = (rawLeads || []).filter(l =>
@@ -798,7 +797,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return [...clientsAsLeads, ...postSaleLeads];
     }
     return rawLeads;
-  }, [isPostSaleFunnel, clientsAsLeads, allLeads, leads, activeFunnel]);
+  }, [isPostSaleFunnel, clientsAsLeads, leads, activeFunnel]);
 
   // Filtered Leads List
   const filteredLeads = useMemo(() => {
@@ -832,7 +831,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const cleanSearch = hasSearch ? term.toLowerCase().trim() : '';
     const cleanDigits = hasSearch ? cleanSearch.replace(/\D/g, '') : '';
 
+    const scopedMasterId = currentUser?.masterId || currentUser?.id;
+    const allowedVenueIds = new Set(venues.map(v => v.id));
+
     const result = sourceLeads.filter(lead => {
+      // ── BLINDAGEM MULTI-TENANT (Defesa em Profundidade Absoluta) ──
+      // Garante que o lead pertença obrigatoriamente às casas do usuário logado
+      if (currentUser && !(currentUser as any).isDev) {
+        if (lead.venueId && !allowedVenueIds.has(lead.venueId)) {
+          return false;
+        }
+        if (!lead.venueId && lead.masterId && scopedMasterId && lead.masterId !== scopedMasterId) {
+          return false;
+        }
+      }
+
       // 0. Se houver busca explícita digitada pelo usuário, ela tem precedência total na localização do lead:
       if (hasSearch) {
         const matchesName = (lead.name || '').toLowerCase().includes(cleanSearch);
