@@ -5209,8 +5209,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [venues]);
 
   useEffect(() => {
-    // 1. Sincroniza instâncias ativas do WhatsApp (re-executa só quando sources muda)
-    const activeWaSources = sources.filter(s => s.type === 'whatsapp_api' && s.status === 'active');
+    // 1. Sincroniza instâncias ativas do WhatsApp (re-executa só quando sources ou scopedVenues muda)
+    // REGRA SUPREMA MULTI-TENANT: Apenas instâncias pertencentes às casas do Master logado!
+    if (!currentUser || !scopedMasterId || scopedVenues.length === 0) {
+      uazapiSseService.syncActiveInstances([]);
+      return;
+    }
+
+    const scopedVenueIdSet = new Set(scopedVenues.map(v => v.id));
+    const activeWaSources = sources.filter(s => {
+      if (s.type !== 'whatsapp_api' || s.status !== 'active') return false;
+      if (s.venueId && !scopedVenueIdSet.has(s.venueId)) return false;
+      return true;
+    });
+
     const activeWaTokens = activeWaSources
       .map(s => {
         const tok = s.whatsappInstanceId ||
@@ -5235,7 +5247,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }).catch(() => {});
       });
     }
-  }, [sources]);
+  }, [sources, scopedVenues, scopedMasterId, currentUser]);
 
   // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
   useEffect(() => {
@@ -5294,11 +5306,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return false;
         });
 
+        // REGRA SUPREMA MULTI-TENANT: O navegador do usuário logado NUNCA processa mensagens de instâncias de outro Master!
+        if (!matchedSource) {
+          return;
+        }
+
+        const sourceVenue = currentVenues.find(v => v.id === matchedSource.venueId);
+        // Se a origem possui venueId mas ele não está entre as casas do Master logado, DESCARTA IMEDIATAMENTE!
+        if (matchedSource.venueId && (!sourceVenue || (scopedMasterId && sourceVenue.masterId && sourceVenue.masterId !== scopedMasterId))) {
+          console.warn(`[Multi-Tenant Guard] Mensagem de instância (${incoming.instanceToken}) pertence a outro Master. Descartando processamento local.`);
+          return;
+        }
+
         const rawJid = incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || incoming.rawPayload?.chatId || '';
         const rawLid = (isLidIdentifier(incoming.senderPhone) ? incoming.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
 
-        // REGRA DE OURO MULTI-TENANT: Determina a empresa/master proprietária da origem WhatsApp
-        const sourceVenue = currentVenues.find(v => v.id === matchedSource?.venueId);
+        // Determina a empresa/master proprietária da origem WhatsApp
         const sourceMasterId = sourceVenue?.masterId || (matchedSource as any)?.masterId || (matchedSource as any)?.master_id || scopedMasterId;
         const tenantVenues = currentVenues.filter(v => (sourceMasterId && v.masterId === sourceMasterId) || v.id === matchedSource?.venueId);
         const tenantVenueIds = new Set(tenantVenues.map(v => v.id));
