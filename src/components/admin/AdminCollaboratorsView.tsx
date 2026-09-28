@@ -105,7 +105,13 @@ export const AdminCollaboratorsView: React.FC = () => {
   const handleSendInviteEmail = async (collab: Collaborator) => {
     setSendingInviteEmail(collab.email);
     try {
-      await sendCollaboratorInvite(collab.email, collab.name, collab.role);
+      await sendCollaboratorInvite(collab.email, collab.name, collab.role, {
+        masterId: collab.masterId,
+        venueId: collab.venueId,
+        venueIds: collab.venueIds,
+        sectors: collab.sectors,
+        department: collab.department,
+      });
       setInviteSentEmail(collab.email);
       setTimeout(() => setInviteSentEmail(null), 3000);
     } catch (e) {

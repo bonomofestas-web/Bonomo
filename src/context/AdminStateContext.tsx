@@ -501,7 +501,18 @@ export interface AdminContextType {
   addMasterAccount: (name: string, email: string) => string;
   toggleMasterAccountStatus: (masterId: string, active: boolean) => void;
   isInitialSyncComplete: boolean;
-  sendCollaboratorInvite: (email: string, name?: string, role?: string) => Promise<{ success: boolean; message: string }>;
+  sendCollaboratorInvite: (
+    email: string, 
+    name?: string, 
+    role?: string, 
+    extra?: {
+      masterId?: string;
+      venueId?: string;
+      venueIds?: string[];
+      sectors?: string[];
+      department?: string;
+    }
+  ) => Promise<{ success: boolean; message: string }>;
   forceLogout: (reason?: string) => void;
 }
 
@@ -2084,11 +2095,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Colaboradores da Equipe do Tenant Ativo
   const scopedCollaborators = useMemo(() => {
     if (!currentUser || !scopedMasterId) return collaborators;
-    return collaborators.filter(c => 
-      c.id === scopedMasterId ||
-      c.masterId === scopedMasterId
-    );
-  }, [collaborators, scopedMasterId, currentUser]);
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+
+    return collaborators.filter(c => {
+      // 1. O próprio master
+      if (c.id === scopedMasterId) return true;
+      // 2. Colaborador vinculado diretamente ao master
+      if (c.masterId && c.masterId === scopedMasterId) return true;
+      // 3. Fallback de resiliência: se o colaborador possui casas atribuídas pertencentes ao Master
+      if (c.venueId && c.venueId !== 'all' && masterVenueIds.has(c.venueId)) return true;
+      if (Array.isArray(c.venueIds) && c.venueIds.length > 0 && c.venueIds.some(vid => masterVenueIds.has(vid))) return true;
+      return false;
+    });
+  }, [collaborators, scopedMasterId, scopedVenues, currentUser]);
 
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
@@ -2364,7 +2383,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const sendCollaboratorInvite = async (
     email: string,
     name?: string,
-    role?: string
+    role?: string,
+    extra?: {
+      masterId?: string;
+      venueId?: string;
+      venueIds?: string[];
+      sectors?: string[];
+      department?: string;
+    }
   ): Promise<{ success: boolean; message: string }> => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const cleanEmail = email.trim().toLowerCase();
@@ -2378,6 +2404,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           email: cleanEmail,
           name,
           role,
+          masterId: extra?.masterId || scopedMasterId || currentUser?.id,
+          venueId: extra?.venueId,
+          venueIds: extra?.venueIds,
+          sectors: extra?.sectors,
+          department: extra?.department,
           invitedByName: currentUser?.name || 'Administração F5 System',
           redirectTo: finalRedirectTo,
         }),
@@ -2432,10 +2463,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     const id = generateUuid();
+    const resolvedMasterId = data.masterId || scopedMasterId || currentUser?.id;
     const newCollab: Collaborator = {
       ...data,
       id,
-      masterId: data.masterId || scopedMasterId || currentUser?.id,
+      masterId: resolvedMasterId,
       createdAt: new Date().toISOString().split('T')[0],
       isFirstAccess: data.isFirstAccess !== undefined ? data.isFirstAccess : true,
     };
@@ -2446,9 +2478,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
     collaboratorService.upsert(newCollab);
 
-    // Disparo automático e imediato do e-mail de convite oficial
+    // Disparo automático e imediato do e-mail de convite oficial com metadados do tenant
     if (newCollab.email) {
-      sendCollaboratorInvite(newCollab.email, newCollab.name, newCollab.role).then(res => {
+      sendCollaboratorInvite(newCollab.email, newCollab.name, newCollab.role, {
+        masterId: resolvedMasterId,
+        venueId: newCollab.venueId,
+        venueIds: newCollab.venueIds,
+        sectors: newCollab.sectors,
+        department: newCollab.department,
+      }).then(res => {
         console.log('[Auth] Convite automático enviado:', res);
       }).catch(err => {
         console.warn('[Auth] Falha no envio automático do convite:', err);
