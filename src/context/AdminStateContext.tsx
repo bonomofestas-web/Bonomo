@@ -89,6 +89,36 @@ const STORAGE_KEY_ANNOUNCEMENTS = 'bonomo_system_announcements';
 const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
 const STORAGE_KEY_SUPPORT_TICKETS = 'bonomo_support_tickets_v1';
 
+export const purgeAllTenantStorage = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem('bonomo_admin_user_v7');
+    localStorage.removeItem('bonomo_admin_user_v6');
+    localStorage.removeItem('bonomo_admin_user_v5');
+    localStorage.removeItem('f5_system_user');
+    localStorage.removeItem('bonomo_admin_active_tab');
+    localStorage.removeItem('bonomo_impersonating_master');
+    localStorage.removeItem(STORAGE_KEY_COLLABORATORS);
+    localStorage.removeItem(STORAGE_KEY_VENUES);
+    localStorage.removeItem(STORAGE_KEY_DEBUTANTES);
+    localStorage.removeItem(STORAGE_KEY_CLIENTS);
+    localStorage.removeItem(STORAGE_KEY_AGENDA_CONFIGS);
+    localStorage.removeItem(STORAGE_KEY_APPOINTMENTS);
+    localStorage.removeItem(STORAGE_KEY_LEADS);
+    localStorage.removeItem(STORAGE_KEY_SOURCES);
+    localStorage.removeItem(STORAGE_KEY_TEMPLATES);
+    localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
+    localStorage.removeItem(STORAGE_KEY_BENEFITS);
+    localStorage.removeItem(STORAGE_KEY_VIP_CATALOG);
+    localStorage.removeItem(STORAGE_KEY_TASKS);
+    localStorage.removeItem(STORAGE_KEY_FUNNELS);
+    localStorage.removeItem(STORAGE_KEY_LEAD_GOAL);
+    localStorage.removeItem(STORAGE_KEY_MQL_QUESTIONS);
+    localStorage.removeItem(STORAGE_KEY_SUPPORT_TICKETS);
+    sessionStorage.clear();
+  } catch {}
+};
+
 export const createDefaultMqlQuestionsForVenue = (venueId: string): MqlQuestion[] => [
   {
     id: `mql_q1_${venueId}`,
@@ -1301,6 +1331,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!u?.email || !isMounted) return;
       const cleanEmail = u.email.toLowerCase().trim();
 
+      const checkAndHandleTenantSwitch = (newMasterId: string) => {
+        try {
+          const previousSavedUser = localStorage.getItem(STORAGE_KEY_USER);
+          if (previousSavedUser) {
+            const prev = JSON.parse(previousSavedUser);
+            const prevMasterId = prev.masterId || prev.id;
+            if (prevMasterId && prevMasterId !== newMasterId) {
+              console.log('[Tenant Switch] Master mudou de', prevMasterId, 'para', newMasterId, '- Purgando cache local.');
+              purgeAllTenantStorage();
+              setLeads([]);
+              setVenues([]);
+              setCollaborators([]);
+              setFunnels([]);
+              setSources([]);
+              setClients([]);
+              setDebutantes([]);
+              setTasks([]);
+              setActiveVenueIdState(null);
+            }
+          }
+        } catch {}
+      };
+
       // 1. Tenta localizar na lista local de colaboradores já carregada
       const local = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
       if (local && isMounted) {
@@ -1318,6 +1371,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           masterId: local.masterId,
           isDev: isUserDev,
         };
+        checkAndHandleTenantSwitch(fullUser.masterId || fullUser.id);
         setCurrentUser(fullUser);
         safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
         return;
@@ -1346,6 +1400,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             masterId: dbRow.master_id,
             isDev: isUserDev,
           };
+          checkAndHandleTenantSwitch(fullUser.masterId || fullUser.id);
           setCurrentUser(fullUser);
           safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fullUser));
           return;
@@ -1372,6 +1427,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isFirstAccess: false,
             isDev: cleanEmail === 'patrickcouto.oficial@gmail.com',
           };
+          checkAndHandleTenantSwitch(fallbackUser.masterId || fallbackUser.id);
           safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(fallbackUser));
           return fallbackUser;
         });
@@ -1873,30 +1929,53 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }).eq('id', foundCollab.id);
     }
 
+    const newMasterId = user.masterId || user.id;
+    const previousSavedUser = localStorage.getItem(STORAGE_KEY_USER);
+    if (previousSavedUser) {
+      try {
+        const prev = JSON.parse(previousSavedUser);
+        const prevMasterId = prev.masterId || prev.id;
+        if (prevMasterId && prevMasterId !== newMasterId) {
+          purgeAllTenantStorage();
+          setLeads([]);
+          setVenues([]);
+          setCollaborators([]);
+          setFunnels([]);
+          setSources([]);
+          setClients([]);
+          setDebutantes([]);
+          setTasks([]);
+          setActiveVenueIdState(null);
+        }
+      } catch {}
+    }
+
     setCurrentUser(user);
     safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
     if (foundCollab.venueId && foundCollab.venueId !== 'all') {
       setActiveVenueId(foundCollab.venueId);
+    } else {
+      setActiveVenueId(null);
     }
     return true;
   };
 
   const logout = () => {
     setCurrentUser(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY_USER);
-      localStorage.removeItem('bonomo_admin_user_v7');
-      localStorage.removeItem('bonomo_admin_user_v6');
-      localStorage.removeItem('bonomo_admin_user_v5');
-      localStorage.removeItem('f5_system_user');
-      localStorage.removeItem('bonomo_admin_active_tab'); // Limpa a aba ativa para abrir sempre em início
-      localStorage.removeItem('bonomo_impersonating_master');
-      setImpersonatingMaster(null);
-      sessionStorage.clear();
-      if (isSupabaseConfigured) {
-        supabase.auth.signOut().catch(() => {});
-      }
-    } catch {}
+    setImpersonatingMaster(null);
+    purgeAllTenantStorage();
+    setLeads([]);
+    setVenues([]);
+    setCollaborators([]);
+    setFunnels([]);
+    setSources([]);
+    setClients([]);
+    setDebutantes([]);
+    setTasks([]);
+    setActiveVenueIdState(null);
+    if (isSupabaseConfigured) {
+      supabase.auth.signOut().catch(() => {});
+    }
     window.location.href = window.location.origin + '/?admin=true';
   };
 
@@ -2060,7 +2139,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Casas de Festa do Tenant Ativo (Estritamente isoladas por masterId)
   const scopedVenues = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return venues;
+    if (!currentUser || !scopedMasterId) return [];
     
     // Filtra as casas pertencentes ao tenant
     const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
@@ -2094,7 +2173,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Colaboradores da Equipe do Tenant Ativo
   const scopedCollaborators = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return collaborators;
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
 
     return collaborators.filter(c => {
@@ -2111,17 +2190,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return leads;
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
 
     return leads.filter(l => {
-      // REGRA DE OURO DA HIERARQUIA: Lead -> Origem -> Casa de Festa -> Master
-      // Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
+      // REGRA SUPREMA E INEGOCIÁVEL: ISOLAMENTO TOTAL ENTRE MASTERS (VAZAMENTO ZERO)
+      // 1. Se o lead possui masterId explícito, ele DEVE pertencer estritamente ao scopedMasterId
+      if (l.masterId && l.masterId !== scopedMasterId) {
+        return false;
+      }
+
+      // 2. Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
       if (l.venueId && !masterVenueIds.has(l.venueId)) {
         return false;
       }
 
-      // Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant
+      // 3. Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant
       if (!l.venueId && l.sourceId) {
         const src = sources.find(s => s.id === l.sourceId);
         if (src && src.venueId && !masterVenueIds.has(src.venueId)) {
@@ -2129,7 +2213,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
+      // 4. Se o lead não possui casa nem masterId, descarta
+      if (!l.venueId && !l.masterId) {
+        return false;
+      }
+
+      // 5. Se o lead não possui casa vinculada, deve pertencer ao masterId
+      if (!l.venueId) {
+        if (l.masterId !== scopedMasterId) return false;
+      }
+
+      // 6. Filtro por unidade ativa (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        // A casa ativa DEVE pertencer ao Master atual
+        if (!masterVenueIds.has(activeVenueId)) return false;
+
         if (l.venueId === activeVenueId) return true;
         // Se o lead pertence a um funil compartilhado com a unidade ativa, ele deve permanecer visível no funil
         if (l.funnelId) {
@@ -2146,12 +2244,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return false;
       }
 
-      // Se o lead não tiver casa vinculada, restringe pelo masterId
-      if (!l.venueId) {
-        return l.masterId === scopedMasterId;
-      }
-
-      return masterVenueIds.has(l.venueId);
+      return l.venueId ? masterVenueIds.has(l.venueId) : l.masterId === scopedMasterId;
     });
   }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser, funnels]);
 
@@ -2169,7 +2262,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Funis do Tenant Ativo (Estritamente isolados por masterId e casas do Master)
   const scopedFunnels = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return funnels;
+    if (!currentUser || !scopedMasterId) return [];
 
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     const isMasterOrDev = currentUser.role === 'master' || currentUser.isDev;
@@ -2203,6 +2296,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // Se uma casa específica estiver selecionada no filtro global do topo (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (!masterVenueIds.has(activeVenueId)) return false;
+
         // Se o funil possui origens conectadas no tenant atual:
         const tenantConnectedVenues = new Set(
           Array.from(connectedVenues).filter(vid => masterVenueIds.has(vid))
@@ -2223,43 +2318,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Debutantes do Tenant Ativo
   const scopedDebutantes = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return debutantes;
+    if (!currentUser || !scopedMasterId) return [];
     if (activeVenueId && activeVenueId !== 'all') {
       return debutantes.filter(d => d.venueId === activeVenueId);
     }
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return debutantes.filter(d => masterVenueIds.has(d.venueId));
-  }, [debutantes, scopedVenues, activeVenueId, currentUser]);
+  }, [debutantes, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
 
   // Clientes de Pós-Venda do Tenant Ativo
   const scopedClients = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return clients;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return clients.filter(c => c.venueId === activeVenueId);
-    }
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    if (activeVenueId && activeVenueId !== 'all') {
+      return clients.filter(c => c.venueId === activeVenueId && (masterVenueIds.has(c.venueId) || (c as any).masterId === scopedMasterId));
+    }
     return clients.filter(c => (c.venueId && masterVenueIds.has(c.venueId)) || (c as any).masterId === scopedMasterId);
   }, [clients, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
 
   // Origens do Tenant Ativo
   const scopedSources = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return sources;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return sources.filter(s => s.venueId === activeVenueId);
-    }
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    if (activeVenueId && activeVenueId !== 'all') {
+      return sources.filter(s => s.venueId === activeVenueId && masterVenueIds.has(s.venueId));
+    }
     return sources.filter(s => masterVenueIds.has(s.venueId));
-  }, [sources, scopedVenues, activeVenueId, currentUser]);
+  }, [sources, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
 
   // Perguntas ICP do Tenant Ativo
-  // Perguntas ICP do Tenant Ativo
   const scopedMqlQuestions = useMemo(() => {
-    if (!currentUser) return mqlQuestions;
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     const masterFunnelIds = new Set(scopedFunnels.map(f => f.id));
 
     if (activeVenueId && activeVenueId !== 'all') {
-      return mqlQuestions.filter(q => q.venueId === activeVenueId || (q.venueIds && q.venueIds.includes(activeVenueId)));
+      return mqlQuestions.filter(q => (q.venueId === activeVenueId || (q.venueIds && q.venueIds.includes(activeVenueId))) && masterVenueIds.has(activeVenueId));
     }
     return mqlQuestions.filter(q => {
       if (q.venueId && masterVenueIds.has(q.venueId)) return true;
@@ -2273,41 +2367,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Modelos de Jornada do Tenant Ativo (estritamente isolados por casa ativa / tenant)
   const scopedTemplates = useMemo(() => {
-    if (!currentUser) return templates;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return templates.filter(t => t.venueId === activeVenueId);
-    }
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    if (activeVenueId && activeVenueId !== 'all') {
+      return templates.filter(t => t.venueId === activeVenueId && masterVenueIds.has(t.venueId));
+    }
     return templates.filter(t => Boolean(t.venueId && masterVenueIds.has(t.venueId)));
-  }, [templates, scopedVenues, activeVenueId, currentUser]);
+  }, [templates, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
 
   // Catálogo de Benefícios do Tenant Ativo
   const scopedBenefitsCatalog = useMemo(() => {
-    if (!currentUser) return benefitsCatalog;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return benefitsCatalog.filter(b => b.venueId === activeVenueId);
-    }
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    if (activeVenueId && activeVenueId !== 'all') {
+      return benefitsCatalog.filter(b => b.venueId === activeVenueId && masterVenueIds.has(b.venueId));
+    }
     return benefitsCatalog.filter(b => Boolean(b.venueId && masterVenueIds.has(b.venueId)));
-  }, [benefitsCatalog, scopedVenues, activeVenueId, currentUser]);
+  }, [benefitsCatalog, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
 
   // Catálogo VIP do Tenant Ativo
   const scopedVipCatalog = useMemo(() => {
-    if (!currentUser) return vipCatalog;
-    if (activeVenueId && activeVenueId !== 'all') {
-      return vipCatalog.filter(v => v.venueId === activeVenueId);
-    }
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    if (activeVenueId && activeVenueId !== 'all') {
+      return vipCatalog.filter(v => v.venueId === activeVenueId && masterVenueIds.has(v.venueId));
+    }
     return vipCatalog.filter(v => Boolean(v.venueId && masterVenueIds.has(v.venueId)));
-  }, [vipCatalog, scopedVenues, activeVenueId, currentUser]);
+  }, [vipCatalog, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
 
   // Tarefas do Tenant Ativo (Estritamente isoladas por casas do tenant e master)
   const scopedTasks = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return tasks;
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return tasks.filter(t => {
       // 1. Se uma casa específica estiver selecionada no filtro global
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (!masterVenueIds.has(activeVenueId)) return false;
         if (t.venueId) return t.venueId === activeVenueId;
         if (t.leadId) {
           const l = leads.find(lead => lead.id === t.leadId);
@@ -2336,10 +2431,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Agendamentos / Visitas do Tenant Ativo (Vazamento zero: nunca expõe agendamentos órfãos a terceiros)
   const scopedAppointments = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return appointments;
+    if (!currentUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
     return appointments.filter(a => {
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (!masterVenueIds.has(activeVenueId)) return false;
         return a.venueId === activeVenueId;
       }
       if (a.venueId) return masterVenueIds.has(a.venueId);

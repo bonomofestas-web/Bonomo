@@ -159,8 +159,18 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
     const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const thisYearStart = new Date(now.getFullYear(), 0, 1).getTime();
+    const allowedVenueIds = new Set(venues.map(v => v.id));
+    const currentMasterId = currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId;
 
     return leads.filter(lead => {
+      // 0. TRAVA DE SEGURANÇA MÁXIMA MULTI-TENANT (VAZAMENTO ZERO)
+      if (lead.venueId && !allowedVenueIds.has(lead.venueId)) {
+        return false;
+      }
+      if (currentMasterId && lead.masterId && lead.masterId !== currentMasterId) {
+        return false;
+      }
+
       // 1. Filtro global da unidade (se ativo no topo)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
         if (lead.venueId !== activeVenueId) return false;
