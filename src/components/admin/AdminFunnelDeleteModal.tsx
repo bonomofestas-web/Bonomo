@@ -36,14 +36,20 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
 }) => {
   if (!isOpen || !funnelToDelete) return null;
 
-  // Destination funnels (excluding the one being deleted)
+  // Destination funnels (excluding the one being deleted, and strictly restricted to the same master/tenant)
   const otherFunnels = useMemo(() => {
-    return availableFunnels.filter(f => f.id !== funnelToDelete.id);
-  }, [availableFunnels, funnelToDelete.id]);
+    return availableFunnels.filter(f => {
+      if (f.id === funnelToDelete.id) return false;
+      if (funnelToDelete.masterId && f.masterId && f.masterId !== funnelToDelete.masterId) return false;
+      return true;
+    });
+  }, [availableFunnels, funnelToDelete.id, funnelToDelete.masterId]);
 
   const [selectedDestFunnelId, setSelectedDestFunnelId] = useState<string>(() => {
     return otherFunnels[0]?.id || 'unassigned';
   });
+
+  const [confirmationText, setConfirmationText] = useState('');
 
   const isUnassigned = selectedDestFunnelId === 'unassigned';
 
@@ -896,6 +902,38 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
             </div>
           )}
 
+          {/* Trava de Segurança Antiacidente: Exigência de digitação para confirmar exclusão */}
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.05)',
+            border: '1.5px dashed rgba(239, 68, 68, 0.35)',
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+              Confirmação de Segurança: Digite <span style={{ color: '#EF4444', fontWeight: 900 }}>"{funnelToDelete.name}"</span> ou <span style={{ color: '#EF4444', fontWeight: 900 }}>"EXCLUIR"</span> para autorizar a operação:
+            </label>
+            <input
+              type="text"
+              value={confirmationText}
+              onChange={(e) => setConfirmationText(e.target.value)}
+              placeholder={`Digite "${funnelToDelete.name}" ou "EXCLUIR"`}
+              style={{
+                background: 'var(--adm-bg-surface, #FFFFFF)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '8px',
+                padding: '9px 14px',
+                fontSize: '0.85rem',
+                color: 'var(--adm-text-title)',
+                outline: 'none',
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
           {errorMsg && (
             <div style={{
               background: 'rgba(239, 68, 68, 0.12)',
@@ -942,38 +980,44 @@ export const AdminFunnelDeleteModal: React.FC<AdminFunnelDeleteModalProps> = ({
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              style={{
-                padding: '9px 20px',
-                background: '#EF4444',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#FFFFFF',
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 10px rgba(239, 68, 68, 0.3)',
-              }}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>{isUnassigned ? 'Desatribuindo e Excluindo...' : 'Migrando e Excluindo...'}</span>
-                </>
-              ) : (
-                <>
-                  <Trash2 size={16} />
-                  <span>{isUnassigned ? `Desatribuir ${funnelLeads.length} Leads e Excluir Funil` : `Migrar ${funnelLeads.length} Leads e Excluir Funil`}</span>
-                </>
-              )}
-
-            </button>
+            {(() => {
+              const isConfirmed = confirmationText.trim().toUpperCase() === funnelToDelete.name.trim().toUpperCase() || 
+                confirmationText.trim().toUpperCase() === 'EXCLUIR';
+              return (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !isConfirmed}
+                  style={{
+                    padding: '9px 20px',
+                    background: isConfirmed ? '#EF4444' : 'rgba(239, 68, 68, 0.3)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#FFFFFF',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: isConfirmed ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: isConfirmed ? '0 2px 10px rgba(239, 68, 68, 0.3)' : 'none',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>{isUnassigned ? 'Desatribuindo e Excluindo...' : 'Migrando e Excluindo...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      <span>{isUnassigned ? `Desatribuir ${funnelLeads.length} Leads e Excluir Funil` : `Migrar ${funnelLeads.length} Leads e Excluir Funil`}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -2148,7 +2148,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return map;
   }, [sources]);
 
-  // Funis do Tenant Ativo (Funis soltos do Master ou dinamicamente vinculados a casas via Origens)
+  // Funis do Tenant Ativo (Estritamente isolados por masterId e casas do Master)
   const scopedFunnels = useMemo(() => {
     if (!currentUser || !scopedMasterId) return funnels;
 
@@ -2157,18 +2157,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const userVenueIds = new Set(currentUser.venueIds || []);
 
     return funnels.filter(f => {
-      const isOwnedByMaster = f.masterId === scopedMasterId;
-      const connectedVenues = funnelConnectedVenueIds.get(f.id) || new Set<string>();
-
-      // Casas associadas: tanto via origens quanto via venueId/sharedVenueIds existentes
-      const hasSourceFromMasterVenues = Array.from(connectedVenues).some(vid => masterVenueIds.has(vid));
-      const hasDirectMasterVenue = Boolean(f.venueId && f.venueId !== 'all' && masterVenueIds.has(f.venueId));
-      const hasSharedMasterVenue = Boolean(f.sharedVenueIds && f.sharedVenueIds.some(vid => masterVenueIds.has(vid)));
-
-      // O funil deve obrigatoriamente pertencer ao tenant do Master ativo
-      if (!isOwnedByMaster && !hasSourceFromMasterVenues && !hasDirectMasterVenue && !hasSharedMasterVenue) {
+      // 1. ISOLAMENTO ESTRITO DE TENANT:
+      // Se o funil possui masterId explícito e não é o master ativo, descarta sumariamente!
+      if (f.masterId && f.masterId !== scopedMasterId) {
         return false;
       }
+
+      // Se o funil não tem masterId explícito, ele só pode ser do tenant se sua venueId direta ou compartilhada pertencer às casas do master
+      if (!f.masterId) {
+        const belongsToMasterVenues = (f.venueId && masterVenueIds.has(f.venueId)) ||
+          (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => masterVenueIds.has(vid)));
+        if (!belongsToMasterVenues) {
+          return false;
+        }
+      }
+
+      const connectedVenues = funnelConnectedVenueIds.get(f.id) || new Set<string>();
 
       // Se for colaborador (não-master), só enxerga funis com origens nas casas dele
       if (!isMasterOrDev) {
@@ -2180,14 +2184,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       // Se uma casa específica estiver selecionada no filtro global do topo (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        // Regra de Ouro: Se o funil já possui origens conectadas a ele, ele pertence EXCLUSIVAMENTE às casas dessas origens!
-        if (connectedVenues.size > 0) {
-          return connectedVenues.has(activeVenueId);
+        // Se o funil possui origens conectadas no tenant atual:
+        const tenantConnectedVenues = new Set(
+          Array.from(connectedVenues).filter(vid => masterVenueIds.has(vid))
+        );
+        if (tenantConnectedVenues.size > 0) {
+          return tenantConnectedVenues.has(activeVenueId);
         }
 
-        // Se ainda não possui origens conectadas (funil solto recém-criado pelo Master):
-        // Só aparece se for explicitamente criado para essa casa
-        return Boolean(f.venueId && f.venueId === activeVenueId);
+        // Se ainda não possui origens conectadas (funil novo ou compartilhado):
+        const isLinkedToActive = (f.venueId === activeVenueId) || 
+          (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(activeVenueId));
+        return isLinkedToActive;
       }
 
       return true;

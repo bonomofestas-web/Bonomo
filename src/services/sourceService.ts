@@ -248,11 +248,15 @@ export const sourceService = {
 
       for (const venue of venues) {
         // Encontra apenas os funis comerciais pertencentes à casa ou ao master da casa (ignora funis de pós-venda)
-        const venueFunnels = funnels.filter(f => 
-          !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda' &&
-          (f.venueId === venue.id || 
-          (f.venueId === 'all' && (f.masterId === venue.masterId || !f.masterId && !venue.masterId)))
-        );
+        const venueFunnels = funnels.filter(f => {
+          if (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda') return false;
+          // Se o funil e a casa possuem masterId e são diferentes, descarta sumariamente
+          if (f.masterId && venue.masterId && f.masterId !== venue.masterId) return false;
+          
+          return f.venueId === venue.id || 
+            (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(venue.id)) ||
+            (f.venueId === 'all' && (!f.masterId || f.masterId === venue.masterId));
+        });
         const hasExactlyOneFunnel = venueFunnels.length === 1 && isUuid(venueFunnels[0].id);
         const primaryFunnel = venueFunnels.find(f => f.isPrimary);
         const autoFunnelId = hasExactlyOneFunnel 
