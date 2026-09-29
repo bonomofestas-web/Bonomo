@@ -642,19 +642,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const initialNoteText = text.trim() || (isAudio ? 'Mensagem de voz' : 'Mensagem no WhatsApp');
 
           let targetStage = 'new_lead';
+          let isPostSaleTarget = false;
           if (funnelId && funnelId !== 'comercial') {
-            const { data: fRow } = await supabase.from('commercial_funnels').select('stages').eq('id', funnelId).maybeSingle();
-            if (fRow?.stages && Array.isArray(fRow.stages) && fRow.stages.length > 0) {
-              const hasNewLead = fRow.stages.some((s: any) => s.id === 'new_lead');
-              if (!hasNewLead) {
-                targetStage = fRow.stages[0]?.id || 'in_negotiation';
+            const { data: fRow } = await supabase.from('commercial_funnels').select('stages, is_post_sale, category, name').eq('id', funnelId).maybeSingle();
+            if (fRow) {
+              isPostSaleTarget = Boolean(
+                fRow.is_post_sale || 
+                fRow.category === 'Pós-Venda' || 
+                fRow.category === 'pos_venda' || 
+                fRow.name?.toLowerCase().includes('pós-venda')
+              );
+              if (fRow.stages && Array.isArray(fRow.stages) && fRow.stages.length > 0) {
+                const hasNewLead = fRow.stages.some((s: any) => s.id === 'new_lead');
+                if (!hasNewLead) {
+                  targetStage = fRow.stages[0]?.id || (isPostSaleTarget ? 'onboarding' : 'in_negotiation');
+                }
               }
             }
           }
 
-          const newLead = {
+          const newLead: any = {
             id: leadId,
-            code: leadCode,
+            code: isPostSaleTarget ? `CLI-${leadCode.replace('LD-', '')}` : leadCode,
             name: cleanLeadName,
             phone: finalPhone,
             venue_id: venueId,
@@ -663,6 +672,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             source_id: matchedSource?.id || null,
             source_name: matchedSource?.name || 'WhatsApp Oficial',
             stage: targetStage,
+            group: isPostSaleTarget ? 'Pós-Venda' : 'WhatsApp',
+            is_client: isPostSaleTarget,
+            tags: isPostSaleTarget ? ['Cliente'] : [],
             unread_count: isFromMe ? 0 : 1,
             notes: isFromMe ? `Conversa iniciada via WhatsApp: "${initialNoteText}"` : `Primeira mensagem via WhatsApp: "${initialNoteText}"`,
             created_at: new Date().toISOString(),

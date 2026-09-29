@@ -756,7 +756,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       return true;
     }).map(funnel => {
       // Calculate dynamic metrics per funnel strictly for this funnel (filtered by activeVenueId if set)
+      const isFunnelPostSale = Boolean(funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.category === 'pos_venda' || funnel.id === 'post_sale_default');
       const funnelLeads = leads.filter(l => {
+        const isClient = Boolean(l.isClient === true || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+        if (isFunnelPostSale && !isClient) return false;
+        if (!isFunnelPostSale && isClient) return false;
         const matchesFunnel = l.funnelId 
           ? (l.funnelId === funnel.id || l.funnelId.toLowerCase().trim() === funnel.name.toLowerCase().trim()) 
           : funnel.isPrimary;
@@ -888,6 +892,22 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     const matching = leads.filter(l => {
+      // 0. REGRA SUPREMA E INEGIOCIÁVEL: ISOLAMENTO TOTAL ENTRE LEADS COMERCIAIS E CLIENTES (PÓS-VENDA)
+      const isClientRecord = Boolean(
+        l.isClient === true || 
+        l.group === 'Pós-Venda' || 
+        (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+      );
+
+      if (isPostSaleFunnel || isPostSaleView) {
+        // No Sucesso do Cliente (Pós-Venda), É TERMINANTEMENTE PROIBIDO aparecer lead comercial.
+        // Se por qualquer falha ou configuração um contato não for cliente, ele NÃO aparece no Sucesso do Cliente.
+        if (!isClientRecord) return false;
+      } else {
+        // Nos Funis Comerciais normais, clientes pós-venda não devem poluir a esteira de vendas.
+        if (isClientRecord) return false;
+      }
+
       // 1. Mandatory Strict Funnel Matching:
       if (currentFunnel) {
         if (!l.funnelId) return false; // Lead desindexado (sem funil) NUNCA deve aparecer no Kanban de funis

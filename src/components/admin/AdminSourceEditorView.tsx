@@ -3,12 +3,13 @@ import {
   ArrowLeft, Compass, PhoneCall, FileText,
   Plus, Trash2, Tag,
   QrCode, RefreshCw, CheckCircle2, Smartphone, Building2,
-  Check, AlertTriangle, ShieldCheck, Target, Users
+  Check, AlertTriangle, ShieldCheck, Target, Users, Crown, Layers
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
 import { AdminAddSubSourceModal } from './AdminAddSubSourceModal';
 import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
+import { AdminSourceFunnelSelectModal } from './AdminSourceFunnelSelectModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import type { Source, SourceType, FormField, WhatsAppSubSource } from '../../types/sources';
 
@@ -60,6 +61,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   const [subSources, setSubSources] = useState<WhatsAppSubSource[]>([]);
   const [isAddSubModalOpen, setIsAddSubModalOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isFunnelModalOpen, setIsFunnelModalOpen] = useState(false);
 
   // WhatsApp Live Connection State (QR Code + Pairing Code)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
@@ -200,7 +202,13 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   const undefinedFunnelLeads = useMemo(() => {
     return originLeads.filter(l => {
       if (!l.funnelId || l.funnelId.trim() === '') return true;
-      return !funnels.some(f => f.id === l.funnelId);
+      const targetF = funnels.find(f => f.id === l.funnelId);
+      if (!targetF) return true;
+      // Regra Suprema F5: Lead comercial em funil de Pós-Venda é automaticamente desindexado (Sem Funil)
+      const isClient = Boolean(l.isClient === true || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+      const isPostSale = Boolean(targetF.isPostSale || targetF.category === 'Pós-Venda' || targetF.category === 'pos_venda' || targetF.id === 'post_sale_default');
+      if (!isClient && isPostSale) return true;
+      return false;
     });
   }, [originLeads, funnels]);
 
@@ -783,88 +791,291 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
             </div>
           </div>
 
-          {/* Funil de Destino Principal */}
+          {/* Funil de Destino Principal com Modal de Cores */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
-                Funil de Destino Automático
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Layers size={14} style={{ color: 'var(--adm-accent)' }} />
+                <span>Funil de Destino Automático</span>
               </label>
               <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
                 (Opcional / Desvinculável)
               </span>
             </div>
-            <select
-              value={funnelId}
-              onChange={(e) => setFunnelId(e.target.value)}
-              className="adm-input"
-              style={{
-                width: '100%',
-                height: '46px',
-                borderRadius: '12px',
-                fontSize: '0.86rem',
-                padding: '0 16px',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                color: 'var(--adm-text-title)',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">⚪ Sem Funil Definido (Desvincular)</option>
-              <optgroup label="🎯 Funis Comerciais">
-                {commercialFunnels.map(f => (
-                  <option key={f.id} value={f.id}>
-                    🎯 {f.name} {f.isEntryStageActive === false ? '⚠️ (Sem Caixa de Entrada)' : ''}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="👑 Sucesso do Cliente (Pós-Venda)">
-                {postSaleFunnels.length > 0 ? (
-                  postSaleFunnels.map(f => (
-                    <option key={f.id} value={f.id}>
-                      👑 {f.name} {f.isEntryStageActive === false ? '⚠️ (Sem Caixa de Entrada)' : ''}
-                    </option>
-                  ))
-                ) : (
-                  <option value="post_sale_default">👑 Sucesso do Cliente (Pós-Venda Padrão)</option>
-                )}
-              </optgroup>
-            </select>
-            
-            {!funnelId ? (
-              <div style={{
-                marginTop: '8px',
-                padding: '10px 14px',
-                borderRadius: '10px',
-                background: 'rgba(100, 116, 139, 0.08)',
-                border: '1px solid var(--adm-border)',
-                fontSize: '0.73rem',
-                color: 'var(--adm-text-muted)',
-                lineHeight: '1.4',
-              }}>
-                ⚪ <strong>Origem Desvinculada:</strong> Novos leads captados entrarão no sistema como <strong>Sem Funil</strong> (desindexados), garantindo que nenhum contato seja perdido e podendo ser alocados manualmente pela equipe.
-              </div>
-            ) : (() => {
+
+            {(() => {
               const selectedF = funnels.find(f => f.id === funnelId);
-              if (selectedF && selectedF.isEntryStageActive === false) {
+              const isPostSale = funnelId === 'post_sale_default' || selectedF?.isPostSale || selectedF?.category === 'Pós-Venda' || selectedF?.category === 'pos_venda' || selectedF?.name?.toLowerCase().includes('pós-venda');
+
+              if (!funnelId) {
                 return (
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '10px 14px',
-                    borderRadius: '10px',
-                    background: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    fontSize: '0.73rem',
-                    color: '#F59E0B',
-                    lineHeight: '1.4',
-                  }}>
-                    ⚠️ <strong>Atenção:</strong> O funil selecionado possui a <em>Caixa de Entrada</em> desativada. Se preferir não alocar leads diretamente nas etapas negociadas, desvincule a origem selecionando a opção <em>Sem Funil Definido</em>.
+                  <div
+                    onClick={() => setIsFunnelModalOpen(true)}
+                    style={{
+                      padding: '16px 18px',
+                      borderRadius: '16px',
+                      background: 'var(--adm-bg-input)',
+                      border: '1.5px dashed var(--adm-border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '14px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--adm-accent)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--adm-border)')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '12px',
+                        background: 'rgba(100, 116, 139, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--adm-text-muted)',
+                        flexShrink: 0,
+                      }}>
+                        <Target size={22} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                          ⚪ Sem Funil Definido (Desvincular)
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px', lineHeight: '1.3' }}>
+                          Contatos entrarão como <strong>Sem Funil</strong> (desindexados), aguardando triagem manual pela equipe.
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsFunnelModalOpen(true);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        background: 'var(--adm-accent-bg, rgba(212, 175, 55, 0.12))',
+                        border: '1px solid var(--adm-accent)',
+                        color: 'var(--adm-accent)',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Escolher Funil
+                    </button>
                   </div>
                 );
               }
+
+              if (isPostSale) {
+                return (
+                  <div
+                    onClick={() => setIsFunnelModalOpen(true)}
+                    style={{
+                      padding: '16px 18px',
+                      borderRadius: '16px',
+                      background: 'rgba(139, 92, 246, 0.08)',
+                      border: '1.5px solid #8B5CF6',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 16px rgba(139, 92, 246, 0.12)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{
+                          width: '46px',
+                          height: '46px',
+                          borderRadius: '14px',
+                          background: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)',
+                          flexShrink: 0,
+                        }}>
+                          <Crown size={24} />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.94rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
+                              {selectedF?.name || 'Sucesso do Cliente (Pós-Venda)'}
+                            </span>
+                            <span style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 900,
+                              textTransform: 'uppercase',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: '#8B5CF6',
+                              color: '#fff',
+                              letterSpacing: '0.4px',
+                            }}>
+                              👑 Pós-Venda • Clientes
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: '#8B5CF6', fontWeight: 700, marginTop: '3px' }}>
+                            ✓ Todos os contatos que enviarem mensagem serão cadastrados como <u>CLIENTES</u>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsFunnelModalOpen(true);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '10px',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          border: '1px solid #8B5CF6',
+                          color: '#8B5CF6',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Alterar Funil
+                      </button>
+                    </div>
+
+                    <div style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      fontSize: '0.72rem',
+                      color: 'var(--adm-text-title)',
+                      lineHeight: '1.4',
+                    }}>
+                      🛡️ <strong>Regra do F5 System:</strong> Leads comerciais não entram no Sucesso do Cliente. Qualquer número recebido aqui é catalogado como Card de Cliente.
+                    </div>
+                  </div>
+                );
+              }
+
+              // Funil Comercial com Badge Color
+              const funnelColor = selectedF?.badgeColor || '#3B82F6';
               return (
-                <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
-                  Novos leads serão inseridos na 1ª etapa deste funil imediatamente.
+                <div
+                  onClick={() => setIsFunnelModalOpen(true)}
+                  style={{
+                    padding: '16px 18px',
+                    borderRadius: '16px',
+                    background: `${funnelColor}0D`,
+                    border: `1.5px solid ${funnelColor}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: `0 4px 16px ${funnelColor}1A`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{
+                        width: '46px',
+                        height: '46px',
+                        borderRadius: '14px',
+                        background: funnelColor,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#fff',
+                        boxShadow: `0 4px 12px ${funnelColor}40`,
+                        flexShrink: 0,
+                      }}>
+                        <Target size={24} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.94rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
+                            {selectedF?.name || 'Funil Comercial'}
+                          </span>
+                          <span style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 900,
+                            textTransform: 'uppercase',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: funnelColor,
+                            color: '#fff',
+                            letterSpacing: '0.4px',
+                          }}>
+                            🎯 Funil Comercial
+                          </span>
+                          {selectedF?.isEntryStageActive === false && (
+                            <span style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              color: '#F59E0B',
+                              border: '1px solid rgba(245, 158, 11, 0.3)',
+                            }}>
+                              ⚠️ Caixa de Entrada Inativa
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
+                          {selectedF?.stages?.length ? `${selectedF.stages.length} etapas no fluxo` : 'Fluxo padrão'} • Novos leads serão alocados na 1ª etapa
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsFunnelModalOpen(true);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        background: `${funnelColor}18`,
+                        border: `1px solid ${funnelColor}`,
+                        color: funnelColor,
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Alterar Funil
+                    </button>
+                  </div>
+
+                  {selectedF?.isEntryStageActive === false && (
+                    <div style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      fontSize: '0.72rem',
+                      color: '#F59E0B',
+                      lineHeight: '1.4',
+                    }}>
+                      ⚠️ <strong>Atenção:</strong> O funil selecionado possui a <em>Caixa de Entrada</em> desativada. Se preferir não alocar leads diretamente nas etapas negociadas, desvincule a origem selecionando a opção <em>Sem Funil Definido</em>.
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -1720,6 +1931,18 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           setIsConnectModalOpen(false);
           setConnectionStatus('connected');
         }}
+      />
+
+      <AdminSourceFunnelSelectModal
+        isOpen={isFunnelModalOpen}
+        onClose={() => setIsFunnelModalOpen(false)}
+        selectedFunnelId={funnelId}
+        onSelectFunnel={(id) => {
+          setFunnelId(id);
+          setIsFunnelModalOpen(false);
+        }}
+        funnels={availableVenueFunnels.length > 0 ? availableVenueFunnels : funnels}
+        venueName={venues.find(v => v.id === venueId)?.name}
       />
 
     </div>

@@ -5122,25 +5122,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || scopedFunnels.find(f => f.venueId === targetVenueId && isUuid(f.id))
       || (scopedFunnels.length > 0 ? scopedFunnels[0] : null);
 
-    const validFunnelId = (data.initialFunnelId && isUuid(data.initialFunnelId))
-      ? data.initialFunnelId
-      : (matchedFunnel && !matchedFunnel.isPostSale ? matchedFunnel.id : (commercialFunnelForVenue?.id || (scopedFunnels[0]?.id || 'comercial')));
-
     const isTargetPostSale = Boolean(
       targetFunnelId === 'post_sale_default' ||
       matchedFunnel?.isPostSale ||
       matchedFunnel?.category === 'Pós-Venda' ||
-      waSource?.funnelId === 'post_sale_default'
+      matchedFunnel?.category === 'pos_venda' ||
+      waSource?.funnelId === 'post_sale_default' ||
+      scopedFunnels.some(f => f.id === waSource?.funnelId && (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda'))
     );
+
+    let validFunnelId: string | undefined = undefined;
+    if (isTargetPostSale) {
+      validFunnelId = (data.initialFunnelId && isUuid(data.initialFunnelId))
+        ? data.initialFunnelId
+        : (matchedFunnel?.id || waSource?.funnelId || 'post_sale_default');
+    } else {
+      // Regra Suprema F5: Lead comercial NUNCA pode ter funil de Pós-Venda. Se vier por engano, vira lead sem funil (undefined).
+      if (data.initialFunnelId && isUuid(data.initialFunnelId)) {
+        const checkF = scopedFunnels.find(f => f.id === data.initialFunnelId);
+        validFunnelId = (checkF && !checkF.isPostSale && checkF.category !== 'Pós-Venda') ? data.initialFunnelId : undefined;
+      } else if (matchedFunnel && !matchedFunnel.isPostSale && matchedFunnel.category !== 'Pós-Venda') {
+        validFunnelId = matchedFunnel.id;
+      } else {
+        validFunnelId = commercialFunnelForVenue?.id;
+      }
+    }
 
     const firstStageId = matchedFunnel?.stages && matchedFunnel.stages.length > 0
       ? (matchedFunnel.stages.find(s => s.id === 'new_lead')?.id || matchedFunnel.stages[0].id)
-      : 'new_lead';
+      : (isTargetPostSale ? 'onboarding' : 'new_lead');
 
     const newLead: Lead = {
       id: newLeadId,
       masterId: resolvedMasterId,
-      code: leadCode,
+      code: isTargetPostSale ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode,
       debutanteId: '',
       debutanteName: 'WhatsApp Direto',
       debutanteSlug: '',
@@ -5155,6 +5170,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       avatarUrl: data.avatarUrl,
       age: 15,
       group: isTargetPostSale ? 'Pós-Venda' : 'WhatsApp',
+      tags: isTargetPostSale ? ['Cliente'] : [],
       notes: effectiveMsgText ? (data.fromMe ? `Conversa iniciada via WhatsApp: "${effectiveMsgText}"` : `Primeira mensagem via WhatsApp: "${effectiveMsgText}"`) : undefined,
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
