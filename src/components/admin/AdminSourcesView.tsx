@@ -14,6 +14,7 @@ import { AdminWhatsAppHistoryTriageModal } from './AdminWhatsAppHistoryTriageMod
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
 import type { Source } from '../../types/sources';
+import type { Venue } from '../../types/admin';
 
 export const AdminSourcesView: React.FC = () => {
   const { sources, venues, funnels, leads, activeVenueId, toggleSourceStatus, updateSource } = useAdminState();
@@ -208,6 +209,56 @@ export const AdminSourcesView: React.FC = () => {
       return true;
     });
   }, [sources, activeVenueId, selectedTypeFilter, searchTerm, venues]);
+
+  // Agrupa origens filtradas por unidade (com suporte a origens globais/sem unidade)
+  const groupedSourcesByVenue = useMemo(() => {
+    // Lista de casas de festas relevantes com base na filtragem ativa
+    const relevantVenues = venues.filter(v => {
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        return v.id === activeVenueId;
+      }
+      return true;
+    });
+
+    const groups: {
+      venueId: string;
+      venue: Venue | null;
+      venueName: string;
+      sources: Source[];
+      totalLeads: number;
+    }[] = [];
+
+    // 1. Grupos das Casas de Festa
+    for (const v of relevantVenues) {
+      const vSources = filteredSources.filter(s => s.venueId === v.id);
+      // Inclui a unidade se ela tiver origens ou se for a unidade selecionada no filtro global
+      if (vSources.length > 0 || (activeVenueId && activeVenueId === v.id)) {
+        const totalLeads = vSources.reduce((acc, s) => acc + getSourceLeadCount(s), 0);
+        groups.push({
+          venueId: v.id,
+          venue: v,
+          venueName: v.name,
+          sources: vSources,
+          totalLeads,
+        });
+      }
+    }
+
+    // 2. Origens Globais ou Sem Casa Específica
+    const unassignedSources = filteredSources.filter(s => !s.venueId || s.venueId === 'all' || !venues.some(v => v.id === s.venueId));
+    if (unassignedSources.length > 0) {
+      const totalLeads = unassignedSources.reduce((acc, s) => acc + getSourceLeadCount(s), 0);
+      groups.push({
+        venueId: 'unassigned',
+        venue: null,
+        venueName: 'Origens Globais / Geral',
+        sources: unassignedSources,
+        totalLeads,
+      });
+    }
+
+    return groups;
+  }, [filteredSources, venues, activeVenueId]);
 
   // Aggregate Metrics (Dinâmicas e fiéis à realidade da pipeline)
   const totalSourcesCount = filteredSources.length;
@@ -525,402 +576,530 @@ export const AdminSourcesView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredSources.map((source: Source) => {
-                  const venue = venues.find(v => v.id === source.venueId);
-                  const funnel = funnels.find(f => f.id === source.funnelId);
-                  const isCopied = copiedId === source.id;
-
-                  // Estado de Conexão WhatsApp
-                  const config = (source.configuration as any) || {};
-                  const live = liveStatuses[source.id];
-                  const rawPhone = live?.phone || config.connectedPhone || source.whatsappInstanceId || '';
-                  const isExplicitlyDisconnected = config.isConnected === false || source.status === 'inactive' || config.connectionStatus === 'disconnected';
-                  const effectiveStatus = live ? live.status : (isExplicitlyDisconnected ? 'disconnected' : (config.connectedPhone ? 'connected' : 'disconnected'));
-                  const isConnected = effectiveStatus === 'connected' && source.status === 'active';
-                  const isChecking = effectiveStatus === 'checking';
-                  const isDisconnected = effectiveStatus === 'disconnected' || !isConnected;
-                  const displayName = live?.profileName || config.connectedProfileName || config.whatsappDisplayName || source.name;
-                  const avatar = live?.avatar || config.connectedAvatar;
-                  const hasNeverConnected = !config.connectedPhone && !source.whatsappInstanceId && !isConnected;
-
-                  // Alerta de Desconexão real do WhatsApp
-                  const hasDisconnectionAlert = source.type === 'whatsapp_api' && (isDisconnected || !isConnected);
-                  const hasAlert = hasDisconnectionAlert;
-
-                  // Miniatura segura da casa de festa
-                  const venueImage = venue ? (venue.ballroomImageUrl || venue.bannerImageUrl || (venue as any).facadeImageUrl) : undefined;
-
-                  // Status ativo pleno
-                  const isFullyActive = source.status === 'active' && (source.type !== 'whatsapp_api' || isConnected);
+                {groupedSourcesByVenue.map((group, groupIndex) => {
+                  const groupVenue = group.venue;
+                  const groupLogo = groupVenue ? (groupVenue.logoUrl || (groupVenue as any)?.logo_url) : undefined;
 
                   return (
-                    <tr
-                      key={source.id}
-                      onClick={() => {
-                        setSourceToEdit(source);
-                        setIsEditing(true);
-                      }}
-                      style={{
-                        borderBottom: '1px solid var(--adm-border)',
-                        transition: 'background 0.15s ease',
-                        cursor: 'pointer',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                      title="Clique na origem para abrir a tela de edição e configurações"
-                    >
-                      {/* Nome & Slug com Símbolo de Alerta se desconectado */}
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {hasAlert && (
-                            <span 
-                              title="Atenção: WhatsApp desconectado ou com falha de conexão!"
-                              style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                                animation: 'pulsePendingAlert 2s infinite ease-in-out',
-                              }}
-                            >
-                              <AlertTriangle size={16} color="#EF4444" />
-                            </span>
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              {source.name}
-                            </div>
-                            {source.slug && source.type === 'form' && (
-                              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
-                                /f/{source.slug}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Tipo */}
-                      <td style={{ padding: '14px 18px' }}>
-                        {renderTypeBadge(source.type)}
-                      </td>
-
-                      {/* Casa de Festa com Miniatura/Logo */}
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {venueImage ? (
-                            <img
-                              src={venueImage}
-                              alt={venue?.name || 'Casa'}
-                              style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '8px',
-                                objectFit: 'cover',
-                                border: '1px solid var(--adm-border)',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : (
-                            <div style={{
-                              width: '28px',
-                              height: '28px',
-                              borderRadius: '8px',
-                              background: 'rgba(212, 175, 55, 0.12)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: 'var(--adm-accent)',
-                              flexShrink: 0,
-                            }}>
-                              <Building2 size={15} />
-                            </div>
-                          )}
-                          <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', fontSize: '0.82rem' }}>
-                            {venue?.name || 'Geral'}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Funil de Destino */}
-                      <td style={{ padding: '14px 18px' }}>
-                        {source.funnelId && funnel ? (() => {
-                          const fColor = funnel.badgeColor || (funnel as any)?.color || '#D4AF37';
-                          return (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '4px 10px',
-                              borderRadius: '8px',
-                              background: `${fColor}18`,
-                              border: `1px solid ${fColor}40`,
-                              color: fColor,
-                              fontWeight: 700,
-                              fontSize: '0.74rem',
-                            }}>
-                              {funnel.isPostSale ? <Crown size={13} /> : <Target size={13} />}
-                              <span>{funnel.name}</span>
-                            </span>
-                          );
-                        })() : (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '4px 10px',
-                            borderRadius: '8px',
-                            background: 'rgba(100, 116, 139, 0.1)',
-                            border: '1px solid var(--adm-border)',
-                            color: 'var(--adm-text-muted)',
-                            fontWeight: 600,
-                            fontSize: '0.72rem',
-                          }}>
-                            ⚪ Sem Funil Definido
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Configuração & Sub-origens */}
-                      <td style={{ padding: '14px 18px' }}>
-                        {source.type === 'whatsapp_api' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            {isChecking ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
-                                <RefreshCw size={13} color="#F59E0B" style={{ animation: 'spin 1s linear infinite' }} />
-                                <span style={{ fontSize: '0.72rem', color: '#F59E0B', fontWeight: 700 }}>
-                                  Verificando status com WhatsApp...
-                                </span>
-                              </div>
-                            ) : isConnected ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {avatar ? (
-                                  <img 
-                                    src={avatar} 
-                                    alt="WhatsApp" 
-                                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #10B981' }} 
+                    <React.Fragment key={group.venueId}>
+                      {/* ── Divisória de Unidade (Cabeçalho de Seção com Nome e Logo da Casa) ── */}
+                      <tr
+                        style={{
+                          background: 'linear-gradient(90deg, var(--adm-bg-input) 0%, var(--adm-bg-card) 100%)',
+                          borderTop: groupIndex > 0 ? '2px solid var(--adm-border)' : 'none',
+                          borderBottom: '1px solid var(--adm-border)',
+                        }}
+                      >
+                        <td colSpan={8} style={{ padding: '12px 18px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              {/* Logo da Casa de Festa */}
+                              {groupLogo ? (
+                                <div style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '10px',
+                                  background: '#FFFFFF',
+                                  border: '1px solid var(--adm-border)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  padding: '3px',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                                  flexShrink: 0,
+                                }}>
+                                  <img
+                                    src={groupLogo}
+                                    alt={group.venueName}
+                                    style={{
+                                      maxWidth: '100%',
+                                      maxHeight: '100%',
+                                      objectFit: 'contain',
+                                    }}
                                   />
-                                ) : (
-                                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Zap size={14} color="#10B981" />
+                                </div>
+                              ) : (
+                                <div style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '10px',
+                                  background: 'rgba(212, 175, 55, 0.12)',
+                                  border: '1.5px solid var(--adm-accent)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--adm-accent)',
+                                  flexShrink: 0,
+                                }}>
+                                  <Building2 size={18} />
+                                </div>
+                              )}
+
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '-0.3px' }}>
+                                    {group.venueName}
+                                  </span>
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: 'var(--adm-bg-card)',
+                                    border: '1px solid var(--adm-border)',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    color: 'var(--adm-accent)',
+                                  }}>
+                                    {group.sources.length} {group.sources.length === 1 ? 'origem cadastrada' : 'origens cadastradas'}
+                                  </span>
+                                </div>
+                                {groupVenue?.address && (
+                                  <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                                    {groupVenue.address}
                                   </div>
                                 )}
-                                <div>
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 6px #10B981' }} />
-                                    {formatPhone(rawPhone) || rawPhone}
+                              </div>
+                            </div>
+
+                            {/* Total de Leads da Unidade */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem' }}>
+                              <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>Leads da Unidade:</span>
+                              <span style={{ 
+                                color: 'var(--adm-text-title)', 
+                                fontWeight: 900, 
+                                background: 'var(--adm-bg-card)', 
+                                padding: '3px 10px', 
+                                borderRadius: '8px', 
+                                border: '1px solid var(--adm-border)',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                              }}>
+                                {group.totalLeads} leads
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Linhas das Origens da Unidade */}
+                      {group.sources.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '24px 18px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
+                            Nenhuma origem cadastrada nesta unidade.
+                          </td>
+                        </tr>
+                      ) : (
+                        group.sources.map((source: Source) => {
+                          const venue = venues.find(v => v.id === source.venueId);
+                          const funnel = funnels.find(f => f.id === source.funnelId);
+                          const isCopied = copiedId === source.id;
+
+                          // Estado de Conexão WhatsApp
+                          const config = (source.configuration as any) || {};
+                          const live = liveStatuses[source.id];
+                          const rawPhone = live?.phone || config.connectedPhone || source.whatsappInstanceId || '';
+                          const isExplicitlyDisconnected = config.isConnected === false || source.status === 'inactive' || config.connectionStatus === 'disconnected';
+                          const effectiveStatus = live ? live.status : (isExplicitlyDisconnected ? 'disconnected' : (config.connectedPhone ? 'connected' : 'disconnected'));
+                          const isConnected = effectiveStatus === 'connected' && source.status === 'active';
+                          const isChecking = effectiveStatus === 'checking';
+                          const isDisconnected = effectiveStatus === 'disconnected' || !isConnected;
+                          const displayName = live?.profileName || config.connectedProfileName || config.whatsappDisplayName || source.name;
+                          const avatar = live?.avatar || config.connectedAvatar;
+                          const hasNeverConnected = !config.connectedPhone && !source.whatsappInstanceId && !isConnected;
+
+                          // Alerta de Desconexão real do WhatsApp
+                          const hasDisconnectionAlert = source.type === 'whatsapp_api' && (isDisconnected || !isConnected);
+                          const hasAlert = hasDisconnectionAlert;
+
+                          // Logo oficial da casa de festa (substituindo a foto do salão)
+                          const venueLogo = venue ? (venue.logoUrl || (venue as any)?.logo_url) : undefined;
+
+                          // Status ativo pleno
+                          const isFullyActive = source.status === 'active' && (source.type !== 'whatsapp_api' || isConnected);
+
+                          return (
+                            <tr
+                              key={source.id}
+                              onClick={() => {
+                                setSourceToEdit(source);
+                                setIsEditing(true);
+                              }}
+                              style={{
+                                borderBottom: '1px solid var(--adm-border)',
+                                transition: 'background 0.15s ease',
+                                cursor: 'pointer',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              title="Clique na origem para abrir a tela de edição e configurações"
+                            >
+                              {/* Nome & Slug com Símbolo de Alerta se desconectado */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {hasAlert && (
+                                    <span 
+                                      title="Atenção: WhatsApp desconectado ou com falha de conexão!"
+                                      style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        flexShrink: 0,
+                                        animation: 'pulsePendingAlert 2s infinite ease-in-out',
+                                      }}
+                                    >
+                                      <AlertTriangle size={16} color="#EF4444" />
+                                    </span>
+                                  )}
+                                  <div>
+                                    <div style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                      {source.name}
+                                    </div>
+                                    {source.slug && source.type === 'form' && (
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
+                                        /f/{source.slug}
+                                      </div>
+                                    )}
                                   </div>
-                                  {displayName && (
-                                    <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                                      {displayName}
+                                </div>
+                              </td>
+
+                              {/* Tipo */}
+                              <td style={{ padding: '14px 18px' }}>
+                                {renderTypeBadge(source.type)}
+                              </td>
+
+                              {/* Casa de Festa com Logo */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {venueLogo ? (
+                                    <div style={{
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '8px',
+                                      background: '#FFFFFF',
+                                      border: '1px solid var(--adm-border)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      padding: '2px',
+                                      flexShrink: 0,
+                                      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                                    }}>
+                                      <img
+                                        src={venueLogo}
+                                        alt={venue?.name || 'Casa'}
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '100%',
+                                          objectFit: 'contain',
+                                        }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div style={{
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '8px',
+                                      background: 'rgba(212, 175, 55, 0.12)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      color: 'var(--adm-accent)',
+                                      flexShrink: 0,
+                                    }}>
+                                      <Building2 size={15} />
                                     </div>
                                   )}
+                                  <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', fontSize: '0.82rem' }}>
+                                    {venue?.name || 'Geral'}
+                                  </span>
                                 </div>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <AlertTriangle size={14} color="#EF4444" />
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: '0.74rem', color: '#EF4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
-                                    Desconectado
-                                  </div>
-                                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
-                                    {rawPhone ? (formatPhone(rawPhone) || rawPhone) : 'Sem número pareado'}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                              </td>
 
-                          </div>
-                        )}
-                        {source.type === 'form' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <FileText size={12} color="var(--adm-accent)" /> {source.configuration?.fields?.length || 5} campos • Link público ativo
-                          </div>
-                        )}
-                        {source.type === 'referral' && (
-                          <div style={{ fontSize: '0.76rem', color: 'var(--adm-accent)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Crown size={12} color="var(--adm-accent)" /> App das Aniversariantes & Debutantes
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSourceStatus(source.id, !isFullyActive);
-                            }}
-                            style={{
-                              border: 'none',
-                              background: isFullyActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-                              color: isFullyActive ? '#10B981' : '#64748B',
-                              padding: '4px 10px',
-                              borderRadius: '12px',
-                              fontSize: '0.7rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              width: 'fit-content',
-                            }}
-                          >
-                            {isFullyActive ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                            <span>{isFullyActive ? 'Ativado' : 'Desativado'}</span>
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Leads Captados (Dinâmico em tempo real) */}
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.85rem' }}>
-                          {getSourceLeadCount(source)} leads
-                        </div>
-                      </td>
-
-                      {/* Ações */}
-                      <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                          {/* Botão de Conexão/Desconexão para WhatsApp */}
-                          {source.type === 'whatsapp_api' && (() => {
-                            // Estado 1: Primeira Conexão (Verde com QR Code "Conectar")
-                            if (hasNeverConnected) {
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConnectModalSource(source);
-                                  }}
-                                  title="Primeira conexão: Ler QR Code ou Gerar Código de Pareamento"
-                                  style={{
-                                    background: 'rgba(16, 185, 129, 0.15)',
-                                    border: '1px solid #10B981',
-                                    color: '#10B981',
-                                    cursor: 'pointer',
-                                    padding: '6px 12px',
-                                    borderRadius: '8px',
+                              {/* Funil de Destino */}
+                              <td style={{ padding: '14px 18px' }}>
+                                {source.funnelId && funnel ? (() => {
+                                  const fColor = funnel.badgeColor || (funnel as any)?.color || '#D4AF37';
+                                  return (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '4px 10px',
+                                      borderRadius: '8px',
+                                      background: `${fColor}18`,
+                                      border: `1px solid ${fColor}40`,
+                                      color: fColor,
+                                      fontWeight: 700,
+                                      fontSize: '0.74rem',
+                                    }}>
+                                      {funnel.isPostSale ? <Crown size={13} /> : <Target size={13} />}
+                                      <span>{funnel.name}</span>
+                                    </span>
+                                  );
+                                })() : (
+                                  <span style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '6px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 800,
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'}
-                                >
-                                  <QrCode size={13} />
-                                  <span>Conectar</span>
-                                </button>
-                              );
-                            }
-
-                            // Estado 2: Desconectado / Queda de Sessão (Vermelho com QR Code "Reconectar")
-                            if (isDisconnected) {
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConnectModalSource(source);
-                                  }}
-                                  title="WhatsApp desconectado: Clique para ler QR Code e reconectar"
-                                  style={{
-                                    background: '#EF4444',
-                                    border: '1px solid #DC2626',
-                                    color: '#FFFFFF',
-                                    cursor: 'pointer',
-                                    padding: '6px 12px',
+                                    gap: '5px',
+                                    padding: '4px 10px',
                                     borderRadius: '8px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 800,
-                                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-                                    transition: 'all 0.15s ease',
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                                >
-                                  <QrCode size={13} />
-                                  <span>Reconectar</span>
-                                </button>
-                              );
-                            }
+                                    background: 'rgba(100, 116, 139, 0.1)',
+                                    border: '1px solid var(--adm-border)',
+                                    color: 'var(--adm-text-muted)',
+                                    fontWeight: 600,
+                                    fontSize: '0.72rem',
+                                  }}>
+                                    ⚪ Sem Funil Definido
+                                  </span>
+                                )}
+                              </td>
 
-                            // Estado 3: Conectado (Desconectar com ícone X)
-                            return (
-                              <button
-                                type="button"
-                                disabled={disconnectingId === source.id}
-                                onClick={(e) => handleDirectDisconnect(source, e)}
-                                title="WhatsApp conectado: Clique para desconectar sessão"
-                                style={{
-                                  background: 'rgba(239, 68, 68, 0.08)',
-                                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                                  color: '#EF4444',
-                                  cursor: 'pointer',
-                                  padding: '6px 12px',
-                                  borderRadius: '8px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  transition: 'all 0.15s ease',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.18)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
-                              >
-                                <X size={13} color="#EF4444" />
-                                <span>{disconnectingId === source.id ? 'Desconectando...' : 'Desconectar'}</span>
-                              </button>
-                            );
-                          })()}
+                              {/* Configuração & Sub-origens */}
+                              <td style={{ padding: '14px 18px' }}>
+                                {source.type === 'whatsapp_api' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {isChecking ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
+                                        <RefreshCw size={13} color="#F59E0B" style={{ animation: 'spin 1s linear infinite' }} />
+                                        <span style={{ fontSize: '0.72rem', color: '#F59E0B', fontWeight: 700 }}>
+                                          Verificando status com WhatsApp...
+                                        </span>
+                                      </div>
+                                    ) : isConnected ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {avatar ? (
+                                          <img 
+                                            src={avatar} 
+                                            alt="WhatsApp" 
+                                            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #10B981' }} 
+                                          />
+                                        ) : (
+                                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Zap size={14} color="#10B981" />
+                                          </div>
+                                        )}
+                                        <div>
+                                          <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 6px #10B981' }} />
+                                            {formatPhone(rawPhone) || rawPhone}
+                                          </div>
+                                          {displayName && (
+                                            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                                              {displayName}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <AlertTriangle size={14} color="#EF4444" />
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: '0.74rem', color: '#EF4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
+                                            Desconectado
+                                          </div>
+                                          <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                                            {rawPhone ? (formatPhone(rawPhone) || rawPhone) : 'Sem número pareado'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
 
-                          {/* Copiar Link & Embed (Apenas Formulários) */}
-                          {source.type === 'form' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCopyLink(source);
-                                }}
-                                title="Copiar link do formulário público"
-                                className="adm-btn-secondary"
-                                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                              >
-                                {isCopied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
-                                <span>{isCopied ? 'Copiado!' : 'Link'}</span>
-                              </button>
+                                  </div>
+                                )}
+                                {source.type === 'form' && (
+                                  <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <FileText size={12} color="var(--adm-accent)" /> {source.configuration?.fields?.length || 5} campos • Link público ativo
+                                  </div>
+                                )}
+                                {source.type === 'referral' && (
+                                  <div style={{ fontSize: '0.76rem', color: 'var(--adm-accent)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <Crown size={12} color="var(--adm-accent)" /> App das Aniversariantes & Debutantes
+                                  </div>
+                                )}
+                              </td>
 
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEmbedModalSource(source);
-                                }}
-                                title="Gerar código Embed"
-                                className="adm-btn-secondary"
-                                style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                              >
-                                <Code size={13} />
-                                <span>Embed</span>
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                              {/* Status */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleSourceStatus(source.id, !isFullyActive);
+                                    }}
+                                    style={{
+                                      border: 'none',
+                                      background: isFullyActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                                      color: isFullyActive ? '#10B981' : '#64748B',
+                                      padding: '4px 10px',
+                                      borderRadius: '12px',
+                                      fontSize: '0.7rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      width: 'fit-content',
+                                    }}
+                                  >
+                                    {isFullyActive ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                                    <span>{isFullyActive ? 'Ativado' : 'Desativado'}</span>
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* Leads Captados (Dinâmico em tempo real) */}
+                              <td style={{ padding: '14px 18px' }}>
+                                <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.85rem' }}>
+                                  {getSourceLeadCount(source)} leads
+                                </div>
+                              </td>
+
+                              {/* Ações */}
+                              <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                  {/* Botão de Conexão/Desconexão para WhatsApp */}
+                                  {source.type === 'whatsapp_api' && (() => {
+                                    // Estado 1: Primeira Conexão (Verde com QR Code "Conectar")
+                                    if (hasNeverConnected) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setConnectModalSource(source);
+                                          }}
+                                          title="Primeira conexão: Ler QR Code ou Gerar Código de Pareamento"
+                                          style={{
+                                            background: 'rgba(16, 185, 129, 0.15)',
+                                            border: '1px solid #10B981',
+                                            color: '#10B981',
+                                            cursor: 'pointer',
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 800,
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.25)'}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)'}
+                                        >
+                                          <QrCode size={13} />
+                                          <span>Conectar</span>
+                                        </button>
+                                      );
+                                    }
+
+                                    // Estado 2: Desconectado / Queda de Sessão (Vermelho com QR Code "Reconectar")
+                                    if (isDisconnected) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setConnectModalSource(source);
+                                          }}
+                                          title="WhatsApp desconectado: Clique para ler QR Code e reconectar"
+                                          style={{
+                                            background: '#EF4444',
+                                            border: '1px solid #DC2626',
+                                            color: '#FFFFFF',
+                                            cursor: 'pointer',
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 800,
+                                            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                                          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                        >
+                                          <QrCode size={13} />
+                                          <span>Reconectar</span>
+                                        </button>
+                                      );
+                                    }
+
+                                    // Estado 3: Conectado (Desconectar com ícone X)
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={disconnectingId === source.id}
+                                        onClick={(e) => handleDirectDisconnect(source, e)}
+                                        title="WhatsApp conectado: Clique para desconectar sessão"
+                                        style={{
+                                          background: 'rgba(239, 68, 68, 0.08)',
+                                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                                          color: '#EF4444',
+                                          cursor: 'pointer',
+                                          padding: '6px 12px',
+                                          borderRadius: '8px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          fontSize: '0.74rem',
+                                          fontWeight: 700,
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.18)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                                      >
+                                        <X size={13} color="#EF4444" />
+                                        <span>{disconnectingId === source.id ? 'Desconectando...' : 'Desconectar'}</span>
+                                      </button>
+                                    );
+                                  })()}
+
+                                  {/* Copiar Link & Embed (Apenas Formulários) */}
+                                  {source.type === 'form' && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopyLink(source);
+                                        }}
+                                        title="Copiar link do formulário público"
+                                        className="adm-btn-secondary"
+                                        style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                      >
+                                        {isCopied ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
+                                        <span>{isCopied ? 'Copiado!' : 'Link'}</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEmbedModalSource(source);
+                                        }}
+                                        title="Gerar código Embed"
+                                        className="adm-btn-secondary"
+                                        style={{ padding: '6px 10px', borderRadius: '8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                      >
+                                        <Code size={13} />
+                                        <span>Embed</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
