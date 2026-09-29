@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, Smartphone
+  Target, Lock, RotateCcw
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -1806,21 +1806,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Obtém metadados enriquecidos da origem / WhatsApp que disparou a mensagem internamente
   const getAppSenderMetadata = useCallback(() => {
     const effectiveSender = (isSenderDisconnected && connectedAlternativeSource) ? connectedAlternativeSource : activeSenderSource;
-    const senderPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
-    const senderName = effectiveSender?.name || 'WhatsApp F5';
-    const senderAvatar = (effectiveSender?.configuration as any)?.connectedAvatar || '';
-    const senderProfileName = (effectiveSender?.configuration as any)?.connectedProfileName || '';
+    const cleanInfo = effectiveSender ? getSourceCleanLabel(effectiveSender) : null;
+    const avatar = effectiveSender ? getSourceAvatar(effectiveSender) : undefined;
+    const rawPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
+    const senderName = cleanInfo?.cleanName || effectiveSender?.name || 'WhatsApp';
 
     return {
       sentFromApp: true,
       senderSourceId: effectiveSender?.id,
       senderSourceName: senderName,
-      senderPhone: senderPhone,
-      senderAvatar: senderAvatar,
-      senderProfileName: senderProfileName,
-      senderUserName: currentUser?.name || 'Equipe',
+      senderPhone: rawPhone,
+      senderAvatar: avatar || '',
+      senderProfileName: (effectiveSender?.configuration as any)?.connectedProfileName || '',
     };
-  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, currentUser?.name]);
+  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar]);
 
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -4998,16 +4997,32 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
                       const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
 
-                      // Identificação do WhatsApp / usuário remetente (apenas para mensagens enviadas internamente pelo app)
+                      // Identificação da Instância de WhatsApp que disparou a mensagem internamente
                       const meta = (act as any).metadata;
                       const isSentInternally = !isExternalWa;
-                      const leadVenueWa = (sources || []).find(s => s.type === 'whatsapp_api' && (s.id === selectedLead?.sourceId || s.venueId === selectedLead?.venueId));
-                      const fallbackSender = activeSenderSource || leadVenueWa;
-                      const rawPhone = meta?.senderPhone || (fallbackSender?.configuration as any)?.connectedPhone || (fallbackSender?.configuration as any)?.whatsappNumber || fallbackSender?.whatsappInstanceId || '';
-                      const displayedSenderPhone = formatPhone(rawPhone) || rawPhone;
-                      const displayedSenderAvatar = meta?.senderAvatar || (fallbackSender?.configuration as any)?.connectedAvatar || '';
-                      const displayedSenderName = meta?.senderSourceName || fallbackSender?.name || 'WhatsApp F5';
-                      const displayedUserName = meta?.senderUserName || act.authorName || currentUser?.name || 'Equipe';
+
+                      // 1. Tenta encontrar a source pelo ID gravado nos metadados da mensagem
+                      const matchedSourceById = meta?.senderSourceId 
+                        ? (sources || []).find(s => s.id === meta.senderSourceId) 
+                        : null;
+
+                      // 2. Se não houver nos metadados, busca pela sourceId do lead (se for WhatsApp)
+                      const leadSource = (sources || []).find(s => s.type === 'whatsapp_api' && s.id === selectedLead?.sourceId);
+
+                      // 3. Fallback para a instância de envio ativa no chat ou a primeira da casa do lead
+                      const leadVenueWa = (sources || []).find(s => s.type === 'whatsapp_api' && s.venueId === selectedLead?.venueId);
+                      const resolvedSource = matchedSourceById || leadSource || activeSenderSource || leadVenueWa;
+
+                      const cleanSourceInfo = resolvedSource ? getSourceCleanLabel(resolvedSource) : null;
+                      const displayedSenderName = meta?.senderSourceName || cleanSourceInfo?.cleanName || resolvedSource?.name || 'WhatsApp Comercial';
+
+                      const rawPhone = meta?.senderPhone || 
+                        (resolvedSource?.configuration as any)?.connectedPhone || 
+                        (resolvedSource?.configuration as any)?.whatsappNumber || 
+                        resolvedSource?.whatsappInstanceId || '';
+                      const displayedSenderPhone = formatPhone(rawPhone) || cleanSourceInfo?.formattedPhone || rawPhone;
+
+                      const displayedSenderAvatar = meta?.senderAvatar || (resolvedSource ? getSourceAvatar(resolvedSource) : undefined);
 
                       return (
                         <React.Fragment key={act.id}>
@@ -5025,7 +5040,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               margin: isSameAsPrev ? '1px 0' : '6px 0 1px 0',
                             }}
                           >
-                            {/* Hover à Esquerda da Mensagem Enviada Internamente: mostra quem enviou e qual número disparou */}
+                            {/* Hover à Esquerda da Mensagem Enviada: Identifica exatamente qual WhatsApp da empresa efetuou o disparo */}
                             {isSentInternally && (
                               <div
                                 style={{
@@ -5036,30 +5051,53 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: '6px',
-                                  padding: '4px 9px',
+                                  padding: '4px 10px',
                                   borderRadius: '8px',
                                   background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
                                   border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.07)',
                                   color: 'var(--adm-text-muted)',
-                                  fontSize: '0.67rem',
+                                  fontSize: '0.68rem',
                                   whiteSpace: 'nowrap',
                                   flexShrink: 0,
                                   userSelect: 'none',
                                   boxShadow: isDarkMode ? '0 1px 4px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.06)',
                                 }}
-                                title={`Enviado por ${displayedUserName} via ${displayedSenderName}${rawPhone ? ` (${formatPhone(rawPhone)})` : ''}`}
+                                title={`Disparado por ${displayedSenderName}${displayedSenderPhone ? ` (${displayedSenderPhone})` : ''}`}
                               >
+                                <span style={{ color: 'var(--adm-text-muted)', fontWeight: 500 }}>
+                                  Disparado por:
+                                </span>
+
                                 {displayedSenderAvatar ? (
                                   <img
                                     src={displayedSenderAvatar}
                                     alt={displayedSenderName}
-                                    style={{ width: '15px', height: '15px', borderRadius: '50%', objectFit: 'cover' }}
+                                    style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
                                   />
                                 ) : (
-                                  <Smartphone size={12} style={{ color: '#10B981', opacity: 0.85 }} />
+                                  <div style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    background: '#25D366',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}>
+                                    <WhatsAppBrandIcon size={10} color="#FFFFFF" />
+                                  </div>
                                 )}
+
                                 <span>
-                                  Enviado por: <strong style={{ color: isDarkMode ? 'var(--adm-text-title)' : '#334155' }}>{displayedUserName}</strong> • {displayedSenderPhone ? displayedSenderPhone : displayedSenderName}
+                                  <strong style={{ color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b' }}>
+                                    {displayedSenderName}
+                                  </strong>
+                                  {displayedSenderPhone && (
+                                    <span style={{ opacity: 0.85, marginLeft: '4px' }}>
+                                      • {displayedSenderPhone}
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                             )}
