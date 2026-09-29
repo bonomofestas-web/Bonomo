@@ -210,6 +210,7 @@ export function formatActivityFromDb(a: any): LeadActivity {
     mediaType,
     status,
     errorMessage,
+    metadata: (typeof a.metadata === 'object' && a.metadata !== null) ? a.metadata : {},
   };
 }
 
@@ -573,6 +574,7 @@ export const leadService = {
         author_id: isUuid(activity.authorId) ? activity.authorId : null,
         author_avatar_url: activity.authorAvatarUrl || '',
         timestamp: activity.timestamp || new Date().toISOString(),
+        metadata: (activity as any).metadata || {},
       };
 
       if (activity.status) insertPayload.status = activity.status;
@@ -581,9 +583,10 @@ export const leadService = {
       const { error } = await supabase.from('lead_activities').insert(insertPayload);
       if (error) {
         // Se o erro foi por coluna não existente no banco legado, tenta sem as colunas extras
-        if (error.message?.includes('status') || error.message?.includes('error_message')) {
+        if (error.message?.includes('status') || error.message?.includes('error_message') || error.message?.includes('metadata')) {
           delete insertPayload.status;
           delete insertPayload.error_message;
+          delete insertPayload.metadata;
           await supabase.from('lead_activities').insert(insertPayload);
           return true;
         }
@@ -618,6 +621,7 @@ export const leadService = {
       if (updates.timestamp !== undefined) payload.timestamp = updates.timestamp;
       if (updates.status !== undefined) payload.status = updates.status;
       if (updates.errorMessage !== undefined) payload.error_message = updates.errorMessage;
+      if ((updates as any).metadata !== undefined) payload.metadata = (updates as any).metadata;
 
       const { error } = await supabase.from('lead_activities').update(payload).eq('id', activityId);
       if (error) {

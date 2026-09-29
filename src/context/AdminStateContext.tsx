@@ -5774,6 +5774,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             needsManualDownload: isMedia,
             instanceToken: msg.instanceToken,
             messageId: msg.rawPayload?.id || msg.rawPayload?.key?.id,
+            senderSourceId: targetSource?.id,
+            senderSourceName: targetSource?.name,
+            senderPhone: (targetSource?.configuration as any)?.connectedPhone || (targetSource?.configuration as any)?.whatsappNumber,
+            senderAvatar: (targetSource?.configuration as any)?.connectedAvatar || (targetSource?.configuration as any)?.profilePicUrl,
           },
         };
 

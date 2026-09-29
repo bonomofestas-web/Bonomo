@@ -572,6 +572,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             author_id: null,
             author_avatar_url: isFromMe ? 'whatsapp_brand' : '',
             status: isFromMe ? 'sent' : 'delivered',
+            metadata: {
+              senderSourceId: matchedSource?.id,
+              senderSourceName: matchedSource?.name,
+              senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
+              senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+            },
           };
 
           const { error: actErr } = await supabase.from('lead_activities').insert([newActivityRecord]);
@@ -705,6 +711,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             text: creationStoredText,
             author_name: isFromMe ? 'WhatsApp App / Web' : (senderName || 'Cliente (WhatsApp)'),
             status: isFromMe ? 'sent' : 'delivered',
+            metadata: {
+              senderSourceId: matchedSource?.id,
+              senderSourceName: matchedSource?.name,
+              senderPhone: (matchedSource?.configuration as any)?.connectedPhone || (matchedSource?.configuration as any)?.whatsappNumber,
+              senderAvatar: (matchedSource?.configuration as any)?.connectedAvatar || (matchedSource?.configuration as any)?.profilePicUrl,
+            },
           }]);
           if (actErr) {
             console.error('[Webhook] Erro ao inserir lead_activity para novo lead:', actErr);
