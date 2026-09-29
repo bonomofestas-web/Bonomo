@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Compass, Plus, FileText, PhoneCall, Gift,
   Copy, Check, Code,
-  CheckCircle2, XCircle, Search, Building2,
+  CheckCircle2, XCircle, Search,
   Target, Zap, Crown, AlertTriangle, QrCode,
   RefreshCw, X
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import { AdminWhatsAppConnectModal } from './AdminWhatsAppConnectModal';
 import { AdminWhatsAppHistoryTriageModal } from './AdminWhatsAppHistoryTriageModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
+import { SmartVenueLogo } from '../common/SmartVenueLogo';
 import type { Source } from '../../types/sources';
 import type { Venue } from '../../types/admin';
 
@@ -593,47 +594,13 @@ export const AdminSourcesView: React.FC = () => {
                         <td colSpan={8} style={{ padding: '12px 18px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              {/* Logo da Casa de Festa */}
-                              {groupLogo ? (
-                                <div style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '10px',
-                                  background: '#FFFFFF',
-                                  border: '1px solid var(--adm-border)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: '3px',
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-                                  flexShrink: 0,
-                                }}>
-                                  <img
-                                    src={groupLogo}
-                                    alt={group.venueName}
-                                    style={{
-                                      maxWidth: '100%',
-                                      maxHeight: '100%',
-                                      objectFit: 'contain',
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <div style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '10px',
-                                  background: 'rgba(212, 175, 55, 0.12)',
-                                  border: '1.5px solid var(--adm-accent)',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: 'var(--adm-accent)',
-                                  flexShrink: 0,
-                                }}>
-                                  <Building2 size={18} />
-                                </div>
-                              )}
+                              {/* Logo da Casa de Festa Inteligente (Fundo escuro/claro com alto contraste) */}
+                              <SmartVenueLogo
+                                src={groupLogo}
+                                alt={group.venueName}
+                                size={38}
+                                borderRadius={10}
+                              />
 
                               <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -771,45 +738,12 @@ export const AdminSourcesView: React.FC = () => {
                               {/* Casa de Festa com Logo */}
                               <td style={{ padding: '14px 18px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {venueLogo ? (
-                                    <div style={{
-                                      width: '28px',
-                                      height: '28px',
-                                      borderRadius: '8px',
-                                      background: '#FFFFFF',
-                                      border: '1px solid var(--adm-border)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      padding: '2px',
-                                      flexShrink: 0,
-                                      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                                    }}>
-                                      <img
-                                        src={venueLogo}
-                                        alt={venue?.name || 'Casa'}
-                                        style={{
-                                          maxWidth: '100%',
-                                          maxHeight: '100%',
-                                          objectFit: 'contain',
-                                        }}
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div style={{
-                                      width: '28px',
-                                      height: '28px',
-                                      borderRadius: '8px',
-                                      background: 'rgba(212, 175, 55, 0.12)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      color: 'var(--adm-accent)',
-                                      flexShrink: 0,
-                                    }}>
-                                      <Building2 size={15} />
-                                    </div>
-                                  )}
+                                  <SmartVenueLogo
+                                    src={venueLogo}
+                                    alt={venue?.name || 'Casa'}
+                                    size={28}
+                                    borderRadius={8}
+                                  />
                                   <span style={{ fontWeight: 700, color: 'var(--adm-text-title)', fontSize: '0.82rem' }}>
                                     {venue?.name || 'Geral'}
                                   </span>
