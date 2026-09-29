@@ -688,7 +688,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       description: '',
       venueId: resolvedVenue,
       sharedVenueIds: (targetVenueId === 'all' || activeVenueId === 'all' || !activeVenueId) ? venues.map(v => v.id) : undefined,
-      isEntryStageActive: false,
+      isEntryStageActive: isPostSaleView ? false : true,
       stages: isPostSaleView ? DEFAULT_POST_SALE_FORM_STAGES : DEFAULT_FORM_STAGES,
     });
     setComoFunnelId(newId);

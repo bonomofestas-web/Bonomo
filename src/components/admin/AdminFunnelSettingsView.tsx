@@ -956,10 +956,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent, #3B82F6)' }} 
                 />
               </div>
-              <p style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.35 }}>
+              <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.4 }}>
                 {isPostSale 
-                  ? 'Quando ativado, novos clientes entram na coluna "ENTRADA DO CLIENTE" para triagem antes de irem para "ONBOARDING & BOAS-VINDAS".'
-                  : 'Mantenha seu funil de vendas mais limpo, adicionando esta etapa pré-funil para triagem.'}
+                  ? 'No Sucesso do Cliente, o funil inicia com a Caixa de Entrada desativada por padrão. Ao vincular uma origem de WhatsApp, ela é ativada automaticamente. Se desativada, mensagens de números desconhecidos são ignoradas para proteção do pós-venda.'
+                  : 'A Caixa de Entrada deixa o fluxo mais organizado. Ao desativá-la, novos leads entrarão diretamente na 1ª etapa disponível deste funil comercial.'}
               </p>
               {leadsInEntryStage.length > 0 && !isEntryStageActive && (
                 <div style={{ fontSize: '0.68rem', color: '#EAB308', fontWeight: 700, marginTop: '2px' }}>

@@ -644,7 +644,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let targetStage = 'new_lead';
           let isPostSaleTarget = false;
           if (funnelId && funnelId !== 'comercial') {
-            const { data: fRow } = await supabase.from('commercial_funnels').select('stages, is_post_sale, category, name').eq('id', funnelId).maybeSingle();
+            const { data: fRow } = await supabase.from('commercial_funnels').select('stages, is_post_sale, category, name, is_entry_stage_active').eq('id', funnelId).maybeSingle();
             if (fRow) {
               isPostSaleTarget = Boolean(
                 fRow.is_post_sale || 
@@ -652,10 +652,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 fRow.category === 'pos_venda' || 
                 fRow.name?.toLowerCase().includes('pós-venda')
               );
+              const isEntryActive = fRow.is_entry_stage_active !== false;
               if (fRow.stages && Array.isArray(fRow.stages) && fRow.stages.length > 0) {
-                const hasNewLead = fRow.stages.some((s: any) => s.id === 'new_lead');
-                if (!hasNewLead) {
-                  targetStage = fRow.stages[0]?.id || (isPostSaleTarget ? 'onboarding' : 'in_negotiation');
+                if (isEntryActive) {
+                  const hasNewLead = fRow.stages.some((s: any) => s.id === 'new_lead');
+                  targetStage = hasNewLead ? 'new_lead' : (fRow.stages[0]?.id || 'in_negotiation');
+                } else {
+                  // Caixa de Entrada desativada: O lead entra DIRETAMENTE na 1ª etapa disponível
+                  const nonEntry = fRow.stages.filter((s: any) => s.id !== 'new_lead' && !String(s.name || '').toLowerCase().includes('entrada'));
+                  targetStage = nonEntry[0]?.id || fRow.stages[0]?.id || 'in_negotiation';
                 }
               }
             }

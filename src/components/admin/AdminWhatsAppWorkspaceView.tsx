@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw
+  Target, Lock, RotateCcw, Smartphone
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -1280,7 +1280,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const openedLeadForViewRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!selectedLead?.id) return;
+    if (!selectedLead?.id) {
+      openedLeadForViewRef.current = null;
+      return;
+    }
 
     // Se já processou a abertura desta conversa, não repete enquanto a conversa continuar selecionada
     if (openedLeadForViewRef.current === selectedLead.id) {
@@ -1334,6 +1337,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const [isSenderDropdownOpen, setIsSenderDropdownOpen] = useState(false);
   const [isRecipientDropdownOpen, setIsRecipientDropdownOpen] = useState(false);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const senderDropdownRef = useRef<HTMLDivElement>(null);
   const recipientDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1799,6 +1803,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     };
   }, [selectedLead?.id, selectedRecipientPhone, activeSenderToken]);
 
+  // Obtém metadados enriquecidos da origem / WhatsApp que disparou a mensagem internamente
+  const getAppSenderMetadata = useCallback(() => {
+    const effectiveSender = (isSenderDisconnected && connectedAlternativeSource) ? connectedAlternativeSource : activeSenderSource;
+    const senderPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
+    const senderName = effectiveSender?.name || 'WhatsApp F5';
+    const senderAvatar = (effectiveSender?.configuration as any)?.connectedAvatar || '';
+    const senderProfileName = (effectiveSender?.configuration as any)?.connectedProfileName || '';
+
+    return {
+      sentFromApp: true,
+      senderSourceId: effectiveSender?.id,
+      senderSourceName: senderName,
+      senderPhone: senderPhone,
+      senderAvatar: senderAvatar,
+      senderProfileName: senderProfileName,
+      senderUserName: currentUser?.name || 'Equipe',
+    };
+  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, currentUser?.name]);
+
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -1809,7 +1832,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
     setMessageText('');
 
-    let newActivity: LeadActivity | null = null;
+    let newActivity: LeadActivity;
 
     // Garante que o timestamp da mensagem enviada seja estritamente posterior a todas as mensagens anteriores
     const existingActs = selectedLead.activities || [];
@@ -1836,7 +1859,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sending',
-    };
+      metadata: getAppSenderMetadata(),
+    } as any;
 
     const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
     updateLeadData(selectedLead.id, {
@@ -2031,13 +2055,83 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   /**
+   * Identifica se a conversa do lead selecionado já está com atendimento encerrado
+   * (Lembrando da regra: auditorias de visualização NÃO contam como reabertura da conversa)
+   */
+  const isConversationClosed = useMemo(() => {
+    if (!selectedLead?.activities || selectedLead.activities.length === 0) return false;
+    const chatActivities = (selectedLead.activities || []).filter(a => {
+      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
+      if (isViewAudit) return false;
+      return a.type === 'contact' || (a as any).type === 'whatsapp';
+    });
+    if (chatActivities.length === 0) return false;
+
+    const sortedActs = [...chatActivities].sort((a, b) => {
+      const timeA = new Date(a.timestamp || 0).getTime();
+      const timeB = new Date(b.timestamp || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      const isEndA = Boolean((a as any).metadata?.isSessionEnd || (a.title || '').toLowerCase().includes('conversa encerrada'));
+      const isEndB = Boolean((b as any).metadata?.isSessionEnd || (b.title || '').toLowerCase().includes('conversa encerrada'));
+      if (isEndA && !isEndB) return 1;
+      if (!isEndA && isEndB) return -1;
+      return 0;
+    });
+
+    const lastAct = sortedActs[sortedActs.length - 1];
+    const isSessionEnd = Boolean(
+      (lastAct as any).metadata?.isSessionEnd === true ||
+      (lastAct.title || '').toLowerCase().includes('conversa encerrada') ||
+      (lastAct.text || '').toLowerCase().includes('atendimento encerrado') ||
+      (lastAct.title || '').toLowerCase().includes('atendimento finalizado')
+    );
+    return isSessionEnd;
+  }, [selectedLead?.activities]);
+
+  /**
+   * Helper para checar se a conversa de qualquer lead está encerrada
+   */
+  const checkLeadConversationClosed = useCallback((lead: Lead): boolean => {
+    if (!lead?.activities || lead.activities.length === 0) return false;
+    const chatActivities = (lead.activities || []).filter(a => {
+      const isViewAudit = (a as any).metadata?.isViewAudit === true || a.title === 'Mensagem Visualizada' || (a.text && a.text.includes('visualizou esta mensagem'));
+      if (isViewAudit) return false;
+      return a.type === 'contact' || (a as any).type === 'whatsapp';
+    });
+    if (chatActivities.length === 0) return false;
+
+    const sortedActs = [...chatActivities].sort((a, b) => {
+      const timeA = new Date(a.timestamp || 0).getTime();
+      const timeB = new Date(b.timestamp || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      const isEndA = Boolean((a as any).metadata?.isSessionEnd || (a.title || '').toLowerCase().includes('conversa encerrada'));
+      const isEndB = Boolean((b as any).metadata?.isSessionEnd || (b.title || '').toLowerCase().includes('conversa encerrada'));
+      if (isEndA && !isEndB) return 1;
+      if (!isEndA && isEndB) return -1;
+      return 0;
+    });
+
+    const lastAct = sortedActs[sortedActs.length - 1];
+    return Boolean(
+      (lastAct as any).metadata?.isSessionEnd === true ||
+      (lastAct.title || '').toLowerCase().includes('conversa encerrada') ||
+      (lastAct.text || '').toLowerCase().includes('atendimento encerrado') ||
+      (lastAct.title || '').toLowerCase().includes('atendimento finalizado')
+    );
+  }, []);
+
+  /**
    * Finaliza / Encerra o atendimento da conversa atual, registrando o encerramento no histórico e zerando a pendência de resposta (SLA)
    */
   const handleEndConversation = async (targetLeadId?: string) => {
     const targetLead = targetLeadId ? sourceLeads.find(l => l.id === targetLeadId) : selectedLead;
     if (!targetLead) return;
 
-    const now = new Date().toISOString();
+    // Regra do Áudio 2: Garante timestamp estritamente posterior à última mensagem da conversa
+    const currentActivities = targetLead.activities || [];
+    const lastActTime = currentActivities.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
+    const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
+
     const endSessionActivity: LeadActivity = {
       id: generateUuid(),
       leadId: targetLead.id,
@@ -2047,7 +2141,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorName: currentUser?.name || 'Equipe',
       authorId: currentUser?.id || 'team',
       authorAvatarUrl: currentUser?.avatarUrl,
-      timestamp: now,
+      timestamp: finalTimestampIso,
       status: 'read',
     };
     (endSessionActivity as any).metadata = {
@@ -2057,19 +2151,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       fromMe: true,
     };
 
-    const currentActivities = targetLead.activities || [];
     const updatedActivities = [...currentActivities, endSessionActivity];
 
     updateLeadData(targetLead.id, {
       activities: updatedActivities,
-      updatedAt: now,
+      updatedAt: finalTimestampIso,
     });
 
     if (isSupabaseConfigured) {
       leadService.addActivity(targetLead.id, endSessionActivity).catch(err => {
         console.error('Erro ao persistir encerramento de conversa no Supabase:', err);
       });
-      leadService.update(targetLead.id, { updatedAt: now }).catch(() => { });
+      leadService.update(targetLead.id, { updatedAt: finalTimestampIso }).catch(() => { });
     }
   };
 
@@ -2240,7 +2333,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         authorName: currentUser?.name || author,
         authorId: currentUser?.id,
         authorAvatarUrl: currentUser?.avatarUrl,
-      };
+        metadata: getAppSenderMetadata(),
+      } as any;
 
       const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
       updateLeadData(selectedLead.id, {
@@ -2308,7 +2402,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sent',
-    };
+      metadata: getAppSenderMetadata(),
+    } as any;
 
     const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
     updateLeadData(selectedLead.id, {
@@ -2480,7 +2575,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         authorName: currentUser?.name || author,
         authorId: currentUser?.id,
         authorAvatarUrl: currentUser?.avatarUrl,
-      };
+        metadata: getAppSenderMetadata(),
+      } as any;
 
       const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
       updateLeadData(selectedLead.id, {
@@ -2619,7 +2715,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const seenFingerprints = new Set<string>();
     const deduped: LeadActivity[] = [];
 
-    const sorted = [...chatOnly].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+    const sorted = [...chatOnly].sort((a, b) => {
+      const timeA = new Date(a.timestamp || 0).getTime();
+      const timeB = new Date(b.timestamp || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+
+      // Desempate cirúrgico para mesmo timestamp:
+      // Marcadores de encerramento de sessão SEMPRE devem ficar após as mensagens de conversa
+      const isSessionEndA = Boolean((a as any).metadata?.isSessionEnd || (a.title || '').toLowerCase().includes('conversa encerrada'));
+      const isSessionEndB = Boolean((b as any).metadata?.isSessionEnd || (b.title || '').toLowerCase().includes('conversa encerrada'));
+      if (isSessionEndA && !isSessionEndB) return 1;
+      if (!isSessionEndA && isSessionEndB) return -1;
+
+      return 0;
+    });
 
     for (const act of sorted) {
       if (act.id && seenIds.has(act.id)) continue;
@@ -3521,33 +3630,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 <span>Selecionar Lead</span>
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveLeadMenuId(null);
-                                  handleEndConversation(lead.id);
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '6px 8px',
-                                  borderRadius: '5px',
-                                  border: 'none',
-                                  background: 'transparent',
-                                  color: '#10B981',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  width: '100%',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <CheckCheck size={12} color="#10B981" />
-                                <span>Encerrar Conversa</span>
-                              </button>
+                              {(() => {
+                                const isLeadClosed = checkLeadConversationClosed(lead);
+                                return (
+                                  <button
+                                    type="button"
+                                    disabled={isLeadClosed}
+                                    onClick={() => {
+                                      if (isLeadClosed) return;
+                                      setActiveLeadMenuId(null);
+                                      handleEndConversation(lead.id);
+                                    }}
+                                    title={isLeadClosed ? 'Conversa já encerrada' : 'Encerrar Conversa'}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '6px 8px',
+                                      borderRadius: '5px',
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: isLeadClosed ? 'var(--adm-text-muted)' : '#10B981',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      cursor: isLeadClosed ? 'not-allowed' : 'pointer',
+                                      opacity: isLeadClosed ? 0.6 : 1,
+                                      textAlign: 'left',
+                                      width: '100%',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!isLeadClosed) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)';
+                                    }}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <CheckCheck size={12} color={isLeadClosed ? 'var(--adm-text-muted)' : '#10B981'} />
+                                    <span>{isLeadClosed ? 'Conversa Encerrada' : 'Encerrar Conversa'}</span>
+                                  </button>
+                                );
+                              })()}
 
                               <div style={{ height: '1px', background: 'var(--adm-border)', margin: '2px 0' }} />
 
@@ -4181,28 +4301,38 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 {!isLeadSpectator && (
                   <button
                     type="button"
-                    onClick={() => handleEndConversation()}
-                    title="Encerrar conversa e finalizar tempo de atendimento (Zera pendência de SLA)"
+                    disabled={isConversationClosed}
+                    onClick={() => !isConversationClosed && handleEndConversation()}
+                    title={isConversationClosed ? "Conversa já encerrada. Aguardando nova mensagem para reabrir." : "Encerrar conversa e finalizar tempo de atendimento (Zera pendência de SLA)"}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
                       padding: '7px 12px',
                       borderRadius: '8px',
-                      background: 'rgba(16, 185, 129, 0.12)',
-                      border: '1px solid rgba(16, 185, 129, 0.35)',
-                      color: '#10B981',
+                      background: isConversationClosed 
+                        ? (isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)') 
+                        : 'rgba(16, 185, 129, 0.12)',
+                      border: isConversationClosed 
+                        ? (isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)') 
+                        : '1px solid rgba(16, 185, 129, 0.35)',
+                      color: isConversationClosed ? 'var(--adm-text-muted)' : '#10B981',
                       fontSize: '0.74rem',
                       fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: isConversationClosed ? 'not-allowed' : 'pointer',
+                      opacity: isConversationClosed ? 0.6 : 1,
                       transition: 'all 0.15s ease',
-                      boxShadow: '0 1px 3px rgba(16, 185, 129, 0.08)',
+                      boxShadow: isConversationClosed ? 'none' : '0 1px 3px rgba(16, 185, 129, 0.08)',
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.20)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)'}
+                    onMouseEnter={(e) => {
+                      if (!isConversationClosed) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.20)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isConversationClosed) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)';
+                    }}
                   >
                     <CheckCheck size={14} />
-                    <span>Encerrar Conversa</span>
+                    <span>{isConversationClosed ? 'Conversa Encerrada' : 'Encerrar Conversa'}</span>
                   </button>
                 )}
 
@@ -4868,19 +4998,71 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       const authorName = isExternalWa ? 'WhatsApp App / Web' : (act.authorName || currentUser?.name || 'Você');
                       const isFailedMsg = act.status === 'failed' || Boolean(act.errorMessage);
 
+                      // Identificação do WhatsApp / usuário remetente (apenas para mensagens enviadas internamente pelo app)
+                      const meta = (act as any).metadata;
+                      const isSentInternally = !isExternalWa;
+                      const leadVenueWa = (sources || []).find(s => s.type === 'whatsapp_api' && (s.id === selectedLead?.sourceId || s.venueId === selectedLead?.venueId));
+                      const fallbackSender = activeSenderSource || leadVenueWa;
+                      const rawPhone = meta?.senderPhone || (fallbackSender?.configuration as any)?.connectedPhone || (fallbackSender?.configuration as any)?.whatsappNumber || fallbackSender?.whatsappInstanceId || '';
+                      const displayedSenderPhone = formatPhone(rawPhone) || rawPhone;
+                      const displayedSenderAvatar = meta?.senderAvatar || (fallbackSender?.configuration as any)?.connectedAvatar || '';
+                      const displayedSenderName = meta?.senderSourceName || fallbackSender?.name || 'WhatsApp F5';
+                      const displayedUserName = meta?.senderUserName || act.authorName || currentUser?.name || 'Equipe';
+
                       return (
                         <React.Fragment key={act.id}>
                           {renderDateDivider()}
                           <div
+                            onMouseEnter={() => setHoveredMsgId(act.id)}
+                            onMouseLeave={() => setHoveredMsgId(null)}
                             style={{
                               alignSelf: 'flex-end',
-                              maxWidth: '75%',
+                              maxWidth: '85%',
                               display: 'flex',
-                              alignItems: 'flex-end',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
                               gap: '8px',
                               margin: isSameAsPrev ? '1px 0' : '6px 0 1px 0',
                             }}
                           >
+                            {/* Hover à Esquerda da Mensagem Enviada Internamente: mostra quem enviou e qual número disparou */}
+                            {isSentInternally && (
+                              <div
+                                style={{
+                                  opacity: hoveredMsgId === act.id ? 1 : 0,
+                                  visibility: hoveredMsgId === act.id ? 'visible' : 'hidden',
+                                  transition: 'opacity 0.16s ease-in-out',
+                                  pointerEvents: hoveredMsgId === act.id ? 'auto' : 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '4px 9px',
+                                  borderRadius: '8px',
+                                  background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                                  border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.07)',
+                                  color: 'var(--adm-text-muted)',
+                                  fontSize: '0.67rem',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  userSelect: 'none',
+                                  boxShadow: isDarkMode ? '0 1px 4px rgba(0,0,0,0.3)' : '0 1px 2px rgba(0,0,0,0.06)',
+                                }}
+                                title={`Enviado por ${displayedUserName} via ${displayedSenderName}${rawPhone ? ` (${formatPhone(rawPhone)})` : ''}`}
+                              >
+                                {displayedSenderAvatar ? (
+                                  <img
+                                    src={displayedSenderAvatar}
+                                    alt={displayedSenderName}
+                                    style={{ width: '15px', height: '15px', borderRadius: '50%', objectFit: 'cover' }}
+                                  />
+                                ) : (
+                                  <Smartphone size={12} style={{ color: '#10B981', opacity: 0.85 }} />
+                                )}
+                                <span>
+                                  Enviado por: <strong style={{ color: isDarkMode ? 'var(--adm-text-title)' : '#334155' }}>{displayedUserName}</strong> • {displayedSenderPhone ? displayedSenderPhone : displayedSenderName}
+                                </span>
+                              </div>
+                            )}
                             {/* Conteúdo: Sticker Solto vs Balão Clássico */}
                             {isSticker && act.mediaUrl ? (
                               <div

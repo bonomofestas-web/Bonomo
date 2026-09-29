@@ -463,6 +463,9 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
               <div>
                 • Este canal é de <strong>Pós-Venda</strong>: nenhum contato será tratado como Lead comercial.
               </div>
+              <div>
+                • A <strong>Caixa de Entrada</strong> deste funil será <u>ativada automaticamente</u> para viabilizar a recepção contínua dos clientes.
+              </div>
             </div>
 
             {/* Checkbox Obrigatório */}

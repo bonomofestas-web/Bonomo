@@ -41,7 +41,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
     addSource, 
     updateSource, 
     deleteSource, 
-    updateLeadData 
+    updateLeadData,
+    updateFunnel, 
   } = useAdminState();
 
   // Active Source ID being edited (allows staying in edit view after creating to connect immediately)
@@ -1940,6 +1941,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
         onSelectFunnel={(id) => {
           setFunnelId(id);
           setIsFunnelModalOpen(false);
+          // Regra do F5 System: Vincular WhatsApp ao Pós-Venda ativa automaticamente a Caixa de Entrada deste funil
+          if (id && id !== 'post_sale_default') {
+            const targetF = funnels.find(f => f.id === id);
+            const isPostSale = targetF?.isPostSale || targetF?.category === 'Pós-Venda' || targetF?.category === 'pos_venda';
+            if (isPostSale && targetF && targetF.isEntryStageActive === false) {
+              updateFunnel(targetF.id, { isEntryStageActive: true });
+            }
+          }
         }}
         funnels={availableVenueFunnels.length > 0 ? availableVenueFunnels : funnels}
         venueName={venues.find(v => v.id === venueId)?.name}

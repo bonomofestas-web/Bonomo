@@ -5148,9 +5148,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }
 
-    const firstStageId = matchedFunnel?.stages && matchedFunnel.stages.length > 0
-      ? (matchedFunnel.stages.find(s => s.id === 'new_lead')?.id || matchedFunnel.stages[0].id)
-      : (isTargetPostSale ? 'onboarding' : 'new_lead');
+    // Respeita estritamente a Caixa de Entrada do Funil:
+    // Se isEntryStageActive === false, o lead entra DIRETAMENTE na 1ª etapa disponível de negociação (e NUNCA em 'new_lead')
+    const isEntryActive = matchedFunnel ? (matchedFunnel.isEntryStageActive !== false) : true;
+    let resolvedStageId: string = 'new_lead';
+
+    if (matchedFunnel?.stages && matchedFunnel.stages.length > 0) {
+      if (isEntryActive) {
+        resolvedStageId = matchedFunnel.stages.find(s => s.id === 'new_lead')?.id || matchedFunnel.stages[0].id;
+      } else {
+        // Caixa de Entrada desativada: pega a 1ª etapa disponível que não seja de entrada
+        const nonEntryStages = matchedFunnel.stages.filter(s => s.id !== 'new_lead' && !s.name.toLowerCase().includes('entrada'));
+        resolvedStageId = nonEntryStages[0]?.id || matchedFunnel.stages[0].id;
+      }
+    } else {
+      resolvedStageId = isTargetPostSale ? 'onboarding' : (isEntryActive ? 'new_lead' : 'in_negotiation');
+    }
 
     const newLead: Lead = {
       id: newLeadId,
@@ -5175,7 +5188,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       sdrId: autoSdr ? autoSdr.id : undefined,
       sdrName: autoSdr ? autoSdr.name : undefined,
       assignedTo: autoSdr ? autoSdr.name : undefined,
-      stage: (data.initialStage || (isTargetPostSale ? 'onboarding' : firstStageId)) as CrmStage,
+      stage: (data.initialStage || resolvedStageId) as CrmStage,
       isClient: isTargetPostSale ? true : undefined,
       isValidated: false,
       pointsGranted: 0,
