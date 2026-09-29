@@ -584,12 +584,38 @@ export interface CommercialCommitment {
   createdAt?: string;
 }
 
+export interface AgendaDaySchedule {
+  dayOfWeek: number;            // 0=Domingo, 1=Segunda, ..., 6=Sábado
+  enabled: boolean;
+  startTime: string;            // '09:00'
+  endTime: string;              // '18:00'
+  slotDurationMinutes: number;  // 60, 45, 30...
+  timeSlots?: string[];         // Horários calculados ou manuais
+  maxConcurrentPerSlot?: number;
+  maxPaxPerSlot?: number;
+}
+
+export interface AgendaBlockRule {
+  id: string;
+  startDate: string;            // YYYY-MM-DD
+  endDate: string;              // YYYY-MM-DD
+  title?: string;
+  type: 'visits' | 'tastings' | 'both';
+  daySchedules?: Record<number, AgendaDaySchedule>;
+  enabledDays?: number[];
+  timeSlots?: string[];
+  durationMinutes?: number;
+  maxConcurrentPerSlot?: number;
+  maxPaxPerSlot?: number;
+}
+
 export interface AgendaRecurringRule {
   enabledDays: number[];        // 0=Domingo, 1=Segunda, ..., 6=Sábado
   timeSlots: string[];          // ['10:00', '14:00', '16:00', '18:00']
   durationMinutes: number;      // Duração de cada compromisso (ex: 45 min)
   maxConcurrentPerSlot: number; // Capacidade de agendamentos por slot (ex: 3)
   maxPaxPerSlot?: number;       // Limite de PAX por slot (ex: 20)
+  daySchedules?: Record<number, AgendaDaySchedule>; // Horários específicos por dia da semana
 }
 
 export interface AgendaDateOverride {
@@ -597,6 +623,7 @@ export interface AgendaDateOverride {
   isBlocked: boolean;           // Se true, o dia inteiro está bloqueado
   reason?: string;              // 'Feriado', 'Manutenção', 'Evento Privado'
   customSlots?: string[];       // Horários específicos que substituem a regra naquele dia
+  maxPaxPerSlot?: number;
 }
 
 export interface VenueAgendaConfig {
@@ -604,6 +631,7 @@ export interface VenueAgendaConfig {
   venueId: string;              // ID da Casa de Festa ou 'all'
   visitsRule: AgendaRecurringRule;
   tastingsRule: AgendaRecurringRule;
+  blockRules?: AgendaBlockRule[]; // Configurações por período com precedência
   dateOverrides: AgendaDateOverride[];
   updatedAt?: string;
 }

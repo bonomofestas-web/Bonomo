@@ -8,12 +8,13 @@ import { taskService } from '../../services/taskService';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
+import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
 import { AdminTasksKanbanView } from './tasks/AdminTasksKanbanView';
 import { AdminTasksTableView } from './tasks/AdminTasksTableView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
 import { AdminCalendarWeekView } from './tasks/AdminCalendarWeekView';
 import { AdminCalendarMonthView } from './tasks/AdminCalendarMonthView';
-import type { AdminTask, TaskDatabase } from '../../types/admin';
+import type { AdminTask, TaskDatabase, CommercialCommitmentType } from '../../types/admin';
 
 export type TaskWorkspaceContext = 'all' | 'followup' | 'visits_tastings' | 'appointments';
 
@@ -38,8 +39,16 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     updateTask,
   } = useAdminState();
 
-  // Active View Mode: 'kanban' (||'), 'table' (☰), 'day' (DIA), 'week' (SEMANA), 'month' (MÊS)
-  const [viewMode, setViewMode] = useState<TaskWorkspaceViewMode>('kanban');
+  // Active View Mode: 'table' como padrão para Visitas & Degustações; 'kanban' para os demais
+  const [viewMode, setViewMode] = useState<TaskWorkspaceViewMode>(() => 
+    workspaceContext === 'visits_tastings' ? 'table' : 'kanban'
+  );
+
+  useEffect(() => {
+    if (workspaceContext === 'visits_tastings') {
+      setViewMode('table');
+    }
+  }, [workspaceContext]);
 
   // Date Navigation State for Day, Week, Month
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
@@ -113,6 +122,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [prefilledCustomType, setPrefilledCustomType] = useState<string | undefined>(undefined);
   const [completingTask, setCompletingTask] = useState<AdminTask | null>(null);
   const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false);
+
+  // Modal Especial de Agendamento Oficial (Substitui o Bloco de Notas em Visitas & Degustações)
+  const [isCommitmentModalOpen, setIsCommitmentModalOpen] = useState(false);
+  const [commitmentModalType, setCommitmentModalType] = useState<CommercialCommitmentType>('visit');
+  const [commitmentPresetDate, setCommitmentPresetDate] = useState<string | undefined>(undefined);
 
   const handleTableToggleStatus = useCallback((taskId: string) => {
     const task = contextTasks.find(t => t.id === taskId);
@@ -325,6 +339,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setSelectedTask(null);
     setPrefilledDueDate(todayStr);
     setPrefilledDueTime(undefined);
+
+    if (workspaceContext === 'visits_tastings') {
+      setCommitmentModalType(visitsSubFilter === 'tasting' ? 'tasting' : 'visit');
+      setCommitmentPresetDate(undefined);
+      setIsCommitmentModalOpen(true);
+      return;
+    }
+
     if (workspaceContext === 'all') {
       setIsTaskTypeSelectorOpen(true);
     } else {
@@ -337,6 +359,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setSelectedTask(null);
     setPrefilledDueDate(dateStr);
     setPrefilledDueTime(timeStr);
+
+    if (workspaceContext === 'visits_tastings') {
+      setCommitmentModalType(visitsSubFilter === 'tasting' ? 'tasting' : 'visit');
+      setCommitmentPresetDate(dateStr);
+      setIsCommitmentModalOpen(true);
+      return;
+    }
+
     if (workspaceContext === 'all') {
       setIsTaskTypeSelectorOpen(true);
     } else {
@@ -920,6 +950,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             collaborators={collaborators}
             onOpenTask={handleOpenTask}
             onToggleStatus={handleTableToggleStatus}
+            onScheduleForDate={(dateStr) => {
+              setCommitmentPresetDate(dateStr);
+              setCommitmentModalType(visitsSubFilter === 'tasting' ? 'tasting' : 'visit');
+              setIsCommitmentModalOpen(true);
+            }}
             todayStr={todayStr}
             workspaceContext={workspaceContext}
           />
@@ -1332,8 +1367,24 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       {isAgendaModalOpen && (
         <AdminAgendaAvailabilityModal
           venueId={activeVenueId || undefined}
-          initialTab={visitsSubFilter === 'tasting' ? 'tastings' : 'visits'}
+          initialType={visitsSubFilter === 'tasting' ? 'tasting' : 'visit'}
           onClose={() => setIsAgendaModalOpen(false)}
+        />
+      )}
+
+      {/* ── MODAL ESPECIAL DE AGENDAMENTO OFICIAL (VISITAS & DEGUSTAÇÕES) ── */}
+      {isCommitmentModalOpen && (
+        <AdminScheduleCommitmentModal
+          initialType={commitmentModalType}
+          presetDate={commitmentPresetDate}
+          onClose={() => {
+            setIsCommitmentModalOpen(false);
+            setCommitmentPresetDate(undefined);
+          }}
+          onScheduled={() => {
+            setIsCommitmentModalOpen(false);
+            setCommitmentPresetDate(undefined);
+          }}
         />
       )}
     </div>

@@ -6,6 +6,7 @@ import {
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { agendaAvailabilityService } from '../../../services/agendaAvailabilityService';
 
 interface AdminTasksTableViewProps {
   tasks: AdminTask[];
@@ -16,6 +17,7 @@ interface AdminTasksTableViewProps {
   debutantes?: DebutanteAccount[];
   onOpenTask: (task: AdminTask) => void;
   onToggleStatus: (taskId: string) => void;
+  onScheduleForDate?: (dateStr: string) => void;
   todayStr: string;
   workspaceContext?: string;
 }
@@ -27,6 +29,7 @@ interface DateGroup {
   isOverdue: boolean;
   isToday: boolean;
   tasks: AdminTask[];
+  availableTypes?: { visit: boolean; tasting: boolean };
 }
 
 export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
@@ -38,6 +41,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   debutantes: propsDebutantes,
   onOpenTask,
   onToggleStatus,
+  onScheduleForDate,
   todayStr,
   workspaceContext = 'all',
 }) => {
@@ -45,6 +49,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   const leads = propsLeads || adminState?.leads || [];
   const clients = propsClients || adminState?.clients || [];
   const debutantes = propsDebutantes || adminState?.debutantes || [];
+  const venueAgendaConfigs = adminState?.venueAgendaConfigs || [];
+  const activeVenueId = adminState?.activeVenueId;
 
   const tomorrowStr = useMemo(() => {
     const d = new Date();
@@ -83,6 +89,30 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       groupMap.get(key)!.push(task);
     });
 
+    // Se estiver no contexto de Visitas e Degustações, carrega os dias configurados da unidade
+    const targetVenueId = activeVenueId !== 'all' && activeVenueId ? activeVenueId : (adminState?.venues?.[0]?.id || 'all');
+    const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
+
+    if (isVisitsContext && venueConfig) {
+      // Gera os próximos 30 dias a partir de hoje
+      const now = new Date();
+      for (let i = 0; i < 30; i++) {
+        const nextD = new Date(now);
+        nextD.setDate(now.getDate() + i);
+        const dateStr = nextD.toISOString().split('T')[0];
+
+        // Checa se o dia tem visita ou degustação configurada
+        const hasVisits = agendaAvailabilityService.checkDayAvailability(venueConfig, dateStr, 'visit');
+        const hasTastings = agendaAvailabilityService.checkDayAvailability(venueConfig, dateStr, 'tasting');
+
+        if (hasVisits || hasTastings) {
+          if (!groupMap.has(dateStr)) {
+            groupMap.set(dateStr, []);
+          }
+        }
+      }
+    }
+
     const groups: DateGroup[] = [];
 
     // Sort keys chronologically: past dates first, then today, then future dates, then no_date
@@ -110,6 +140,14 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       const isToday = key === todayStr;
       const isTomorrow = key === tomorrowStr;
 
+      let availableTypes: { visit: boolean; tasting: boolean } | undefined = undefined;
+      if (isVisitsContext && venueConfig) {
+        availableTypes = {
+          visit: agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'visit'),
+          tasting: agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'tasting'),
+        };
+      }
+
       try {
         const [y, m, d] = key.split('-').map(Number);
         const dateObj = new Date(y, m - 1, d);
@@ -131,6 +169,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
           isOverdue,
           isToday,
           tasks: groupItems,
+          availableTypes,
         });
       } catch {
         groups.push({
@@ -140,12 +179,13 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
           isOverdue,
           isToday,
           tasks: groupItems,
+          availableTypes,
         });
       }
     });
 
     return groups;
-  }, [tasks, todayStr, tomorrowStr]);
+  }, [tasks, todayStr, tomorrowStr, isVisitsContext, activeVenueId, venueAgendaConfigs, adminState?.venues]);
 
   // Helper for Visitas & Degustações: Calculate Notification 1 & 2 + Presence metric
   const getVisitNotificationData = (parentTask: AdminTask) => {
@@ -308,7 +348,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         padding: '9px 16px',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Calendar size={15} style={{ color: group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)' }} />
                           <span style={{
@@ -329,24 +369,109 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                               • {group.subtitle}
                             </span>
                           )}
+
+                          {/* Badges de Disponibilidade da Casa de Festa */}
+                          {group.availableTypes && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                              {group.availableTypes.visit && (
+                                <span style={{
+                                  fontSize: '0.66rem',
+                                  fontWeight: 800,
+                                  padding: '2px 7px',
+                                  borderRadius: '5px',
+                                  background: 'rgba(16,185,129,0.12)',
+                                  color: '#10B981',
+                                  border: '1px solid rgba(16,185,129,0.25)',
+                                }}>
+                                  🏛️ Visita
+                                </span>
+                              )}
+                              {group.availableTypes.tasting && (
+                                <span style={{
+                                  fontSize: '0.66rem',
+                                  fontWeight: 800,
+                                  padding: '2px 7px',
+                                  borderRadius: '5px',
+                                  background: 'rgba(217,119,6,0.12)',
+                                  color: '#D97706',
+                                  border: '1px solid rgba(217,119,6,0.25)',
+                                }}>
+                                  🍽️ Degustação
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
-                        <span style={{
-                          fontSize: '0.70rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          background: group.isToday ? '#DBEAFE' : '#E2E8F0',
-                          color: group.isToday ? '#1E40AF' : '#475569',
-                        }}>
-                          {group.tasks.length} {group.tasks.length === 1 ? 'tarefa' : 'tarefas'}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {isVisitsContext && onScheduleForDate && group.key !== 'no_date' && (
+                            <button
+                              type="button"
+                              onClick={() => onScheduleForDate(group.key)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '6px',
+                                background: 'rgba(16,185,129,0.12)',
+                                border: '1px solid rgba(16,185,129,0.25)',
+                                color: '#10B981',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              + Agendar para este dia
+                            </button>
+                          )}
+
+                          <span style={{
+                            fontSize: '0.70rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: group.tasks.length === 0 ? 'rgba(255,255,255,0.05)' : (group.isToday ? '#DBEAFE' : '#E2E8F0'),
+                            color: group.tasks.length === 0 ? '#94A3B8' : (group.isToday ? '#1E40AF' : '#475569'),
+                          }}>
+                            {group.tasks.length} {group.tasks.length === 1 ? 'agendamento' : 'agendamentos'}
+                          </span>
+                        </div>
                       </div>
                     </td>
                   </tr>
 
+                  {/* Linha para dia vazio configurado */}
+                  {group.tasks.length === 0 && (
+                    <tr style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
+                      <td colSpan={totalColumns} style={{ padding: '16px 20px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
+                            Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa
+                          </span>
+                          {onScheduleForDate && group.key !== 'no_date' && (
+                            <button
+                              type="button"
+                              onClick={() => onScheduleForDate(group.key)}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                background: '#10B981',
+                                border: 'none',
+                                color: '#FFFFFF',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Agendar Agora
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
                   {/* Tasks in this Date Group */}
                   {group.tasks.map((task, idx) => {
+                    const isCancelledDueToBlock = Boolean(task.customProperties?.cancelledDueToBlock || task.status === 'cancelled');
                     const isOverdue = task.dueDate && task.dueDate < todayStr && task.status !== 'completed';
                     const isCompleted = task.status === 'completed';
                     const theme = getTaskTypeTheme(task);
@@ -369,10 +494,12 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     const sdrAvatar = sdrCollab?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(sdrName)}&background=D97706&color=FFFFFF`;
 
                     // Dynamic row background based on presence in Visitas & Degustações
-                    let rowBg = idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)';
-                    let rowHoverBg = 'var(--adm-bg-surface, #F0F9FF)';
+                    let rowBg = isCancelledDueToBlock 
+                      ? 'rgba(239, 68, 68, 0.08)' 
+                      : (idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)');
+                    let rowHoverBg = isCancelledDueToBlock ? 'rgba(239, 68, 68, 0.14)' : 'var(--adm-bg-surface, #F0F9FF)';
 
-                    if (isVisitsContext && visitData) {
+                    if (isVisitsContext && visitData && !isCancelledDueToBlock) {
                       if (visitData.positiveCount === 2) {
                         rowBg = 'rgba(16, 185, 129, 0.12)';
                         rowHoverBg = 'rgba(16, 185, 129, 0.2)';

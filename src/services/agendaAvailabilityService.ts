@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { 
   VenueAgendaConfig, 
   AgendaRecurringRule, 
+  AgendaDaySchedule,
   CommercialCommitmentType 
 } from '../types/admin';
 import type { Appointment } from '../types';
@@ -10,20 +11,71 @@ import { safeLocalStorageSet } from '../utils/mediaStorage';
 
 const STORAGE_KEY_AGENDA_CONFIGS = 'bonomo_venue_agenda_configs';
 
+/**
+ * Gera slots sequenciais com base no horário de início, fim e duração em minutos
+ * Ex: '09:00' até '17:00' com 60 min -> ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00']
+ */
+export function generateSlotsFromRange(startTime: string, endTime: string, durationMinutes: number = 60): string[] {
+  if (!startTime || !endTime || durationMinutes <= 0) return [];
+  const parseMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const formatMin = (m: number) => {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  };
+
+  const start = parseMin(startTime);
+  const end = parseMin(endTime);
+  if (end <= start) return [];
+
+  const slots: string[] = [];
+  let curr = start;
+  while (curr + durationMinutes <= end) {
+    slots.push(formatMin(curr));
+    curr += durationMinutes;
+  }
+  return slots;
+}
+
+export const DEFAULT_DAY_SCHEDULES_VISITS: Record<number, AgendaDaySchedule> = {
+  1: { dayOfWeek: 1, enabled: true, startTime: '09:00', endTime: '18:00', slotDurationMinutes: 60 },
+  2: { dayOfWeek: 2, enabled: true, startTime: '09:00', endTime: '18:00', slotDurationMinutes: 60 },
+  3: { dayOfWeek: 3, enabled: true, startTime: '09:00', endTime: '18:00', slotDurationMinutes: 60 },
+  4: { dayOfWeek: 4, enabled: true, startTime: '09:00', endTime: '18:00', slotDurationMinutes: 60 },
+  5: { dayOfWeek: 5, enabled: true, startTime: '09:00', endTime: '18:00', slotDurationMinutes: 60 },
+  6: { dayOfWeek: 6, enabled: true, startTime: '10:00', endTime: '16:00', slotDurationMinutes: 60 },
+  0: { dayOfWeek: 0, enabled: false, startTime: '10:00', endTime: '16:00', slotDurationMinutes: 60 },
+};
+
+export const DEFAULT_DAY_SCHEDULES_TASTINGS: Record<number, AgendaDaySchedule> = {
+  1: { dayOfWeek: 1, enabled: false, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  2: { dayOfWeek: 2, enabled: false, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  3: { dayOfWeek: 3, enabled: true, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  4: { dayOfWeek: 4, enabled: true, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  5: { dayOfWeek: 5, enabled: false, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  6: { dayOfWeek: 6, enabled: false, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+  0: { dayOfWeek: 0, enabled: false, startTime: '19:00', endTime: '22:00', slotDurationMinutes: 90 },
+};
+
 export const DEFAULT_VISITS_RULE: AgendaRecurringRule = {
   enabledDays: [1, 2, 3, 4, 5, 6], // Segunda a Sábado
-  timeSlots: ['10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00'],
-  durationMinutes: 45,
-  maxConcurrentPerSlot: 3, // Até 3 visitas simultâneas por horário
+  timeSlots: ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00'],
+  durationMinutes: 60,
+  maxConcurrentPerSlot: 3,
   maxPaxPerSlot: 15,
+  daySchedules: DEFAULT_DAY_SCHEDULES_VISITS,
 };
 
 export const DEFAULT_TASTINGS_RULE: AgendaRecurringRule = {
   enabledDays: [3, 4], // Quarta e Quinta-feira
-  timeSlots: ['19:00', '20:00'],
+  timeSlots: ['19:00', '20:30'],
   durationMinutes: 90,
-  maxConcurrentPerSlot: 4, // Até 4 famílias por sessão
-  maxPaxPerSlot: 20,       // Até 20 pessoas no total da sessão
+  maxConcurrentPerSlot: 4,
+  maxPaxPerSlot: 20,
+  daySchedules: DEFAULT_DAY_SCHEDULES_TASTINGS,
 };
 
 export interface CalculatedSlot {
@@ -44,6 +96,7 @@ export interface AvailabilityResult {
   isDayAvailable: boolean;
   blockReason?: string;
   reason?: string;
+  appliedMode?: 'override' | 'block' | 'recurring';
   slots: CalculatedSlot[];
 }
 
@@ -54,6 +107,7 @@ export const agendaAvailabilityService = {
       venueId,
       visitsRule: { ...DEFAULT_VISITS_RULE },
       tastingsRule: { ...DEFAULT_TASTINGS_RULE },
+      blockRules: [],
       dateOverrides: [],
       updatedAt: new Date().toISOString(),
     };
@@ -80,14 +134,30 @@ export const agendaAvailabilityService = {
         return stored ? JSON.parse(stored) : [];
       }
 
-      return (data || []).map((row: any) => ({
-        id: row.id,
-        venueId: row.venue_id,
-        visitsRule: row.visits_rule || { ...DEFAULT_VISITS_RULE },
-        tastingsRule: row.tastings_rule || { ...DEFAULT_TASTINGS_RULE },
-        dateOverrides: row.blackout_dates || [],
-        updatedAt: row.updated_at,
-      }));
+      return (data || []).map((row: any) => {
+        const blackout = row.blackout_dates || [];
+        const dateOverrides = Array.isArray(blackout) 
+          ? blackout.filter((item: any) => item && !item.startDate)
+          : [];
+        const rawBlocks = (row.visits_rule as any)?.blockRules || 
+          (Array.isArray(blackout) ? blackout.filter((item: any) => item && item.startDate && item.endDate) : []);
+
+        return {
+          id: row.id,
+          venueId: row.venue_id,
+          visitsRule: {
+            ...DEFAULT_VISITS_RULE,
+            ...(row.visits_rule || {}),
+          },
+          tastingsRule: {
+            ...DEFAULT_TASTINGS_RULE,
+            ...(row.tastings_rule || {}),
+          },
+          blockRules: rawBlocks || [],
+          dateOverrides,
+          updatedAt: row.updated_at,
+        };
+      });
     } catch (err) {
       console.error('Falha em agendaAvailabilityService.getAll:', err);
       return [];
@@ -109,11 +179,20 @@ export const agendaAvailabilityService = {
 
       if (!isSupabaseConfigured) return true;
 
+      // Preserva blockRules embutido dentro de visits_rule e blackout_dates para compatibilidade total
+      const enrichedVisitsRule = {
+        ...config.visitsRule,
+        blockRules: config.blockRules || [],
+      };
+
       const payload: any = {
         venue_id: isUuid(config.venueId) ? config.venueId : null,
-        visits_rule: config.visitsRule,
+        visits_rule: enrichedVisitsRule,
         tastings_rule: config.tastingsRule,
-        blackout_dates: config.dateOverrides || [],
+        blackout_dates: [
+          ...(config.dateOverrides || []),
+          ...(config.blockRules || []).map(b => ({ ...b, isBlockRule: true }))
+        ],
         updated_at: new Date().toISOString(),
       };
 
@@ -143,8 +222,10 @@ export const agendaAvailabilityService = {
   },
 
   /**
-   * Calcula a disponibilidade de horários para um determinado dia e tipo de compromisso,
-   * suportando tanto chamada (config, dateStr, type, appointments) quanto (dateStr, type, venueId, appointments, config).
+   * Calcula a disponibilidade de horários com PRECEDÊNCIA:
+   * 1º: AgendaDateOverride (bloqueio ou ajuste pontual do dia)
+   * 2º: AgendaBlockRule (regra por período de datas que suspende a regra semanal)
+   * 3º: AgendaRecurringRule (regra base semanal por dia da semana)
    */
   getAvailableSlots(
     arg1: any,
@@ -185,64 +266,141 @@ export const agendaAvailabilityService = {
     const defaultRule = type === 'visit' ? DEFAULT_VISITS_RULE : DEFAULT_TASTINGS_RULE;
     const rule = (type === 'visit' ? config?.visitsRule : config?.tastingsRule) || defaultRule;
 
-    // 1. Verifica se há bloqueio específico para esta data (Google Calendar style)
+    // ── 1. PRECEDÊNCIA MÁXIMA: Override específico da data (Dia Pontual) ─────────
     const override = config?.dateOverrides?.find(o => o.date === dateStr);
     if (override && override.isBlocked) {
-      const msg = override.reason || 'Data bloqueada pela gerência.';
+      const msg = override.reason || 'Data bloqueada pela administração.';
       return {
         isBlocked: true,
         isDayAvailable: false,
         blockReason: msg,
         reason: msg,
+        appliedMode: 'override',
         slots: [],
       };
     }
 
-    // 2. Verifica o dia da semana (0=Dom, 1=Seg, ..., 6=Sab)
     const [year, month, day] = dateStr.split('-').map(Number);
     const dateObj = new Date(year, month - 1, day);
-    const dayOfWeek = dateObj.getDay();
+    const dayOfWeek = dateObj.getDay(); // 0=Dom, 1=Seg, ..., 6=Sab
 
-    if (!rule.enabledDays.includes(dayOfWeek) && !override?.customSlots) {
-      const msg = 'Não há atendimento para este compromisso neste dia da semana.';
+    // ── 2. PRECEDÊNCIA INTERMEDIÁRIA: Bloco por Período (Range de Datas) ────────
+    const targetBlockType = type === 'visit' ? 'visits' : 'tastings';
+    const activeBlock = (config?.blockRules || []).find(b => {
+      const matchesType = b.type === 'both' || b.type === targetBlockType;
+      return matchesType && b.startDate <= dateStr && dateStr <= b.endDate;
+    });
+
+    let effectiveSlots: string[] = [];
+    let effectiveDuration = rule.durationMinutes || 60;
+    let effectiveMaxBookings = rule.maxConcurrentPerSlot || 3;
+    let effectiveMaxPax = rule.maxPaxPerSlot;
+    let appliedMode: 'override' | 'block' | 'recurring' = 'recurring';
+
+    if (override?.customSlots && override.customSlots.length > 0) {
+      // Override com horários customizados
+      effectiveSlots = override.customSlots;
+      effectiveMaxPax = override.maxPaxPerSlot ?? effectiveMaxPax;
+      appliedMode = 'override';
+    } else if (activeBlock) {
+      appliedMode = 'block';
+      effectiveDuration = activeBlock.durationMinutes || effectiveDuration;
+      effectiveMaxBookings = activeBlock.maxConcurrentPerSlot || effectiveMaxBookings;
+      effectiveMaxPax = activeBlock.maxPaxPerSlot ?? effectiveMaxPax;
+
+      const blockDaySchedule = activeBlock.daySchedules?.[dayOfWeek];
+      if (blockDaySchedule) {
+        if (!blockDaySchedule.enabled) {
+          return {
+            isBlocked: true,
+            isDayAvailable: false,
+            blockReason: `Data sem atendimento no período configurado (${activeBlock.title || 'Bloco'}).`,
+            reason: `Data sem atendimento no período configurado.`,
+            appliedMode: 'block',
+            slots: [],
+          };
+        }
+        effectiveSlots = blockDaySchedule.timeSlots && blockDaySchedule.timeSlots.length > 0
+          ? blockDaySchedule.timeSlots
+          : generateSlotsFromRange(blockDaySchedule.startTime, blockDaySchedule.endTime, blockDaySchedule.slotDurationMinutes || effectiveDuration);
+      } else if (activeBlock.enabledDays && !activeBlock.enabledDays.includes(dayOfWeek)) {
+        return {
+          isBlocked: true,
+          isDayAvailable: false,
+          blockReason: `Dia não disponível no período selecionado (${activeBlock.title || 'Bloco'}).`,
+          reason: `Dia não disponível no período selecionado.`,
+          appliedMode: 'block',
+          slots: [],
+        };
+      } else if (activeBlock.timeSlots && activeBlock.timeSlots.length > 0) {
+        effectiveSlots = activeBlock.timeSlots;
+      } else {
+        effectiveSlots = rule.timeSlots;
+      }
+    } else {
+      // ── 3. PRECEDÊNCIA BASE: Regra Recorrente Semanal ────────────────────────
+      const daySchedule = rule.daySchedules?.[dayOfWeek];
+      const isDayEnabled = daySchedule ? daySchedule.enabled : rule.enabledDays.includes(dayOfWeek);
+
+      if (!isDayEnabled) {
+        return {
+          isBlocked: true,
+          isDayAvailable: false,
+          blockReason: 'Não há atendimento para este compromisso neste dia da semana.',
+          reason: 'Não há atendimento para este compromisso neste dia da semana.',
+          appliedMode: 'recurring',
+          slots: [],
+        };
+      }
+
+      if (daySchedule && daySchedule.enabled) {
+        effectiveSlots = daySchedule.timeSlots && daySchedule.timeSlots.length > 0
+          ? daySchedule.timeSlots
+          : generateSlotsFromRange(daySchedule.startTime, daySchedule.endTime, daySchedule.slotDurationMinutes || effectiveDuration);
+        effectiveDuration = daySchedule.slotDurationMinutes || effectiveDuration;
+        effectiveMaxBookings = daySchedule.maxConcurrentPerSlot || effectiveMaxBookings;
+        effectiveMaxPax = daySchedule.maxPaxPerSlot ?? effectiveMaxPax;
+      } else {
+        effectiveSlots = rule.timeSlots;
+      }
+    }
+
+    if (!effectiveSlots || effectiveSlots.length === 0) {
       return {
         isBlocked: true,
         isDayAvailable: false,
-        blockReason: msg,
-        reason: msg,
+        blockReason: 'Nenhum horário de atendimento configurado para este dia.',
+        reason: 'Nenhum horário configurado.',
+        appliedMode,
         slots: [],
       };
     }
 
-    // 3. Obtém a lista de slots disponíveis para o dia
-    const timeSlots = override?.customSlots && override.customSlots.length > 0
-      ? override.customSlots
-      : rule.timeSlots;
-
-    // 4. Filtra agendamentos existentes neste dia para a categoria correspondente
+    // ── 4. Filtra agendamentos existentes no dia ─────────────────────────────────
     const targetCategory = type === 'visit' 
-      ? ['Visita Comercial', 'Visita Técnica / Apresentação'] 
-      : ['Degustação Gastronômica', 'Buffet & Degustação'];
+      ? ['Visita Comercial', 'Visita Técnica / Apresentação', 'visita'] 
+      : ['Degustação Gastronômica', 'Buffet & Degustação', 'degustação', 'degustacao'];
 
     const dayAppointments = existingAppointments.filter(a => {
       if (a.date !== dateStr) return false;
       if (a.status === 'cancelled') return false;
-      return targetCategory.includes(a.category) || 
-             a.title.toLowerCase().includes(type === 'visit' ? 'visita' : 'degust');
+      const cat = (a.category || '').toLowerCase();
+      const title = (a.title || '').toLowerCase();
+      return targetCategory.some(tc => cat.includes(tc) || title.includes(tc));
     });
 
-    // 5. Para cada horário configurado, calcula capacidade e disponibilidade
-    const calculatedSlots: CalculatedSlot[] = timeSlots.map(time => {
+    // ── 5. Calcula vagas e capacidade por slot ──────────────────────────────────
+    const calculatedSlots: CalculatedSlot[] = effectiveSlots.map(time => {
       const slotAppointments = dayAppointments.filter(a => a.time === time);
       const currentBookings = slotAppointments.length;
       
       const currentPax = slotAppointments.reduce((acc, a) => {
-        const p = a.pax ?? a.guestsCount ?? 2;
+        const p = a.pax ?? a.guestsCount ?? (type === 'tasting' ? 4 : 2);
         return acc + Number(p);
       }, 0);
 
-      const maxBookings = rule.maxConcurrentPerSlot;
-      const maxPax = rule.maxPaxPerSlot;
+      const maxBookings = effectiveMaxBookings;
+      const maxPax = effectiveMaxPax;
 
       const remainingSpots = Math.max(0, maxBookings - currentBookings);
       const remainingPax = maxPax !== undefined ? Math.max(0, maxPax - currentPax) : 999;
@@ -259,14 +417,26 @@ export const agendaAvailabilityService = {
         maxPax,
         remainingSpots,
         remainingPax,
-        durationMinutes: rule.durationMinutes,
+        durationMinutes: effectiveDuration,
       };
     });
 
+    const hasAnyAvailableSpot = calculatedSlots.some(s => s.available);
+
     return {
       isBlocked: false,
-      isDayAvailable: true,
+      isDayAvailable: hasAnyAvailableSpot,
+      appliedMode,
       slots: calculatedSlots,
     };
+  },
+
+  /**
+   * Checagem rápida se uma data está aberta para visitas ou degustações
+   */
+  checkDayAvailability(config: VenueAgendaConfig | null, dateStr: string, type: CommercialCommitmentType): boolean {
+    if (!config || !dateStr) return false;
+    const res = this.getAvailableSlots(config, dateStr, type, []);
+    return !res.isBlocked && res.slots.length > 0;
   }
 };
