@@ -619,7 +619,14 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           </div>
 
           {/* Task Table View Grouped by Status */}
-          <div style={{ flex: 1, maxHeight: '560px', overflowY: 'auto', borderRadius: '10px', border: '1px solid var(--adm-border)', background: 'var(--adm-bg-input)' }}>
+          <div style={{
+            flex: 1,
+            maxHeight: '560px',
+            overflowY: 'auto',
+            borderRadius: '12px',
+            border: '1px solid var(--adm-border)',
+            background: 'var(--adm-bg-card)',
+          }}>
             {filteredTasks.length === 0 ? (
               <div style={{
                 textAlign: 'center',
@@ -690,19 +697,68 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                 </thead>
                 <tbody>
                   {[
-                    { id: 'overdue', label: 'Atrasadas', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.35)', icon: <AlertTriangle size={13} color="#EF4444" /> },
-                    { id: 'todo', label: 'Não Iniciadas', color: '#0284C7', bg: 'rgba(2, 132, 199, 0.10)', border: 'rgba(2, 132, 199, 0.25)', icon: <CheckSquare size={13} color="#0284C7" /> },
-                    { id: 'in_progress', label: 'Em Execução', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.25)', icon: <Clock size={13} color="#F59E0B" /> },
-                    { id: 'completed', label: 'Concluídas', color: '#10B981', bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.25)', icon: <Check size={13} color="#10B981" /> },
+                    {
+                      id: 'overdue',
+                      label: 'Atrasadas',
+                      color: '#EF4444',
+                      titleColor: '#DC2626',
+                      bg: 'rgba(239, 68, 68, 0.08)',
+                      border: 'rgba(239, 68, 68, 0.20)',
+                      rowBg: 'rgba(239, 68, 68, 0.035)',
+                      icon: <AlertTriangle size={13} color="#EF4444" />,
+                    },
+                    {
+                      id: 'todo',
+                      label: 'Não Iniciadas',
+                      color: '#64748B',
+                      titleColor: '#475569',
+                      bg: 'rgba(100, 116, 139, 0.08)',
+                      border: 'rgba(100, 116, 139, 0.20)',
+                      rowBg: 'var(--adm-bg-card, #FFFFFF)',
+                      icon: <CheckSquare size={13} color="#64748B" />,
+                    },
+                    {
+                      id: 'in_progress',
+                      label: 'Em Execução',
+                      color: '#7C3AED',
+                      titleColor: '#7C3AED',
+                      bg: 'rgba(139, 92, 246, 0.08)',
+                      border: 'rgba(139, 92, 246, 0.20)',
+                      rowBg: 'rgba(139, 92, 246, 0.035)',
+                      icon: <Clock size={13} color="#7C3AED" />,
+                    },
+                    {
+                      id: 'scheduled',
+                      label: 'Agendadas',
+                      color: '#D97706',
+                      titleColor: '#D97706',
+                      bg: 'rgba(245, 158, 11, 0.08)',
+                      border: 'rgba(245, 158, 11, 0.20)',
+                      rowBg: 'rgba(245, 158, 11, 0.035)',
+                      icon: <Calendar size={13} color="#D97706" />,
+                    },
+                    {
+                      id: 'completed',
+                      label: 'Concluídas',
+                      color: '#059669',
+                      titleColor: '#059669',
+                      bg: 'rgba(16, 185, 129, 0.08)',
+                      border: 'rgba(16, 185, 129, 0.20)',
+                      rowBg: 'rgba(16, 185, 129, 0.02)',
+                      icon: <Check size={13} color="#059669" />,
+                    },
                   ].map(group => {
                     const groupTasks = filteredTasks.filter(t => {
                       const isDone = t.status === 'completed';
                       const isOverdue = !isDone && Boolean(t.dueDate && t.dueDate < todayStr);
+                      const isInProgress = !isDone && !isOverdue && (t.status === 'in_progress' || t.customStatusId === 'st_in_progress');
+                      const isScheduled = !isDone && !isOverdue && !isInProgress && ((t.status as string) === 'scheduled' || t.customStatusId === 'st_scheduled' || Boolean(t.dueDate && t.dueDate > todayStr));
 
                       if (group.id === 'overdue') return isOverdue;
                       if (group.id === 'completed') return isDone;
-                      if (group.id === 'in_progress') return !isDone && !isOverdue && t.status === 'in_progress';
-                      return !isDone && !isOverdue && t.status !== 'in_progress';
+                      if (group.id === 'in_progress') return isInProgress;
+                      if (group.id === 'scheduled') return isScheduled;
+                      return !isDone && !isOverdue && !isInProgress && !isScheduled;
                     });
 
                     if (groupTasks.length === 0) return null;
@@ -724,7 +780,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                             </div>
                           </td>
                         </tr>
-                        {groupTasks.map((task, idx) => {
+                        {groupTasks.map((task) => {
                           const isDone = task.status === 'completed';
                           const isOverdue = !isDone && Boolean(task.dueDate && task.dueDate < todayStr);
                           const isDueToday = !isDone && task.dueDate === todayStr;
@@ -758,16 +814,16 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                               }}
                               style={{
                                 borderBottom: '1px solid var(--adm-border)',
-                                background: isDone ? 'rgba(255, 255, 255, 0.01)' : idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.02)',
+                                background: group.rowBg,
                                 cursor: 'pointer',
                                 transition: 'background-color 0.15s ease',
                                 opacity: isDone ? 0.65 : 1,
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-card)'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isDone ? 'rgba(255, 255, 255, 0.01)' : idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.02)'}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-card-hover, #F8FAFC)'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = group.rowBg}
                             >
                               {/* Checkbox Column */}
-                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                              <td style={{ padding: '9px 8px', textAlign: 'center' }}>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -777,10 +833,10 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                   style={{
                                     width: 18,
                                     height: 18,
-                                    borderRadius: '5px',
-                                    background: isDone ? 'var(--adm-green)' : 'transparent',
-                                    border: `1.5px solid ${isDone ? 'var(--adm-green)' : 'var(--adm-border)'}`,
-                                    color: '#000',
+                                    borderRadius: '6px',
+                                    background: isDone ? 'var(--adm-green, #10B981)' : 'transparent',
+                                    border: isDone ? '1.5px solid var(--adm-green, #10B981)' : '1.5px solid var(--adm-border, #CBD5E1)',
+                                    color: '#FFFFFF',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
@@ -794,12 +850,12 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                 </button>
                               </td>
 
-                              {/* Task Title (White, Single Line Ellipsis + ClickUp icons) */}
-                              <td style={{ padding: '8px 12px', maxWidth: '320px' }}>
+                              {/* Task Title (Cor temática do status com excelente contraste) */}
+                              <td style={{ padding: '9px 12px', maxWidth: '320px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                   <span style={{
                                     fontWeight: 700,
-                                    color: '#FFFFFF',
+                                    color: isDone ? 'var(--adm-text-muted)' : group.titleColor,
                                     textDecoration: isDone ? 'line-through' : 'none',
                                     fontSize: '0.80rem',
                                     whiteSpace: 'nowrap',
@@ -827,8 +883,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                 </div>
                               </td>
 
-                              {/* Task Type Badge */}
-                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                              {/* Task Type Badge - Formato Pill Suave */}
+                              <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
                                 <span style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -836,18 +892,19 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                   background: typeConfig.bg,
                                   border: `1px solid ${typeConfig.border}`,
                                   color: typeConfig.color,
-                                  borderRadius: '6px',
-                                  padding: '2px 8px',
-                                  fontSize: '0.70rem',
+                                  borderRadius: '16px',
+                                  padding: '3px 10px',
+                                  fontSize: '0.69rem',
                                   fontWeight: 700,
+                                  letterSpacing: '0.01em',
                                 }}>
                                   {typeConfig.icon}
                                   <span>{typeConfig.label}</span>
                                 </span>
                               </td>
 
-                              {/* Linked Lead / Client */}
-                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                              {/* Linked Lead / Client - Formato Pill Suave com User Icon */}
+                              <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', maxWidth: '170px' }}>
                                 {resolvedName ? (
                                   <button
                                     type="button"
@@ -858,18 +915,19 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '4px',
-                                      background: 'rgba(96, 165, 250, 0.10)',
-                                      border: '1px solid rgba(96, 165, 250, 0.3)',
-                                      color: '#60A5FA',
-                                      borderRadius: '6px',
-                                      padding: '2px 8px',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 600,
+                                      gap: '5px',
+                                      background: 'rgba(96, 165, 250, 0.08)',
+                                      border: '1px solid rgba(96, 165, 250, 0.22)',
+                                      color: '#2563EB',
+                                      borderRadius: '16px',
+                                      padding: '3px 10px',
+                                      fontSize: '0.70rem',
+                                      fontWeight: 650,
                                       cursor: task.leadId ? 'pointer' : 'default',
                                       maxWidth: '100%',
                                       overflow: 'hidden',
                                       textOverflow: 'ellipsis',
+                                      transition: 'all 0.15s ease',
                                     }}
                                   >
                                     <User size={11} style={{ flexShrink: 0 }} />
@@ -878,12 +936,12 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                     </span>
                                   </button>
                                 ) : (
-                                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.70rem' }}>—</span>
+                                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.70rem', paddingLeft: '8px' }}>—</span>
                                 )}
                               </td>
 
                               {/* Due Date & Time */}
-                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                 <span style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -899,7 +957,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                               </td>
 
                               {/* Priority Flag (ClickUp Style) */}
-                              <td style={{ padding: '8px 8px', textAlign: 'center' }}>
+                              <td style={{ padding: '9px 8px', textAlign: 'center' }}>
                                 <div
                                   title={`Prioridade: ${priorityConfig.label}`}
                                   style={{
