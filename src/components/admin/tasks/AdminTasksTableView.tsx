@@ -48,7 +48,6 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   workspaceContext = 'all',
   visitsSubFilter = 'all',
 }) => {
-  const [hoveredDateKey, setHoveredDateKey] = useState<string | null>(null);
   const adminState = useAdminState();
   const leads = propsLeads || adminState?.leads || [];
   const clients = propsClients || adminState?.clients || [];
@@ -455,46 +454,6 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
             textAlign: 'left',
             fontSize: '0.80rem',
           }}>
-            {/* Table Header */}
-            <thead style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              background: 'var(--adm-bg-surface, #F8FAFC)',
-              borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-              fontSize: '0.70rem',
-              fontWeight: 800,
-              color: 'var(--adm-text-muted, #64748B)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}>
-              {isVisitsContext ? (
-                <tr>
-                  <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
-                    <span className="sr-only">Status</span>
-                  </th>
-                  <th style={{ padding: '12px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
-                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
-                  <th style={{ padding: '12px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
-                  <th style={{ padding: '12px 14px', minWidth: '120px' }}>TIPO</th>
-                  <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 1</th>
-                  <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 2</th>
-                  <th style={{ padding: '12px 16px', minWidth: '180px' }}>CONFIRMAÇÃO PRESENÇA</th>
-                </tr>
-              ) : (
-                <tr>
-                  <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
-                    <span className="sr-only">Status</span>
-                  </th>
-                  <th style={{ padding: '12px 16px', minWidth: '140px' }}>PRAZO</th>
-                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>USUÁRIO RESPONSÁVEL</th>
-                  <th style={{ padding: '12px 16px', minWidth: '240px' }}>OBJETO / TAREFA</th>
-                  <th style={{ padding: '12px 16px', minWidth: '150px' }}>TIPO DE TAREFA</th>
-                  <th style={{ padding: '12px 16px', minWidth: '200px' }}>RESULTADO / RESOLUÇÃO</th>
-                </tr>
-              )}
-            </thead>
-
             {/* Table Body Grouped by Date */}
             <tbody style={{ color: '#334155' }}>
               {groupedTasks.length === 0 ? (
@@ -512,25 +471,26 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     return !group.availableTypes.visit && !group.availableTypes.tasting;
                   })();
 
+                  const hasNoTasks = group.tasks.length === 0;
+                  const isDimmed = isUnavailable || hasNoTasks;
+
                   return (
                     <React.Fragment key={group.key}>
-                      {/* Single Date Section Header Row (Centralizado e adaptado) */}
+                      {/* 1. Linha do Dia (Data Centralizada + Tags Suaves + Botão [+] Simples) */}
                       <tr 
-                        onMouseEnter={() => setHoveredDateKey(group.key)}
-                        onMouseLeave={() => setHoveredDateKey(null)}
                         style={{
-                          background: isUnavailable 
+                          background: isDimmed 
                             ? 'var(--adm-bg-surface, #F1F5F9)'
-                            : (group.isToday ? 'rgba(37, 99, 235, 0.10)' : 'var(--adm-bg-surface, #F8FAFC)'),
+                            : (group.isToday ? 'rgba(37, 99, 235, 0.08)' : 'var(--adm-bg-surface, #F8FAFC)'),
                           borderTop: '2px solid var(--adm-border, #E2E8F0)',
                           borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-                          opacity: isUnavailable ? 0.72 : 1,
+                          opacity: isDimmed ? 0.72 : 1,
                         }}
                       >
                         <td 
                           colSpan={totalColumns} 
                           style={{ 
-                            padding: '10px 16px',
+                            padding: '8px 16px',
                           }}
                         >
                           <div style={{ 
@@ -541,55 +501,56 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             gap: '12px',
                             width: '100%',
                           }}>
+                            {/* Data Centralizada */}
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                              <Calendar size={15} style={{ color: isUnavailable ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)') }} />
+                              <Calendar size={14} style={{ color: isDimmed ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)') }} />
                               <span style={{
                                 fontWeight: 800,
-                                fontSize: '0.84rem',
-                                color: isUnavailable ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)'),
+                                fontSize: '0.82rem',
+                                color: isDimmed ? '#64748B' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)'),
                                 letterSpacing: '-0.2px',
                               }}>
                                 {group.title}
                               </span>
                               {group.subtitle && (
                                 <span style={{
-                                  fontSize: '0.76rem',
+                                  fontSize: '0.74rem',
                                   fontWeight: 600,
-                                  color: isUnavailable ? '#94A3B8' : (group.isToday ? '#3B82F6' : '#64748B'),
+                                  color: isDimmed ? '#94A3B8' : (group.isToday ? '#3B82F6' : '#64748B'),
                                 }}>
                                   • {group.subtitle}
                                 </span>
                               )}
                             </div>
 
-                            {/* Badges de Disponibilidade adaptados ao Filtro */}
+                            {/* Tags de Disponibilidade mais Fracas / Suaves */}
                             {group.availableTypes && (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 {visitsSubFilter === 'visit' && (
                                   group.availableTypes.visit ? (
                                     <span style={{
-                                      fontSize: '0.68rem',
-                                      fontWeight: 800,
-                                      padding: '3px 8px',
-                                      borderRadius: '5px',
-                                      background: 'rgba(16,185,129,0.12)',
-                                      color: '#10B981',
-                                      border: '1px solid rgba(16,185,129,0.25)',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 600,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(16, 185, 129, 0.08)',
+                                      color: '#059669',
+                                      border: '1px solid rgba(16, 185, 129, 0.15)',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
                                     }}>
-                                      <Building2 size={12} />
+                                      <Building2 size={11} />
                                       Visita Disponível
                                     </span>
                                   ) : (
                                     <span style={{
-                                      fontSize: '0.68rem',
-                                      fontWeight: 700,
-                                      padding: '3px 8px',
-                                      borderRadius: '5px',
-                                      background: 'rgba(148, 163, 184, 0.15)',
-                                      color: '#64748B',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 600,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(148, 163, 184, 0.10)',
+                                      color: '#94A3B8',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
@@ -602,28 +563,28 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                 {visitsSubFilter === 'tasting' && (
                                   group.availableTypes.tasting ? (
                                     <span style={{
-                                      fontSize: '0.68rem',
-                                      fontWeight: 800,
-                                      padding: '3px 8px',
-                                      borderRadius: '5px',
-                                      background: 'rgba(217,119,6,0.12)',
-                                      color: '#D97706',
-                                      border: '1px solid rgba(217,119,6,0.25)',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 600,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(217, 119, 6, 0.08)',
+                                      color: '#B45309',
+                                      border: '1px solid rgba(217, 119, 6, 0.15)',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
                                     }}>
-                                      <UtensilsCrossed size={12} />
+                                      <UtensilsCrossed size={11} />
                                       Degustação Disponível
                                     </span>
                                   ) : (
                                     <span style={{
-                                      fontSize: '0.68rem',
-                                      fontWeight: 700,
-                                      padding: '3px 8px',
-                                      borderRadius: '5px',
-                                      background: 'rgba(148, 163, 184, 0.15)',
-                                      color: '#64748B',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 600,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(148, 163, 184, 0.10)',
+                                      color: '#94A3B8',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
@@ -637,46 +598,46 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                   <>
                                     {group.availableTypes.visit && (
                                       <span style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 800,
-                                        padding: '3px 8px',
-                                        borderRadius: '5px',
-                                        background: 'rgba(16,185,129,0.12)',
-                                        color: '#10B981',
-                                        border: '1px solid rgba(16,185,129,0.25)',
+                                        fontSize: '0.66rem',
+                                        fontWeight: 600,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(16, 185, 129, 0.08)',
+                                        color: '#059669',
+                                        border: '1px solid rgba(16, 185, 129, 0.15)',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px',
                                       }}>
-                                        <Building2 size={12} />
+                                        <Building2 size={11} />
                                         Visita
                                       </span>
                                     )}
                                     {group.availableTypes.tasting && (
                                       <span style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 800,
-                                        padding: '3px 8px',
-                                        borderRadius: '5px',
-                                        background: 'rgba(217,119,6,0.12)',
-                                        color: '#D97706',
-                                        border: '1px solid rgba(217,119,6,0.25)',
+                                        fontSize: '0.66rem',
+                                        fontWeight: 600,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(217, 119, 6, 0.08)',
+                                        color: '#B45309',
+                                        border: '1px solid rgba(217, 119, 6, 0.15)',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px',
                                       }}>
-                                        <UtensilsCrossed size={12} />
+                                        <UtensilsCrossed size={11} />
                                         Degustação
                                       </span>
                                     )}
                                     {!group.availableTypes.visit && !group.availableTypes.tasting && (
                                       <span style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 700,
-                                        padding: '3px 8px',
-                                        borderRadius: '5px',
-                                        background: 'rgba(148, 163, 184, 0.15)',
-                                        color: '#64748B',
+                                        fontSize: '0.66rem',
+                                        fontWeight: 600,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(148, 163, 184, 0.10)',
+                                        color: '#94A3B8',
                                       }}>
                                         Sem atendimento
                                       </span>
@@ -686,33 +647,85 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                               </div>
                             )}
 
-                            {/* Contagem de Agendamentos */}
-                            <span style={{
-                              fontSize: '0.70rem',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '999px',
-                              background: isUnavailable ? 'rgba(0,0,0,0.04)' : (group.tasks.length === 0 ? 'rgba(0,0,0,0.04)' : (group.isToday ? '#DBEAFE' : '#E2E8F0')),
-                              color: isUnavailable ? '#94A3B8' : (group.tasks.length === 0 ? '#94A3B8' : (group.isToday ? '#1E40AF' : '#475569')),
-                            }}>
-                              {group.tasks.length} {group.tasks.length === 1 ? 'agendamento' : 'agendamentos'}
-                            </span>
+                            {/* Botão simples [+] de agendar para este dia */}
+                            {isVisitsContext && onScheduleForDate && group.key !== 'no_date' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onScheduleForDate(group.key);
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '6px',
+                                  background: '#FFFFFF',
+                                  border: '1px solid var(--adm-border, #CBD5E1)',
+                                  color: 'var(--adm-text-title, #334155)',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                                title={`Novo agendamento para ${group.title}`}
+                              >
+                                <Plus size={14} strokeWidth={2.5} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
 
-                      {/* Linha para dia vazio configurado: informativo limpo */}
+                      {/* 2. Sub-cabeçalho das Colunas (Variáveis) dentro de cada Data */}
+                      <tr style={{
+                        background: isDimmed ? 'rgba(241, 245, 249, 0.6)' : 'var(--adm-bg-surface, #F8FAFC)',
+                        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        color: isDimmed ? '#94A3B8' : 'var(--adm-text-muted, #64748B)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        opacity: isDimmed ? 0.72 : 1,
+                      }}>
+                        {isVisitsContext ? (
+                          <>
+                            <th style={{ padding: '8px 14px', width: '40px', textAlign: 'center' }}>
+                              <span className="sr-only">Status</span>
+                            </th>
+                            <th style={{ padding: '8px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
+                            <th style={{ padding: '8px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
+                            <th style={{ padding: '8px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
+                            <th style={{ padding: '8px 14px', minWidth: '120px' }}>TIPO</th>
+                            <th style={{ padding: '8px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 1</th>
+                            <th style={{ padding: '8px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 2</th>
+                            <th style={{ padding: '8px 16px', minWidth: '180px' }}>CONFIRMAÇÃO PRESENÇA</th>
+                          </>
+                        ) : (
+                          <>
+                            <th style={{ padding: '8px 14px', width: '40px', textAlign: 'center' }}>
+                              <span className="sr-only">Status</span>
+                            </th>
+                            <th style={{ padding: '8px 16px', minWidth: '140px' }}>PRAZO</th>
+                            <th style={{ padding: '8px 16px', minWidth: '160px' }}>USUÁRIO RESPONSÁVEL</th>
+                            <th style={{ padding: '8px 16px', minWidth: '240px' }}>OBJETO / TAREFA</th>
+                            <th style={{ padding: '8px 16px', minWidth: '150px' }}>TIPO DE TAREFA</th>
+                            <th style={{ padding: '8px 16px', minWidth: '200px' }}>RESULTADO / RESOLUÇÃO</th>
+                          </>
+                        )}
+                      </tr>
+
+                      {/* 3. Linha para dia vazio: informativo limpo */}
                       {group.tasks.length === 0 && (
                         <tr 
-                          onMouseEnter={() => setHoveredDateKey(group.key)}
-                          onMouseLeave={() => setHoveredDateKey(null)}
-                          style={{ background: 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}
+                          style={{ background: isDimmed ? 'rgba(241, 245, 249, 0.4)' : 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)', opacity: 0.72 }}
                         >
-                          <td colSpan={totalColumns} style={{ padding: '14px 20px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.76rem', color: isUnavailable ? '#94A3B8' : 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
+                          <td colSpan={totalColumns} style={{ padding: '12px 20px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontStyle: 'italic' }}>
                               {isUnavailable 
                                 ? `Data indisponível para ${visitsSubFilter === 'visit' ? 'visitas comerciais' : (visitsSubFilter === 'tasting' ? 'degustações' : 'visitas ou degustações')}`
-                                : 'Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa'}
+                                : 'Nenhum agendamento para este dia'}
                             </span>
                           </td>
                         </tr>
@@ -778,7 +791,6 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = rowHoverBg;
-                          setHoveredDateKey(group.key);
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = rowBg;
@@ -999,43 +1011,6 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     );
                   })}
 
-                  {/* Linha de Ação Rápida Hover: aparece na última opção da seção ao passar o mouse */}
-                  {hoveredDateKey === group.key && !isUnavailable && isVisitsContext && onScheduleForDate && group.key !== 'no_date' && (
-                    <tr 
-                      onMouseEnter={() => setHoveredDateKey(group.key)}
-                      onMouseLeave={() => setHoveredDateKey(null)}
-                      style={{
-                        background: 'rgba(2, 132, 199, 0.04)',
-                        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-                      }}
-                    >
-                      <td colSpan={totalColumns} style={{ padding: '8px 16px', textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => onScheduleForDate(group.key)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 18px',
-                            borderRadius: '8px',
-                            background: 'var(--adm-accent, #0284C7)',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            fontSize: '0.74rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
-                            transition: 'all 0.15s ease',
-                          }}
-                          title={`Criar novo agendamento para ${group.title}`}
-                        >
-                          <Plus size={14} strokeWidth={2.5} />
-                          <span>Agendar para este dia ({group.title})</span>
-                        </button>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               );
             })
