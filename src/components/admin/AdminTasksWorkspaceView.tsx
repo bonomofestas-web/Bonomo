@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
-  X, MessageSquare, Users, CheckSquare, Sliders, CalendarDays, Clock, LayoutGrid
+  X, MessageSquare, Users, CheckSquare, Sliders, CalendarDays, Clock, LayoutGrid,
+  Building2, UtensilsCrossed, ChevronRight
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
@@ -122,6 +123,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [prefilledCustomType, setPrefilledCustomType] = useState<string | undefined>(undefined);
   const [completingTask, setCompletingTask] = useState<AdminTask | null>(null);
   const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false);
+  const [isAgendaTypeSelectorOpen, setIsAgendaTypeSelectorOpen] = useState(false);
+  const [agendaSelectedType, setAgendaSelectedType] = useState<CommercialCommitmentType>('visit');
 
   // Modal Especial de Agendamento Oficial (Substitui o Bloco de Notas em Visitas & Degustações)
   const [isCommitmentModalOpen, setIsCommitmentModalOpen] = useState(false);
@@ -395,6 +398,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       background: 'var(--adm-bg-app, #F8FAFC)',
       color: 'var(--adm-text-title, #0F172A)',
       overflow: 'hidden',
+      position: 'relative',
       fontFamily: "'Inter', sans-serif",
       boxSizing: 'border-box',
     }}>
@@ -888,7 +892,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           {workspaceContext === 'visits_tastings' && (currentUser?.role === 'master' || currentUser?.role === 'admin') && (
             <button
               type="button"
-              onClick={() => setIsAgendaModalOpen(true)}
+              onClick={() => setIsAgendaTypeSelectorOpen(true)}
               style={{
                 padding: '6px 14px',
                 borderRadius: '8px',
@@ -970,6 +974,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             }}
             todayStr={todayStr}
             workspaceContext={workspaceContext}
+            visitsSubFilter={visitsSubFilter}
           />
         )}
 
@@ -1376,11 +1381,193 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         }}
       />
 
-      {/* ── MODAL DE CONFIGURAÇÃO DE GRADE & DISPONIBILIDADE DA AGENDA (GERÊNCIA) ── */}
+      {/* ── PRÉ-TELA / POP-UP: SELETOR DE DISPONIBILIDADE (VISITAS OU DEGUSTAÇÃO) ── */}
+      {isAgendaTypeSelectorOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 99999,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card, #FFFFFF)',
+            borderRadius: '20px',
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--adm-border, rgba(226, 232, 240, 0.8))',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '28px 30px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+            boxSizing: 'border-box',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FFFFFF',
+                  }}>
+                    <Sliders size={16} />
+                  </div>
+                  <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', margin: 0 }}>
+                    Configurar Disponibilidade
+                  </h2>
+                </div>
+                <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted, #64748B)', margin: 0 }}>
+                  Selecione o que você deseja configurar para esta casa:
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAgendaTypeSelectorOpen(false)}
+                style={{
+                  background: 'var(--adm-bg-surface, #F1F5F9)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--adm-text-muted, #64748B)',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* 2 Opções de Ação */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Opção 1: Visitas */}
+              <div
+                onClick={() => {
+                  setAgendaSelectedType('visit');
+                  setIsAgendaTypeSelectorOpen(false);
+                  setIsAgendaModalOpen(true);
+                }}
+                style={{
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
+                  borderRadius: '14px',
+                  padding: '16px 20px',
+                  cursor: 'pointer',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.18s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#10B981';
+                  e.currentTarget.style.background = 'rgba(16, 185, 129, 0.05)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10B981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Building2 size={22} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: '0 0 2px 0', fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                    Visitas
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                    Configurar horários, regras semanais, blocos de atendimento e limites de visitas.
+                  </p>
+                </div>
+                <ChevronRight size={18} color="#94A3B8" />
+              </div>
+
+              {/* Opção 2: Degustação */}
+              <div
+                onClick={() => {
+                  setAgendaSelectedType('tasting');
+                  setIsAgendaTypeSelectorOpen(false);
+                  setIsAgendaModalOpen(true);
+                }}
+                style={{
+                  border: '1.5px solid var(--adm-border, #E2E8F0)',
+                  borderRadius: '14px',
+                  padding: '16px 20px',
+                  cursor: 'pointer',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.18s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#D97706';
+                  e.currentTarget.style.background = 'rgba(217, 119, 6, 0.05)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--adm-border, #E2E8F0)';
+                  e.currentTarget.style.background = 'var(--adm-bg-card, #FFFFFF)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'rgba(217, 119, 6, 0.12)',
+                  color: '#D97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <UtensilsCrossed size={22} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: '0 0 2px 0', fontSize: '0.96rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                    Degustação
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                    Configurar datas especiais, horários, capacidade de famílias e blocos de degustação.
+                  </p>
+                </div>
+                <ChevronRight size={18} color="#94A3B8" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CENTRAL DE CONFIGURAÇÃO DE GRADE & DISPONIBILIDADE DA AGENDA (GERÊNCIA) ── */}
       {isAgendaModalOpen && (
         <AdminAgendaAvailabilityModal
           venueId={activeVenueId || undefined}
-          initialType={visitsSubFilter === 'tasting' ? 'tasting' : 'visit'}
+          initialType={agendaSelectedType}
           onClose={() => setIsAgendaModalOpen(false)}
         />
       )}

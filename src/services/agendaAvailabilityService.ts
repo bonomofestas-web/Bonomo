@@ -339,6 +339,17 @@ export const agendaAvailabilityService = {
       }
     } else {
       // ── 3. PRECEDÊNCIA BASE: Regra Recorrente Semanal ────────────────────────
+      if (rule.enabled === false) {
+        return {
+          isBlocked: true,
+          isDayAvailable: false,
+          blockReason: 'Recorrência semanal desativada para este compromisso.',
+          reason: 'Recorrência semanal desativada.',
+          appliedMode: 'recurring',
+          slots: [],
+        };
+      }
+
       const daySchedule = rule.daySchedules?.[dayOfWeek];
       const isDayEnabled = daySchedule ? daySchedule.enabled : rule.enabledDays.includes(dayOfWeek);
 

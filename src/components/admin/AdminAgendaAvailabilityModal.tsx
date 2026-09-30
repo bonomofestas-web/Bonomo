@@ -4,7 +4,7 @@ import {
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft,
-  LayoutGrid, Sliders
+  Sliders
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -67,14 +67,15 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const existingConfig = venueAgendaConfigs.find(c => c.venueId === selectedVenueId) 
     || agendaAvailabilityService.getDefaultConfig(selectedVenueId);
 
-  // Tipo ativo: Visita vs Degustação
-  const [activeType, setActiveType] = useState<CommercialCommitmentType>(initialType);
+  // Tipo ativo fixado pela escolha prévia do usuário: Visita vs Degustação
+  const activeType = initialType;
 
   // Modo ativo: 'hub' (Pré-tela / Visão Geral), 'recurring' (Grade Semanal), 'block' (Por Bloco), 'override' (Por Data)
   const [activeMode, setActiveMode] = useState<'hub' | 'recurring' | 'block' | 'override'>('hub');
 
   // Regras de Visitas e Degustações
   const [visitsRule, setVisitsRule] = useState<AgendaRecurringRule>(() => ({
+    enabled: existingConfig.visitsRule?.enabled ?? true,
     enabledDays: existingConfig.visitsRule?.enabledDays || DEFAULT_VISITS_RULE.enabledDays,
     timeSlots: existingConfig.visitsRule?.timeSlots || DEFAULT_VISITS_RULE.timeSlots,
     durationMinutes: existingConfig.visitsRule?.durationMinutes || DEFAULT_VISITS_RULE.durationMinutes,
@@ -84,6 +85,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   }));
 
   const [tastingsRule, setTastingsRule] = useState<AgendaRecurringRule>(() => ({
+    enabled: existingConfig.tastingsRule?.enabled ?? true,
     enabledDays: existingConfig.tastingsRule?.enabledDays || DEFAULT_TASTINGS_RULE.enabledDays,
     timeSlots: existingConfig.tastingsRule?.timeSlots || DEFAULT_TASTINGS_RULE.timeSlots,
     durationMinutes: existingConfig.tastingsRule?.durationMinutes || DEFAULT_TASTINGS_RULE.durationMinutes,
@@ -123,11 +125,17 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   } | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const currentRule = activeType === 'visit' ? visitsRule : tastingsRule;
   const setCurrentRule = activeType === 'visit' ? setVisitsRule : setTastingsRule;
   const themeColor = activeType === 'visit' ? '#10B981' : '#D97706';
+
+  const handleToggleRecurringEnabled = () => {
+    setCurrentRule(prev => ({
+      ...prev,
+      enabled: prev.enabled === false ? true : false,
+    }));
+  };
 
   // Duração da Sessão
   const handleDurationChange = (duration: number) => {
@@ -434,28 +442,26 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   return (
     <div style={{
-      position: 'fixed',
-      inset: '16px',
-      zIndex: 1100,
+      position: 'absolute',
+      inset: 0,
+      zIndex: 60,
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(15, 23, 42, 0.75)',
-      backdropFilter: 'blur(6px)',
+      flexDirection: 'column',
+      background: 'var(--adm-bg-card, #FFFFFF)',
+      color: 'var(--adm-text-title, #0F172A)',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
+      fontFamily: "'Inter', sans-serif",
     }}>
       <div style={{
         background: 'var(--adm-bg-card, #FFFFFF)',
         color: 'var(--adm-text-title, #0F172A)',
         width: '100%',
         height: '100%',
-        maxHeight: 'calc(100vh - 32px)',
-        borderRadius: '16px',
-        border: '1px solid var(--adm-border, #E2E8F0)',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
         overflow: 'hidden',
-        fontFamily: "'Inter', sans-serif",
       }}>
         {/* HEADER SUPERIOR LIMPO E ELEGANTE */}
         <div style={{
@@ -483,22 +489,22 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                  Central de Disponibilidade da Agenda
+                  {activeType === 'visit' ? 'Disponibilidade de Visitas Comerciais' : 'Disponibilidade de Degustações'}
                 </h2>
                 <span style={{
                   fontSize: '0.70rem',
                   fontWeight: 700,
                   padding: '2px 8px',
                   borderRadius: '6px',
-                  background: 'rgba(2,132,199,0.12)',
-                  color: '#0284C7',
-                  border: '1px solid rgba(2,132,199,0.25)',
+                  background: activeType === 'visit' ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
+                  color: activeType === 'visit' ? '#10B981' : '#D97706',
+                  border: `1px solid ${activeType === 'visit' ? 'rgba(16,185,129,0.25)' : 'rgba(217,119,6,0.25)'}`,
                 }}>
-                  F5 SYSTEM
+                  {activeType === 'visit' ? 'VISITAS' : 'DEGUSTAÇÃO'}
                 </span>
               </div>
               <p style={{ margin: '2px 0 0', fontSize: '0.80rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                Configuração de horários, vagas e bloqueios para a unidade: <strong>{venueName}</strong>
+                Configuração para a unidade: <strong>{venueName}</strong>
               </p>
             </div>
           </div>
@@ -548,165 +554,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           </div>
         </div>
 
-        {/* BARRA DE NAVEGAÇÃO: TIPO (VISITAS VS DEGUSTAÇÕES) + MODOS COM ÍCONES LUCIDE */}
-        <div style={{
-          padding: '10px 24px',
-          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          background: 'var(--adm-bg-surface, #F8FAFC)',
-          flexShrink: 0,
-        }}>
-          {/* Seletor de Tipo Principal: Visitas Comerciais vs Degustações Gastronômicas */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => setActiveType('visit')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '7px 16px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                background: activeType === 'visit' ? '#10B981' : '#FFFFFF',
-                color: activeType === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-                border: activeType === 'visit' ? '1px solid #10B981' : '1px solid var(--adm-border, #CBD5E1)',
-                boxShadow: activeType === 'visit' ? '0 2px 8px rgba(16,185,129,0.2)' : 'none',
-              }}
-            >
-              <Building2 size={15} />
-              Visitas Comerciais
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveType('tasting')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '7px 16px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                background: activeType === 'tasting' ? '#D97706' : '#FFFFFF',
-                color: activeType === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
-                border: activeType === 'tasting' ? '1px solid #D97706' : '1px solid var(--adm-border, #CBD5E1)',
-                boxShadow: activeType === 'tasting' ? '0 2px 8px rgba(217,119,6,0.2)' : 'none',
-              }}
-            >
-              <UtensilsCrossed size={15} />
-              Degustações Gastronômicas
-            </button>
-          </div>
-
-          {/* Seletor de Modo: Hub Geral, Recorrência Semanal, Por Bloco, Por Data */}
-          <div style={{
-            display: 'flex',
-            background: 'var(--adm-bg-surface, #F1F5F9)',
-            padding: '3px',
-            borderRadius: '10px',
-            border: '1px solid var(--adm-border, #E2E8F0)',
-          }}>
-            <button
-              type="button"
-              onClick={() => setActiveMode('hub')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '7px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeMode === 'hub' ? '#FFFFFF' : 'transparent',
-                color: activeMode === 'hub' ? '#0F172A' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: activeMode === 'hub' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              <LayoutGrid size={14} />
-              Visão Geral (Hub)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMode('recurring')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '7px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeMode === 'recurring' ? '#FFFFFF' : 'transparent',
-                color: activeMode === 'recurring' ? '#0F172A' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: activeMode === 'recurring' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              <Repeat size={14} />
-              Recorrência Semanal
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMode('block')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '7px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeMode === 'block' ? '#FFFFFF' : 'transparent',
-                color: activeMode === 'block' ? '#0F172A' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: activeMode === 'block' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              <CalendarRange size={14} />
-              Configuração por Bloco
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveMode('override')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '7px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                border: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeMode === 'override' ? '#FFFFFF' : 'transparent',
-                color: activeMode === 'override' ? '#0F172A' : 'var(--adm-text-muted, #64748B)',
-                boxShadow: activeMode === 'override' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              <Calendar size={14} />
-              Configuração por Data
-            </button>
-          </div>
-        </div>
-
         {/* CORPO PRINCIPAL COM SCROLL SUAVE */}
         <div style={{
           flex: 1,
@@ -714,97 +561,181 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           padding: '24px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '24px',
+          gap: '20px',
           background: 'var(--adm-bg-app, #F8FAFC)',
         }}>
+          {/* BARRA DE RETORNO ÀS OPÇÕES (QUANDO ESTIVER DENTRO DE UM MODO ESPECÍFICO) */}
+          {activeMode !== 'hub' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 18px',
+              borderRadius: '10px',
+              background: '#FFFFFF',
+              border: '1px solid var(--adm-border, #E2E8F0)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+            }}>
+              <button
+                type="button"
+                onClick={() => setActiveMode('hub')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  background: 'var(--adm-bg-surface, #F1F5F9)',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  color: 'var(--adm-text-title, #0F172A)',
+                  fontSize: '0.80rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <ArrowLeft size={16} />
+                Voltar às Opções
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  {activeMode === 'recurring' && 'Recorrência Semanal Padrão'}
+                  {activeMode === 'block' && 'Configuração por Bloco de Datas'}
+                  {activeMode === 'override' && 'Configuração por Data (Feriados e Exceções)'}
+                </span>
+              </div>
+            </div>
+          )}
           {/* ═══════════════════════════════════════════════════════════════════
               PRÉ-TELA DE CONFIGURAÇÃO / HUB DE VISÃO GERAL
               ═══════════════════════════════════════════════════════════════════ */}
-          {(activeMode === 'hub' || activeMode === 'recurring') && (
-            <>
-              {/* 3 CARDS DE STATUS COM RESUMO (SOLICITADOS NO ÁUDIO 2) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-                {/* Card 1: Recorrência Semanal */}
-                <div style={{
-                  background: '#FFFFFF',
-                  borderRadius: '12px',
-                  border: '1px solid var(--adm-border, #E2E8F0)',
-                  padding: '18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Repeat size={16} color={themeColor} />
-                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                          Recorrência Semanal
-                        </span>
-                      </div>
-                      <span style={{
-                        fontSize: '0.70rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        background: 'rgba(16,185,129,0.12)',
-                        color: '#10B981',
-                        border: '1px solid rgba(16,185,129,0.25)',
-                      }}>
-                        Ativo
+          {/* ═══════════════════════════════════════════════════════════════════
+              PRÉ-TELA DE CONFIGURAÇÃO / HUB DE VISÃO GERAL (3 CARDS VERTICAIS)
+              ═══════════════════════════════════════════════════════════════════ */}
+          {activeMode === 'hub' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
+              {/* Card 1: Recorrência Semanal */}
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '10px',
+                    background: `${themeColor}14`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: themeColor,
+                    flexShrink: 0,
+                  }}>
+                    <Repeat size={22} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                        Recorrência Semanal
                       </span>
+                      <button
+                        type="button"
+                        onClick={handleToggleRecurringEnabled}
+                        style={{
+                          fontSize: '0.70rem',
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          background: currentRule.enabled !== false ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                          color: currentRule.enabled !== false ? '#10B981' : '#EF4444',
+                          border: `1px solid ${currentRule.enabled !== false ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                        title="Clique para ativar ou desativar a recorrência semanal padrão"
+                      >
+                        <span style={{
+                          width: '7px',
+                          height: '7px',
+                          borderRadius: '50%',
+                          background: currentRule.enabled !== false ? '#10B981' : '#EF4444',
+                        }} />
+                        {currentRule.enabled !== false ? 'Ativo' : 'Desativado'}
+                      </button>
                     </div>
-
-                    <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: '#64748B', lineHeight: 1.4 }}>
-                      Ativo em <strong>{currentRule.enabledDays.length} dias da semana</strong> com slots de <strong>{currentRule.durationMinutes} minutos</strong>.
-                      <br />
-                      Capacidade: <strong>{currentRule.maxConcurrentPerSlot} vaga(s) simultânea(s)</strong> • Até <strong>{currentRule.maxPaxPerSlot || 5} PAX</strong> por família.
+                    <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
+                      {currentRule.enabled !== false ? (
+                        <>Ativo em <strong>{currentRule.enabledDays.length} dias da semana</strong> com slots de <strong>{currentRule.durationMinutes} minutos</strong>. Capacidade de <strong>{currentRule.maxConcurrentPerSlot} vaga(s) simultânea(s)</strong> • Até <strong>{currentRule.maxPaxPerSlot || 5} PAX</strong> por família.</>
+                      ) : (
+                        <span style={{ color: '#EF4444', fontWeight: 600 }}>Recorrência desativada. Nenhum dia semanal padrão estará aberto para agendamento, exceto se configurado por bloco ou exceção de data.</span>
+                      )}
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('recurring')}
-                    style={{
-                      padding: '7px 12px',
-                      borderRadius: '6px',
-                      background: 'var(--adm-bg-surface, #F1F5F9)',
-                      border: '1px solid var(--adm-border, #CBD5E1)',
-                      color: '#0F172A',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Sliders size={13} />
-                    Configurar Recorrência
-                  </button>
                 </div>
 
-                {/* Card 2: Configuração por Bloco */}
-                <div style={{
-                  background: '#FFFFFF',
-                  borderRadius: '12px',
-                  border: '1px solid var(--adm-border, #E2E8F0)',
-                  padding: '18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <CalendarRange size={16} color="#0284C7" />
-                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                          Configuração por Bloco
-                        </span>
-                      </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('recurring')}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-surface, #F1F5F9)',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    color: '#0F172A',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Sliders size={15} />
+                  Configurar Recorrência
+                </button>
+              </div>
+
+              {/* Card 2: Configuração por Bloco */}
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '10px',
+                    background: 'rgba(2,132,199,0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#0284C7',
+                    flexShrink: 0,
+                  }}>
+                    <CalendarRange size={22} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                        Configuração por Bloco
+                      </span>
                       <span style={{
                         fontSize: '0.70rem',
                         fontWeight: 700,
@@ -817,78 +748,70 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         {activeTypeBlockRules.length} bloco(s)
                       </span>
                     </div>
-
-                    <div style={{ margin: '0 0 10px', fontSize: '0.78rem', color: '#64748B', lineHeight: 1.4 }}>
+                    <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
                       {activeTypeBlockRules.length === 0 ? (
-                        <span>Nenhum bloco por período cadastrado para este tipo.</span>
+                        'Defina períodos específicos com horários especiais que sobrepõem a recorrência semanal padrão.'
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {activeTypeBlockRules.slice(0, 2).map(b => {
-                            const isCurrentlyActive = todayStr >= b.startDate && todayStr <= b.endDate;
-                            const isUpcoming = b.startDate > todayStr;
-                            return (
-                              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                                <span style={{ fontWeight: 600, color: '#334155' }}>{b.title}</span>
-                                <span style={{
-                                  fontSize: '0.66rem',
-                                  fontWeight: 800,
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  background: isCurrentlyActive ? '#DCFCE7' : isUpcoming ? '#DBEAFE' : '#F1F5F9',
-                                  color: isCurrentlyActive ? '#15803D' : isUpcoming ? '#1D4ED8' : '#64748B',
-                                }}>
-                                  {isCurrentlyActive ? 'Ativo' : isUpcoming ? 'Em Breve' : 'Encerrado'}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        `Existem ${activeTypeBlockRules.length} bloco(s) cadastrados com horários específicos para períodos determinados.`
                       )}
-                    </div>
+                    </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('block')}
-                    style={{
-                      padding: '7px 12px',
-                      borderRadius: '6px',
-                      background: 'var(--adm-bg-surface, #F1F5F9)',
-                      border: '1px solid var(--adm-border, #CBD5E1)',
-                      color: '#0F172A',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Plus size={13} />
-                    {activeTypeBlockRules.length === 0 ? 'Criar Primeiro Bloco' : 'Gerenciar Blocos'}
-                  </button>
                 </div>
 
-                {/* Card 3: Configuração por Data / Feriados */}
-                <div style={{
-                  background: '#FFFFFF',
-                  borderRadius: '12px',
-                  border: '1px solid var(--adm-border, #E2E8F0)',
-                  padding: '18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Calendar size={16} color="#EF4444" />
-                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                          Configuração por Data
-                        </span>
-                      </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('block')}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-surface, #F1F5F9)',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    color: '#0F172A',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Plus size={15} />
+                  {activeTypeBlockRules.length === 0 ? 'Criar Primeiro Bloco' : 'Gerenciar Blocos'}
+                </button>
+              </div>
+
+              {/* Card 3: Configuração por Data */}
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '10px',
+                    background: 'rgba(239,68,68,0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#EF4444',
+                    flexShrink: 0,
+                  }}>
+                    <Calendar size={22} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                        Configuração por Data
+                      </span>
                       <span style={{
                         fontSize: '0.70rem',
                         fontWeight: 700,
@@ -901,37 +824,41 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                         {dateOverrides.length} exceção(ões)
                       </span>
                     </div>
-
-                    <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: '#64748B', lineHeight: 1.4 }}>
-                      Bloqueio de feriados, recessos pontuais e horários específicos por dia no calendário.
+                    <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
+                      Bloqueio de feriados, recessos pontuais e horários específicos por dia diretamente no calendário.
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('override')}
-                    style={{
-                      padding: '7px 12px',
-                      borderRadius: '6px',
-                      background: 'var(--adm-bg-surface, #F1F5F9)',
-                      border: '1px solid var(--adm-border, #CBD5E1)',
-                      color: '#0F172A',
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Calendar size={13} />
-                    Ver Calendário de Datas
-                  </button>
                 </div>
-              </div>
 
-              {/* GRADE SEMANAL AMPLA E EXPANDIDA (PROPORÇÃO GENEROSA COM PREVIEW QUE O USUÁRIO ELOGIOU) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('override')}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-surface, #F1F5F9)',
+                    border: '1px solid var(--adm-border, #CBD5E1)',
+                    color: '#0F172A',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Calendar size={15} />
+                  Ver Calendário de Datas
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════════
+              MODO 1: RECORRÊNCIA SEMANAL PADRÃO (GRADE DE 7 DIAS)
+              ═══════════════════════════════════════════════════════════════════ */}
+          {activeMode === 'recurring' && (
               <div style={{
                 background: '#FFFFFF',
                 borderRadius: '12px',
@@ -1112,12 +1039,15 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                 onChange={e => handleUpdateDayTime(day.id, 'startTime', e.target.value)}
                                 style={{
                                   width: '100%',
-                                  padding: '4px 6px',
-                                  borderRadius: '5px',
+                                  padding: '5px 6px',
+                                  borderRadius: '6px',
                                   border: '1px solid #CBD5E1',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
+                                  fontSize: '0.76rem',
+                                  fontWeight: 800,
+                                  color: '#0F172A',
                                   background: '#FFFFFF',
+                                  colorScheme: 'light',
+                                  outline: 'none',
                                 }}
                               />
                               <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>às</span>
@@ -1127,12 +1057,15 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                 onChange={e => handleUpdateDayTime(day.id, 'endTime', e.target.value)}
                                 style={{
                                   width: '100%',
-                                  padding: '4px 6px',
-                                  borderRadius: '5px',
+                                  padding: '5px 6px',
+                                  borderRadius: '6px',
                                   border: '1px solid #CBD5E1',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
+                                  fontSize: '0.76rem',
+                                  fontWeight: 800,
+                                  color: '#0F172A',
                                   background: '#FFFFFF',
+                                  colorScheme: 'light',
+                                  outline: 'none',
                                 }}
                               />
                             </div>
@@ -1184,7 +1117,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   })}
                 </div>
               </div>
-            </>
           )}
 
           {/* ═══════════════════════════════════════════════════════════════════
@@ -1253,9 +1185,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           borderRadius: '8px',
                           background: '#FFFFFF',
                           color: '#0F172A',
+                          colorScheme: 'light',
                           border: '1px solid #CBD5E1',
                           fontSize: '0.82rem',
-                          fontWeight: 600,
+                          fontWeight: 700,
                         }}
                       />
                     </div>
@@ -1274,9 +1207,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           borderRadius: '8px',
                           background: '#FFFFFF',
                           color: '#0F172A',
+                          colorScheme: 'light',
                           border: '1px solid #CBD5E1',
                           fontSize: '0.82rem',
-                          fontWeight: 600,
+                          fontWeight: 700,
                         }}
                       />
                     </div>
@@ -1377,14 +1311,14 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           type="time"
                           value={newBlockStartTime}
                           onChange={e => setNewBlockStartTime(e.target.value)}
-                          style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 700 }}
+                          style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', background: '#FFFFFF', colorScheme: 'light' }}
                         />
                         <span style={{ fontSize: '0.74rem', color: '#64748B' }}>às</span>
                         <input
                           type="time"
                           value={newBlockEndTime}
                           onChange={e => setNewBlockEndTime(e.target.value)}
-                          style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 700 }}
+                          style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', background: '#FFFFFF', colorScheme: 'light' }}
                         />
                       </div>
 

@@ -610,6 +610,7 @@ export interface AgendaBlockRule {
 }
 
 export interface AgendaRecurringRule {
+  enabled?: boolean;            // Se false, a regra recorrente semanal está desativada
   enabledDays: number[];        // 0=Domingo, 1=Segunda, ..., 6=Sábado
   timeSlots: string[];          // ['10:00', '14:00', '16:00', '18:00']
   durationMinutes: number;      // Duração de cada compromisso (ex: 45 min)

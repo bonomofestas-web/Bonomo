@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, Square, Calendar, Clock, 
   CheckCircle2, XCircle, Sparkles, ThumbsUp,
-  Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays
+  Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays, Plus
 } from 'lucide-react';
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
@@ -21,6 +21,7 @@ interface AdminTasksTableViewProps {
   onScheduleForDate?: (dateStr: string) => void;
   todayStr: string;
   workspaceContext?: string;
+  visitsSubFilter?: 'all' | 'visit' | 'tasting';
 }
 
 interface DateGroup {
@@ -45,7 +46,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   onScheduleForDate,
   todayStr,
   workspaceContext = 'all',
+  visitsSubFilter = 'all',
 }) => {
+  const [hoveredDateKey, setHoveredDateKey] = useState<string | null>(null);
   const adminState = useAdminState();
   const leads = propsLeads || adminState?.leads || [];
   const clients = propsClients || adminState?.clients || [];
@@ -319,36 +322,74 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
   return (
     <div style={{
-      flex: 1,
       display: 'flex',
       flexDirection: 'column',
-      overflow: 'hidden',
-      background: 'var(--adm-bg-card, #FFFFFF)',
-      borderRadius: '16px',
-      border: '1px solid var(--adm-border, #E2E8F0)',
-      margin: '16px 24px',
-      boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+      height: '100%',
+      width: '100%',
+      padding: '16px 24px',
+      gap: '14px',
+      boxSizing: 'border-box',
     }}>
-      {/* BARRA SUPERIOR DE NAVEGAÇÃO SEMANAL (Domingo a Sábado) */}
+      {/* BARRA SUPERIOR DE NAVEGAÇÃO SEMANAL (Centralizada e Separada) */}
       <div style={{
         padding: '10px 20px',
-        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        borderRadius: '12px',
+        border: '1px solid var(--adm-border, #E2E8F0)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px',
-        background: 'var(--adm-bg-surface, #F8FAFC)',
+        justifyContent: 'center',
+        gap: '20px',
+        background: 'var(--adm-bg-card, #FFFFFF)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+        flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <CalendarDays size={16} style={{ color: 'var(--adm-accent, #0284C7)' }} />
-          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+        {/* Esquerda: Semana Anterior */}
+        <button
+          type="button"
+          onClick={handlePrevWeek}
+          style={{
+            padding: '6px 14px',
+            borderRadius: '8px',
+            background: 'var(--adm-bg-surface, #F8FAFC)',
+            border: '1px solid var(--adm-border, #CBD5E1)',
+            color: 'var(--adm-text-title, #334155)',
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'all 0.15s ease',
+          }}
+          title="Semana anterior"
+        >
+          <ChevronLeft size={16} />
+          <span>Semana Anterior</span>
+        </button>
+
+        {/* Centro: Semana de X a Y (clicável para voltar à semana atual) */}
+        <div
+          onClick={!weekInfo.isCurrentWeek ? handleTodayWeek : undefined}
+          title={!weekInfo.isCurrentWeek ? "Clique para voltar para a Semana Atual" : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: !weekInfo.isCurrentWeek ? 'pointer' : 'default',
+            padding: '5px 14px',
+            borderRadius: '8px',
+            background: !weekInfo.isCurrentWeek ? 'rgba(2, 132, 199, 0.06)' : 'transparent',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <CalendarDays size={18} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
             {weekInfo.label}
           </span>
-          {weekInfo.isCurrentWeek && (
+          {weekInfo.isCurrentWeek ? (
             <span style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
+              fontSize: '0.70rem',
+              fontWeight: 800,
               padding: '2px 8px',
               borderRadius: '6px',
               background: 'rgba(2,132,199,0.12)',
@@ -357,255 +398,325 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
             }}>
               Semana Atual
             </span>
+          ) : (
+            <span style={{
+              fontSize: '0.70rem',
+              fontWeight: 800,
+              padding: '2px 8px',
+              borderRadius: '6px',
+              background: 'var(--adm-accent, #0284C7)',
+              color: '#FFFFFF',
+            }}>
+              Voltar para Hoje
+            </span>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            type="button"
-            onClick={handlePrevWeek}
-            style={{
-              padding: '5px 12px',
-              borderRadius: '6px',
-              background: 'var(--adm-bg-card, #FFFFFF)',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-title, #334155)',
-              fontSize: '0.74rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-            title="Semana anterior"
-          >
-            <ChevronLeft size={14} />
-            <span>Semana Anterior</span>
-          </button>
-
-          {!weekInfo.isCurrentWeek && (
-            <button
-              type="button"
-              onClick={handleTodayWeek}
-              style={{
-                padding: '5px 12px',
-                borderRadius: '6px',
-                background: 'var(--adm-accent, #0284C7)',
-                border: 'none',
-                color: '#FFFFFF',
-                fontSize: '0.74rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Esta Semana
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleNextWeek}
-            style={{
-              padding: '5px 12px',
-              borderRadius: '6px',
-              background: 'var(--adm-bg-card, #FFFFFF)',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-title, #334155)',
-              fontSize: '0.74rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-            title="Próxima semana"
-          >
-            <span>Próxima Semana</span>
-            <ChevronRight size={14} />
-          </button>
-        </div>
+        {/* Direita: Próxima Semana */}
+        <button
+          type="button"
+          onClick={handleNextWeek}
+          style={{
+            padding: '6px 14px',
+            borderRadius: '8px',
+            background: 'var(--adm-bg-surface, #F8FAFC)',
+            border: '1px solid var(--adm-border, #CBD5E1)',
+            color: 'var(--adm-text-title, #334155)',
+            fontSize: '0.76rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'all 0.15s ease',
+          }}
+          title="Próxima semana"
+        >
+          <span>Próxima Semana</span>
+          <ChevronRight size={16} />
+        </button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          textAlign: 'left',
-          fontSize: '0.80rem',
-        }}>
-          {/* Table Header */}
-          <thead style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            background: 'var(--adm-bg-surface, #F8FAFC)',
-            borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-            fontSize: '0.70rem',
-            fontWeight: 800,
-            color: 'var(--adm-text-muted, #64748B)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
+      {/* ÁREA DA TABELA */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        background: 'var(--adm-bg-card, #FFFFFF)',
+        borderRadius: '14px',
+        border: '1px solid var(--adm-border, #E2E8F0)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+      }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            textAlign: 'left',
+            fontSize: '0.80rem',
           }}>
-            {isVisitsContext ? (
-              <tr>
-                <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
-                  <span className="sr-only">Status</span>
-                </th>
-                <th style={{ padding: '12px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
-                <th style={{ padding: '12px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
-                <th style={{ padding: '12px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
-                <th style={{ padding: '12px 14px', minWidth: '120px' }}>TIPO</th>
-                <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 1</th>
-                <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 2</th>
-                <th style={{ padding: '12px 16px', minWidth: '180px' }}>CONFIRMAÇÃO PRESENÇA</th>
-              </tr>
-            ) : (
-              <tr>
-                <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
-                  <span className="sr-only">Status</span>
-                </th>
-                <th style={{ padding: '12px 16px', minWidth: '140px' }}>PRAZO</th>
-                <th style={{ padding: '12px 16px', minWidth: '160px' }}>USUÁRIO RESPONSÁVEL</th>
-                <th style={{ padding: '12px 16px', minWidth: '240px' }}>OBJETO / TAREFA</th>
-                <th style={{ padding: '12px 16px', minWidth: '150px' }}>TIPO DE TAREFA</th>
-                <th style={{ padding: '12px 16px', minWidth: '200px' }}>RESULTADO / RESOLUÇÃO</th>
-              </tr>
-            )}
-          </thead>
+            {/* Table Header */}
+            <thead style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              background: 'var(--adm-bg-surface, #F8FAFC)',
+              borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+              fontSize: '0.70rem',
+              fontWeight: 800,
+              color: 'var(--adm-text-muted, #64748B)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              {isVisitsContext ? (
+                <tr>
+                  <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
+                    <span className="sr-only">Status</span>
+                  </th>
+                  <th style={{ padding: '12px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
+                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
+                  <th style={{ padding: '12px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
+                  <th style={{ padding: '12px 14px', minWidth: '120px' }}>TIPO</th>
+                  <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 1</th>
+                  <th style={{ padding: '12px 14px', minWidth: '140px' }}>CONFIRMAÇÃO 2</th>
+                  <th style={{ padding: '12px 16px', minWidth: '180px' }}>CONFIRMAÇÃO PRESENÇA</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th style={{ padding: '12px 14px', width: '40px', textAlign: 'center' }}>
+                    <span className="sr-only">Status</span>
+                  </th>
+                  <th style={{ padding: '12px 16px', minWidth: '140px' }}>PRAZO</th>
+                  <th style={{ padding: '12px 16px', minWidth: '160px' }}>USUÁRIO RESPONSÁVEL</th>
+                  <th style={{ padding: '12px 16px', minWidth: '240px' }}>OBJETO / TAREFA</th>
+                  <th style={{ padding: '12px 16px', minWidth: '150px' }}>TIPO DE TAREFA</th>
+                  <th style={{ padding: '12px 16px', minWidth: '200px' }}>RESULTADO / RESOLUÇÃO</th>
+                </tr>
+              )}
+            </thead>
 
-          {/* Table Body Grouped by Date */}
-          <tbody style={{ color: '#334155' }}>
-            {groupedTasks.length === 0 ? (
-              <tr>
-                <td colSpan={totalColumns} style={{ padding: '48px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
-                  Nenhum item encontrado com os filtros atuais.
-                </td>
-              </tr>
-            ) : (
-              groupedTasks.map((group) => (
-                <React.Fragment key={group.key}>
-                  {/* Single Date Section Header Row */}
-                  <tr style={{
-                    background: group.isToday 
-                      ? 'rgba(37, 99, 235, 0.12)' 
-                      : 'var(--adm-bg-surface, #F8FAFC)',
-                    borderTop: '2px solid var(--adm-border, #E2E8F0)',
-                    borderBottom: '1px solid var(--adm-border, #E2E8F0)',
-                  }}>
-                    <td 
-                      colSpan={totalColumns} 
-                      style={{ 
-                        padding: '9px 16px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Calendar size={15} style={{ color: group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)' }} />
-                          <span style={{
-                            fontWeight: 800,
-                            fontSize: '0.82rem',
-                            color: group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)',
-                            letterSpacing: '-0.2px',
+            {/* Table Body Grouped by Date */}
+            <tbody style={{ color: '#334155' }}>
+              {groupedTasks.length === 0 ? (
+                <tr>
+                  <td colSpan={totalColumns} style={{ padding: '48px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
+                    Nenhum item encontrado com os filtros atuais.
+                  </td>
+                </tr>
+              ) : (
+                groupedTasks.map((group) => {
+                  const isUnavailable = (() => {
+                    if (!isVisitsContext || !group.availableTypes || group.key === 'no_date') return false;
+                    if (visitsSubFilter === 'visit') return !group.availableTypes.visit;
+                    if (visitsSubFilter === 'tasting') return !group.availableTypes.tasting;
+                    return !group.availableTypes.visit && !group.availableTypes.tasting;
+                  })();
+
+                  return (
+                    <React.Fragment key={group.key}>
+                      {/* Single Date Section Header Row (Centralizado e adaptado) */}
+                      <tr 
+                        onMouseEnter={() => setHoveredDateKey(group.key)}
+                        onMouseLeave={() => setHoveredDateKey(null)}
+                        style={{
+                          background: isUnavailable 
+                            ? 'var(--adm-bg-surface, #F1F5F9)'
+                            : (group.isToday ? 'rgba(37, 99, 235, 0.10)' : 'var(--adm-bg-surface, #F8FAFC)'),
+                          borderTop: '2px solid var(--adm-border, #E2E8F0)',
+                          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                          opacity: isUnavailable ? 0.72 : 1,
+                        }}
+                      >
+                        <td 
+                          colSpan={totalColumns} 
+                          style={{ 
+                            padding: '10px 16px',
+                          }}
+                        >
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            flexWrap: 'wrap', 
+                            gap: '12px',
+                            width: '100%',
                           }}>
-                            {group.title}
-                          </span>
-                          {group.subtitle && (
-                            <span style={{
-                              fontSize: '0.74rem',
-                              fontWeight: 600,
-                              color: group.isToday ? '#3B82F6' : '#64748B',
-                              marginLeft: '4px',
-                            }}>
-                              • {group.subtitle}
-                            </span>
-                          )}
-
-                          {/* Badges de Disponibilidade da Casa de Festa com Ícones Lucide */}
-                          {group.availableTypes && (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
-                              {group.availableTypes.visit && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                              <Calendar size={15} style={{ color: isUnavailable ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)') }} />
+                              <span style={{
+                                fontWeight: 800,
+                                fontSize: '0.84rem',
+                                color: isUnavailable ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)'),
+                                letterSpacing: '-0.2px',
+                              }}>
+                                {group.title}
+                              </span>
+                              {group.subtitle && (
                                 <span style={{
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  padding: '3px 8px',
-                                  borderRadius: '5px',
-                                  background: 'rgba(16,185,129,0.12)',
-                                  color: '#10B981',
-                                  border: '1px solid rgba(16,185,129,0.25)',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 600,
+                                  color: isUnavailable ? '#94A3B8' : (group.isToday ? '#3B82F6' : '#64748B'),
                                 }}>
-                                  <Building2 size={12} />
-                                  Visita
-                                </span>
-                              )}
-                              {group.availableTypes.tasting && (
-                                <span style={{
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  padding: '3px 8px',
-                                  borderRadius: '5px',
-                                  background: 'rgba(217,119,6,0.12)',
-                                  color: '#D97706',
-                                  border: '1px solid rgba(217,119,6,0.25)',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                }}>
-                                  <UtensilsCrossed size={12} />
-                                  Degustação
+                                  • {group.subtitle}
                                 </span>
                               )}
                             </div>
-                          )}
-                        </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {isVisitsContext && onScheduleForDate && group.key !== 'no_date' && (
-                            <button
-                              type="button"
-                              onClick={() => onScheduleForDate(group.key)}
-                              style={{
-                                padding: '3px 10px',
-                                borderRadius: '6px',
-                                background: 'rgba(16,185,129,0.12)',
-                                border: '1px solid rgba(16,185,129,0.25)',
-                                color: '#10B981',
-                                fontSize: '0.70rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              + Agendar para este dia
-                            </button>
-                          )}
+                            {/* Badges de Disponibilidade adaptados ao Filtro */}
+                            {group.availableTypes && (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                {visitsSubFilter === 'visit' && (
+                                  group.availableTypes.visit ? (
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      background: 'rgba(16,185,129,0.12)',
+                                      color: '#10B981',
+                                      border: '1px solid rgba(16,185,129,0.25)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      <Building2 size={12} />
+                                      Visita Disponível
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      background: 'rgba(148, 163, 184, 0.15)',
+                                      color: '#64748B',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      Sem vagas de Visita
+                                    </span>
+                                  )
+                                )}
 
-                          <span style={{
-                            fontSize: '0.70rem',
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: '999px',
-                            background: group.tasks.length === 0 ? 'rgba(0,0,0,0.04)' : (group.isToday ? '#DBEAFE' : '#E2E8F0'),
-                            color: group.tasks.length === 0 ? '#94A3B8' : (group.isToday ? '#1E40AF' : '#475569'),
-                          }}>
-                            {group.tasks.length} {group.tasks.length === 1 ? 'agendamento' : 'agendamentos'}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
+                                {visitsSubFilter === 'tasting' && (
+                                  group.availableTypes.tasting ? (
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      background: 'rgba(217,119,6,0.12)',
+                                      color: '#D97706',
+                                      border: '1px solid rgba(217,119,6,0.25)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      <UtensilsCrossed size={12} />
+                                      Degustação Disponível
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      background: 'rgba(148, 163, 184, 0.15)',
+                                      color: '#64748B',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      Sem vagas de Degustação
+                                    </span>
+                                  )
+                                )}
 
-                  {/* Linha para dia vazio configurado: informativo limpo sem botão duplicado */}
-                  {group.tasks.length === 0 && (
-                    <tr style={{ background: 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
-                      <td colSpan={totalColumns} style={{ padding: '14px 20px', textAlign: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
-                          Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa
-                        </span>
-                      </td>
-                    </tr>
-                  )}
+                                {visitsSubFilter === 'all' && (
+                                  <>
+                                    {group.availableTypes.visit && (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        padding: '3px 8px',
+                                        borderRadius: '5px',
+                                        background: 'rgba(16,185,129,0.12)',
+                                        color: '#10B981',
+                                        border: '1px solid rgba(16,185,129,0.25)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}>
+                                        <Building2 size={12} />
+                                        Visita
+                                      </span>
+                                    )}
+                                    {group.availableTypes.tasting && (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        padding: '3px 8px',
+                                        borderRadius: '5px',
+                                        background: 'rgba(217,119,6,0.12)',
+                                        color: '#D97706',
+                                        border: '1px solid rgba(217,119,6,0.25)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}>
+                                        <UtensilsCrossed size={12} />
+                                        Degustação
+                                      </span>
+                                    )}
+                                    {!group.availableTypes.visit && !group.availableTypes.tasting && (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        padding: '3px 8px',
+                                        borderRadius: '5px',
+                                        background: 'rgba(148, 163, 184, 0.15)',
+                                        color: '#64748B',
+                                      }}>
+                                        Sem atendimento
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Contagem de Agendamentos */}
+                            <span style={{
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              background: isUnavailable ? 'rgba(0,0,0,0.04)' : (group.tasks.length === 0 ? 'rgba(0,0,0,0.04)' : (group.isToday ? '#DBEAFE' : '#E2E8F0')),
+                              color: isUnavailable ? '#94A3B8' : (group.tasks.length === 0 ? '#94A3B8' : (group.isToday ? '#1E40AF' : '#475569')),
+                            }}>
+                              {group.tasks.length} {group.tasks.length === 1 ? 'agendamento' : 'agendamentos'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Linha para dia vazio configurado: informativo limpo */}
+                      {group.tasks.length === 0 && (
+                        <tr 
+                          onMouseEnter={() => setHoveredDateKey(group.key)}
+                          onMouseLeave={() => setHoveredDateKey(null)}
+                          style={{ background: 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}
+                        >
+                          <td colSpan={totalColumns} style={{ padding: '14px 20px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.76rem', color: isUnavailable ? '#94A3B8' : 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
+                              {isUnavailable 
+                                ? `Data indisponível para ${visitsSubFilter === 'visit' ? 'visitas comerciais' : (visitsSubFilter === 'tasting' ? 'degustações' : 'visitas ou degustações')}`
+                                : 'Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa'}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
 
                   {/* Tasks in this Date Group */}
                   {group.tasks.map((task, idx) => {
@@ -667,6 +778,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = rowHoverBg;
+                          setHoveredDateKey(group.key);
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = rowBg;
@@ -886,12 +998,52 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                       </tr>
                     );
                   })}
+
+                  {/* Linha de Ação Rápida Hover: aparece na última opção da seção ao passar o mouse */}
+                  {hoveredDateKey === group.key && !isUnavailable && isVisitsContext && onScheduleForDate && group.key !== 'no_date' && (
+                    <tr 
+                      onMouseEnter={() => setHoveredDateKey(group.key)}
+                      onMouseLeave={() => setHoveredDateKey(null)}
+                      style={{
+                        background: 'rgba(2, 132, 199, 0.04)',
+                        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                      }}
+                    >
+                      <td colSpan={totalColumns} style={{ padding: '8px 16px', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => onScheduleForDate(group.key)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 18px',
+                            borderRadius: '8px',
+                            background: 'var(--adm-accent, #0284C7)',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                            transition: 'all 0.15s ease',
+                          }}
+                          title={`Criar novo agendamento para ${group.title}`}
+                        >
+                          <Plus size={14} strokeWidth={2.5} />
+                          <span>Agendar para este dia ({group.title})</span>
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                 </React.Fragment>
-              ))
-            )}
+              );
+            })
+          )}
           </tbody>
         </table>
       </div>
     </div>
+  </div>
   );
 };
