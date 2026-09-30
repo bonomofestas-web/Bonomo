@@ -812,7 +812,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       dueDate: dueDate.trim() || undefined,
       dueTime: includeTime && dueTime.trim() ? dueTime.trim() : undefined,
       endDate: hasEndDate && endDate.trim() ? endDate.trim() : undefined,
-      endTime: hasEndDate && includeTime && endTime.trim() ? endTime.trim() : undefined,
+      endTime: includeTime && endTime.trim() ? endTime.trim() : undefined,
       status,
       customStatusId,
       priority: priority || 'none',
@@ -1023,6 +1023,23 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     initialClientId,
     sdrAssigneeId
   ]);
+
+  const isCommitmentTask = useMemo(() => {
+    if (contextInfo.key === 'commitments' || contextInfo.key === 'visits_tastings') return true;
+    const typeStr = ((customType || taskType || '') as string).toLowerCase();
+    const titleStr = (title || '').toLowerCase();
+    return (
+      typeStr.includes('compromisso') ||
+      typeStr.includes('reuni') ||
+      typeStr.includes('visita') ||
+      typeStr.includes('degusta') ||
+      typeStr.includes('ensaio') ||
+      titleStr.includes('compromisso') ||
+      titleStr.includes('reunião') ||
+      titleStr.includes('degustação') ||
+      titleStr.includes('visita')
+    );
+  }, [contextInfo.key, customType, taskType, title]);
 
   const isFutureFollowup = Boolean(isFollowupTask && dueDate && dueDate > todayStr);
 
@@ -2089,7 +2106,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                   >
                     <span>
                       {dueDate && typeof dueDate === 'string' && dueDate.includes('-') ? dueDate.split('-').reverse().join('/') : (dueDate || 'Definir data')}
-                      {includeTime && dueTime ? ` ${dueTime}` : ''}
+                      {includeTime && dueTime ? (endTime ? ` às ${dueTime} até ${endTime}` : ` às ${dueTime}`) : ''}
                       {hasEndDate && endDate && typeof endDate === 'string' && endDate.includes('-') ? ` → ${endDate.split('-').reverse().join('/')}` : ''}
                     </span>
                     <ChevronDown size={13} color="var(--adm-text-muted)" />
@@ -2174,49 +2191,95 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
 
                       {/* Toggles & Options */}
                       <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '12px', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.76rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--adm-text-title)' }}>Data final</span>
-                          <input 
-                            type="checkbox" 
-                            checked={hasEndDate} 
-                            onChange={(e) => {
-                              setHasEndDate(e.target.checked);
-                              if (!e.target.checked && task) updateTask(task.id, { endDate: undefined });
-                            }} 
-                          />
-                        </div>
-                        {hasEndDate && (
-                          <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => {
-                              setEndDate(e.target.value);
-                              if (task) updateTask(task.id, { endDate: e.target.value });
-                            }}
-                            style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.76rem', color: 'var(--adm-text-title)' }}
-                          />
+                        {/* Data final - Apenas para tarefas gerais (ocultado em follow-up e compromissos) */}
+                        {!isFollowupTask && !isCommitmentTask && (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--adm-text-title)' }}>Data final</span>
+                              <input 
+                                type="checkbox" 
+                                checked={hasEndDate} 
+                                onChange={(e) => {
+                                  setHasEndDate(e.target.checked);
+                                  if (!e.target.checked && task) updateTask(task.id, { endDate: undefined });
+                                }} 
+                              />
+                            </div>
+                            {hasEndDate && (
+                              <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => {
+                                  setEndDate(e.target.value);
+                                  if (task) updateTask(task.id, { endDate: e.target.value });
+                                }}
+                                style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.76rem', color: 'var(--adm-text-title)' }}
+                              />
+                            )}
+                          </>
                         )}
 
+                        {/* Incluir hora - Todos os tipos */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ color: 'var(--adm-text-title)' }}>Incluir hora</span>
                           <input 
                             type="checkbox" 
                             checked={includeTime} 
-                            onChange={(e) => setIncludeTime(e.target.checked)} 
+                            onChange={(e) => {
+                              setIncludeTime(e.target.checked);
+                              if (!e.target.checked) {
+                                setDueTime('');
+                                setEndTime('');
+                                if (task) updateTask(task.id, { dueTime: undefined, endTime: undefined });
+                              }
+                            }} 
                           />
                         </div>
+
+                        {/* Inputs de Horário */}
                         {includeTime && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <input
-                              type="time"
-                              value={dueTime}
-                              onChange={(e) => {
-                                setDueTime(e.target.value);
-                                if (task) updateTask(task.id, { dueTime: e.target.value });
-                              }}
-                              style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.76rem', color: 'var(--adm-text-title)', width: '100%' }}
-                            />
-                          </div>
+                          isCommitmentTask ? (
+                            /* Compromisso: Início e Fim (Intervalo de Horário) */
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--adm-bg-input)', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--adm-border)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>Início:</span>
+                                <input
+                                  type="time"
+                                  value={dueTime}
+                                  onChange={(e) => {
+                                    setDueTime(e.target.value);
+                                    if (task) updateTask(task.id, { dueTime: e.target.value });
+                                  }}
+                                  style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '3px 6px', fontSize: '0.76rem', color: 'var(--adm-text-title)', width: '90px' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>Término:</span>
+                                <input
+                                  type="time"
+                                  value={endTime}
+                                  onChange={(e) => {
+                                    setEndTime(e.target.value);
+                                    if (task) updateTask(task.id, { endTime: e.target.value });
+                                  }}
+                                  style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '4px', padding: '3px 6px', fontSize: '0.76rem', color: 'var(--adm-text-title)', width: '90px' }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            /* Follow-up ou Tarefa Geral: Horário de Vencimento Único */
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <input
+                                type="time"
+                                value={dueTime}
+                                onChange={(e) => {
+                                  setDueTime(e.target.value);
+                                  if (task) updateTask(task.id, { dueTime: e.target.value });
+                                }}
+                                style={{ background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)', borderRadius: '6px', padding: '4px 8px', fontSize: '0.76rem', color: 'var(--adm-text-title)', width: '100%' }}
+                              />
+                            </div>
+                          )
                         )}
 
                         <button
@@ -2224,8 +2287,11 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                           onClick={() => {
                             setDueDate('');
                             setDueTime('');
+                            setEndTime('');
                             setEndDate('');
-                            if (task) updateTask(task.id, { dueDate: '', dueTime: undefined, endDate: undefined });
+                            setHasEndDate(false);
+                            setIncludeTime(false);
+                            if (task) updateTask(task.id, { dueDate: '', dueTime: undefined, endTime: undefined, endDate: undefined });
                             setShowDatePopover(false);
                           }}
                           style={{ background: 'transparent', border: 'none', color: '#EF4444', textAlign: 'left', padding: '4px 0', fontSize: '0.74rem', cursor: 'pointer' }}

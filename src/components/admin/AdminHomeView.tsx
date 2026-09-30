@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   CheckSquare, Calendar, Clock, Plus, Check, 
-  Edit3, Phone, Users, Utensils, MessageSquare, Briefcase, 
+  Phone, Users, Utensils, MessageSquare, Briefcase, 
   ChevronLeft, ChevronRight, ExternalLink, ArrowRight,
-  Target, Crown, MapPin, User
+  Target, MapPin, User, Flag, Paperclip, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import type { AdminTask, TaskType } from '../../types/admin';
+import type { AdminTask } from '../../types/admin';
 import type { Appointment } from '../../types';
+import { getTaskPriorityConfig } from '../../utils/taskColors';
 
 interface AdminHomeViewProps {
   onOpenLead: (leadId: string) => void;
@@ -83,6 +84,21 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }, []);
+
+  // Formatted calendar date for daily agenda header
+  const formattedCalendarDate = useMemo(() => {
+    if (!selectedCalendarDate) return '';
+    const [y, m, d] = selectedCalendarDate.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+    const str = dateObj.toLocaleDateString('pt-BR', options);
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }, [selectedCalendarDate]);
 
   // Hours list for Day Time Grid (07:00 to 23:59 for night events)
   const timeSlots = [
@@ -119,10 +135,12 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
       // Tab filter
       if (taskTab === 'today') {
-        return task.status !== 'completed' && task.dueDate === todayStr;
+        // Tarefas de Hoje: exibe tarefas de hoje + tarefas atrasadas
+        return task.status !== 'completed' && (!task.dueDate || task.dueDate <= todayStr);
       }
       if (taskTab === 'upcoming') {
-        return task.status !== 'completed' && task.dueDate !== todayStr;
+        // Próximas: exibe todas as tarefas pendentes
+        return task.status !== 'completed';
       }
       if (taskTab === 'completed') {
         return task.status === 'completed';
@@ -130,9 +148,15 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
       return true;
     }).sort((a, b) => {
-      // Sort: unfinished first, then by due date & time
+      // Sort: unfinished first, then overdue tasks, then by due date & time
       if (a.status === 'completed' && b.status !== 'completed') return 1;
       if (a.status !== 'completed' && b.status === 'completed') return -1;
+
+      const isOverdueA = !a.status || a.status !== 'completed' ? (!!a.dueDate && a.dueDate < todayStr) : false;
+      const isOverdueB = !b.status || b.status !== 'completed' ? (!!b.dueDate && b.dueDate < todayStr) : false;
+      if (isOverdueA && !isOverdueB) return -1;
+      if (!isOverdueA && isOverdueB) return 1;
+
       const timeA = a.dueDate ? new Date(`${a.dueDate}T${a.dueTime || '00:00'}`).getTime() : 0;
       const timeB = b.dueDate ? new Date(`${b.dueDate}T${b.dueTime || '00:00'}`).getTime() : 0;
       return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
@@ -149,8 +173,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
     });
 
     return {
-      today: userTasks.filter(t => t.status !== 'completed' && t.dueDate === todayStr).length,
-      upcoming: userTasks.filter(t => t.status !== 'completed' && t.dueDate !== todayStr).length,
+      today: userTasks.filter(t => t.status !== 'completed' && (!t.dueDate || t.dueDate <= todayStr)).length,
+      upcoming: userTasks.filter(t => t.status !== 'completed').length,
       completed: userTasks.filter(t => t.status === 'completed').length,
       all: userTasks.length,
     };
@@ -158,7 +182,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
   // Tasks due today count
   const todayTasksCount = useMemo(() => {
-    return scopedTasks.filter(t => t.dueDate === todayStr && t.status !== 'completed').length;
+    return scopedTasks.filter(t => (!t.dueDate || t.dueDate <= todayStr) && t.status !== 'completed').length;
   }, [scopedTasks, todayStr]);
 
   const completedTodayCount = useMemo(() => {
@@ -222,19 +246,82 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
     setIsTaskDetailModalOpen(true);
   };
 
-  const handleEditTask = (task: AdminTask) => {
-    setSelectedTaskForDetail(task);
-    setIsTaskDetailModalOpen(true);
-  };
+  const getTaskTypeConfig = (task: AdminTask) => {
+    const custom = (task.customType || task.customProperties?.customType || '').toLowerCase();
+    const type = ((task.type || '') as string).toLowerCase();
+    const title = (task.title || '').toLowerCase();
+    const combined = `${custom} ${type} ${title}`;
 
-  const renderTypeIcon = (type: TaskType) => {
-    switch (type) {
-      case 'call': return <Phone size={13} color="#60A5FA" />;
-      case 'meeting': return <Users size={13} color="#A78BFA" />;
-      case 'tasting': return <Utensils size={13} color="#F59E0B" />;
-      case 'followup': return <MessageSquare size={13} color="#10B981" />;
-      default: return <Briefcase size={13} color="var(--adm-accent)" />;
+    if (combined.includes('whatsapp')) {
+      return {
+        label: task.customType || 'Follow-up WhatsApp',
+        icon: <MessageSquare size={12} color="#0284C7" />,
+        color: '#0284C7',
+        bg: 'rgba(2, 132, 199, 0.12)',
+        border: 'rgba(2, 132, 199, 0.3)',
+      };
     }
+    if (combined.includes('liga') || combined.includes('call')) {
+      return {
+        label: task.customType || 'Follow-up Ligação',
+        icon: <Phone size={12} color="#6366F1" />,
+        color: '#6366F1',
+        bg: 'rgba(99, 102, 241, 0.12)',
+        border: 'rgba(99, 102, 241, 0.3)',
+      };
+    }
+    if (combined.includes('degusta')) {
+      return {
+        label: task.customType || 'Degustação',
+        icon: <Utensils size={12} color="#F59E0B" />,
+        color: '#F59E0B',
+        bg: 'rgba(245, 158, 11, 0.12)',
+        border: 'rgba(245, 158, 11, 0.3)',
+      };
+    }
+    if (combined.includes('visita')) {
+      return {
+        label: task.customType || 'Visita',
+        icon: <MapPin size={12} color="#EC4899" />,
+        color: '#EC4899',
+        bg: 'rgba(236, 72, 153, 0.12)',
+        border: 'rgba(236, 72, 153, 0.3)',
+      };
+    }
+    if (combined.includes('reuni') || combined.includes('meeting')) {
+      return {
+        label: task.customType || 'Reunião',
+        icon: <Users size={12} color="#10B981" />,
+        color: '#10B981',
+        bg: 'rgba(16, 185, 129, 0.12)',
+        border: 'rgba(16, 185, 129, 0.3)',
+      };
+    }
+    if (combined.includes('compromisso') || combined.includes('commitment')) {
+      return {
+        label: task.customType || 'Compromisso',
+        icon: <Calendar size={12} color="#8B5CF6" />,
+        color: '#8B5CF6',
+        bg: 'rgba(139, 92, 246, 0.12)',
+        border: 'rgba(139, 92, 246, 0.3)',
+      };
+    }
+    if (combined.includes('follow') || task.isFollowUp) {
+      return {
+        label: task.customType || 'Follow-up',
+        icon: <Target size={12} color="#0284C7" />,
+        color: '#0284C7',
+        bg: 'rgba(2, 132, 199, 0.12)',
+        border: 'rgba(2, 132, 199, 0.3)',
+      };
+    }
+    return {
+      label: task.customType || 'Geral',
+      icon: <Briefcase size={12} color="#94A3B8" />,
+      color: '#94A3B8',
+      bg: 'rgba(148, 163, 184, 0.12)',
+      border: 'rgba(148, 163, 184, 0.25)',
+    };
   };
 
   return (
@@ -377,7 +464,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       {/* ── 2-COLUMN MAIN WORKSPACE: TASKS (LEFT) & DAY AGENDA (RIGHT) ── */}
       <div className="admin-home-grid" style={{
         display: 'grid',
-        gridTemplateColumns: '1.1fr 1fr',
+        gridTemplateColumns: 'minmax(0, 1.85fr) minmax(320px, 0.95fr)',
         gap: '24px',
         alignItems: 'start',
       }}>
@@ -492,7 +579,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
           }}>
             {[
               { id: 'today', label: 'Tarefas de Hoje', count: tabCounts.today, color: '#F59E0B' },
-              { id: 'upcoming', label: 'Próximas & Gerais', count: tabCounts.upcoming, color: 'var(--adm-accent)' },
+              { id: 'upcoming', label: 'Próximas', count: tabCounts.upcoming, color: 'var(--adm-accent)' },
               { id: 'completed', label: 'Finalizadas', count: tabCounts.completed, color: '#10B981' },
               { id: 'all', label: 'Todas', count: tabCounts.all, color: 'var(--adm-text-muted)' },
             ].map(tab => (
@@ -593,37 +680,45 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
                   }}>
-                    <th style={{ width: '38px', padding: '10px 8px', textAlign: 'center' }}></th>
+                    <th style={{ width: '36px', padding: '10px 8px', textAlign: 'center' }}></th>
                     <th style={{ padding: '10px 12px' }}>Nome da Tarefa</th>
-                    <th style={{ padding: '10px 12px' }}>Vinculado</th>
-                    <th style={{ padding: '10px 10px' }}>Prioridade</th>
-                    <th style={{ padding: '10px 12px' }}>Prazo / Vencimento</th>
-                    <th style={{ width: '38px', padding: '10px 8px', textAlign: 'center' }}></th>
+                    <th style={{ padding: '10px 10px' }}>Tipo</th>
+                    <th style={{ padding: '10px 10px' }}>Vinculado</th>
+                    <th style={{ padding: '10px 12px' }}>Prazo / Horário</th>
+                    <th style={{ width: '42px', padding: '10px 8px', textAlign: 'center' }}>Prioridade</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { id: 'todo', label: 'Não Iniciado', color: '#64748B', bg: 'rgba(100, 116, 139, 0.1)' },
-                    { id: 'in_progress', label: 'Em Andamento', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.1)' },
-                    { id: 'completed', label: 'Concluído', color: '#10B981', bg: 'rgba(16, 185, 129, 0.1)' },
+                    { id: 'overdue', label: 'Atrasadas', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.35)', icon: <AlertTriangle size={13} color="#EF4444" /> },
+                    { id: 'todo', label: 'Não Iniciadas', color: '#0284C7', bg: 'rgba(2, 132, 199, 0.10)', border: 'rgba(2, 132, 199, 0.25)', icon: <CheckSquare size={13} color="#0284C7" /> },
+                    { id: 'in_progress', label: 'Em Execução', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.25)', icon: <Clock size={13} color="#F59E0B" /> },
+                    { id: 'completed', label: 'Concluídas', color: '#10B981', bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.25)', icon: <Check size={13} color="#10B981" /> },
                   ].map(group => {
                     const groupTasks = filteredTasks.filter(t => {
-                      if (group.id === 'completed') return t.status === 'completed';
-                      if (group.id === 'in_progress') return t.status === 'in_progress';
-                      return t.status !== 'completed' && t.status !== 'in_progress';
+                      const isDone = t.status === 'completed';
+                      const isOverdue = !isDone && Boolean(t.dueDate && t.dueDate < todayStr);
+
+                      if (group.id === 'overdue') return isOverdue;
+                      if (group.id === 'completed') return isDone;
+                      if (group.id === 'in_progress') return !isDone && !isOverdue && t.status === 'in_progress';
+                      return !isDone && !isOverdue && t.status !== 'in_progress';
                     });
 
                     if (groupTasks.length === 0) return null;
 
                     return (
                       <React.Fragment key={group.id}>
-                        <tr style={{ background: group.bg, borderTop: '1px solid var(--adm-border)', borderBottom: '1px solid var(--adm-border)' }}>
+                        <tr style={{ background: group.bg, borderTop: `1px solid ${group.border}`, borderBottom: `1px solid ${group.border}` }}>
                           <td colSpan={6} style={{ padding: '6px 12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: group.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                {group.label}
-                              </span>
-                              <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: 'var(--adm-bg-card)', color: group.color }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {group.icon}
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: group.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                  {group.label}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '1px 7px', borderRadius: '10px', background: 'var(--adm-bg-card)', color: group.color, border: `1px solid ${group.border}` }}>
                                 {groupTasks.length}
                               </span>
                             </div>
@@ -631,7 +726,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                         </tr>
                         {groupTasks.map((task, idx) => {
                           const isDone = task.status === 'completed';
-                          const isOverdue = !isDone && !!task.dueDate && task.dueDate < todayStr;
+                          const isOverdue = !isDone && Boolean(task.dueDate && task.dueDate < todayStr);
                           const isDueToday = !isDone && task.dueDate === todayStr;
 
                           // Resolve linked entity names
@@ -641,6 +736,18 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                           const resolvedClientName = task.clientName || resolvedClient?.birthdayPersonName || resolvedClient?.name;
                           const resolvedDebutante = task.debutanteId ? debutantes.find(d => d.id === task.debutanteId) : null;
                           const resolvedDebutanteName = task.debutanteName || resolvedDebutante?.name;
+                          const resolvedName = resolvedLeadName || resolvedClientName || resolvedDebutanteName;
+
+                          const typeConfig = getTaskTypeConfig(task);
+                          const priorityConfig = getTaskPriorityConfig(task.priority);
+
+                          const hasNotes = Boolean(task.observations || task.content || task.description || task.customProperties?.observations);
+                          const hasAttachments = Boolean(
+                            (task.customProperties?.attachments && task.customProperties.attachments.length > 0) ||
+                            (task.customProperties?.files && task.customProperties.files.length > 0)
+                          );
+
+                          const dateFormatted = task.dueDate ? (task.dueDate === todayStr ? 'Hoje' : (task.dueDate === tomorrowStr ? 'Amanhã' : task.dueDate.split('-').reverse().join('/'))) : 'Sem data';
 
                           return (
                             <tr
@@ -687,35 +794,61 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                 </button>
                               </td>
 
-                              {/* Task Title & Type */}
-                              <td style={{ padding: '8px 12px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '20px',
-                                    height: '20px',
-                                    borderRadius: '4px',
-                                    background: 'var(--adm-bg-card)',
-                                    flexShrink: 0,
-                                  }}>
-                                    {renderTypeIcon(task.type)}
-                                  </div>
+                              {/* Task Title (White, Single Line Ellipsis + ClickUp icons) */}
+                              <td style={{ padding: '8px 12px', maxWidth: '320px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                   <span style={{
                                     fontWeight: 700,
-                                    color: 'var(--adm-text-title)',
+                                    color: '#FFFFFF',
                                     textDecoration: isDone ? 'line-through' : 'none',
-                                    fontSize: '0.78rem',
-                                  }}>
+                                    fontSize: '0.80rem',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    flexShrink: 1,
+                                  }}
+                                    title={task.title}
+                                  >
                                     {task.title}
                                   </span>
+
+                                  {/* Ícones de anotações e anexos estilo ClickUp */}
+                                  {hasNotes && (
+                                    <span title="Possui anotações / observações" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--adm-text-muted)', flexShrink: 0 }}>
+                                      <MessageSquare size={12} />
+                                    </span>
+                                  )}
+
+                                  {hasAttachments && (
+                                    <span title="Possui anexos" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--adm-text-muted)', flexShrink: 0 }}>
+                                      <Paperclip size={12} />
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
-                              {/* Linked Lead/Client/Debutante */}
-                              <td style={{ padding: '8px 12px' }}>
-                                {task.leadId || resolvedLeadName ? (
+                              {/* Task Type Badge */}
+                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  background: typeConfig.bg,
+                                  border: `1px solid ${typeConfig.border}`,
+                                  color: typeConfig.color,
+                                  borderRadius: '6px',
+                                  padding: '2px 8px',
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                }}>
+                                  {typeConfig.icon}
+                                  <span>{typeConfig.label}</span>
+                                </span>
+                              </td>
+
+                              {/* Linked Lead / Client */}
+                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', maxWidth: '170px' }}>
+                                {resolvedName ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -726,122 +859,58 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
-                                      background: 'rgba(96, 165, 250, 0.12)',
-                                      border: '1px solid rgba(96, 165, 250, 0.35)',
+                                      background: 'rgba(96, 165, 250, 0.10)',
+                                      border: '1px solid rgba(96, 165, 250, 0.3)',
                                       color: '#60A5FA',
                                       borderRadius: '6px',
-                                      padding: '2px 6px',
-                                      fontSize: '0.68rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
+                                      padding: '2px 8px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      cursor: task.leadId ? 'pointer' : 'default',
+                                      maxWidth: '100%',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
                                     }}
-                                    title="Abrir detalhes no CRM"
                                   >
-                                    <Target size={10} />
-                                    <span>{resolvedLeadName || 'Lead'}</span>
-                                    <ExternalLink size={10} />
+                                    <User size={11} style={{ flexShrink: 0 }} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {resolvedName}
+                                    </span>
                                   </button>
-                                ) : resolvedClientName ? (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    background: 'rgba(245, 158, 11, 0.12)',
-                                    border: '1px solid rgba(245, 158, 11, 0.35)',
-                                    color: '#F59E0B',
-                                    borderRadius: '6px',
-                                    padding: '2px 6px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                  }}>
-                                    <Crown size={10} />
-                                    <span>{resolvedClientName}</span>
-                                  </span>
-                                ) : resolvedDebutanteName ? (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    background: 'rgba(16, 185, 129, 0.12)',
-                                    border: '1px solid rgba(16, 185, 129, 0.35)',
-                                    color: '#10B981',
-                                    borderRadius: '6px',
-                                    padding: '2px 6px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                  }}>
-                                    <User size={10} />
-                                    <span>{resolvedDebutanteName}</span>
-                                  </span>
                                 ) : (
-                                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.70rem' }}>-</span>
+                                  <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.70rem' }}>—</span>
                                 )}
                               </td>
 
-                              {/* Priority */}
-                              <td style={{ padding: '8px 10px' }}>
-                                <span style={{
-                                  fontSize: '0.62rem',
-                                  fontWeight: 800,
-                                  padding: '2px 6px',
-                                  borderRadius: '6px',
-                                  background: task.priority === 'high' ? 'rgba(239, 68, 68, 0.15)' : task.priority === 'medium' ? 'var(--adm-accent-bg)' : 'rgba(255, 255, 255, 0.05)',
-                                  color: task.priority === 'high' ? '#EF4444' : task.priority === 'medium' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                                  border: `1px solid ${task.priority === 'high' ? '#EF4444' : task.priority === 'medium' ? 'var(--adm-accent)' : 'transparent'}`,
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {task.priority === 'high' ? 'ALTA' : task.priority === 'medium' ? 'MÉDIA' : 'BAIXA'}
-                                </span>
-                              </td>
-
-                              {/* Due Date */}
+                              {/* Due Date & Time */}
                               <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                                 <span style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '4px',
-                                  color: isOverdue ? '#EF4444' : isDueToday ? '#F59E0B' : 'var(--adm-text-muted)',
-                                  fontSize: '0.70rem',
+                                  color: isOverdue ? '#EF4444' : isDueToday ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                                  fontSize: '0.74rem',
                                   fontWeight: isOverdue || isDueToday ? 700 : 500,
                                 }}>
-                                  <Clock size={11} />
-                                  {task.dueDate === todayStr ? 'Hoje' : (task.dueDate && typeof task.dueDate === 'string' && task.dueDate.includes('-') ? task.dueDate.split('-').reverse().join('/') : task.dueDate || 'Sem data')}
-                                  {task.dueTime ? ` ${task.dueTime}` : ''}
+                                  {isOverdue && <AlertTriangle size={12} color="#EF4444" />}
+                                  {dateFormatted}
+                                  {task.dueTime ? ` às ${task.dueTime}` : ''}
                                 </span>
                               </td>
 
-                              {/* Action */}
-                              <td style={{ padding: '8px', textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditTask(task);
-                                  }}
+                              {/* Priority Flag (ClickUp Style) */}
+                              <td style={{ padding: '8px 8px', textAlign: 'center' }}>
+                                <div
+                                  title={`Prioridade: ${priorityConfig.label}`}
                                   style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--adm-text-muted)',
-                                    cursor: 'pointer',
-                                    padding: '4px',
-                                    borderRadius: '6px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    transition: 'all 0.15s ease',
+                                    cursor: 'pointer',
                                   }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.color = 'var(--adm-accent)';
-                                    e.currentTarget.style.background = 'var(--adm-bg-card)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = 'var(--adm-text-muted)';
-                                    e.currentTarget.style.background = 'transparent';
-                                  }}
-                                  title="Ver e Editar Tarefa"
                                 >
-                                  <Edit3 size={13} />
-                                </button>
+                                  <Flag size={14} fill={priorityConfig.color} color={priorityConfig.color} />
+                                </div>
                               </td>
                             </tr>
                           );
@@ -946,27 +1015,25 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
             </div>
           </div>
 
-          {/* Date Indicator Bar */}
+          {/* Date Indicator Bar (Clean Agenda Header - não parece card de tarefa) */}
           <div style={{
-            background: 'var(--adm-bg-input)',
-            border: '1px solid var(--adm-border)',
-            borderRadius: '10px',
-            padding: '8px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            fontSize: '0.76rem',
+            padding: '4px 2px 8px 2px',
+            borderBottom: '1px solid var(--adm-border)',
+            fontSize: '0.78rem',
           }}>
-            <div style={{ fontWeight: 650, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Calendar size={13} color="var(--adm-accent)" />
-              <span>{selectedCalendarDate.split('-').reverse().join('/')}</span>
+            <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar size={15} color="var(--adm-accent, #0284C7)" />
+              <span>{formattedCalendarDate || selectedCalendarDate.split('-').reverse().join('/')}</span>
             </div>
-            <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem' }}>
-              {dayAppointments.length} compromissos • {dayTasks.length} afazeres
+            <div style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem', fontWeight: 600 }}>
+              {dayAppointments.length} compromisso{dayAppointments.length !== 1 ? 's' : ''} • {dayTasks.length} afazer{dayTasks.length !== 1 ? 'es' : ''}
             </div>
           </div>
 
-          {/* All-Day Tasks / Sem horário fixo (Audio 2: automatically appear on agenda) */}
+          {/* All-Day Tasks / Dia Inteiro com Nome do Lead ao Lado e cores temáticas */}
           {dayTasks.filter(t => !t.dueTime || !t.dueTime.trim()).length > 0 && (
             <div style={{
               display: 'flex',
@@ -975,43 +1042,55 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               background: 'var(--adm-bg-input)',
               border: '1px solid var(--adm-border)',
               borderRadius: '10px',
-              padding: '8px 12px',
+              padding: '8px 10px',
             }}>
-              <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Tarefas do Dia (sem horário)
+              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Dia Inteiro ({dayTasks.filter(t => !t.dueTime || !t.dueTime.trim()).length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {dayTasks.filter(t => !t.dueTime || !t.dueTime.trim()).map(task => (
-                  <div
-                    key={`allday_${task.id}`}
-                    onClick={() => {
-                      setSelectedTaskForDetail(task);
-                      setIsTaskDetailModalOpen(true);
-                    }}
-                    style={{
-                      background: 'rgba(20, 169, 215, 0.08)',
-                      border: '1px solid rgba(20, 169, 215, 0.25)',
-                      borderRadius: '6px',
-                      padding: '5px 8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                      <CheckSquare size={12} color="#14A9D7" />
-                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {task.title}
-                      </span>
+                {dayTasks.filter(t => !t.dueTime || !t.dueTime.trim()).map(task => {
+                  const typeConf = getTaskTypeConfig(task);
+                  const linkedLead = task.leadId ? leads.find(l => l.id === task.leadId) : null;
+                  const leadName = task.leadName || linkedLead?.name;
+
+                  return (
+                    <div
+                      key={`allday_${task.id}`}
+                      onClick={() => {
+                        setSelectedTaskForDetail(task);
+                        setIsTaskDetailModalOpen(true);
+                      }}
+                      style={{
+                        background: typeConf.bg,
+                        border: `1px solid ${typeConf.border}`,
+                        borderRadius: '6px',
+                        padding: '5px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                        {typeConf.icon}
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {task.title}
+                        </span>
+                        {leadName && (
+                          <span style={{ fontSize: '0.72rem', color: typeConf.color, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            • {leadName}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Google Calendar Style Time Grid (08:00 to 20:00) */}
+          {/* Google Calendar Style Time Grid (07:00 to 23:59) */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1026,7 +1105,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               const matchedApps = dayAppointments.filter(a => (a.time || '').startsWith(hourPrefix));
               const matchedTasks = dayTasks.filter(t => (t.dueTime || '').startsWith(hourPrefix));
 
-              const hasItems = matchedApps.length > 0 || matchedTasks.length > 0;
+              const totalItems = matchedApps.length + matchedTasks.length;
+              const hasItems = totalItems > 0;
               const slotHour = parseInt(hourPrefix, 10);
               const isCurrentHourSlot = selectedCalendarDate === todayStr && currentTime.getHours() === slotHour;
               const currentMinute = currentTime.getMinutes();
@@ -1105,8 +1185,15 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                     {hour}
                   </div>
 
-                  {/* Slot Events Container */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* Slot Events Container - Se houver múltiplas tarefas no mesmo horário, distribuídas horizontalmente lado a lado */}
+                  <div style={{
+                    flex: 1,
+                    display: totalItems > 1 ? 'grid' : 'flex',
+                    gridTemplateColumns: totalItems > 1 ? `repeat(${totalItems}, minmax(0, 1fr))` : undefined,
+                    flexDirection: totalItems <= 1 ? 'column' : undefined,
+                    gap: '6px',
+                    minWidth: 0,
+                  }}>
                     {/* Render Debutante Appointments (Degustações, Reuniões) */}
                     {matchedApps.map((app, idx) => (
                       <div
@@ -1114,44 +1201,35 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                         style={{
                           background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(212, 175, 55, 0.05) 100%)',
                           border: '1px solid var(--adm-accent)',
-                          borderRadius: '10px',
-                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          gap: '8px',
+                          gap: '6px',
+                          minWidth: 0,
                           animation: 'fadeIn 0.15s ease-out',
                         }}
                       >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
                             <span style={{
                               background: 'var(--adm-accent)',
                               color: '#000',
-                              fontSize: '0.62rem',
+                              fontSize: '0.60rem',
                               fontWeight: 800,
-                              padding: '1px 5px',
+                              padding: '1px 4px',
                               borderRadius: '4px',
+                              flexShrink: 0,
                             }}>
                               {app.time || hour}
                             </span>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {app.title}
                             </span>
-                          </div>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                              <Crown size={11} color="var(--adm-accent)" />
-                              <strong>{app.debutanteName}</strong>
-                            </span>
-                            {(app.location || app.venueName) && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                • <MapPin size={11} /> {app.location || app.venueName}
-                              </span>
-                            )}
-                            {app.responsibleName && (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                • <User size={11} /> {app.responsibleName}
+                            {app.debutanteName && (
+                              <span style={{ fontSize: '0.70rem', color: 'var(--adm-accent)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                • {app.debutanteName}
                               </span>
                             )}
                           </div>
@@ -1165,73 +1243,89 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                             border: 'none',
                             color: 'var(--adm-accent)',
                             cursor: 'pointer',
-                            padding: '4px',
+                            padding: '2px',
+                            flexShrink: 0,
                           }}
                           title="Ver na lista de compromissos"
                         >
-                          <ArrowRight size={14} />
+                          <ArrowRight size={13} />
                         </button>
                       </div>
                     ))}
 
-                    {/* Render Day Tasks with fixed time */}
-                    {matchedTasks.map(task => (
-                      <div
-                        key={`task_${task.id}`}
-                        className="admin-timeline-task-card"
-                        onClick={() => {
-                          setSelectedTaskForDetail(task);
-                          setIsTaskDetailModalOpen(true);
-                        }}
-                        style={{
-                          background: 'rgba(96, 165, 250, 0.08)',
-                          border: '1px solid rgba(96, 165, 250, 0.25)',
-                          borderRadius: '8px',
-                          padding: '7px 10px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '8px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                          <span style={{
-                            background: '#60A5FA',
-                            color: '#000',
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                          }}>
-                            {task.dueTime}
-                          </span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {task.title}
-                          </span>
-                        </div>
+                    {/* Render Day Tasks with fixed time (Cores temáticas + Título Branco + Lead ao lado) */}
+                    {matchedTasks.map(task => {
+                      const typeConf = getTaskTypeConfig(task);
+                      const linkedLead = task.leadId ? leads.find(l => l.id === task.leadId) : null;
+                      const leadName = task.leadName || linkedLead?.name;
 
-                        {task.leadId && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenLead(task.leadId!);
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#60A5FA',
-                              cursor: 'pointer',
-                              padding: '2px',
-                            }}
-                            title="Abrir Lead no CRM"
-                          >
-                            <ExternalLink size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      return (
+                        <div
+                          key={`task_${task.id}`}
+                          className="admin-timeline-task-card"
+                          onClick={() => {
+                            setSelectedTaskForDetail(task);
+                            setIsTaskDetailModalOpen(true);
+                          }}
+                          style={{
+                            background: typeConf.bg,
+                            border: `1px solid ${typeConf.border}`,
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            minWidth: 0,
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, flex: 1 }}>
+                            <span style={{
+                              background: typeConf.color,
+                              color: '#FFFFFF',
+                              fontSize: '0.60rem',
+                              fontWeight: 800,
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              flexShrink: 0,
+                            }}>
+                              {task.dueTime}
+                            </span>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {task.title}
+                            </span>
+                            {leadName && (
+                              <span style={{ fontSize: '0.70rem', color: typeConf.color, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                • {leadName}
+                              </span>
+                            )}
+                          </div>
+
+                          {task.leadId && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenLead(task.leadId!);
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: typeConf.color,
+                                cursor: 'pointer',
+                                padding: '2px',
+                                flexShrink: 0,
+                              }}
+                              title="Abrir Lead no CRM"
+                            >
+                              <ExternalLink size={12} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

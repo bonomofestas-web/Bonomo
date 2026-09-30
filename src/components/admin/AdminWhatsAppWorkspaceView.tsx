@@ -8329,52 +8329,76 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 ))}
                               </div>
 
-                              {/* Seletor de Horário Embaixo no Popover (Padrão da Ficha) */}
-                              <div style={{
-                                borderTop: '1px solid var(--adm-border)',
-                                paddingTop: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '8px',
-                              }}>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <Clock size={12} color="var(--adm-accent, #0284C7)" />
-                                  Horário:
-                                </span>
-                                <input
-                                  type="time"
-                                  value={quickFollowupTime}
-                                  onChange={(e) => setQuickFollowupTime(e.target.value)}
-                                  className="adm-input"
-                                  style={{
-                                    height: '28px',
-                                    fontSize: '0.74rem',
-                                    borderRadius: '6px',
-                                    padding: '0 6px',
-                                    width: '88px',
-                                    fontWeight: 600,
-                                  }}
-                                />
-                              </div>
+                              {/* Toggles & Options padrão Bloco de Notas Inteligente */}
+                              <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '8px', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.74rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--adm-text-title)', fontWeight: 600 }}>Incluir hora</span>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={Boolean(quickFollowupTime)} 
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setQuickFollowupTime('14:00');
+                                      } else {
+                                        setQuickFollowupTime('');
+                                      }
+                                    }} 
+                                  />
+                                </div>
 
-                              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsQuickDatePickerOpen(false)}
-                                  style={{
-                                    padding: '4px 10px',
-                                    borderRadius: '6px',
-                                    background: 'var(--adm-accent, #0284C7)',
-                                    border: 'none',
-                                    color: '#fff',
-                                    fontSize: '0.70rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Confirmar
-                                </button>
+                                {Boolean(quickFollowupTime) && (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: 'var(--adm-bg-input)', padding: '4px 8px', borderRadius: '6px' }}>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <Clock size={12} color="var(--adm-accent, #0284C7)" />
+                                      Horário:
+                                    </span>
+                                    <input
+                                      type="time"
+                                      value={quickFollowupTime}
+                                      onChange={(e) => setQuickFollowupTime(e.target.value)}
+                                      className="adm-input"
+                                      style={{
+                                        height: '26px',
+                                        fontSize: '0.74rem',
+                                        borderRadius: '4px',
+                                        padding: '0 6px',
+                                        width: '88px',
+                                        fontWeight: 600,
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuickFollowupDate(todayStr);
+                                      setQuickFollowupTime('');
+                                      setIsQuickDatePickerOpen(false);
+                                    }}
+                                    style={{ background: 'transparent', border: 'none', color: '#EF4444', fontSize: '0.72rem', cursor: 'pointer', padding: 0 }}
+                                  >
+                                    Limpar
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsQuickDatePickerOpen(false)}
+                                    style={{
+                                      padding: '3px 10px',
+                                      borderRadius: '6px',
+                                      background: 'var(--adm-accent, #0284C7)',
+                                      border: 'none',
+                                      color: '#fff',
+                                      fontSize: '0.70rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Pronto
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           )}
