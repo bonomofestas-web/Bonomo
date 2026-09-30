@@ -190,7 +190,7 @@ function inviteDevPlugin() {
         req.on('data', (chunk: any) => { body += chunk; });
         req.on('end', async () => {
           try {
-            const { email, name, role, invitedByName, redirectTo } = JSON.parse(body || '{}');
+            const { email, name, role, masterId, venueId, venueIds, sectors, department, invitedByName, redirectTo } = JSON.parse(body || '{}');
             if (!email) {
               res.statusCode = 400;
               res.setHeader('Content-Type', 'application/json');
@@ -212,17 +212,68 @@ function inviteDevPlugin() {
 
             const cleanEmail = email.trim().toLowerCase();
             const finalRedirectTo = redirectTo || 'http://localhost:5173/?admin=true&type=recovery';
+            const effectiveVenueId = (venueId && venueId !== 'all') ? venueId : null;
+            const effectiveVenueIds = Array.isArray(venueIds) ? venueIds : (effectiveVenueId ? [effectiveVenueId] : []);
 
-            // Tenta signUp
+            let finalMasterId = masterId;
+            if (!finalMasterId && effectiveVenueId) {
+              try {
+                const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', effectiveVenueId).maybeSingle();
+                if (vRow?.master_id) finalMasterId = vRow.master_id;
+              } catch {}
+            }
+
+            // Tenta signUp com metadados do tenant
             const tempPassword = 'Bonomo_' + Math.random().toString(36).slice(-8) + '!';
             const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
               email: cleanEmail,
               password: tempPassword,
               options: {
-                data: { name, invited_by: invitedByName, role: role || 'sdr' },
+                data: { 
+                  name, 
+                  invited_by: invitedByName, 
+                  role: role || 'sdr',
+                  master_id: finalMasterId,
+                  venue_id: effectiveVenueId,
+                  venue_ids: effectiveVenueIds,
+                  sectors,
+                  department,
+                },
                 emailRedirectTo: finalRedirectTo,
               }
             });
+
+            // Persiste na tabela collaborators com master_id garantido
+            try {
+              const { data: existingRows } = await supabase
+                .from('collaborators')
+                .select('id')
+                .eq('email', cleanEmail)
+                .limit(1);
+
+              const targetId = existingRows && existingRows.length > 0 ? existingRows[0].id : signUpData?.user?.id;
+              const payload: Record<string, any> = {
+                name: name || cleanEmail.split('@')[0],
+                email: cleanEmail,
+                role: role || 'sdr',
+                active: true,
+                is_first_access: true,
+                updated_at: new Date().toISOString(),
+              };
+              if (finalMasterId) payload.master_id = finalMasterId;
+              if (effectiveVenueId !== undefined) payload.venue_id = effectiveVenueId;
+              if (effectiveVenueIds.length > 0) payload.venue_ids = effectiveVenueIds;
+              if (sectors) payload.sectors = sectors;
+              if (department) payload.department = department;
+
+              if (targetId) {
+                await supabase.from('collaborators').update(payload).eq('id', targetId);
+              } else {
+                await supabase.from('collaborators').insert(payload);
+              }
+            } catch (cErr) {
+              console.warn('[vite-invite] Erro ao sincronizar collaborators:', cErr);
+            }
 
             const isNewUser = !signUpError && 
               signUpData?.user && 

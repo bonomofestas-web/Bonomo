@@ -105,7 +105,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       setCurrentSourceId(sourceToEdit.id);
       setName(sourceToEdit.name || '');
       setVenueId(sourceToEdit.venueId || (venues[0]?.id || ''));
-      setType((sourceToEdit.type === 'form' ? 'form' : 'whatsapp_api'));
+      const isReferral = sourceToEdit.type === 'referral' || sourceToEdit.name?.startsWith('Indicações • ') || Boolean((sourceToEdit.configuration as any)?.systemManaged);
+      setType(isReferral ? 'referral' : (sourceToEdit.type === 'form' ? 'form' : 'whatsapp_api'));
 
       // Verifica se o funil vinculado possui caixa de entrada ativa
       const initialFunnelId = sourceToEdit.funnelId || '';

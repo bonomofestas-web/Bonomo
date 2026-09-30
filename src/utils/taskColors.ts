@@ -115,3 +115,27 @@ export function renderTaskTypeIcon(category: TaskCategoryType, size = 13, colorO
       return React.createElement(RotateCw, { size, color: colorOverride || '#475569' });
   }
 }
+
+export interface TaskPriorityConfig {
+  id: 'none' | 'low' | 'normal' | 'medium' | 'high' | 'urgent';
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
+
+export const TASK_PRIORITY_OPTIONS: TaskPriorityConfig[] = [
+  { id: 'none', label: 'Sem prioridade', color: '#94A3B8', bgColor: 'rgba(148, 163, 184, 0.12)', borderColor: 'rgba(148, 163, 184, 0.25)' },
+  { id: 'low', label: 'Baixa', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.25)' },
+  { id: 'normal', label: 'Normal', color: '#0284C7', bgColor: 'rgba(2, 132, 199, 0.12)', borderColor: 'rgba(2, 132, 199, 0.25)' },
+  { id: 'medium', label: 'Média', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.25)' },
+  { id: 'high', label: 'Alta', color: '#EA580C', bgColor: 'rgba(234, 88, 12, 0.12)', borderColor: 'rgba(234, 88, 12, 0.25)' },
+  { id: 'urgent', label: 'Urgente', color: '#EF4444', bgColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.25)' },
+];
+
+export function getTaskPriorityConfig(priority?: string): TaskPriorityConfig {
+  const p = (priority || 'none').toLowerCase();
+  const found = TASK_PRIORITY_OPTIONS.find(opt => opt.id === p);
+  if (found) return found;
+  return TASK_PRIORITY_OPTIONS[0]; // Sem prioridade
+}

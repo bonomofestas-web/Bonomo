@@ -23,7 +23,7 @@ interface PasswordChecklist {
 export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   onSuccessLogin,
 }) => {
-  const { login, collaborators, updateCollaborator } = useAdminState();
+  const { login, collaborators } = useAdminState();
 
   // Auth Mode: login | first_access_email | first_access_code
   const [authMode, setAuthMode] = useState<AuthMode>('login');
@@ -465,15 +465,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       // para que a tela obrigatória de onboarding de perfil (foto e whatsapp) seja exibida após o login!
       const shouldKeepFirstAccess = !isResetMode && (target ? (target.isFirstAccess ?? true) : true);
 
-      if (target) {
-        updateCollaborator(target.id, {
-          password: newPassword,
-          isFirstAccess: shouldKeepFirstAccess,
-          lastLoginAt: nowIso,
-          activatedAt: nowIso,
-        });
-      }
-
+      // Persiste a nova senha na tabela collaborators
       if (isSupabaseConfigured) {
         await supabase
           .from('collaborators')
@@ -482,6 +474,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             is_first_access: shouldKeepFirstAccess,
             last_login_at: nowIso,
             activated_at: nowIso,
+            updated_at: nowIso,
           })
           .eq('email', cleanEmail);
       }
@@ -491,8 +484,12 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         window.history.replaceState(null, '', window.location.pathname + '?admin=true');
       } catch {}
 
-      // 3. Log in with new credentials preservando isFirstAccess!
-      const loginSuccess = await login(cleanEmail, newPassword, { isFirstAccess: shouldKeepFirstAccess });
+      // 3. Log in imediato com credenciais validadas preservando isFirstAccess!
+      const loginSuccess = await login(cleanEmail, newPassword, {
+        ...(target || {}),
+        password: newPassword,
+        isFirstAccess: shouldKeepFirstAccess
+      });
 
       if (!loginSuccess) {
         throw new Error('Falha ao autenticar com as novas credenciais. Tente novamente.');

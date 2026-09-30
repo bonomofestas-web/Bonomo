@@ -158,7 +158,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updated_at: new Date().toISOString(),
       };
 
-      if (masterId) payload.master_id = masterId;
+      let finalMasterId = masterId;
+      if (!finalMasterId && effectiveVenueId) {
+        try {
+          const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', effectiveVenueId).maybeSingle();
+          if (vRow?.master_id) finalMasterId = vRow.master_id;
+        } catch {}
+      }
+
+      if (finalMasterId) payload.master_id = finalMasterId;
       if (effectiveVenueId !== undefined) payload.venue_id = effectiveVenueId;
       if (effectiveVenueIds.length > 0) payload.venue_ids = effectiveVenueIds;
       if (sectors && sectors.length > 0) payload.sectors = sectors;

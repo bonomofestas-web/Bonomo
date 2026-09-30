@@ -192,7 +192,7 @@ export interface LeadParticipant {
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'completed' | 'no_result' | 'no_show' | 'cancelled';
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent' | 'none';
+export type TaskPriority = 'none' | 'low' | 'normal' | 'medium' | 'high' | 'urgent';
 export type TaskType = 'call' | 'meeting' | 'tasting' | 'followup' | 'document' | 'general';
 
 export interface TaskDatabase {

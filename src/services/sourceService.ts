@@ -38,24 +38,32 @@ export const sourceService = {
         if (ev.event_type === 'lead_created') eventsMap[ev.source_id].leads += 1;
       });
 
-      return (sourcesData || []).map(row => ({
-        id: row.id,
-        venueId: row.venue_id,
-        name: row.name,
-        type: row.type,
-        funnelId: row.funnel_id,
-        whatsappInstanceId: row.whatsapp_instance_id || undefined,
-        status: (row.status as 'active' | 'inactive') || 'active',
-        slug: row.slug || undefined,
-        configuration: row.configuration || {},
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        totalEvents: eventsMap[row.id]?.total || 0,
-        totalViews: eventsMap[row.id]?.views || 0,
-        totalClicks: eventsMap[row.id]?.clicks || 0,
-        totalSubmits: eventsMap[row.id]?.submits || 0,
-        totalLeads: eventsMap[row.id]?.leads || 0,
-      }));
+      return (sourcesData || []).map(row => {
+        const isSystemReferral = Boolean(
+          row.type === 'referral' ||
+          (row.name && row.name.startsWith('Indicações • ')) ||
+          row.configuration?.systemManaged
+        );
+
+        return {
+          id: row.id,
+          venueId: row.venue_id,
+          name: row.name,
+          type: (isSystemReferral ? 'referral' : row.type) as Source['type'],
+          funnelId: row.funnel_id,
+          whatsappInstanceId: isSystemReferral ? undefined : (row.whatsapp_instance_id || undefined),
+          status: (row.status as 'active' | 'inactive') || 'active',
+          slug: row.slug || undefined,
+          configuration: isSystemReferral ? { ...(row.configuration || {}), systemManaged: true } : (row.configuration || {}),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          totalEvents: eventsMap[row.id]?.total || 0,
+          totalViews: eventsMap[row.id]?.views || 0,
+          totalClicks: eventsMap[row.id]?.clicks || 0,
+          totalSubmits: eventsMap[row.id]?.submits || 0,
+          totalLeads: eventsMap[row.id]?.leads || 0,
+        };
+      });
     } catch (err) {
       console.error('Falha em sourceService.getAll:', err);
       return [];
@@ -106,16 +114,29 @@ export const sourceService = {
       
       const safeVenueId = (source.venueId && source.venueId !== 'all' && isUuid(source.venueId)) ? source.venueId : null;
 
+      const isSystemReferral = Boolean(
+        source.type === 'referral' ||
+        (source.name && source.name.startsWith('Indicações • ')) ||
+        (source.configuration as any)?.systemManaged
+      );
+
+      const effectiveType = isSystemReferral ? 'referral' : source.type;
+      const effectiveWhatsappInstance = isSystemReferral ? null : (source.whatsappInstanceId || null);
+      const effectiveStatus = isSystemReferral ? 'active' : (source.status || 'active');
+      const effectiveConfig = isSystemReferral 
+        ? { ...(source.configuration || {}), systemManaged: true }
+        : (source.configuration || {});
+
       const payload: any = {
         id: sourceId,
         venue_id: safeVenueId,
         name: source.name,
-        type: source.type,
+        type: effectiveType,
         funnel_id: (source.funnelId && isUuid(source.funnelId)) ? source.funnelId : null,
-        whatsapp_instance_id: source.whatsappInstanceId || null,
-        status: source.status || 'active',
-        slug: source.slug ? source.slug.trim().toLowerCase() : null,
-        configuration: source.configuration || {},
+        whatsapp_instance_id: effectiveWhatsappInstance,
+        status: effectiveStatus,
+        slug: effectiveType === 'form' && source.slug ? source.slug.trim().toLowerCase() : null,
+        configuration: effectiveConfig,
         updated_at: new Date().toISOString(),
       };
 
@@ -250,7 +271,13 @@ export const sourceService = {
           ? venueFunnels[0].id 
           : (primaryFunnel?.id && isUuid(primaryFunnel.id) ? primaryFunnel.id : '');
 
-        const venueSources = existingSources.filter(s => s.venueId === venue.id && s.type === 'referral');
+        const venueSources = existingSources.filter(s => 
+          s.venueId === venue.id && (
+            s.type === 'referral' ||
+            (s.name && s.name.startsWith('Indicações • ')) ||
+            (s.configuration as any)?.systemManaged
+          )
+        );
         const expectedName = `Indicações • ${venue.name}`;
 
         if (venueSources.length === 0) {
@@ -266,17 +293,30 @@ export const sourceService = {
             },
           });
         } else {
-          // Mantém a primeira e atualiza o nome caso a casa de festa tenha sido renomeada
+          // Mantém a primeira e auto-cura status, tipo, nome e funil
           const primarySource = venueSources[0];
           const isCurrentFunnelValid = primarySource.funnelId && venueFunnels.some(f => f.id === primarySource.funnelId);
           const finalFunnelId = isCurrentFunnelValid ? primarySource.funnelId : autoFunnelId;
 
-          if (primarySource.name !== expectedName || primarySource.funnelId !== finalFunnelId) {
+          const needsHeal = 
+            primarySource.name !== expectedName || 
+            primarySource.funnelId !== finalFunnelId ||
+            primarySource.type !== 'referral' ||
+            primarySource.status !== 'active' ||
+            primarySource.whatsappInstanceId !== undefined;
+
+          if (needsHeal) {
             await this.upsert({
               ...primarySource,
               name: expectedName,
               funnelId: finalFunnelId,
+              type: 'referral',
               status: 'active',
+              whatsappInstanceId: undefined,
+              configuration: {
+                ...(primarySource.configuration || {}),
+                systemManaged: true,
+              },
             });
           }
           // Remove eventuais duplicatas excedentes

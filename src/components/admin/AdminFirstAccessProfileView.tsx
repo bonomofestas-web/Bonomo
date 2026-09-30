@@ -9,7 +9,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { cloudflareR2Service } from '../../lib/cloudflareR2';
 
 export const AdminFirstAccessProfileView: React.FC = () => {
-  const { currentUser, venues, updateCollaborator, updateCurrentUserProfile } = useAdminState();
+  const { currentUser, venues, updateCurrentUserProfile } = useAdminState();
 
   const [name, setName] = useState(currentUser?.name || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
@@ -164,15 +164,7 @@ export const AdminFirstAccessProfileView: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. Update collaborator in state and Supabase
-      updateCollaborator(currentUser.id, {
-        name: name.trim(),
-        phone: phone.trim(),
-        avatarUrl,
-        isFirstAccess: false,
-      });
-
-      // 2. Update current active user profile
+      // 1. Atualiza o perfil ativo do usuário logado
       updateCurrentUserProfile({
         name: name.trim(),
         phone: phone.trim(),
@@ -180,7 +172,7 @@ export const AdminFirstAccessProfileView: React.FC = () => {
         isFirstAccess: false,
       });
 
-      // 3. Persist in Supabase collaborators table
+      // 2. Persiste diretamente no Supabase garantindo desbloqueio
       if (isSupabaseConfigured) {
         await supabase
           .from('collaborators')
@@ -189,6 +181,7 @@ export const AdminFirstAccessProfileView: React.FC = () => {
             phone: phone.trim(),
             avatar_url: avatarUrl,
             is_first_access: false,
+            updated_at: new Date().toISOString(),
           })
           .eq('id', currentUser.id);
       }

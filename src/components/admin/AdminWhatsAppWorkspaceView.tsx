@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, XCircle, Circle
+  Target, Lock, RotateCcw, XCircle
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -43,6 +43,7 @@ import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig } from '../../utils/taskColors';
 import {
   AdminBulkMoveFunnelModal,
   AdminBulkMoveStageModal,
@@ -56,7 +57,13 @@ import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, 
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
   if (!timestamp) return '';
-  const date = new Date(timestamp);
+  let date: Date;
+  if (typeof timestamp === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
+    const [y, m, d] = timestamp.split('-').map(Number);
+    date = new Date(y, m - 1, d);
+  } else {
+    date = new Date(timestamp);
+  }
   if (isNaN(date.getTime())) return '';
 
   const now = new Date();
@@ -71,6 +78,9 @@ export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): s
   }
   if (diffDays === 1) {
     return 'ONTEM';
+  }
+  if (diffDays === -1) {
+    return 'AMANHÃ';
   }
 
   const day = String(date.getDate()).padStart(2, '0');
@@ -520,6 +530,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [isQuickDatePickerOpen, setIsQuickDatePickerOpen] = useState(false);
   const [quickCalendarMonth, setQuickCalendarMonth] = useState<Date>(() => new Date());
   const quickDatePickerRef = useRef<HTMLDivElement>(null);
+
+  // Popover de Prioridade individual nos cards de follow-up
+  const [priorityMenuTaskId, setPriorityMenuTaskId] = useState<string | null>(null);
+  const priorityMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutsidePriority = (e: MouseEvent) => {
+      if (priorityMenuRef.current && !priorityMenuRef.current.contains(e.target as Node)) {
+        setPriorityMenuTaskId(null);
+      }
+    };
+    if (priorityMenuTaskId) {
+      document.addEventListener('mousedown', handleClickOutsidePriority);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsidePriority);
+    };
+  }, [priorityMenuTaskId]);
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -2342,7 +2370,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         description: t.title || t.description || existing?.description || 'Tarefa sem título',
       });
     });
-    return Array.from(map.values());
+    const sorted = Array.from(map.values()).sort((a, b) => {
+      const dateA = a.dueDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+      const dateB = b.dueDate || (b.createdAt ? b.createdAt.split('T')[0] : '');
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      const cmp = dateA.localeCompare(dateB);
+      if (cmp !== 0) return cmp;
+      const timeA = a.dueTime || '';
+      const timeB = b.dueTime || '';
+      return timeA.localeCompare(timeB);
+    });
+    return sorted;
   }, [selectedLead, tasks]);
 
   // Cliente Atual & Métricas Financeiras / Upsell / Documentos
@@ -6236,48 +6276,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               {/* Âncora invisível para rolagem automática até o final da conversa */}
               <div ref={messagesEndRef} style={{ height: '1px', flexShrink: 0 }} />
 
-              {/* 3. ABA TAREFAS / FOLLOW-UPS: Exibe tarefas agendadas no mesmo padrão rico do Cliente */}
+              {/* 3. ABA TAREFAS / FOLLOW-UPS: Exibe tarefas agendadas com separadores de data e sem cabeçalho redundante */}
               {composerTab === 'tasks' && (
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {isPostSaleFunnel ? <Calendar size={18} color="var(--adm-accent, #6366F1)" /> : <PhoneCall size={18} color="#3B82F6" />}
-                        <span>{isPostSaleFunnel ? 'Tarefas & Agendamentos' : 'Follow-ups do Lead'}</span>
-                      </h3>
-                      <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
-                        {isPostSaleFunnel
-                          ? 'Acompanhamento de prazos, compromissos e pendências operacionais deste cliente'
-                          : 'Histórico e próximos contatos / follow-ups agendados com este lead'}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingTask(null);
-                        setIsTaskModalOpen(true);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        backgroundColor: 'var(--adm-accent, #0284C7)',
-                        color: '#FFF',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
-                      }}
-                    >
-                      <Plus size={14} />
-                      <span>{isPostSaleFunnel ? 'Nova Tarefa / Agendamento' : 'Novo Follow-up'}</span>
-                    </button>
-                  </div>
-
+                <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', height: '100%', overflowY: 'auto' }}>
                   {combinedLeadTasks.length === 0 ? (
                     <div style={{
                       background: 'var(--adm-bg-card)',
@@ -6297,7 +6298,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {combinedLeadTasks.map(task => {
+                      {combinedLeadTasks.map((task, idx) => {
                         const isDone = task.status === 'completed';
                         const isLate = !isDone && Boolean(task.dueDate) && new Date(task.dueDate!) < new Date();
                         const collabLabel = (task as any).assignedToName || task.createdByName || (task.assignedToIds && task.assignedToIds.length ? 'Equipe' : null);
@@ -6318,358 +6319,526 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           }
                         }
 
-                        // Detecção de status de 4 estágios: 'scheduled' se data for futura, 'todo' se hoje/passado
+                        // Detecção de data e divisor de data estilo histórico/WhatsApp
+                        const taskDateStr = task.dueDate || (task.createdAt ? task.createdAt.split('T')[0] : '');
+                        const prevTask = idx > 0 ? combinedLeadTasks[idx - 1] : null;
+                        const prevDateStr = prevTask ? (prevTask.dueDate || (prevTask.createdAt ? prevTask.createdAt.split('T')[0] : '')) : null;
+                        const isDifferentDayFromPrev = idx === 0 || taskDateStr !== prevDateStr;
+                        const dateDividerText = isDifferentDayFromPrev && taskDateStr ? formatWhatsAppDateDivider(taskDateStr) : '';
+
+                        // Detecção de status de data futura
                         const isScheduled = Boolean(task.dueDate && task.dueDate > todayStr && task.status !== 'in_progress' && !isDone);
+                        const displayTaskType = (task as any).customType || (task as any).customProperties?.customType || task.type;
+                        const prioConfig = getTaskPriorityConfig(task.priority);
+                        const isPriorityMenuOpen = priorityMenuTaskId === task.id;
 
                         return (
-                          <div
-                            key={task.id}
-                            style={{
-                              background: 'var(--adm-bg-card)',
-                              border: `1px solid ${isDone ? (outcome === 'unsuccessful' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)') : isLate ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
-                              borderRadius: '10px',
-                              padding: '12px 16px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '10px',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                            }}
-                          >
-                            {/* 1. TOPO: TÍTULO DA TAREFA COM BADGES E BOTÃO VER */}
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                                  <strong style={{
-                                    fontSize: '0.86rem',
-                                    color: isDone ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
-                                    textDecoration: isDone ? 'line-through' : 'none',
-                                    fontWeight: 700,
-                                  }}>
-                                    {cleanTitle}
-                                  </strong>
-                                  {task.priority && (
-                                    <span style={{
-                                      fontSize: '10px',
-                                      padding: '1px 6px',
-                                      borderRadius: '4px',
-                                      fontWeight: 700,
-                                      background: task.priority === 'urgent' || task.priority === 'high' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(59, 130, 246, 0.12)',
-                                      color: task.priority === 'urgent' || task.priority === 'high' ? '#EF4444' : '#3B82F6',
-                                    }}>
-                                      {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
-                                    </span>
-                                  )}
-                                  {(task.type || (task as any).customType) && (
-                                    <span style={{
-                                      fontSize: '10px',
-                                      padding: '2px 7px',
-                                      borderRadius: '4px',
-                                      fontWeight: 600,
-                                      background: 'var(--adm-bg-input)',
-                                      color: 'var(--adm-text-title)',
-                                      border: '1px solid var(--adm-border)',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                    }}>
-                                      {renderTaskTypeLucideIcon(task.type || (task as any).customType, 11)}
-                                      <span>{task.type || (task as any).customType}</span>
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Ação: Botão Ver para abrir modal completo com bloco inteligente */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingTask(task);
-                                  setIsTaskModalOpen(true);
-                                }}
-                                title="Ver detalhes completos e notas inteligentes"
+                          <React.Fragment key={task.id}>
+                            {/* Divisor de data idêntico à aba Histórico */}
+                            {isDifferentDayFromPrev && dateDividerText && (
+                              <div
                                 style={{
-                                  background: 'var(--adm-bg-input)',
-                                  border: '1px solid var(--adm-border)',
-                                  borderRadius: '6px',
-                                  padding: '5px 9px',
-                                  color: 'var(--adm-accent, #0284C7)',
-                                  cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '4px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  flexShrink: 0,
+                                  justifyContent: 'center',
+                                  width: '100%',
+                                  margin: idx === 0 ? '4px 0 10px 0' : '16px 0 10px 0',
+                                  position: 'relative',
+                                  userSelect: 'none',
+                                  zIndex: 1,
                                 }}
                               >
-                                <Eye size={13} />
-                                <span>Ver</span>
-                              </button>
-                            </div>
-
-                            {/* 2. RESUMO DO FOLLOW-UP (EM DESTAQUE SE PREENCHIDO) */}
-                            {summaryNote && (
-                              <div style={{
-                                background: 'var(--adm-bg-input)',
-                                border: '1px solid var(--adm-border)',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
-                                fontSize: '0.76rem',
-                                color: 'var(--adm-text-title)',
-                                lineHeight: 1.45,
-                                whiteSpace: 'pre-wrap',
-                              }}>
-                                <span style={{
-                                  fontSize: '0.66rem',
-                                  fontWeight: 700,
-                                  color: 'var(--adm-text-muted)',
-                                  display: 'block',
-                                  marginBottom: '3px',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.5px'
-                                }}>
-                                  Resumo do Follow-up:
-                                </span>
-                                {summaryNote}
+                                <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
+                                <div
+                                  style={{
+                                    margin: '0 12px',
+                                    background: isDarkMode ? '#182229' : '#ffffff',
+                                    color: isDarkMode ? '#8696a0' : '#54656f',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.04em',
+                                    padding: '4px 14px',
+                                    borderRadius: '8px',
+                                    boxShadow: isDarkMode ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(11,20,26,0.12)',
+                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  <span>{dateDividerText}</span>
+                                </div>
+                                <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)' }} />
                               </div>
                             )}
 
-                            {/* 3. LINHA DE PRAZOS E RESPONSÁVEL */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isLate ? '#EF4444' : undefined, fontWeight: isLate ? 700 : 500 }}>
-                                <Clock size={12} />
-                                {task.dueDate ? `Prazo: ${new Date(task.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')} ${(task as any).dueTime ? `às ${(task as any).dueTime}` : ''}` : 'Sem prazo'}
-                                {isLate && ' (Atrasada)'}
-                              </span>
-                              {collabLabel && (
-                                <span>Resp: <strong style={{ color: 'var(--adm-text-title)' }}>{collabLabel}</strong></span>
-                              )}
-                              {isDone && (task as any).completedAt && (
-                                <span style={{ color: outcome === 'unsuccessful' ? '#EF4444' : '#10B981', fontWeight: 600 }}>
-                                  • Finalizado em {new Date((task as any).completedAt).toLocaleString('pt-BR')}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* 4. FLUXO DE 4 STATUS: AGENDADO -> NÃO INICIADO -> EM EXECUÇÃO -> COM SUCESSO / SEM SUCESSO */}
-                            {isDone ? (
-                              <div style={{
+                            <div
+                              style={{
+                                background: 'var(--adm-bg-card)',
+                                border: `1px solid ${isDone ? (outcome === 'unsuccessful' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)') : isLate ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
+                                borderRadius: '10px',
+                                padding: '12px 16px',
                                 display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                paddingTop: '8px',
-                                borderTop: '1px solid var(--adm-border)',
-                                flexWrap: 'wrap',
-                                gap: '8px',
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                    Resultado:
-                                  </span>
-                                  {outcome === 'unsuccessful' ? (
-                                    <span style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '5px',
-                                      padding: '3px 9px',
-                                      borderRadius: '6px',
-                                      background: 'rgba(239, 68, 68, 0.12)',
-                                      border: '1px solid rgba(239, 68, 68, 0.35)',
-                                      color: '#EF4444',
-                                      fontSize: '0.72rem',
+                                flexDirection: 'column',
+                                gap: '10px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                              }}
+                            >
+                              {/* 1. TOPO: TÍTULO DA TAREFA COM BADGES E BOTÃO VER */}
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                    <strong style={{
+                                      fontSize: '0.86rem',
+                                      color: isDone ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                                      textDecoration: isDone ? 'line-through' : 'none',
                                       fontWeight: 700,
                                     }}>
-                                      <XCircle size={12} />
-                                      <span>Sem Sucesso</span>
-                                    </span>
-                                  ) : (
-                                    <span style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '5px',
-                                      padding: '3px 9px',
-                                      borderRadius: '6px',
-                                      background: 'rgba(16, 185, 129, 0.12)',
-                                      border: '1px solid rgba(16, 185, 129, 0.35)',
-                                      color: '#10B981',
-                                      fontSize: '0.72rem',
-                                      fontWeight: 700,
-                                    }}>
-                                      <CheckCircle2 size={12} />
-                                      <span>Realizado com Sucesso</span>
-                                    </span>
-                                  )}
+                                      {cleanTitle}
+                                    </strong>
+
+                                    {/* Popover Moderno de Prioridade */}
+                                    <div style={{ position: 'relative' }}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setPriorityMenuTaskId(isPriorityMenuOpen ? null : task.id);
+                                        }}
+                                        title="Alterar prioridade"
+                                        style={{
+                                          fontSize: '11px',
+                                          padding: '2px 8px',
+                                          borderRadius: '6px',
+                                          fontWeight: 700,
+                                          background: prioConfig.bgColor,
+                                          color: prioConfig.color,
+                                          border: `1px solid ${prioConfig.borderColor}`,
+                                          cursor: 'pointer',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '5px',
+                                          transition: 'all 0.12s ease',
+                                        }}
+                                      >
+                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: prioConfig.color }} />
+                                        <span>{prioConfig.label}</span>
+                                      </button>
+
+                                      {isPriorityMenuOpen && (
+                                        <div
+                                          ref={priorityMenuRef}
+                                          style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            left: 0,
+                                            marginTop: '4px',
+                                            zIndex: 60,
+                                            background: isDarkMode ? '#1e293b' : '#ffffff',
+                                            border: '1px solid var(--adm-border)',
+                                            borderRadius: '8px',
+                                            padding: '4px',
+                                            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '2px',
+                                            minWidth: '135px',
+                                          }}
+                                        >
+                                          {TASK_PRIORITY_OPTIONS.map((opt) => (
+                                            <button
+                                              key={opt.id}
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (updateTask) updateTask(task.id, { priority: opt.id as any });
+                                                setPriorityMenuTaskId(null);
+                                              }}
+                                              style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                padding: '5px 8px',
+                                                borderRadius: '5px',
+                                                border: 'none',
+                                                background: task.priority === opt.id ? (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)') : 'transparent',
+                                                color: opt.color,
+                                                fontSize: '0.72rem',
+                                                fontWeight: task.priority === opt.id ? 800 : 600,
+                                                cursor: 'pointer',
+                                                textAlign: 'left',
+                                                width: '100%',
+                                              }}
+                                            >
+                                              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: opt.color }} />
+                                              <span>{opt.label}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Etiqueta do Tipo da Tarefa (priorizando customType ex: Follow-up Ligação) */}
+                                    {displayTaskType && (
+                                      <span style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontWeight: 600,
+                                        background: 'var(--adm-bg-input)',
+                                        color: 'var(--adm-text-title)',
+                                        border: '1px solid var(--adm-border)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                      }}>
+                                        {renderTaskTypeLucideIcon(displayTaskType, 12)}
+                                        <span>{displayTaskType}</span>
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
+                                {/* Ação: Botão Ver para abrir modal completo com bloco inteligente */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (updateTask) updateTask(task.id, { status: 'in_progress', completedAt: undefined });
+                                    setEditingTask(task);
+                                    setIsTaskModalOpen(true);
                                   }}
-                                  title="Reabrir este follow-up"
+                                  title="Ver detalhes completos e notas inteligentes"
                                   style={{
-                                    background: 'transparent',
+                                    background: 'var(--adm-bg-input)',
                                     border: '1px solid var(--adm-border)',
                                     borderRadius: '6px',
-                                    padding: '3px 8px',
-                                    color: 'var(--adm-text-muted)',
-                                    fontSize: '0.68rem',
+                                    padding: '5px 9px',
+                                    color: 'var(--adm-accent, #0284C7)',
                                     cursor: 'pointer',
-                                    display: 'inline-flex',
+                                    display: 'flex',
                                     alignItems: 'center',
                                     gap: '4px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    flexShrink: 0,
                                   }}
                                 >
-                                  <RotateCcw size={11} />
-                                  <span>Reabrir</span>
+                                  <Eye size={13} />
+                                  <span>Ver</span>
                                 </button>
                               </div>
-                            ) : (
-                              <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                paddingTop: '8px',
-                                borderTop: '1px solid var(--adm-border)',
-                                flexWrap: 'wrap',
-                              }}>
-                                <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginRight: '2px' }}>
-                                  Etapa:
-                                </span>
 
-                                {/* Estágio 1: Agendado ou Não Iniciada */}
-                                {isScheduled ? (
-                                  <span
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      padding: '4px 9px',
-                                      borderRadius: '6px',
-                                      border: '1px solid rgba(59, 130, 246, 0.35)',
-                                      background: 'rgba(59, 130, 246, 0.12)',
-                                      color: '#3B82F6',
-                                      fontSize: '0.70rem',
-                                      fontWeight: 700,
-                                    }}
-                                    title="Agendado para data futura"
-                                  >
-                                    <Calendar size={11} />
-                                    <span>Agendado</span>
+                              {/* 2. RESUMO DO FOLLOW-UP (EM DESTAQUE SE PREENCHIDO) */}
+                              {summaryNote && (
+                                <div style={{
+                                  background: 'var(--adm-bg-input)',
+                                  border: '1px solid var(--adm-border)',
+                                  borderRadius: '8px',
+                                  padding: '8px 12px',
+                                  fontSize: '0.76rem',
+                                  color: 'var(--adm-text-title)',
+                                  lineHeight: 1.45,
+                                  whiteSpace: 'pre-wrap',
+                                }}>
+                                  <span style={{
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    color: 'var(--adm-text-muted)',
+                                    display: 'block',
+                                    marginBottom: '3px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                  }}>
+                                    Resumo do Follow-up:
                                   </span>
-                                ) : (
+                                  {summaryNote}
+                                </div>
+                              )}
+
+                              {/* 3. LINHA DE PRAZOS E RESPONSÁVEL */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isLate ? '#EF4444' : undefined, fontWeight: isLate ? 700 : 500 }}>
+                                  <Clock size={12} />
+                                  {task.dueDate ? `Prazo: ${new Date(task.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')} ${(task as any).dueTime ? `às ${(task as any).dueTime}` : ''}` : 'Sem prazo'}
+                                  {isLate && ' (Atrasada)'}
+                                </span>
+                                {collabLabel && (
+                                  <span>Resp: <strong style={{ color: 'var(--adm-text-title)' }}>{collabLabel}</strong></span>
+                                )}
+                                {isDone && (task as any).completedAt && (
+                                  <span style={{ color: outcome === 'unsuccessful' ? '#EF4444' : '#10B981', fontWeight: 600 }}>
+                                    • Finalizado em {new Date((task as any).completedAt).toLocaleString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 4. FLUXO DE STATUS / ETAPAS CONFORME A DATA */}
+                              {isDone ? (
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  paddingTop: '8px',
+                                  borderTop: '1px solid var(--adm-border)',
+                                  flexWrap: 'wrap',
+                                  gap: '8px',
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                                      Resultado:
+                                    </span>
+                                    {outcome === 'unsuccessful' ? (
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '3px 9px',
+                                        borderRadius: '6px',
+                                        background: 'rgba(239, 68, 68, 0.12)',
+                                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                                        color: '#EF4444',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                      }}>
+                                        <XCircle size={12} />
+                                        <span>Sem Sucesso</span>
+                                      </span>
+                                    ) : (
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '3px 9px',
+                                        borderRadius: '6px',
+                                        background: 'rgba(16, 185, 129, 0.12)',
+                                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                                        color: '#10B981',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                      }}>
+                                        <CheckCircle2 size={12} />
+                                        <span>Realizado com Sucesso</span>
+                                      </span>
+                                    )}
+                                  </div>
+
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (updateTask) updateTask(task.id, { status: 'todo', customStatusId: 'st_todo' });
+                                      if (updateTask) updateTask(task.id, { status: 'in_progress', completedAt: undefined });
                                     }}
+                                    title="Reabrir este follow-up"
                                     style={{
+                                      background: 'transparent',
+                                      border: '1px solid var(--adm-border)',
+                                      borderRadius: '6px',
+                                      padding: '3px 8px',
+                                      color: 'var(--adm-text-muted)',
+                                      fontSize: '0.68rem',
+                                      cursor: 'pointer',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '4px',
-                                      padding: '4px 9px',
-                                      borderRadius: '6px',
-                                      border: `1px solid ${task.status === 'todo' ? 'rgba(245, 158, 11, 0.4)' : 'var(--adm-border)'}`,
-                                      background: task.status === 'todo' ? 'rgba(245, 158, 11, 0.15)' : 'var(--adm-bg-input)',
-                                      color: task.status === 'todo' ? '#F59E0B' : 'var(--adm-text-muted)',
-                                      fontSize: '0.70rem',
-                                      fontWeight: task.status === 'todo' ? 800 : 500,
-                                      cursor: 'pointer',
                                     }}
                                   >
-                                    <Circle size={10} />
-                                    <span>Não Iniciada</span>
+                                    <RotateCcw size={11} />
+                                    <span>Reabrir</span>
                                   </button>
-                                )}
+                                </div>
+                              ) : (
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  paddingTop: '8px',
+                                  borderTop: '1px solid var(--adm-border)',
+                                  flexWrap: 'wrap',
+                                }}>
+                                  <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginRight: '2px' }}>
+                                    Etapa:
+                                  </span>
 
-                                {/* Estágio 2: Em Execução */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (updateTask) updateTask(task.id, { status: 'in_progress', customStatusId: 'st_in_progress' });
-                                  }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 9px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.4)' : 'var(--adm-border)'}`,
-                                    background: task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.15)' : 'var(--adm-bg-input)',
-                                    color: task.status === 'in_progress' ? '#A855F7' : 'var(--adm-text-muted)',
-                                    fontSize: '0.70rem',
-                                    fontWeight: task.status === 'in_progress' ? 800 : 500,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  <span>Em Execução</span>
-                                </button>
+                                  {/* Se data for futura (isScheduled): badge Agendado e ações desabilitadas/cinzas */}
+                                  {isScheduled ? (
+                                    <>
+                                      <span
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: '1px solid rgba(59, 130, 246, 0.4)',
+                                          background: 'rgba(59, 130, 246, 0.12)',
+                                          color: '#3B82F6',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 700,
+                                        }}
+                                        title="Agendado para data futura"
+                                      >
+                                        <Calendar size={11} />
+                                        <span>Agendado</span>
+                                      </span>
 
-                                {/* Estágio 3A: Finalizar com Sucesso */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'success') {
-                                      setInlineCompletingTaskId(null);
-                                    } else {
-                                      setInlineCompletingTaskId(task.id);
-                                      setInlineCompletingOutcome('success');
-                                      setInlineResolutionText('');
-                                    }
-                                  }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 9px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.3)'}`,
-                                    background: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.08)',
-                                    color: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#FFFFFF' : '#10B981',
-                                    fontSize: '0.70rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.12s ease',
-                                  }}
-                                  title="Concluir follow-up com sucesso"
-                                >
-                                  <CheckCircle2 size={12} />
-                                  <span>Com Sucesso</span>
-                                </button>
+                                      <button
+                                        type="button"
+                                        disabled
+                                        title="Disponível a partir da data agendada"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: '1px solid var(--adm-border)',
+                                          background: 'var(--adm-bg-input)',
+                                          color: 'var(--adm-text-muted)',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 500,
+                                          opacity: 0.45,
+                                          cursor: 'not-allowed',
+                                        }}
+                                      >
+                                        <span>Em Execução</span>
+                                      </button>
 
-                                {/* Estágio 3B: Sem Sucesso */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'unsuccessful') {
-                                      setInlineCompletingTaskId(null);
-                                    } else {
-                                      setInlineCompletingTaskId(task.id);
-                                      setInlineCompletingOutcome('unsuccessful');
-                                      setInlineResolutionText('');
-                                    }
-                                  }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 9px',
-                                    borderRadius: '6px',
-                                    border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.3)'}`,
-                                    background: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.08)',
-                                    color: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#FFFFFF' : '#EF4444',
-                                    fontSize: '0.70rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.12s ease',
-                                  }}
-                                  title="Concluir follow-up sem sucesso (sem contato, recusa, etc)"
-                                >
-                                  <XCircle size={12} />
-                                  <span>Sem Sucesso</span>
-                                </button>
-                              </div>
-                            )}
+                                      <button
+                                        type="button"
+                                        disabled
+                                        title="Disponível a partir da data agendada"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: '1px solid var(--adm-border)',
+                                          background: 'var(--adm-bg-input)',
+                                          color: 'var(--adm-text-muted)',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 500,
+                                          opacity: 0.45,
+                                          cursor: 'not-allowed',
+                                        }}
+                                      >
+                                        <CheckCircle2 size={12} />
+                                        <span>Com Sucesso</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        disabled
+                                        title="Disponível a partir da data agendada"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: '1px solid var(--adm-border)',
+                                          background: 'var(--adm-bg-input)',
+                                          color: 'var(--adm-text-muted)',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 500,
+                                          opacity: 0.45,
+                                          cursor: 'not-allowed',
+                                        }}
+                                      >
+                                        <XCircle size={12} />
+                                        <span>Sem Sucesso</span>
+                                      </button>
+                                    </>
+                                  ) : (
+                                    /* Quando a data for hoje ou passada: NÃO tem botão Não Iniciada (já é o estado padrão). Exibe os 3 ativos: */
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (updateTask) updateTask(task.id, { status: 'in_progress', customStatusId: 'st_in_progress' });
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: `1px solid ${task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.4)' : 'var(--adm-border)'}`,
+                                          background: task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.15)' : 'var(--adm-bg-input)',
+                                          color: task.status === 'in_progress' ? '#A855F7' : 'var(--adm-text-muted)',
+                                          fontSize: '0.70rem',
+                                          fontWeight: task.status === 'in_progress' ? 800 : 600,
+                                          cursor: 'pointer',
+                                          transition: 'all 0.12s ease',
+                                        }}
+                                      >
+                                        <span>Em Execução</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'success') {
+                                            setInlineCompletingTaskId(null);
+                                          } else {
+                                            setInlineCompletingTaskId(task.id);
+                                            setInlineCompletingOutcome('success');
+                                            setInlineResolutionText('');
+                                          }
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.3)'}`,
+                                          background: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.08)',
+                                          color: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#FFFFFF' : '#10B981',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          transition: 'all 0.12s ease',
+                                        }}
+                                        title="Concluir follow-up com sucesso"
+                                      >
+                                        <CheckCircle2 size={12} />
+                                        <span>Com Sucesso</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'unsuccessful') {
+                                            setInlineCompletingTaskId(null);
+                                          } else {
+                                            setInlineCompletingTaskId(task.id);
+                                            setInlineCompletingOutcome('unsuccessful');
+                                            setInlineResolutionText('');
+                                          }
+                                        }}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.3)'}`,
+                                          background: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.08)',
+                                          color: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#FFFFFF' : '#EF4444',
+                                          fontSize: '0.70rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          transition: 'all 0.12s ease',
+                                        }}
+                                        title="Concluir follow-up sem sucesso (sem contato, recusa, etc)"
+                                      >
+                                        <XCircle size={12} />
+                                        <span>Sem Sucesso</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
 
                             {/* 5. CAIXA INLINE DE JUSTIFICATIVA OBRIGATÓRIA */}
                             {isInlineCompleting && (
@@ -6790,8 +6959,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </div>
                             )}
                           </div>
-                        );
-                      })}
+                        </React.Fragment>
+                      );
+                    })}
                     </div>
                   )}
                 </div>
