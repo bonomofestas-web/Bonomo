@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw
+  Target, Lock, RotateCcw, XCircle, Circle
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -40,7 +40,7 @@ import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
-import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import {
@@ -52,7 +52,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, ClientUpsellSale, ClientDocument } from '../../types/admin';
+import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
   if (!timestamp) return '';
@@ -495,9 +495,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Inline Task / Follow-up Completion State
   const [inlineCompletingTaskId, setInlineCompletingTaskId] = useState<string | null>(null);
   const [inlineResolutionText, setInlineResolutionText] = useState<string>('');
+  const [inlineCompletingOutcome, setInlineCompletingOutcome] = useState<'success' | 'unsuccessful'>('success');
+
+  // Tipos Oficiais de Follow-up (Idêntico ao Bloco de Notas Inteligente)
+  const FOLLOWUP_TYPES = [
+    'Follow-up WhatsApp',
+    'Follow-up Ligação',
+    'Envio de Proposta',
+    'Reunião Comercial',
+    'Negociação',
+    'Fechamento',
+  ];
 
   // Quick Follow-up Composer States
-  const [quickFollowupType, setQuickFollowupType] = useState<string>('Ligação WhatsApp');
+  const [quickFollowupType, setQuickFollowupType] = useState<string>('Follow-up WhatsApp');
+  const [isQuickTypePickerOpen, setIsQuickTypePickerOpen] = useState(false);
+  const [isCustomTypeEditing, setIsCustomTypeEditing] = useState(false);
+  const [customTypeInput, setCustomTypeInput] = useState('');
+  const quickTypePickerRef = useRef<HTMLDivElement>(null);
+
   const [quickFollowupDate, setQuickFollowupDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [quickFollowupTime, setQuickFollowupTime] = useState<string>('14:00');
   const [quickFollowupNote, setQuickFollowupNote] = useState<string>('');
@@ -515,6 +531,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, []);
+
+  useEffect(() => {
+    const handleClickOutsideQuickType = (e: MouseEvent) => {
+      if (quickTypePickerRef.current && !quickTypePickerRef.current.contains(e.target as Node)) {
+        setIsQuickTypePickerOpen(false);
+        setIsCustomTypeEditing(false);
+      }
+    };
+    if (isQuickTypePickerOpen) {
+      document.addEventListener('mousedown', handleClickOutsideQuickType);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideQuickType);
+    };
+  }, [isQuickTypePickerOpen]);
 
   useEffect(() => {
     const handleClickOutsideQuickDate = (e: MouseEvent) => {
@@ -1550,21 +1581,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   // Conclusão Inline de Follow-up com salvamento automático no Histórico e Auditoria
-  const handleCompleteInlineTask = async (task: AdminTask, resolution: string) => {
-    const cleanRes = resolution.trim() || 'Follow-up realizado com sucesso.';
+  const handleCompleteInlineTask = async (task: AdminTask, resolution: string, outcome: 'success' | 'unsuccessful' = 'success') => {
+    const defaultText = outcome === 'success' ? 'Follow-up realizado com sucesso.' : 'Follow-up sem sucesso / sem contato.';
+    const cleanRes = resolution.trim() || defaultText;
     const completedTimestamp = new Date().toISOString();
     if (updateTask) {
       updateTask(task.id, {
         status: 'completed',
-        customStatusId: 'st_completed',
+        customStatusId: outcome === 'success' ? 'st_completed_success' : 'st_completed_unsuccessful',
         completedAt: completedTimestamp,
         resolution: cleanRes,
+        customProperties: {
+          ...(task.customProperties || {}),
+          resolution: cleanRes,
+          outcome,
+        }
       });
     }
 
     // Registro automático na linha do tempo
     const author = currentUser?.name || 'Colaborador';
-    const auditNoteText = `📌 Follow-up concluído por ${author}: "${cleanRes}"`;
+    const auditNoteText = outcome === 'success'
+      ? `✅ Follow-up realizado com sucesso por ${author}: "${cleanRes}"`
+      : `⚠️ Follow-up sem sucesso por ${author}: "${cleanRes}"`;
     if (isPostSaleFunnel || selectedLead?.isClient) {
       addClientNote(selectedLead!.id, auditNoteText);
     } else if (selectedLead) {
@@ -1580,26 +1619,52 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (e) e.preventDefault();
     if (!selectedLead) return;
 
-    const title = quickFollowupNote.trim()
-      ? `${selectedLead.name} - ${quickFollowupType}: ${quickFollowupNote.trim()}`
-      : `${selectedLead.name} - ${quickFollowupType}`;
+    // Formata a data do evento do lead se existir (ex: 18/12/27)
+    const eventDateRaw = selectedLead.partyDate || selectedLead.eventDate;
+    let eventDateLabel = '';
+    if (eventDateRaw) {
+      try {
+        const parts = String(eventDateRaw).split('T')[0].split('-');
+        if (parts.length === 3) {
+          eventDateLabel = `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`;
+        }
+      } catch { }
+    }
+
+    const typeLabel = quickFollowupType || 'Follow-up WhatsApp';
+    // Padrão solicitado: [Nome da pessoa] [Data do Evento] • [Tipo do Follow-up]
+    const cleanTitle = eventDateLabel
+      ? `${selectedLead.name} ${eventDateLabel} • ${typeLabel}`
+      : `${selectedLead.name} • ${typeLabel}`;
+
+    const isFuture = quickFollowupDate > todayStr;
+    const initialStatus: TaskStatus = 'todo';
+    const customStatusId = isFuture ? 'st_scheduled' : 'st_todo';
 
     if (addTask) {
       addTask({
         leadId: selectedLead.id,
         leadName: selectedLead.name,
-        title,
-        description: quickFollowupNote.trim() || `Follow-up agendado via painel WhatsApp`,
-        type: quickFollowupType as any,
+        title: cleanTitle,
+        description: quickFollowupNote.trim() || undefined,
+        content: quickFollowupNote.trim() || undefined,
+        type: typeLabel as any,
+        customType: typeLabel,
         dueDate: quickFollowupDate,
         dueTime: quickFollowupTime,
         priority: 'medium',
-        status: 'todo',
+        status: initialStatus,
+        customStatusId: customStatusId,
         isFollowUp: true,
         createdById: currentUser?.id || 'admin',
         createdByName: currentUser?.name || 'Equipe',
         assignedToIds: currentUser?.id ? [currentUser.id] : [],
         venueId: selectedLead.venueId,
+        customProperties: {
+          observations: quickFollowupNote.trim() || undefined,
+          customType: typeLabel,
+          status: isFuture ? 'scheduled' : 'todo',
+        }
       });
     }
 
@@ -6237,13 +6302,31 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         const isLate = !isDone && Boolean(task.dueDate) && new Date(task.dueDate!) < new Date();
                         const collabLabel = (task as any).assignedToName || task.createdByName || (task.assignedToIds && task.assignedToIds.length ? 'Equipe' : null);
                         const isInlineCompleting = inlineCompletingTaskId === task.id;
+                        const outcome: 'success' | 'unsuccessful' = (task as any).customProperties?.outcome ||
+                          ((task.customStatusId === 'st_completed_unsuccessful' || (task.resolution || '').toLowerCase().includes('sem sucesso') || (task.resolution || '').toLowerCase().includes('sem contato')) ? 'unsuccessful' : 'success');
+
+                        // Hierarquia de Título e Resumo: Nome da pessoa + Data evento • Tipo
+                        let cleanTitle = task.title || task.description || 'Follow-up';
+                        let summaryNote = task.description && task.description !== task.title ? task.description : (task.content || '');
+
+                        // Compatibilidade com títulos legados que concatenavam ': '
+                        if (cleanTitle.includes(': ')) {
+                          const parts = cleanTitle.split(': ');
+                          cleanTitle = parts[0];
+                          if (!summaryNote) {
+                            summaryNote = parts.slice(1).join(': ');
+                          }
+                        }
+
+                        // Detecção de status de 4 estágios: 'scheduled' se data for futura, 'todo' se hoje/passado
+                        const isScheduled = Boolean(task.dueDate && task.dueDate > todayStr && task.status !== 'in_progress' && !isDone);
 
                         return (
                           <div
                             key={task.id}
                             style={{
                               background: 'var(--adm-bg-card)',
-                              border: `1px solid ${isDone ? 'rgba(16, 185, 129, 0.25)' : isLate ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
+                              border: `1px solid ${isDone ? (outcome === 'unsuccessful' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)') : isLate ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border)'}`,
                               borderRadius: '10px',
                               padding: '12px 16px',
                               display: 'flex',
@@ -6252,6 +6335,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                             }}
                           >
+                            {/* 1. TOPO: TÍTULO DA TAREFA COM BADGES E BOTÃO VER */}
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
@@ -6259,8 +6343,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     fontSize: '0.86rem',
                                     color: isDone ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
                                     textDecoration: isDone ? 'line-through' : 'none',
+                                    fontWeight: 700,
                                   }}>
-                                    {task.title || task.description}
+                                    {cleanTitle}
                                   </strong>
                                   {task.priority && (
                                     <span style={{
@@ -6274,130 +6359,209 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
                                     </span>
                                   )}
-                                  {task.type && (
+                                  {(task.type || (task as any).customType) && (
                                     <span style={{
                                       fontSize: '10px',
-                                      padding: '1px 6px',
+                                      padding: '2px 7px',
                                       borderRadius: '4px',
                                       fontWeight: 600,
                                       background: 'var(--adm-bg-input)',
-                                      color: 'var(--adm-text-muted)',
+                                      color: 'var(--adm-text-title)',
                                       border: '1px solid var(--adm-border)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
                                     }}>
-                                      {task.type}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {task.description && task.title && task.description !== task.title && (
-                                  <p style={{ margin: '0 0 6px', fontSize: '0.76rem', color: 'var(--adm-text-muted)', lineHeight: 1.4 }}>
-                                    {task.description}
-                                  </p>
-                                )}
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isLate ? '#EF4444' : undefined, fontWeight: isLate ? 700 : 500 }}>
-                                    <Clock size={12} />
-                                    {task.dueDate ? `Prazo: ${new Date(task.dueDate).toLocaleDateString('pt-BR')} ${(task as any).dueTime ? `às ${(task as any).dueTime}` : ''}` : 'Sem prazo'}
-                                    {isLate && ' (Atrasada)'}
-                                  </span>
-                                  {collabLabel && (
-                                    <span>Resp: <strong style={{ color: 'var(--adm-text-title)' }}>{collabLabel}</strong></span>
-                                  )}
-                                  {isDone && (task as any).completedAt && (
-                                    <span style={{ color: '#10B981', fontWeight: 600 }}>
-                                      • Concluído em {new Date((task as any).completedAt).toLocaleString('pt-BR')}
+                                      {renderTaskTypeLucideIcon(task.type || (task as any).customType, 11)}
+                                      <span>{task.type || (task as any).customType}</span>
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              {/* Action Buttons: Eye Icon for details & smart notes */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {/* Ação: Botão Ver para abrir modal completo com bloco inteligente */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTask(task);
+                                  setIsTaskModalOpen(true);
+                                }}
+                                title="Ver detalhes completos e notas inteligentes"
+                                style={{
+                                  background: 'var(--adm-bg-input)',
+                                  border: '1px solid var(--adm-border)',
+                                  borderRadius: '6px',
+                                  padding: '5px 9px',
+                                  color: 'var(--adm-accent, #0284C7)',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Eye size={13} />
+                                <span>Ver</span>
+                              </button>
+                            </div>
+
+                            {/* 2. RESUMO DO FOLLOW-UP (EM DESTAQUE SE PREENCHIDO) */}
+                            {summaryNote && (
+                              <div style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                fontSize: '0.76rem',
+                                color: 'var(--adm-text-title)',
+                                lineHeight: 1.45,
+                                whiteSpace: 'pre-wrap',
+                              }}>
+                                <span style={{
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                  color: 'var(--adm-text-muted)',
+                                  display: 'block',
+                                  marginBottom: '3px',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px'
+                                }}>
+                                  Resumo do Follow-up:
+                                </span>
+                                {summaryNote}
+                              </div>
+                            )}
+
+                            {/* 3. LINHA DE PRAZOS E RESPONSÁVEL */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isLate ? '#EF4444' : undefined, fontWeight: isLate ? 700 : 500 }}>
+                                <Clock size={12} />
+                                {task.dueDate ? `Prazo: ${new Date(task.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')} ${(task as any).dueTime ? `às ${(task as any).dueTime}` : ''}` : 'Sem prazo'}
+                                {isLate && ' (Atrasada)'}
+                              </span>
+                              {collabLabel && (
+                                <span>Resp: <strong style={{ color: 'var(--adm-text-title)' }}>{collabLabel}</strong></span>
+                              )}
+                              {isDone && (task as any).completedAt && (
+                                <span style={{ color: outcome === 'unsuccessful' ? '#EF4444' : '#10B981', fontWeight: 600 }}>
+                                  • Finalizado em {new Date((task as any).completedAt).toLocaleString('pt-BR')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 4. FLUXO DE 4 STATUS: AGENDADO -> NÃO INICIADO -> EM EXECUÇÃO -> COM SUCESSO / SEM SUCESSO */}
+                            {isDone ? (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingTop: '8px',
+                                borderTop: '1px solid var(--adm-border)',
+                                flexWrap: 'wrap',
+                                gap: '8px',
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                                    Resultado:
+                                  </span>
+                                  {outcome === 'unsuccessful' ? (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      background: 'rgba(239, 68, 68, 0.12)',
+                                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                                      color: '#EF4444',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                    }}>
+                                      <XCircle size={12} />
+                                      <span>Sem Sucesso</span>
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      background: 'rgba(16, 185, 129, 0.12)',
+                                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                                      color: '#10B981',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                    }}>
+                                      <CheckCircle2 size={12} />
+                                      <span>Realizado com Sucesso</span>
+                                    </span>
+                                  )}
+                                </div>
+
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setEditingTask(task);
-                                    setIsTaskModalOpen(true);
+                                    if (updateTask) updateTask(task.id, { status: 'in_progress', completedAt: undefined });
                                   }}
-                                  title="Ver detalhes e notas inteligentes"
+                                  title="Reabrir este follow-up"
                                   style={{
-                                    background: 'var(--adm-bg-input)',
+                                    background: 'transparent',
                                     border: '1px solid var(--adm-border)',
                                     borderRadius: '6px',
-                                    padding: '6px 8px',
-                                    color: 'var(--adm-accent, #6366F1)',
+                                    padding: '3px 8px',
+                                    color: 'var(--adm-text-muted)',
+                                    fontSize: '0.68rem',
                                     cursor: 'pointer',
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '4px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
                                   }}
                                 >
-                                  <Eye size={14} />
-                                  <span>Ver</span>
+                                  <RotateCcw size={11} />
+                                  <span>Reabrir</span>
                                 </button>
                               </div>
-                            </div>
+                            ) : (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                paddingTop: '8px',
+                                borderTop: '1px solid var(--adm-border)',
+                                flexWrap: 'wrap',
+                              }}>
+                                <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginRight: '2px' }}>
+                                  Etapa:
+                                </span>
 
-                            {/* 3-Stage Status Pill Selector */}
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              paddingTop: '8px',
-                              borderTop: '1px solid var(--adm-border)',
-                              flexWrap: 'wrap',
-                            }}>
-                              <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginRight: '4px' }}>
-                                Etapa:
-                              </span>
-                              {(['todo', 'in_progress', 'completed'] as any[]).map(statusKey => {
-                                const isCurrent = task.status === statusKey;
-                                const labels: Record<string, string> = {
-                                  todo: 'Não Iniciada',
-                                  in_progress: 'Em Execução',
-                                  waiting: 'Aguardando',
-                                  completed: 'Finalizada',
-                                };
-
-                                let activeBg = 'var(--adm-bg-input)';
-                                let activeColor = 'var(--adm-text-muted)';
-                                let activeBorder = 'var(--adm-border)';
-
-                                if (isCurrent) {
-                                  if (statusKey === 'completed') {
-                                    activeBg = 'rgba(16, 185, 129, 0.15)';
-                                    activeColor = '#10B981';
-                                    activeBorder = 'rgba(16, 185, 129, 0.4)';
-                                  } else if (statusKey === 'in_progress') {
-                                    activeBg = 'rgba(59, 130, 246, 0.15)';
-                                    activeColor = '#3B82F6';
-                                    activeBorder = 'rgba(59, 130, 246, 0.4)';
-                                  } else {
-                                    activeBg = 'rgba(245, 158, 11, 0.15)';
-                                    activeColor = '#F59E0B';
-                                    activeBorder = 'rgba(245, 158, 11, 0.4)';
-                                  }
-                                }
-
-                                return (
+                                {/* Estágio 1: Agendado ou Não Iniciada */}
+                                {isScheduled ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '4px 9px',
+                                      borderRadius: '6px',
+                                      border: '1px solid rgba(59, 130, 246, 0.35)',
+                                      background: 'rgba(59, 130, 246, 0.12)',
+                                      color: '#3B82F6',
+                                      fontSize: '0.70rem',
+                                      fontWeight: 700,
+                                    }}
+                                    title="Agendado para data futura"
+                                  >
+                                    <Calendar size={11} />
+                                    <span>Agendado</span>
+                                  </span>
+                                ) : (
                                   <button
-                                    key={statusKey}
                                     type="button"
                                     onClick={() => {
-                                      if (statusKey === 'completed') {
-                                        if (isDone) {
-                                          if (updateTask) updateTask(task.id, { status: 'todo', completedAt: undefined });
-                                        } else {
-                                          setInlineCompletingTaskId(prev => prev === task.id ? null : task.id);
-                                          setInlineResolutionText('');
-                                        }
-                                      } else {
-                                        setInlineCompletingTaskId(null);
-                                        if (updateTask) updateTask(task.id, { status: statusKey, customStatusId: statusKey === 'in_progress' ? 'st_in_progress' : 'st_todo', completedAt: undefined });
-                                      }
+                                      if (updateTask) updateTask(task.id, { status: 'todo', customStatusId: 'st_todo' });
                                     }}
                                     style={{
                                       display: 'inline-flex',
@@ -6405,45 +6569,148 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       gap: '4px',
                                       padding: '4px 9px',
                                       borderRadius: '6px',
-                                      border: `1px solid ${activeBorder}`,
-                                      background: activeBg,
-                                      color: activeColor,
+                                      border: `1px solid ${task.status === 'todo' ? 'rgba(245, 158, 11, 0.4)' : 'var(--adm-border)'}`,
+                                      background: task.status === 'todo' ? 'rgba(245, 158, 11, 0.15)' : 'var(--adm-bg-input)',
+                                      color: task.status === 'todo' ? '#F59E0B' : 'var(--adm-text-muted)',
                                       fontSize: '0.70rem',
-                                      fontWeight: isCurrent ? 800 : 500,
+                                      fontWeight: task.status === 'todo' ? 800 : 500,
                                       cursor: 'pointer',
-                                      transition: 'all 0.12s ease',
                                     }}
                                   >
-                                    {isCurrent && statusKey === 'completed' && <CheckCircle2 size={11} />}
-                                    <span>{labels[statusKey]}</span>
+                                    <Circle size={10} />
+                                    <span>Não Iniciada</span>
                                   </button>
-                                );
-                              })}
-                            </div>
+                                )}
 
-                            {/* Inline Completion Box */}
+                                {/* Estágio 2: Em Execução */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (updateTask) updateTask(task.id, { status: 'in_progress', customStatusId: 'st_in_progress' });
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 9px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.4)' : 'var(--adm-border)'}`,
+                                    background: task.status === 'in_progress' ? 'rgba(147, 51, 234, 0.15)' : 'var(--adm-bg-input)',
+                                    color: task.status === 'in_progress' ? '#A855F7' : 'var(--adm-text-muted)',
+                                    fontSize: '0.70rem',
+                                    fontWeight: task.status === 'in_progress' ? 800 : 500,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <span>Em Execução</span>
+                                </button>
+
+                                {/* Estágio 3A: Finalizar com Sucesso */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'success') {
+                                      setInlineCompletingTaskId(null);
+                                    } else {
+                                      setInlineCompletingTaskId(task.id);
+                                      setInlineCompletingOutcome('success');
+                                      setInlineResolutionText('');
+                                    }
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 9px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.3)'}`,
+                                    background: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#10B981' : 'rgba(16, 185, 129, 0.08)',
+                                    color: isInlineCompleting && inlineCompletingOutcome === 'success' ? '#FFFFFF' : '#10B981',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.12s ease',
+                                  }}
+                                  title="Concluir follow-up com sucesso"
+                                >
+                                  <CheckCircle2 size={12} />
+                                  <span>Com Sucesso</span>
+                                </button>
+
+                                {/* Estágio 3B: Sem Sucesso */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (inlineCompletingTaskId === task.id && inlineCompletingOutcome === 'unsuccessful') {
+                                      setInlineCompletingTaskId(null);
+                                    } else {
+                                      setInlineCompletingTaskId(task.id);
+                                      setInlineCompletingOutcome('unsuccessful');
+                                      setInlineResolutionText('');
+                                    }
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 9px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.3)'}`,
+                                    background: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#EF4444' : 'rgba(239, 68, 68, 0.08)',
+                                    color: isInlineCompleting && inlineCompletingOutcome === 'unsuccessful' ? '#FFFFFF' : '#EF4444',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.12s ease',
+                                  }}
+                                  title="Concluir follow-up sem sucesso (sem contato, recusa, etc)"
+                                >
+                                  <XCircle size={12} />
+                                  <span>Sem Sucesso</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* 5. CAIXA INLINE DE JUSTIFICATIVA OBRIGATÓRIA */}
                             {isInlineCompleting && (
                               <div style={{
                                 marginTop: '4px',
-                                padding: '10px 12px',
+                                padding: '12px',
                                 borderRadius: '8px',
-                                background: isDarkMode ? 'rgba(16, 185, 129, 0.08)' : '#f0fdf4',
-                                border: '1px solid rgba(16, 185, 129, 0.35)',
+                                background: inlineCompletingOutcome === 'success'
+                                  ? (isDarkMode ? 'rgba(16, 185, 129, 0.08)' : '#f0fdf4')
+                                  : (isDarkMode ? 'rgba(239, 68, 68, 0.08)' : '#fef2f2'),
+                                border: `1px solid ${inlineCompletingOutcome === 'success' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '8px',
                                 animation: 'fadeIn 0.15s ease-out',
                               }}>
-                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#10B981' }}>
-                                  O que aconteceu neste follow-up? (Salvo automaticamente no histórico):
+                                <div style={{
+                                  fontSize: '0.74rem',
+                                  fontWeight: 800,
+                                  color: inlineCompletingOutcome === 'success' ? '#10B981' : '#EF4444',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                }}>
+                                  {inlineCompletingOutcome === 'success' ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                                  <span>
+                                    {inlineCompletingOutcome === 'success'
+                                      ? 'O que aconteceu neste follow-up com sucesso? (Obrigatório, salvo no histórico):'
+                                      : 'Por que este follow-up não teve sucesso? (Obrigatório, salvo no histórico):'}
+                                  </span>
                                 </div>
                                 <textarea
                                   value={inlineResolutionText}
                                   onChange={(e) => setInlineResolutionText(e.target.value)}
-                                  placeholder="Descreva o retorno do cliente ou resultado do contato..."
+                                  placeholder={inlineCompletingOutcome === 'success'
+                                    ? "Descreva o retorno do cliente ou resultado positivo do contato..."
+                                    : "Descreva o motivo do insucesso (não atendeu, número inválido, desistiu, etc)..."}
                                   className="adm-input"
+                                  autoFocus
                                   style={{
-                                    minHeight: '60px',
+                                    minHeight: '62px',
                                     fontSize: '0.78rem',
                                     padding: '8px',
                                     borderRadius: '6px',
@@ -6458,7 +6725,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       setInlineResolutionText('');
                                     }}
                                     style={{
-                                      padding: '5px 10px',
+                                      padding: '5px 11px',
                                       borderRadius: '6px',
                                       border: '1px solid var(--adm-border)',
                                       background: 'transparent',
@@ -6471,12 +6738,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleCompleteInlineTask(task, inlineResolutionText)}
+                                    onClick={() => {
+                                      if (!inlineResolutionText.trim()) {
+                                        alert('Por favor, informe a justificativa ou resultado do follow-up.');
+                                        return;
+                                      }
+                                      handleCompleteInlineTask(task, inlineResolutionText, inlineCompletingOutcome);
+                                    }}
                                     style={{
                                       padding: '6px 14px',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      background: '#10B981',
+                                      background: inlineCompletingOutcome === 'success' ? '#10B981' : '#EF4444',
                                       color: '#fff',
                                       fontSize: '0.74rem',
                                       fontWeight: 700,
@@ -6487,24 +6760,31 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     }}
                                   >
                                     <Check size={13} />
-                                    <span>Concluir e Salvar no Histórico</span>
+                                    <span>Salvar e Finalizar Follow-up</span>
                                   </button>
                                 </div>
                               </div>
                             )}
 
-                            {/* Resolution / Feedback if completed */}
+                            {/* 6. REGISTRO DE RESOLUÇÃO SE JÁ CONCLUÍDO */}
                             {(task.resolution || (task as any).customProperties?.resolution) && !isInlineCompleting && (
                               <div style={{
-                                background: 'rgba(16, 185, 129, 0.06)',
-                                borderLeft: '3px solid #10B981',
+                                background: outcome === 'unsuccessful' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(16, 185, 129, 0.06)',
+                                borderLeft: `3px solid ${outcome === 'unsuccessful' ? '#EF4444' : '#10B981'}`,
                                 padding: '6px 10px',
                                 borderRadius: '0 6px 6px 0',
                                 fontSize: '0.72rem',
                                 color: 'var(--adm-text-title)',
                               }}>
-                                <span style={{ fontWeight: 700, color: '#10B981', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>
-                                  Registro de Conclusão / O que aconteceu:
+                                <span style={{
+                                  fontWeight: 700,
+                                  color: outcome === 'unsuccessful' ? '#EF4444' : '#10B981',
+                                  display: 'block',
+                                  fontSize: '0.68rem',
+                                  textTransform: 'uppercase',
+                                  marginBottom: '2px',
+                                }}>
+                                  {outcome === 'unsuccessful' ? 'Motivo do Insucesso:' : 'Resultado Registrado / O que aconteceu:'}
                                 </span>
                                 {task.resolution || (task as any).customProperties?.resolution}
                               </div>
@@ -7578,250 +7858,415 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </button>
                   </div>
                 ) : composerTab === 'tasks' ? (
-                  /* 3. COMPOSER: QUICK FOLLOW-UP BAR */
-                  <form onSubmit={handleCreateQuickFollowup} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '12px',
-                    padding: '8px 12px',
-                    flexWrap: 'wrap',
-                    position: 'relative',
-                  }}>
-                    {/* 1. Tipo de Follow-up (Sem Emojis, Padrão Lucide) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <select
-                        value={quickFollowupType}
-                        onChange={(e) => setQuickFollowupType(e.target.value)}
-                        className="adm-input"
-                        style={{
-                          height: '36px',
-                          fontSize: '0.74rem',
-                          borderRadius: '8px',
-                          padding: '0 10px',
-                          fontWeight: 700,
-                          background: 'var(--adm-bg-input)',
-                          color: 'var(--adm-text-title)',
-                          border: '1px solid var(--adm-border)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <option value="Ligação WhatsApp">Ligação WhatsApp</option>
-                        <option value="Mensagem WhatsApp">Mensagem WhatsApp</option>
-                        <option value="Reunião / Visita">Visita / Reunião</option>
-                        <option value="Proposta / Orçamento">Enviar Proposta</option>
-                        <option value="Outro">Outro Follow-up</option>
-                      </select>
-                    </div>
-
-                    {/* 2. Pop-up de Calendário Bonitinho */}
-                    <div style={{ position: 'relative' }} ref={quickDatePickerRef}>
-                      <button
-                        type="button"
-                        onClick={() => setIsQuickDatePickerOpen(!isQuickDatePickerOpen)}
-                        style={{
-                          height: '36px',
-                          padding: '0 10px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--adm-border)',
-                          background: 'var(--adm-bg-input)',
-                          color: 'var(--adm-text-title)',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                        title="Escolher data do follow-up"
-                      >
-                        <Calendar size={14} style={{ color: 'var(--adm-accent, #0284C7)' }} />
-                        <span>{formatQuickDateLabel(quickFollowupDate)}</span>
-                        <ChevronDown size={12} style={{ color: 'var(--adm-text-muted)' }} />
-                      </button>
-
-                      {isQuickDatePickerOpen && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: '100%',
-                          left: 0,
-                          marginBottom: '8px',
-                          zIndex: 999,
-                          background: 'var(--adm-bg-card)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '14px',
-                          boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
-                          width: '270px',
-                          padding: '14px',
-                          boxSizing: 'border-box',
-                        }}>
-                          {/* Top Header com Mês e Atalhos */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              {quickMonthTitle}
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  /* 3. COMPOSER: QUICK FOLLOW-UP BAR NO FORMATO CHAT WHATSAPP COM PRÉ-CONFIGURAÇÕES */
+                  <div style={{ padding: '4px 12px 12px 12px' }}>
+                    <form onSubmit={handleCreateQuickFollowup} style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '12px',
+                      padding: '10px 12px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                      position: 'relative',
+                    }}>
+                      {/* LINHA SUPERIOR: PRÉ-CONFIGURAÇÕES (TIPO DO FOLLOW-UP + DATA E HORÁRIO) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* 1. Seletor Dropdown Elegante de Tipos (Idêntico à Ficha do Bloco de Notas) */}
+                        <div style={{ position: 'relative' }} ref={quickTypePickerRef}>
+                          {!isCustomTypeEditing ? (
+                            <button
+                              type="button"
+                              onClick={() => setIsQuickTypePickerOpen(!isQuickTypePickerOpen)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                color: 'var(--adm-text-title)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '8px',
+                                padding: '6px 12px',
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '7px',
+                                transition: 'all 0.15s ease',
+                              }}
+                              title="Alterar tipo de follow-up"
+                            >
+                              {renderTaskTypeLucideIcon(quickFollowupType, 14)}
+                              <span>{quickFollowupType}</span>
+                              <ChevronDown size={13} color="var(--adm-text-muted)" />
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <input
+                                type="text"
+                                value={customTypeInput}
+                                onChange={(e) => setCustomTypeInput(e.target.value)}
+                                placeholder="Nome do tipo..."
+                                autoFocus
+                                className="adm-input"
+                                style={{ height: '32px', fontSize: '0.76rem', padding: '0 8px', borderRadius: '6px', width: '150px' }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    if (customTypeInput.trim()) {
+                                      setQuickFollowupType(customTypeInput.trim());
+                                    }
+                                    setIsCustomTypeEditing(false);
+                                  }
+                                }}
+                              />
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setQuickFollowupDate(todayStr);
-                                  setIsQuickDatePickerOpen(false);
+                                  if (customTypeInput.trim()) {
+                                    setQuickFollowupType(customTypeInput.trim());
+                                  }
+                                  setIsCustomTypeEditing(false);
                                 }}
-                                style={{
-                                  background: 'rgba(2, 132, 199, 0.12)',
-                                  border: '1px solid rgba(2, 132, 199, 0.25)',
-                                  color: 'var(--adm-accent, #0284C7)',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  padding: '2px 6px',
-                                  borderRadius: '5px',
-                                }}
+                                style={{ padding: '5px 8px', borderRadius: '6px', background: 'var(--adm-accent, #0284C7)', border: 'none', color: '#fff', cursor: 'pointer' }}
                               >
-                                Hoje
+                                <Check size={12} />
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setQuickFollowupDate(tomorrowStr);
-                                  setIsQuickDatePickerOpen(false);
-                                }}
-                                style={{
-                                  background: 'transparent',
-                                  border: '1px solid var(--adm-border)',
-                                  color: 'var(--adm-text-muted)',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  padding: '2px 6px',
-                                  borderRadius: '5px',
-                                }}
+                                onClick={() => setIsCustomTypeEditing(false)}
+                                style={{ padding: '5px 8px', borderRadius: '6px', background: 'transparent', border: '1px solid var(--adm-border)', color: 'var(--adm-text-muted)', cursor: 'pointer' }}
                               >
-                                Amanhã
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() - 1, 1))}
-                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
-                              >
-                                <ChevronLeft size={15} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() + 1, 1))}
-                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
-                              >
-                                <ChevronRight size={15} />
+                                <X size={12} />
                               </button>
                             </div>
-                          </div>
+                          )}
 
-                          {/* Dias da Semana */}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginBottom: '6px', fontWeight: 700 }}>
-                            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
-                          </div>
+                          {/* Popover Dropdown de Tipos */}
+                          {isQuickTypePickerOpen && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                bottom: '100%',
+                                left: 0,
+                                marginBottom: '6px',
+                                zIndex: 999,
+                                background: 'var(--adm-bg-card)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '12px',
+                                boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                                width: '240px',
+                                padding: '6px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '2px',
+                              }}
+                            >
+                              {FOLLOWUP_TYPES.map(t => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => {
+                                    setQuickFollowupType(t);
+                                    setIsQuickTypePickerOpen(false);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '7px 10px',
+                                    borderRadius: '6px',
+                                    background: quickFollowupType === t ? 'rgba(2, 132, 199, 0.12)' : 'transparent',
+                                    border: 'none',
+                                    color: quickFollowupType === t ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title)',
+                                    fontSize: '0.78rem',
+                                    fontWeight: quickFollowupType === t ? 700 : 500,
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                  }}
+                                >
+                                  {renderTaskTypeLucideIcon(t, 14)}
+                                  <span style={{ flex: 1 }}>{t}</span>
+                                  {quickFollowupType === t && <Check size={13} color="var(--adm-accent, #0284C7)" />}
+                                </button>
+                              ))}
 
-                          {/* Grid de Dias */}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', textAlign: 'center' }}>
-                            {quickCalendarDays.map((d, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => {
-                                  setQuickFollowupDate(d.dateStr);
-                                  setIsQuickDatePickerOpen(false);
-                                }}
-                                style={{
-                                  background: d.isSelected 
-                                    ? 'var(--adm-accent, #0284C7)' 
-                                    : (d.isToday ? 'rgba(2, 132, 199, 0.15)' : 'transparent'),
-                                  color: d.isSelected 
-                                    ? '#FFFFFF' 
-                                    : (d.isCurrentMonth ? 'var(--adm-text-title)' : 'var(--adm-text-muted)'),
-                                  border: d.isToday && !d.isSelected ? '1px solid var(--adm-accent, #0284C7)' : 'none',
-                                  borderRadius: '6px',
-                                  padding: '5px 0',
-                                  fontSize: '0.74rem',
-                                  fontWeight: d.isSelected || d.isToday ? 800 : 500,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.1s ease',
-                                }}
-                              >
-                                {d.day}
-                              </button>
-                            ))}
-                          </div>
+                              <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsQuickTypePickerOpen(false);
+                                    setCustomTypeInput('');
+                                    setIsCustomTypeEditing(true);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '7px 10px',
+                                    borderRadius: '6px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--adm-accent, #0284C7)',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                  }}
+                                >
+                                  <Edit3 size={13} />
+                                  <span>Outro (Personalizado)...</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* 3. Horário */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <input
-                        type="time"
-                        value={quickFollowupTime}
-                        onChange={(e) => setQuickFollowupTime(e.target.value)}
-                        className="adm-input"
-                        style={{
-                          height: '36px',
-                          fontSize: '0.74rem',
-                          borderRadius: '8px',
-                          padding: '0 8px',
-                          width: '84px',
-                          background: 'var(--adm-bg-input)',
-                          color: 'var(--adm-text-title)',
-                          border: '1px solid var(--adm-border)',
-                          fontWeight: 600,
-                        }}
-                      />
-                    </div>
+                        {/* 2. Seletor Popover de Data e Horário Unificados */}
+                        <div style={{ position: 'relative' }} ref={quickDatePickerRef}>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickDatePickerOpen(!isQuickDatePickerOpen)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              color: 'var(--adm-text-title)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '8px',
+                              padding: '6px 12px',
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '7px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Escolher data e horário do follow-up"
+                          >
+                            <Calendar size={14} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+                            <span>
+                              {formatQuickDateLabel(quickFollowupDate)}
+                              {quickFollowupTime ? ` às ${quickFollowupTime}` : ''}
+                            </span>
+                            <ChevronDown size={13} style={{ color: 'var(--adm-text-muted)' }} />
+                          </button>
 
-                    {/* 4. Resumo */}
-                    <input
-                      type="text"
-                      value={quickFollowupNote}
-                      onChange={(e) => setQuickFollowupNote(e.target.value)}
-                      placeholder="Resumo do follow-up (opcional)..."
-                      className="adm-input"
-                      style={{
-                        flex: 1,
-                        minWidth: '160px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        fontSize: '0.76rem',
-                        background: 'var(--adm-bg-input)',
-                        color: 'var(--adm-text-title)',
-                        border: '1px solid var(--adm-border)',
-                      }}
-                    />
+                          {isQuickDatePickerOpen && (
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '100%',
+                              left: 0,
+                              marginBottom: '6px',
+                              zIndex: 999,
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '14px',
+                              boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                              width: '275px',
+                              padding: '14px',
+                              boxSizing: 'border-box',
+                            }}>
+                              {/* Top Header com Mês e Atalhos */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                  {quickMonthTitle}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuickFollowupDate(todayStr);
+                                    }}
+                                    style={{
+                                      background: 'rgba(2, 132, 199, 0.12)',
+                                      border: '1px solid rgba(2, 132, 199, 0.25)',
+                                      color: 'var(--adm-accent, #0284C7)',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                    }}
+                                  >
+                                    Hoje
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuickFollowupDate(tomorrowStr);
+                                    }}
+                                    style={{
+                                      background: 'transparent',
+                                      border: '1px solid var(--adm-border)',
+                                      color: 'var(--adm-text-muted)',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      padding: '2px 6px',
+                                      borderRadius: '5px',
+                                    }}
+                                  >
+                                    Amanhã
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() - 1, 1))}
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
+                                  >
+                                    <ChevronLeft size={15} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() + 1, 1))}
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
+                                  >
+                                    <ChevronRight size={15} />
+                                  </button>
+                                </div>
+                              </div>
 
-                    {/* 5. Botão de Ação */}
-                    <button
-                      type="submit"
-                      className="adm-btn-primary"
-                      style={{
-                        height: '36px',
-                        padding: '0 14px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '0.74rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        background: 'var(--adm-accent, #0284C7)',
-                        border: '1px solid var(--adm-accent, #0284C7)',
-                        color: '#FFFFFF',
-                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
-                      }}
-                    >
-                      <Plus size={14} />
-                      <span>Agendar Follow-up</span>
-                    </button>
-                  </form>
+                              {/* Dias da Semana */}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginBottom: '6px', fontWeight: 700 }}>
+                                <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                              </div>
+
+                              {/* Grid de Dias */}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', textAlign: 'center', marginBottom: '10px' }}>
+                                {quickCalendarDays.map((d, i) => (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => {
+                                      setQuickFollowupDate(d.dateStr);
+                                    }}
+                                    style={{
+                                      background: d.isSelected 
+                                        ? 'var(--adm-accent, #0284C7)' 
+                                        : (d.isToday ? 'rgba(2, 132, 199, 0.15)' : 'transparent'),
+                                      color: d.isSelected 
+                                        ? '#FFFFFF' 
+                                        : (d.isCurrentMonth ? 'var(--adm-text-title)' : 'var(--adm-text-muted)'),
+                                      border: d.isToday && !d.isSelected ? '1px solid var(--adm-accent, #0284C7)' : 'none',
+                                      borderRadius: '6px',
+                                      padding: '5px 0',
+                                      fontSize: '0.74rem',
+                                      fontWeight: d.isSelected || d.isToday ? 800 : 500,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {d.day}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Seletor de Horário Embaixo no Popover (Padrão da Ficha) */}
+                              <div style={{
+                                borderTop: '1px solid var(--adm-border)',
+                                paddingTop: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                              }}>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-title)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={12} color="var(--adm-accent, #0284C7)" />
+                                  Horário:
+                                </span>
+                                <input
+                                  type="time"
+                                  value={quickFollowupTime}
+                                  onChange={(e) => setQuickFollowupTime(e.target.value)}
+                                  className="adm-input"
+                                  style={{
+                                    height: '28px',
+                                    fontSize: '0.74rem',
+                                    borderRadius: '6px',
+                                    padding: '0 6px',
+                                    width: '88px',
+                                    fontWeight: 600,
+                                  }}
+                                />
+                              </div>
+
+                              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsQuickDatePickerOpen(false)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    background: 'var(--adm-accent, #0284C7)',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Confirmar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* LINHA INFERIOR: CAIXA DE TEXTO ESTILO CHAT WHATSAPP + BOTÃO ENVIAR */}
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+                        <textarea
+                          value={quickFollowupNote}
+                          onChange={(e) => setQuickFollowupNote(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleCreateQuickFollowup();
+                            }
+                          }}
+                          placeholder="Resumo do follow-up (opcional)... [Enter para agendar]"
+                          className="adm-input"
+                          rows={2}
+                          style={{
+                            flex: 1,
+                            minHeight: '40px',
+                            maxHeight: '120px',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            padding: '8px 12px',
+                            background: 'var(--adm-bg-input)',
+                            color: 'var(--adm-text-title)',
+                            border: '1px solid var(--adm-border)',
+                            resize: 'none',
+                            lineHeight: 1.4,
+                          }}
+                        />
+
+                        <button
+                          type="submit"
+                          className="adm-btn-primary"
+                          style={{
+                            height: '40px',
+                            padding: '0 16px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.76rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            background: 'var(--adm-accent, #0284C7)',
+                            border: '1px solid var(--adm-accent, #0284C7)',
+                            color: '#FFFFFF',
+                            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title="Agendar follow-up (Enter)"
+                        >
+                          <Send size={13} />
+                          <span>Agendar Follow-up</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 ) : composerTab === 'notes' ? (
                   /* 4. COMPOSER: ANOTAÇÕES MULTIMÍDIA COM GRAVADOR DE VOZ E COMPRESSÃO */
                   isNoteRecording ? (
