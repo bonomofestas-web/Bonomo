@@ -7,7 +7,7 @@ import {
   Phone, MessageSquare, FileText, AlertCircle,
   Plus, UserCheck, Check, ChevronLeft,
   Hash, ListFilter, CheckSquare, Globe, Mail, MapPin, Tag, Settings2,
-  Flag, Info, Copy, GripVertical, Edit2, CheckCircle2, RotateCw,
+  Flag, Info, Copy, GripVertical, Edit2, CheckCircle2, RotateCw, XCircle,
   Target, BellRing, UserPlus, PhoneCall, Utensils, Compass, Sparkles,
   Palette, Music, Camera, Folder, DollarSign, Edit3, Handshake
 } from 'lucide-react';
@@ -956,8 +956,85 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
     return (clients || []).find(c => c.id === selectedClientId);
   }, [clients, selectedClientId]);
 
+  const isFollowupTask = useMemo(() => {
+    const dbId = task?.databaseId || databaseId || initialDatabaseId;
+    return Boolean(
+      task?.isFollowUp ||
+      initialIsFollowUp ||
+      dbId === 'db_followup' ||
+      workspaceContext === 'followup' ||
+      (taskType as string) === 'follow_up' ||
+      (customType && customType.toLowerCase().includes('follow-up'))
+    );
+  }, [task, databaseId, initialDatabaseId, initialIsFollowUp, workspaceContext, taskType, customType]);
+
+  const FOLLOWUP_STATUS_OPTIONS = useMemo(() => [
+    {
+      id: 'st_scheduled',
+      name: 'Agendado',
+      groupKey: 'scheduled' as any as TaskStatus,
+      color: '#3B82F6',
+      bgColor: 'rgba(59, 130, 246, 0.14)',
+      icon: Calendar,
+    },
+    {
+      id: 'st_todo',
+      name: 'Não Iniciado',
+      groupKey: 'todo' as TaskStatus,
+      color: '#F59E0B',
+      bgColor: 'rgba(245, 158, 11, 0.14)',
+      icon: Circle,
+    },
+    {
+      id: 'st_in_progress',
+      name: 'Em Execução',
+      groupKey: 'in_progress' as TaskStatus,
+      color: '#8B5CF6',
+      bgColor: 'rgba(139, 92, 246, 0.14)',
+      icon: RotateCw,
+    },
+    {
+      id: 'st_success',
+      name: 'Realizado com Sucesso',
+      groupKey: 'completed' as TaskStatus,
+      outcome: 'success' as const,
+      color: '#10B981',
+      bgColor: 'rgba(16, 185, 129, 0.14)',
+      icon: CheckCircle2,
+    },
+    {
+      id: 'st_unsuccessful',
+      name: 'Sem Sucesso',
+      groupKey: 'completed' as TaskStatus,
+      outcome: 'unsuccessful' as const,
+      color: '#EF4444',
+      bgColor: 'rgba(239, 68, 68, 0.14)',
+      icon: XCircle,
+    },
+  ], []);
+
   // Current status badge config
   const currentStatusObj = useMemo(() => {
+    if (isFollowupTask) {
+      const outcome = task?.customProperties?.outcome || (customStatusId === 'st_success' ? 'success' : customStatusId === 'st_unsuccessful' ? 'unsuccessful' : undefined);
+      if (outcome === 'success' || customStatusId === 'st_success') {
+        return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_success')!;
+      }
+      if (outcome === 'unsuccessful' || customStatusId === 'st_unsuccessful') {
+        return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_unsuccessful')!;
+      }
+      if ((status as string) === 'scheduled' || customStatusId === 'st_scheduled') {
+        return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_scheduled')!;
+      }
+      if (status === 'in_progress' || customStatusId === 'st_in_progress') {
+        return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_in_progress')!;
+      }
+      if (status === 'completed') {
+        return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_success')!;
+      }
+      return FOLLOWUP_STATUS_OPTIONS.find(s => s.id === 'st_todo')!;
+    }
+
     return availableStatuses.find(s => s.id === customStatusId) || {
       id: 'st_todo',
       name: status === 'completed' ? 'Finalizado' : status === 'in_progress' ? 'Fazendo' : 'Não iniciado',
@@ -966,7 +1043,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
       bgColor: status === 'completed' ? 'rgba(16, 185, 129, 0.14)' : status === 'in_progress' ? 'rgba(59, 130, 246, 0.14)' : 'rgba(148, 163, 184, 0.14)',
       orderIndex: 0
     };
-  }, [availableStatuses, customStatusId, status]);
+  }, [isFollowupTask, FOLLOWUP_STATUS_OPTIONS, availableStatuses, customStatusId, status, task?.customProperties?.outcome]);
 
   // Calendar Helpers for Notion-style Date Popover
   const calendarDays = useMemo(() => {
@@ -1305,123 +1382,224 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                       {/* VIEW 1: SELECIONAR STATUS */}
                       {statusPopoverMode === 'select' && (
                         <>
-                          {/* Grupo: A fazer */}
-                          <div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
-                              A fazer
-                            </div>
-                            {availableStatuses.filter(s => s.groupKey === 'todo').map(s => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => handleSelectStatus(s)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  width: '100%',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
-                                  border: 'none',
-                                  color: 'var(--adm-text-title)',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  fontSize: '0.8rem',
-                                }}
-                              >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                                <span>{s.name}</span>
-                              </button>
-                            ))}
-                          </div>
+                          {isFollowupTask ? (
+                            /* STATUS FIXOS DE FOLLOW-UP (Rígidos, sem edição de propriedade) */
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px', letterSpacing: '0.4px' }}>
+                                Status do Follow-up
+                              </div>
+                              {FOLLOWUP_STATUS_OPTIONS.map(st => {
+                                const IconComponent = st.icon;
+                                const isSelected = currentStatusObj.id === st.id;
+                                return (
+                                  <button
+                                    key={st.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (st.groupKey === 'completed' && !resolution.trim() && !allowEmptyResolution) {
+                                        setShowStatusPopover(false);
+                                        setStatusPopoverMode('select');
+                                        setResolutionHighlight(true);
+                                        resolutionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        setCustomStatusId(st.id);
+                                        setStatus('completed');
+                                        if (task) {
+                                          updateTask(task.id, {
+                                            status: 'completed',
+                                            customStatusId: st.id,
+                                            completedAt: new Date().toISOString(),
+                                            customProperties: {
+                                              ...task.customProperties,
+                                              outcome: st.outcome,
+                                            }
+                                          });
+                                        }
+                                        return;
+                                      }
 
-                          {/* Grupo: Em andamento */}
-                          <div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
-                              Em andamento
-                            </div>
-                            {availableStatuses.filter(s => s.groupKey === 'in_progress').map(s => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => handleSelectStatus(s)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  width: '100%',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
-                                  border: 'none',
-                                  color: 'var(--adm-text-title)',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  fontSize: '0.8rem',
-                                }}
-                              >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                                <span>{s.name}</span>
-                              </button>
-                            ))}
-                          </div>
+                                      setCustomStatusId(st.id);
+                                      setStatus(st.groupKey as TaskStatus);
+                                      setShowStatusPopover(false);
+                                      setStatusPopoverMode('select');
 
-                          {/* Grupo: Concluídos */}
-                          <div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
-                              Concluídos
+                                      if (task) {
+                                        updateTask(task.id, {
+                                          status: st.groupKey as TaskStatus,
+                                          customStatusId: st.id,
+                                          completedAt: st.groupKey === 'completed' ? new Date().toISOString() : undefined,
+                                          customProperties: {
+                                            ...task.customProperties,
+                                            ...(st.outcome ? { outcome: st.outcome } : {}),
+                                          }
+                                        });
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      width: '100%',
+                                      padding: '7px 10px',
+                                      borderRadius: '8px',
+                                      background: isSelected ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                      border: isSelected ? `1px solid ${st.color}50` : '1px solid transparent',
+                                      color: isSelected ? st.color : 'var(--adm-text-title)',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      fontSize: '0.8rem',
+                                      fontWeight: isSelected ? 700 : 500,
+                                      transition: 'all 0.12s ease',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <span style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: 20,
+                                      height: 20,
+                                      borderRadius: '50%',
+                                      background: st.bgColor,
+                                      color: st.color,
+                                      flexShrink: 0,
+                                    }}>
+                                      <IconComponent size={12} color={st.color} />
+                                    </span>
+                                    <span style={{ flex: 1 }}>{st.name}</span>
+                                    {isSelected && (
+                                      <Check size={14} color={st.color} />
+                                    )}
+                                  </button>
+                                );
+                              })}
                             </div>
-                            {availableStatuses.filter(s => s.groupKey === 'completed').map(s => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => handleSelectStatus(s)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  width: '100%',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
-                                  border: 'none',
-                                  color: 'var(--adm-text-title)',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  fontSize: '0.8rem',
-                                }}
-                              >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                                <span>{s.name}</span>
-                              </button>
-                            ))}
-                          </div>
+                          ) : (
+                            /* TAREFAS GERAIS: A fazer, Em andamento, Concluídos + Editar Propriedade */
+                            <>
+                              {/* Grupo: A fazer */}
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
+                                  A fazer
+                                </div>
+                                {availableStatuses.filter(s => s.groupKey === 'todo').map(s => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => handleSelectStatus(s)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      width: '100%',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                                      border: 'none',
+                                      color: 'var(--adm-text-title)',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                                    <span>{s.name}</span>
+                                  </button>
+                                ))}
+                              </div>
 
-                          {!isHomeContext && (
-                            <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '6px' }}>
-                              <button
-                                type="button"
-                                onClick={() => setStatusPopoverMode('edit_property')}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  width: '100%',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: 'var(--adm-text-muted)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.76rem',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                <Settings2 size={13} />
-                                <span>Editar propriedade</span>
-                              </button>
-                            </div>
+                              {/* Grupo: Em andamento */}
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
+                                  Em andamento
+                                </div>
+                                {availableStatuses.filter(s => s.groupKey === 'in_progress').map(s => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => handleSelectStatus(s)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      width: '100%',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                                      border: 'none',
+                                      color: 'var(--adm-text-title)',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                                    <span>{s.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Grupo: Concluídos */}
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '2px 8px' }}>
+                                  Concluídos
+                                </div>
+                                {availableStatuses.filter(s => s.groupKey === 'completed').map(s => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => handleSelectStatus(s)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      width: '100%',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      background: customStatusId === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+                                      border: 'none',
+                                      color: 'var(--adm-text-title)',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      fontSize: '0.8rem',
+                                    }}
+                                  >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                                    <span>{s.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              {!isHomeContext && (
+                                <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setStatusPopoverMode('edit_property')}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      width: '100%',
+                                      padding: '6px 8px',
+                                      borderRadius: '6px',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: 'var(--adm-text-muted)',
+                                      cursor: 'pointer',
+                                      fontSize: '0.76rem',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    <Settings2 size={13} />
+                                    <span>Editar propriedade</span>
+                                  </button>
+                                </div>
+                              )}
+                            </>
                           )}
                         </>
                       )}

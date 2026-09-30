@@ -87,9 +87,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     unindexedLeadsCount,
     getFeatureStatus,
     collaborators,
-    impersonatingMaster,
-    startImpersonation,
-    stopImpersonation,
+    viewingAsCollaborator,
+    setViewingAsCollaborator,
     userPinnedFunnelIds,
     reorderPinnedFunnels,
   } = useAdminState();
@@ -223,14 +222,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     return venues.filter(v => currentUser.venueIds?.includes(v.id));
   }, [venues, currentUser, userRole]);
 
-  // Colaboradores subordinados disponíveis para o Master impersonar
-  const impersonatableCollaborators = useMemo(() => {
-    return (collaborators || []).filter(c => {
-      if (c.id === currentUser?.id) return false;
-      if (c.role === 'master') return false;
-      return true;
-    });
-  }, [collaborators, currentUser]);
 
   const visiblePinnedFunnels = useMemo(() => {
     const pinnedIds = userPinnedFunnelIds || [];
@@ -768,11 +759,11 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         )}
       </div>
 
-      {/* Impersonation Alert Banner */}
-      {impersonatingMaster && (
+      {/* Viewing As Collaborator Alert Banner */}
+      {viewingAsCollaborator && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(245, 158, 11, 0.08) 100%)',
-          border: '1px solid #F59E0B',
+          background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.22) 0%, rgba(20, 169, 215, 0.08) 100%)',
+          border: '1px solid #14A9D7',
           borderRadius: '12px',
           padding: isCollapsed ? '8px 4px' : '10px 12px',
           marginBottom: '12px',
@@ -781,26 +772,26 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '8px',
-          boxShadow: '0 0 16px rgba(245, 158, 11, 0.2)',
+          boxShadow: '0 0 16px rgba(20, 169, 215, 0.2)',
         }}>
           {!isCollapsed && (
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#14A9D7', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Eye size={12} />
                 <span>Modo de Visualização</span>
               </div>
               <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentUser?.name} ({ROLE_LABELS[userRole] || userRole})
+                {viewingAsCollaborator.name} ({ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role})
               </div>
             </div>
           )}
           <button
             type="button"
-            onClick={stopImpersonation}
-            title="Sair do Modo de Visualização e voltar ao Master"
+            onClick={() => setViewingAsCollaborator(null)}
+            title="Sair do Modo de Visualização e voltar à sua visão nativa"
             style={{
-              background: '#F59E0B',
-              color: '#000000',
+              background: '#14A9D7',
+              color: '#080C14',
               border: 'none',
               borderRadius: '8px',
               padding: isCollapsed ? '6px' : '6px 10px',
@@ -1360,66 +1351,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {masterItems.map(item => renderNavButton(item))}
-
-                {/* Modo de Visualização do Colaborador (visível apenas se houver colaboradores cadastrados) */}
-                {!isCollapsed && impersonatableCollaborators.length > 0 && (
-                  <div style={{
-                    marginTop: '6px',
-                    padding: '6px 8px',
-                    background: 'rgba(20, 169, 215, 0.08)',
-                    border: '1px solid rgba(20, 169, 215, 0.25)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '0.60rem',
-                      fontWeight: 800,
-                      color: '#14A9D7',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}>
-                      <Eye size={11} />
-                      <span>Modo de Visualização</span>
-                    </div>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const selectedId = e.target.value;
-                        if (!selectedId) return;
-                        const targetCollab = collaborators.find(c => c.id === selectedId);
-                        if (targetCollab) {
-                          startImpersonation(targetCollab);
-                        }
-                      }}
-                      style={{
-                        background: '#0D1522',
-                        border: '1px solid rgba(20, 169, 215, 0.35)',
-                        borderRadius: '6px',
-                        padding: '4px 6px',
-                        color: '#FFFFFF',
-                        fontSize: '0.68rem',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        width: '100%',
-                      }}
-                    >
-                      <option value="" disabled style={{ background: '#0D1522' }}>
-                        Visualizar como colaborador...
-                      </option>
-                      {impersonatableCollaborators.map(c => (
-                        <option key={c.id} value={c.id} style={{ background: '#0D1522' }}>
-                          {c.name} ({ROLE_LABELS[c.role] || c.role})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
             </div>
           )}

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
   Mail, Phone, Edit3, Trash2, 
-  UserPlus, Shield, ShieldCheck, Plus,
+  UserPlus, ShieldCheck, Plus,
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
   Power, Lock
@@ -20,7 +20,6 @@ export const AdminCollaboratorsView: React.FC = () => {
     deleteCollaborator, 
     addCollaborator,
     updateCollaborator,
-    switchUserRoleDemo,
     currentUser,
     leads,
     tasks,
@@ -835,108 +834,6 @@ export const AdminCollaboratorsView: React.FC = () => {
           <UserPlus size={16} />
           <span>Novo Colaborador</span>
         </button>
-      </div>
-
-      {/* Role Test Simulator Bar */}
-      <div style={{
-        background: 'var(--adm-bg-card)',
-        border: '1px solid var(--adm-border)',
-        borderRadius: '16px',
-        padding: '12px 18px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Shield size={16} color="var(--adm-accent)" />
-          <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Simular Visão por Perfil:
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => switchUserRoleDemo('master')}
-            style={{
-              background: currentUser?.role === 'master' ? '#D4AF37' : 'var(--adm-bg-input)',
-              color: currentUser?.role === 'master' ? '#000' : 'var(--adm-text-muted)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '20px',
-              padding: '4px 14px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Master (Diretoria)
-          </button>
-
-          <button
-            onClick={() => switchUserRoleDemo('admin')}
-            style={{
-              background: currentUser?.role === 'admin' ? '#3B82F6' : 'var(--adm-bg-input)',
-              color: currentUser?.role === 'admin' ? '#FFF' : 'var(--adm-text-muted)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '20px',
-              padding: '4px 14px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Gerente de Unidade
-          </button>
-
-          <button
-            onClick={() => switchUserRoleDemo('sdr')}
-            style={{
-              background: currentUser?.role === 'sdr' ? '#8B5CF6' : 'var(--adm-bg-input)',
-              color: currentUser?.role === 'sdr' ? '#FFF' : 'var(--adm-text-muted)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '20px',
-              padding: '4px 14px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            SDR (Pré-Vendas)
-          </button>
-
-          <button
-            onClick={() => switchUserRoleDemo('closer')}
-            style={{
-              background: currentUser?.role === 'closer' ? '#F97316' : 'var(--adm-bg-input)',
-              color: currentUser?.role === 'closer' ? '#FFF' : 'var(--adm-text-muted)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '20px',
-              padding: '4px 14px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Closer (Vendas)
-          </button>
-
-          <button
-            onClick={() => switchUserRoleDemo('pos_venda')}
-            style={{
-              background: currentUser?.role === 'pos_venda' ? '#06B6D4' : 'var(--adm-bg-input)',
-              color: currentUser?.role === 'pos_venda' ? '#FFF' : 'var(--adm-text-muted)',
-              border: '1px solid var(--adm-border)',
-              borderRadius: '20px',
-              padding: '4px 14px',
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            Pós-Venda
-          </button>
-        </div>
       </div>
 
       {/* Collaborators List */}

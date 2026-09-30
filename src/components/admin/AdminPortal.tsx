@@ -35,7 +35,7 @@ import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
 import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
 import { AdminLeadsListView } from './AdminLeadsListView';
-import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut } from 'lucide-react';
+import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut, Eye } from 'lucide-react';
 import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
@@ -64,8 +64,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const { 
     currentUser, 
     logout,
-    impersonatingMaster,
-    stopImpersonation,
+    viewingAsCollaborator,
+    setViewingAsCollaborator,
     theme, 
     leads, 
     tasks, 
@@ -98,6 +98,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
 
+  // Estados do Botão Expansível de Olho ("Ver com os olhos de um colaborador")
+  const [isEyeExpanded, setIsEyeExpanded] = useState(false);
+  const [isEyeHovered, setIsEyeHovered] = useState(false);
+  const eyeMenuRef = useRef<HTMLDivElement>(null);
+
   // Sincroniza tema dark/light no body e html
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -122,6 +127,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(e.target as Node)) {
         setIsNotificationsOpen(false);
       }
+      if (eyeMenuRef.current && !eyeMenuRef.current.contains(e.target as Node)) {
+        setIsEyeExpanded(false);
+      }
     };
     document.addEventListener('mousedown', handleDocumentClick);
     return () => document.removeEventListener('mousedown', handleDocumentClick);
@@ -131,6 +139,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [globalSearch, setGlobalSearch] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [isSearchHovered, setIsSearchHovered] = useState(false);
+
+  // Permissão para modo de visualização com os olhos de um colaborador
+  const canSimulateView = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia' || currentUser?.isDev;
+
+  const viewableCollaborators = useMemo(() => {
+    return collaborators.filter(c => {
+      if (!c.active) return false;
+      if (c.id === currentUser?.id) return false;
+      if (c.role === 'dev') return false;
+      return true;
+    });
+  }, [collaborators, currentUser?.id]);
 
   // Support notifications state (Audio 1 & 2: badge quando suporte responde)
   const [lastSupportReadAt, setLastSupportReadAt] = useState<number>(() => {
@@ -676,55 +696,232 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
           {/* Right Header Actions: Impersonation Banner + Expandable Search + Notification Bell + Profile */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
-            {/* Impersonation Active Banner (Audio 3: Exibido APENAS quando estiver no modo de visualização) */}
-            {impersonatingMaster && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'rgba(212, 175, 55, 0.12)',
-                border: '1px solid rgba(212, 175, 55, 0.45)',
-                borderRadius: '50px',
-                padding: '4px 12px 4px 10px',
-                color: '#D4AF37',
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                boxShadow: '0 0 20px rgba(212, 175, 55, 0.18)',
-                animation: 'fadeIn 0.2s ease-out',
-                whiteSpace: 'nowrap',
-              }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#D4AF37',
-                  boxShadow: '0 0 8px #D4AF37',
-                }} />
-                <span>
-                  Visualizando como: <strong style={{ color: '#FFFFFF' }}>{currentUser.name}</strong> ({ROLE_LABELS[currentUser.role] || currentUser.role.toUpperCase()})
-                </span>
-                <button
-                  type="button"
-                  onClick={stopImpersonation}
+            {/* Botão Expansível de Modo de Visualização ("Ver com os olhos de um colaborador") */}
+            {canSimulateView && (
+              <div
+                ref={eyeMenuRef}
+                className="admin-header-eye-view"
+                style={{ position: 'relative' }}
+                onMouseEnter={() => setIsEyeHovered(true)}
+                onMouseLeave={() => setIsEyeHovered(false)}
+              >
+                <div
                   style={{
-                    background: '#D4AF37',
-                    color: '#080C14',
-                    border: 'none',
-                    borderRadius: '20px',
-                    padding: '3px 10px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
-                    marginLeft: '4px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    justifyContent: (isEyeExpanded || viewingAsCollaborator) ? 'flex-start' : 'center',
+                    gap: '8px',
+                    background: viewingAsCollaborator
+                      ? 'rgba(20, 169, 215, 0.18)'
+                      : (isEyeExpanded ? '#141118' : 'rgba(255, 255, 255, 0.06)'),
+                    border: `1px solid ${
+                      viewingAsCollaborator
+                        ? '#14A9D7'
+                        : (isEyeExpanded || isEyeHovered ? '#14A9D7' : 'rgba(255, 255, 255, 0.12)')
+                    }`,
+                    borderRadius: '50px',
+                    padding: (isEyeExpanded || viewingAsCollaborator) ? '3px 10px 3px 4px' : '0',
+                    width: viewingAsCollaborator ? 'auto' : (isEyeExpanded ? '180px' : '36px'),
+                    maxWidth: '220px',
+                    height: '36px',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                    cursor: 'pointer',
+                    boxShadow: viewingAsCollaborator ? '0 0 14px rgba(20, 169, 215, 0.35)' : 'none',
                   }}
-                  title="Encerrar simulação e voltar para sua conta de Master"
+                  onClick={() => {
+                    if (viewingAsCollaborator) {
+                      // Clique na foto/olho quando ativo -> Sai imediatamente
+                      setViewingAsCollaborator(null);
+                    } else {
+                      setIsEyeExpanded(!isEyeExpanded);
+                    }
+                  }}
+                  title={
+                    viewingAsCollaborator
+                      ? `Visualizando como: ${viewingAsCollaborator.name} (Clique para sair da visão)`
+                      : 'Visualizar sistema com os olhos de um colaborador'
+                  }
                 >
-                  <span>Voltar para Master</span>
-                </button>
+                  {viewingAsCollaborator ? (
+                    // Círculo com a Foto do Colaborador selecionado + Mini Ícone de Olho
+                    <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
+                      <img
+                        src={(viewingAsCollaborator.avatarUrl && !viewingAsCollaborator.avatarUrl.includes('unsplash.com')) ? viewingAsCollaborator.avatarUrl : createMonogramAvatar(viewingAsCollaborator.name)}
+                        alt={viewingAsCollaborator.name}
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                      <span style={{
+                        position: 'absolute',
+                        bottom: -2,
+                        right: -2,
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        background: '#14A9D7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#080C14',
+                        boxShadow: '0 0 4px #14A9D7',
+                      }}>
+                        <Eye size={8} />
+                      </span>
+                    </div>
+                  ) : (
+                    // Ícone de Olho redondo padrão (igual à lupa da busca)
+                    <span style={{
+                      color: isEyeExpanded || isEyeHovered ? '#14A9D7' : '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '16px',
+                      height: '16px',
+                      lineHeight: 0,
+                      flexShrink: 0,
+                      transition: 'color 0.2s ease',
+                    }}>
+                      <Eye size={17} />
+                    </span>
+                  )}
+
+                  {/* Texto expandido quando o seletor está aberto */}
+                  {isEyeExpanded && !viewingAsCollaborator && (
+                    <span style={{
+                      fontSize: '0.74rem',
+                      color: '#FFFFFF',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontWeight: 600,
+                    }}>
+                      Ver como...
+                    </span>
+                  )}
+
+                  {/* Informações do colaborador ativo no modo visão */}
+                  {viewingAsCollaborator && (
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        color: '#FFFFFF',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontWeight: 700,
+                        lineHeight: 1.1,
+                      }}>
+                        {viewingAsCollaborator.name.split(' ')[0]}
+                      </span>
+                      <span style={{
+                        fontSize: '0.56rem',
+                        color: '#14A9D7',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.3px',
+                        lineHeight: 1.1,
+                      }}>
+                        Clique p/ sair
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Popover Expansível de Seleção de Colaboradores */}
+                {isEyeExpanded && !viewingAsCollaborator && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      left: 0,
+                      width: '260px',
+                      background: '#141118',
+                      border: '1px solid rgba(20, 169, 215, 0.35)',
+                      borderRadius: '16px',
+                      boxShadow: '0 16px 40px rgba(0,0,0,0.75), 0 0 20px rgba(20, 169, 215, 0.15)',
+                      padding: '10px',
+                      zIndex: 9999,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      animation: 'fadeIn 0.15s ease-out',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                      paddingBottom: '6px',
+                    }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#14A9D7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Eye size={13} />
+                        <span>Ver com os olhos de:</span>
+                      </div>
+                      <span style={{ fontSize: '0.62rem', color: '#8096A8' }}>
+                        {viewableCollaborators.length} disponíveis
+                      </span>
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      maxHeight: '260px',
+                      overflowY: 'auto',
+                    }}>
+                      {viewableCollaborators.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', color: '#8096A8', fontSize: '0.74rem' }}>
+                          Nenhum colaborador encontrado na equipe.
+                        </div>
+                      ) : (
+                        viewableCollaborators.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setViewingAsCollaborator(c);
+                              setIsEyeExpanded(false);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '6px 8px',
+                              borderRadius: '10px',
+                              cursor: 'pointer',
+                              background: 'transparent',
+                              border: '1px solid transparent',
+                              transition: 'all 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
+                              e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.borderColor = 'transparent';
+                            }}
+                          >
+                            <img
+                              src={(c.avatarUrl && !c.avatarUrl.includes('unsplash.com')) ? c.avatarUrl : createMonogramAvatar(c.name)}
+                              alt={c.name}
+                              style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {c.name}
+                              </div>
+                              <div style={{ fontSize: '0.64rem', color: '#14A9D7', textTransform: 'uppercase', fontWeight: 600 }}>
+                                {ROLE_LABELS[c.role] || c.role}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1282,13 +1479,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   height: '38px',
                   borderRadius: '50%',
                   background: isProfileMenuOpen ? 'rgba(20, 169, 215, 0.18)' : '#141118',
-                  border: `1px solid ${isProfileMenuOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)'}`,
+                  border: `1px solid ${isProfileMenuOpen ? '#14A9D7' : (viewingAsCollaborator ? 'rgba(100, 116, 139, 0.4)' : 'rgba(20, 169, 215, 0.35)')}`,
+                  filter: viewingAsCollaborator ? 'grayscale(100%) opacity(0.45)' : 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
                   position: 'relative',
-                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
+                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, filter 0.25s ease',
                   padding: 0,
                   overflow: 'hidden',
                   boxShadow: isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none',
@@ -1298,10 +1496,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   e.currentTarget.style.boxShadow = '0 0 10px rgba(20, 169, 215, 0.35)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = isProfileMenuOpen ? '#14A9D7' : 'rgba(20, 169, 215, 0.35)';
+                  e.currentTarget.style.borderColor = isProfileMenuOpen ? '#14A9D7' : (viewingAsCollaborator ? 'rgba(100, 116, 139, 0.4)' : 'rgba(20, 169, 215, 0.35)');
                   e.currentTarget.style.boxShadow = isProfileMenuOpen ? '0 0 12px rgba(20, 169, 215, 0.35)' : 'none';
                 }}
-                title={`${currentUser?.name || 'Administrador'} (${ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role})`}
+                title={
+                  viewingAsCollaborator
+                    ? `Você está visualizando com os olhos de ${viewingAsCollaborator.name}. (Sua conta nativa: ${currentUser?.name})`
+                    : `${currentUser?.name || 'Administrador'} (${ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role})`
+                }
               >
                 <img
                   src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}

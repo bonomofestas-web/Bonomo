@@ -253,6 +253,8 @@ export interface AdminContextType {
   impersonatingMaster: AdminUser | null;
   startImpersonation: (collab: Collaborator) => void;
   stopImpersonation: () => void;
+  viewingAsCollaborator: Collaborator | null;
+  setViewingAsCollaborator: (collab: Collaborator | null) => void;
   updateCurrentUserProfile: (data: Partial<AdminUser>) => void;
 
   // Collaborators
@@ -1979,72 +1981,60 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     window.location.href = window.location.origin + '/?admin=true';
   };
 
-  const switchUserRoleDemo = (role: AdminRole) => {
-    const allCollabs = [...collaborators, ...DEFAULT_COLLABORATORS];
-    const matched = allCollabs.find(c => c.role === role);
-    if (matched) {
-      setCurrentUser({
-        id: matched.id,
-        name: matched.name,
-        email: matched.email,
-        role: matched.role,
-        avatarUrl: matched.avatarUrl,
-        venueIds: matched.venueId === 'all' ? [] : [matched.venueId],
-      });
-      if (matched.venueId !== 'all') {
-        setActiveVenueId(matched.venueId);
-      } else {
-        setActiveVenueId(null);
-      }
-    }
+  const switchUserRoleDemo = (_role: AdminRole) => {
+    // Desativado permanentemente: não altera credenciais de sessão do usuário
+    console.warn('[F5 System Security] switchUserRoleDemo desativado para garantir isolamento e integridade de sessão.');
   };
 
-  const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {
-    const saved = localStorage.getItem('bonomo_impersonating_master');
+  // Modo seguro de visualização com os olhos de um colaborador (SEM alterar sessão/currentUser)
+  const [viewingAsCollaborator, setViewingAsCollaboratorState] = useState<Collaborator | null>(() => {
+    const saved = sessionStorage.getItem('f5_viewing_as_collaborator');
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
     return null;
   });
 
-  const startImpersonation = (c: Collaborator) => {
-    // If not already impersonating, remember original master user
-    if (!impersonatingMaster && currentUser) {
-      setImpersonatingMaster(currentUser);
-      safeLocalStorageSet('bonomo_impersonating_master', JSON.stringify(currentUser));
-    }
-
-    const user: AdminUser = {
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      role: c.role,
-      avatarUrl: c.avatarUrl,
-      venueIds: c.venueId === 'all' ? [] : (c.venueIds && c.venueIds.length > 0 ? c.venueIds : [c.venueId]),
-      phone: c.phone,
-      masterId: currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId,
-    };
-    setCurrentUser(user);
-    safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
-    if (c.venueId !== 'all') {
-      setActiveVenueId(c.venueId);
+  const setViewingAsCollaborator = (collab: Collaborator | null) => {
+    setViewingAsCollaboratorState(collab);
+    if (collab) {
+      sessionStorage.setItem('f5_viewing_as_collaborator', JSON.stringify(collab));
     } else {
-      setActiveVenueId(null);
+      sessionStorage.removeItem('f5_viewing_as_collaborator');
     }
   };
 
+  // Proteção / Autocorreção: se houver resquício de impersonação antiga no localStorage, limpa e restaura
+  const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {
+    const saved = localStorage.getItem('bonomo_impersonating_master');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Restaura o usuário master original e remove a chave antiga
+        localStorage.removeItem('bonomo_impersonating_master');
+        safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(parsed));
+        return null;
+      } catch {}
+    }
+    return null;
+  });
+
+  const startImpersonation = (c: Collaborator) => {
+    // Redireciona para visualização segura sem trocar credenciais
+    setViewingAsCollaborator(c);
+  };
+
   const stopImpersonation = () => {
+    setViewingAsCollaborator(null);
     if (impersonatingMaster) {
       setCurrentUser(impersonatingMaster);
-      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(impersonatingMaster));
       setImpersonatingMaster(null);
       localStorage.removeItem('bonomo_impersonating_master');
-      setActiveVenueId(null);
     }
   };
 
   const switchCollaborator = (c: Collaborator) => {
-    startImpersonation(c);
+    setViewingAsCollaborator(c);
   };
 
   const updateCurrentUserProfile = (data: Partial<AdminUser>) => {
@@ -8410,6 +8400,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       impersonatingMaster,
       startImpersonation,
       stopImpersonation,
+      viewingAsCollaborator,
+      setViewingAsCollaborator,
       allLeads: leads,
       allTasks: tasks,
       allFunnels: funnels,
