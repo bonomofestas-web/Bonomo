@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
-  X, AlertTriangle, Check, Utensils, ChevronLeft, ChevronRight,
-  Search, Bell, Building2, RotateCcw, AlertCircle
+  X, AlertTriangle, Check, ChevronLeft, ChevronRight,
+  Search, Bell, Building2, RotateCcw, AlertCircle,
+  UtensilsCrossed, Crown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead, CommercialCommitmentType } from '../../types/admin';
@@ -177,6 +178,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return { firstDayIndex, days };
   }, [calendarMonth, type, targetVenueId, appointments, venueConfig, todayStr]);
 
+  // Capacidade máxima recomendada pela casa
+  const recommendedMaxPax = useMemo(() => {
+    const rule = type === 'visit' ? venueConfig?.visitsRule : venueConfig?.tastingsRule;
+    return rule?.maxPaxPerSlot || 5;
+  }, [type, venueConfig]);
+
+  const [isPaxWarningModalOpen, setIsPaxWarningModalOpen] = useState(false);
+
+  // Estados de Personalização de Lembretes
+  const [isCustomDays, setIsCustomDays] = useState(false);
+  const [isCustomHours, setIsCustomHours] = useState(false);
+
   // Slots do dia selecionado
   const dayAvailability = useMemo(() => {
     if (!selectedDate) {
@@ -191,18 +204,54 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     );
   }, [selectedDate, type, targetVenueId, appointments, venueConfig]);
 
-  // Seleciona o primeiro horário disponível quando o dia muda
-  useEffect(() => {
-    if (dayAvailability.slots.length > 0) {
-      const exists = dayAvailability.slots.some(s => s.time === selectedTime && s.isAvailable);
-      if (!exists) {
-        const firstAvailable = dayAvailability.slots.find(s => s.isAvailable);
-        setSelectedTime(firstAvailable ? firstAvailable.time : '');
-      }
-    } else {
-      setSelectedTime('');
+  // Horários do dia selecionado com trava contra horários passados no dia de hoje
+  const availableSlots = useMemo(() => {
+    const slots = dayAvailability.slots;
+    if (selectedDate === todayStr) {
+      const now = new Date();
+      const curHour = now.getHours();
+      const curMin = now.getMinutes();
+      const curTimeStr = `${String(curHour).padStart(2, '0')}:${String(curMin).padStart(2, '0')}`;
+      return slots.map(s => {
+        if (s.time <= curTimeStr) {
+          return {
+            ...s,
+            isAvailable: false,
+            reason: 'Horário já passou',
+          };
+        }
+        return s;
+      });
     }
-  }, [dayAvailability, selectedDate]);
+    return slots;
+  }, [dayAvailability.slots, selectedDate, todayStr]);
+
+  // Manipulador de clique no dia do calendário com reset explícito de horário
+  const handleSelectDate = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    setSelectedTime(''); // Reset explícito conforme solicitado pelo usuário
+  };
+
+  // Verificações de validade temporal dos lembretes do SDR
+  const isScheduleToday = selectedDate === todayStr;
+
+  const isDaysReminderInPast = useMemo(() => {
+    if (!enableDayReminder || !selectedDate) return false;
+    if (isScheduleToday) return true;
+    const targetDateObj = new Date(`${selectedDate}T09:00:00`);
+    const reminderDateObj = new Date(targetDateObj);
+    reminderDateObj.setDate(reminderDateObj.getDate() - reminderDaysBefore);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return reminderDateObj < now;
+  }, [enableDayReminder, selectedDate, isScheduleToday, reminderDaysBefore]);
+
+  const isHoursReminderInPast = useMemo(() => {
+    if (!enableHourReminder || !selectedDate || !selectedTime) return false;
+    const targetDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
+    const reminderDateTime = new Date(targetDateTime.getTime() - reminderHoursBefore * 60 * 60 * 1000);
+    return reminderDateTime <= new Date();
+  }, [enableHourReminder, selectedDate, selectedTime, reminderHoursBefore]);
 
   // Sincroniza mês se data padrão for de outro mês
   useEffect(() => {
@@ -408,7 +457,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
         overflow: 'hidden',
       }}>
-        {/* HEADER */}
+        {/* HEADER LIMPO COM LOGO DA CASA E TÍTULO DIRETO */}
         <div style={{
           padding: '18px 24px',
           borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
@@ -417,26 +466,42 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           justifyContent: 'space-between',
           background: 'var(--adm-bg-subtle, rgba(255,255,255,0.02))',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: `linear-gradient(135deg, ${themeColor}33, ${themeColor}11)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: `1px solid ${themeColor}44`,
-            }}>
-              {type === 'visit' ? <Building2 size={20} color={themeColor} /> : <Utensils size={20} color={themeColor} />}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {targetVenue?.logoUrl ? (
+              <img
+                src={targetVenue.logoUrl}
+                alt={targetVenue.name}
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  objectFit: 'contain',
+                  background: '#FFFFFF',
+                  padding: '3px',
+                  border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '10px',
+                background: `linear-gradient(135deg, ${themeColor}33, ${themeColor}11)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: `1px solid ${themeColor}44`,
+              }}>
+                {type === 'visit' ? <Building2 size={20} color={themeColor} /> : <UtensilsCrossed size={20} color={themeColor} />}
+              </div>
+            )}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                  Novo Agendamento Oficial
+                  {type === 'visit' ? 'Agendamento de Visita' : 'Agendamento de Degustação'}
                 </h2>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.70rem',
                   fontWeight: 700,
                   padding: '2px 8px',
                   borderRadius: '6px',
@@ -447,8 +512,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   {type === 'visit' ? 'VISITA COMERCIAL' : 'DEGUSTAÇÃO'}
                 </span>
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
-                {targetVenue?.name ? `Unidade: ${targetVenue.name}` : 'Selecione data, horário e responsável'}
+              <p style={{ margin: '2px 0 0', fontSize: '0.80rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
+                {targetVenue?.name ? targetVenue.name : 'Selecione data, horário e responsável'}
               </p>
             </div>
           </div>
@@ -469,105 +534,111 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           </button>
         </div>
 
-        {/* BARRA DE TIPO (VISITA VS DEGUSTAÇÃO) */}
-        <div style={{
-          padding: '12px 24px',
-          borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.06))',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(0,0,0,0.15)',
-        }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => setType('visit')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '7px 16px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                background: type === 'visit' ? '#10B981' : 'transparent',
-                color: type === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
-                border: type === 'visit' ? '1px solid #10B981' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
-              }}
-            >
-              <Building2 size={15} />
-              🏛️ Visita Comercial
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setType('tasting')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '7px 16px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                background: type === 'tasting' ? '#D97706' : 'transparent',
-                color: type === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
-                border: type === 'tasting' ? '1px solid #D97706' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
-              }}
-            >
-              <Utensils size={15} />
-              🍽️ Degustação Gastronômica
-            </button>
-          </div>
-
-          {/* Toggle Lead vs Cliente (Exclusivo para Pós-Venda) */}
-          {isPostSaleUser && (
-            <div style={{
-              display: 'flex',
-              background: 'rgba(0,0,0,0.3)',
-              padding: '2px',
-              borderRadius: '8px',
-              border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-            }}>
+        {/* BARRA DE TIPO: EXIBIDA SOMENTE SE NÃO HOUVER LEAD PRÉ-DEFINIDO */}
+        {!initialLead && (
+          <div style={{
+            padding: '10px 24px',
+            borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.06))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(0,0,0,0.12)',
+          }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
-                onClick={() => setTargetCategoryMode('lead')}
+                onClick={() => setType('visit')}
                 style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '0.75rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.80rem',
                   fontWeight: 700,
-                  border: 'none',
                   cursor: 'pointer',
-                  background: targetCategoryMode === 'lead' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
-                  color: targetCategoryMode === 'lead' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
+                  transition: 'all 0.15s ease',
+                  background: type === 'visit' ? '#10B981' : 'transparent',
+                  color: type === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
+                  border: type === 'visit' ? '1px solid #10B981' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
                 }}
               >
-                Lead Comercial
+                <Building2 size={14} />
+                Visita Comercial
               </button>
+
               <button
                 type="button"
-                onClick={() => setTargetCategoryMode('client')}
+                onClick={() => setType('tasting')}
                 style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '0.75rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '0.80rem',
                   fontWeight: 700,
-                  border: 'none',
                   cursor: 'pointer',
-                  background: targetCategoryMode === 'client' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
-                  color: targetCategoryMode === 'client' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
+                  transition: 'all 0.15s ease',
+                  background: type === 'tasting' ? '#D97706' : 'transparent',
+                  color: type === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
+                  border: type === 'tasting' ? '1px solid #D97706' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
                 }}
               >
-                👑 Cliente (Pós-Venda)
+                <UtensilsCrossed size={14} />
+                Degustação Gastronômica
               </button>
             </div>
-          )}
-        </div>
+
+            {/* Toggle Lead vs Cliente (Exclusivo para Pós-Venda) */}
+            {isPostSaleUser && (
+              <div style={{
+                display: 'flex',
+                background: 'rgba(0,0,0,0.25)',
+                padding: '2px',
+                borderRadius: '8px',
+                border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setTargetCategoryMode('lead')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: targetCategoryMode === 'lead' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
+                    color: targetCategoryMode === 'lead' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
+                  }}
+                >
+                  Lead Comercial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetCategoryMode('client')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: targetCategoryMode === 'client' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
+                    color: targetCategoryMode === 'client' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
+                  }}
+                >
+                  <Crown size={13} />
+                  Cliente (Pós-Venda)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* CORPO DO FORMULÁRIO */}
         <form onSubmit={handleSchedule} style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -646,20 +717,34 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 justifyContent: 'space-between',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: `${themeColor}22`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    color: themeColor,
-                    fontSize: '0.8rem',
-                  }}>
-                    {currentLead.name.substring(0, 2).toUpperCase()}
-                  </div>
+                  {currentLead.avatarUrl || (currentLead as any).photoUrl ? (
+                    <img
+                      src={currentLead.avatarUrl || (currentLead as any).photoUrl}
+                      alt={currentLead.name}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: `1px solid ${themeColor}66`,
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: `${themeColor}22`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      color: themeColor,
+                      fontSize: '0.8rem',
+                    }}>
+                      {currentLead.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--adm-text-title, #FFFFFF)' }}>
                       {currentLead.name}
@@ -824,7 +909,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     <div
                       key={d.dateStr}
                       onClick={() => {
-                        if (isClickable) setSelectedDate(d.dateStr);
+                        if (isClickable) handleSelectDate(d.dateStr);
                       }}
                       title={d.reason}
                       style={{
@@ -881,7 +966,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 Horários Livres ({selectedDate ? selectedDate.split('-').reverse().join('/') : 'Selecione data'})
               </span>
 
-              {dayAvailability.slots.length === 0 ? (
+              {availableSlots.length === 0 ? (
                 <div style={{
                   flex: 1,
                   display: 'flex',
@@ -899,10 +984,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   display: 'grid',
                   gridTemplateColumns: 'repeat(2, 1fr)',
                   gap: '8px',
-                  maxHeight: '220px',
+                  maxHeight: '260px',
+                  paddingBottom: '8px',
                   overflowY: 'auto',
                 }}>
-                  {dayAvailability.slots.map(s => {
+                  {availableSlots.map(s => {
                     const isSelected = selectedTime === s.time;
                     return (
                       <button
@@ -914,15 +1000,15 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           padding: '10px 8px',
                           borderRadius: '8px',
                           border: isSelected 
-                            ? `1px solid ${themeColor}` 
+                            ? `2px solid ${themeColor}` 
                             : s.isAvailable 
                               ? '1px solid var(--adm-border, rgba(255,255,255,0.12))' 
-                              : '1px dashed rgba(255,255,255,0.05)',
+                              : '1px dashed rgba(255,255,255,0.08)',
                           background: isSelected 
                             ? `${themeColor}22` 
                             : s.isAvailable 
                               ? 'var(--adm-bg-card, #1E293B)' 
-                              : 'transparent',
+                              : 'rgba(0,0,0,0.1)',
                           color: isSelected 
                             ? themeColor 
                             : s.isAvailable 
@@ -933,11 +1019,12 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           flexDirection: 'column',
                           alignItems: 'center',
                           gap: '2px',
+                          opacity: s.isAvailable ? 1 : 0.45,
                         }}
                       >
                         <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>{s.time}</span>
-                        <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                          {s.isAvailable ? `${s.remainingSpots} vaga(s)` : 'Esgotado'}
+                        <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>
+                          {s.isAvailable ? `${s.remainingSpots} vaga(s)` : ((s as any).reason || 'Indisponível')}
                         </span>
                       </button>
                     );
@@ -948,7 +1035,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           </div>
 
           {/* PAX, RESPONSÁVEL E NOTAS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1.5fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr', gap: '14px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
                 {type === 'tasting' ? 'PAX (PESSOAS) *' : 'PAX (PESSOAS)'}
@@ -956,128 +1043,306 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={25}
                 value={pax}
                 onChange={e => setPax(Number(e.target.value) || 1)}
                 style={{
                   width: '100%',
                   padding: '9px 12px',
                   borderRadius: '8px',
-                  background: 'var(--adm-bg-card, #1E293B)',
-                  color: 'var(--adm-text-title, #FFFFFF)',
-                  border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
+                  background: pax > recommendedMaxPax ? '#FFFBEB' : 'var(--adm-bg-card, #1E293B)',
+                  color: pax > recommendedMaxPax ? '#92400E' : 'var(--adm-text-title, #FFFFFF)',
+                  border: pax > recommendedMaxPax ? '2px solid #F59E0B' : '1px solid var(--adm-border, rgba(255,255,255,0.15))',
                   fontSize: '0.85rem',
-                  fontWeight: 700,
+                  fontWeight: 800,
+                  boxSizing: 'border-box',
                 }}
               />
+              {pax > recommendedMaxPax && (
+                <span style={{ display: 'block', marginTop: '4px', fontSize: '0.68rem', color: '#F59E0B', fontWeight: 700 }}>
+                  Recomendado da casa: até {recommendedMaxPax} PAX.
+                </span>
+              )}
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
                 SDR / RESPONSÁVEL PELO ATENDIMENTO
               </label>
-              <select
-                value={responsibleId}
-                onChange={e => setResponsibleId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '8px',
-                  background: 'var(--adm-bg-card, #1E293B)',
-                  color: 'var(--adm-text-title, #FFFFFF)',
-                  border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">Selecione um responsável...</option>
-                {collaborators.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.role === 'admin' ? 'Gerente' : c.role === 'master' ? 'Master' : 'Colaborador'})
-                  </option>
-                ))}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={responsibleId}
+                  onChange={e => setResponsibleId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-card, #1E293B)',
+                    color: 'var(--adm-text-title, #FFFFFF)',
+                    border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <option value="">Selecione um responsável comercial...</option>
+                  {collaborators.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.role === 'admin' ? 'Gerência' : c.role === 'master' ? 'Master' : 'Comercial/SDR'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* AUTOMAÇÃO DE LEMBRETES PARA O SDR (DIAS E HORAS) */}
+          {/* AUTOMAÇÃO DE LEMBRETES PARA O SDR (CLEAN, NÍTIDO E SEM DEGRADÊS ESCUROS) */}
           <div style={{
             padding: '16px',
             borderRadius: '10px',
-            background: 'rgba(0,0,0,0.15)',
-            border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
+            background: 'var(--adm-bg-surface, #F8FAFC)',
+            border: '1px solid var(--adm-border, #E2E8F0)',
             display: 'flex',
             flexDirection: 'column',
             gap: '12px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Bell size={16} color="#10B981" />
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', textTransform: 'uppercase' }}>
                 Automação de Lembretes do SDR (Follow-up)
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               {/* Lembrete em Dias */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input
-                  type="checkbox"
-                  checked={enableDayReminder}
-                  onChange={e => setEnableDayReminder(e.target.checked)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
-                />
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1' }}>Criar lembrete</span>
-                <select
-                  disabled={!enableDayReminder}
-                  value={reminderDaysBefore}
-                  onChange={e => setReminderDaysBefore(Number(e.target.value))}
-                  style={{
-                    padding: '5px 8px',
-                    borderRadius: '6px',
-                    background: 'var(--adm-bg-card, #1E293B)',
-                    color: 'var(--adm-text-title, #FFFFFF)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    fontSize: '0.78rem',
-                  }}
-                >
-                  <option value={1}>1 dia antes</option>
-                  <option value={2}>2 dias antes</option>
-                  <option value={3}>3 dias antes</option>
-                  <option value={5}>5 dias antes</option>
-                </select>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <input
+                    type="checkbox"
+                    id="enableDayReminderCheckbox"
+                    disabled={isScheduleToday}
+                    checked={enableDayReminder && !isScheduleToday}
+                    onChange={e => setEnableDayReminder(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: isScheduleToday ? 'not-allowed' : 'pointer', accentColor: '#10B981' }}
+                  />
+                  <label htmlFor="enableDayReminderCheckbox" style={{ fontSize: '0.82rem', fontWeight: 700, color: isScheduleToday ? '#94A3B8' : '#334155', cursor: isScheduleToday ? 'not-allowed' : 'pointer' }}>
+                    Lembrete em Dias
+                  </label>
+
+                  {isScheduleToday ? (
+                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                      (Indisponível: agendamento para hoje)
+                    </span>
+                  ) : (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <select
+                        disabled={!enableDayReminder}
+                        value={isCustomDays ? 'custom' : reminderDaysBefore}
+                        onChange={e => {
+                          if (e.target.value === 'custom') {
+                            setIsCustomDays(true);
+                          } else {
+                            setIsCustomDays(false);
+                            setReminderDaysBefore(Number(e.target.value));
+                          }
+                        }}
+                        style={{
+                          padding: '5px 8px',
+                          borderRadius: '6px',
+                          background: '#FFFFFF',
+                          color: '#0F172A',
+                          border: '1px solid #CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <option value={1}>1 dia antes</option>
+                        <option value={2}>2 dias antes</option>
+                        <option value={3}>3 dias antes</option>
+                        <option value={5}>5 dias antes</option>
+                        <option value="custom">Personalizado...</option>
+                      </select>
+
+                      {isCustomDays && (
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={reminderDaysBefore}
+                          onChange={e => setReminderDaysBefore(Number(e.target.value) || 1)}
+                          style={{
+                            width: '54px',
+                            padding: '4px 6px',
+                            borderRadius: '6px',
+                            background: '#FFFFFF',
+                            color: '#0F172A',
+                            border: isDaysReminderInPast ? '1px solid #EF4444' : '1px solid #CBD5E1',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {enableDayReminder && !isScheduleToday && isDaysReminderInPast && (
+                  <span style={{ display: 'block', marginTop: '4px', fontSize: '0.70rem', color: '#EF4444', fontWeight: 700 }}>
+                    Não é possível criar este lembrete pois a data calculada já passou.
+                  </span>
+                )}
               </div>
 
               {/* Lembrete em Horas */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input
-                  type="checkbox"
-                  checked={enableHourReminder}
-                  onChange={e => setEnableHourReminder(e.target.checked)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
-                />
-                <span style={{ fontSize: '0.8rem', color: '#CBD5E1' }}>Criar lembrete</span>
-                <select
-                  disabled={!enableHourReminder}
-                  value={reminderHoursBefore}
-                  onChange={e => setReminderHoursBefore(Number(e.target.value))}
-                  style={{
-                    padding: '5px 8px',
-                    borderRadius: '6px',
-                    background: 'var(--adm-bg-card, #1E293B)',
-                    color: 'var(--adm-text-title, #FFFFFF)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    fontSize: '0.78rem',
-                  }}
-                >
-                  <option value={1}>1 hora antes</option>
-                  <option value={3}>3 horas antes</option>
-                  <option value={24}>24 horas antes</option>
-                  <option value={48}>48 horas antes</option>
-                </select>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <input
+                    type="checkbox"
+                    id="enableHourReminderCheckbox"
+                    checked={enableHourReminder}
+                    onChange={e => setEnableHourReminder(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
+                  />
+                  <label htmlFor="enableHourReminderCheckbox" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+                    Lembrete em Horas
+                  </label>
+
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <select
+                      disabled={!enableHourReminder}
+                      value={isCustomHours ? 'custom' : reminderHoursBefore}
+                      onChange={e => {
+                        if (e.target.value === 'custom') {
+                          setIsCustomHours(true);
+                        } else {
+                          setIsCustomHours(false);
+                          setReminderHoursBefore(Number(e.target.value));
+                        }
+                      }}
+                      style={{
+                        padding: '5px 8px',
+                        borderRadius: '6px',
+                        background: '#FFFFFF',
+                        color: '#0F172A',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <option value={1}>1 hora antes</option>
+                      <option value={2}>2 horas antes</option>
+                      <option value={4}>4 horas antes</option>
+                      <option value={6}>6 horas antes</option>
+                      <option value={12}>12 horas antes</option>
+                      <option value={24}>24 horas antes</option>
+                      <option value="custom">Personalizado...</option>
+                    </select>
+
+                    {isCustomHours && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={72}
+                        value={reminderHoursBefore}
+                        onChange={e => setReminderHoursBefore(Number(e.target.value) || 1)}
+                        style={{
+                          width: '54px',
+                          padding: '4px 6px',
+                          borderRadius: '6px',
+                          background: '#FFFFFF',
+                          color: '#0F172A',
+                          border: isHoursReminderInPast ? '1px solid #EF4444' : '1px solid #CBD5E1',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {enableHourReminder && isHoursReminderInPast && (
+                  <span style={{ display: 'block', marginTop: '4px', fontSize: '0.70rem', color: '#EF4444', fontWeight: 700 }}>
+                    Não é possível criar este lembrete pois o horário calculado já passou.
+                  </span>
+                )}
               </div>
             </div>
           </div>
+
+          {/* MODAL DE CONFIRMAÇÃO DE PAX ACIMA DO RECOMENDADO */}
+          {isPaxWarningModalOpen && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.7)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+            }}>
+              <div style={{
+                background: 'var(--adm-bg-card, #FFFFFF)',
+                borderRadius: '12px',
+                border: '1px solid #F59E0B',
+                maxWidth: '460px',
+                width: '100%',
+                padding: '20px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                  <AlertTriangle size={24} color="#D97706" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                    Alerta de Capacidade por Família
+                  </h3>
+                </div>
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#475569', lineHeight: 1.5 }}>
+                  Você está agendando para <strong>{pax} pessoas</strong>. A capacidade recomendada cadastrada para esta unidade é de até <strong>{recommendedMaxPax} pessoas por família</strong>.
+                  <br /><br />
+                  Deseja prosseguir mesmo assim?
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsPaxWarningModalOpen(false)}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      background: 'transparent',
+                      border: '1px solid #CBD5E1',
+                      color: '#475569',
+                      fontSize: '0.80rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Voltar e Ajustar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      setIsPaxWarningModalOpen(false);
+                      // Submete ignorando o bloqueio de aviso
+                      handleSchedule(e);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      background: '#D97706',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: '0.80rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Sim, Confirmar com {pax} Pessoas
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* NOTAS E OBSERVAÇÕES */}
           <div>

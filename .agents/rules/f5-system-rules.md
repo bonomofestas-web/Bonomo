@@ -38,3 +38,8 @@ Nenhuma tarefa deve ser executada sem levar em conta a visão do produto, a arqu
 - Todo upload em ambiente local de desenvolvimento é prefixado automaticamente com `local_dev/` (via middleware do Vite em `vite.config.ts`).
 - Arquivos de produção na raiz do bucket (`brand/`, `videos/`, `avatars/`, `images/`) são protegidos e intocáveis em desenvolvimento.
 - A purga e liberação de espaço de mídias de teste é executada de forma automatizada com `npm run cleanup:r2`.
+
+## Regra Fundamental 8: Proibição de Emojis e Uso Obrigatório de Ícones Lucide
+- É terminantemente proibido o uso de emojis na interface visual do sistema (textos, botões, títulos, badges, selects e cards).
+- Toda e qualquer sinalização visual deve utilizar exclusivamente ícones modernos e elegantes da biblioteca `lucide-react`.
+- O uso de emojis só é permitido se expressamente solicitado pelo usuário para um caso pontual.

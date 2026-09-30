@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, Square, Calendar, Clock, 
-  CheckCircle2, XCircle, Sparkles, ThumbsUp
+  CheckCircle2, XCircle, Sparkles, ThumbsUp,
+  Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays
 } from 'lucide-react';
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
@@ -60,6 +61,65 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
   const isVisitsContext = workspaceContext === 'visits_tastings';
 
+  // Navegação Semanal: Domingo a Sábado
+  const getSundayOfWeek = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0 é Domingo
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const [currentWeekSunday, setCurrentWeekSunday] = useState<Date>(() => getSundayOfWeek(new Date()));
+
+  const handlePrevWeek = () => {
+    setCurrentWeekSunday(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() - 7);
+      return d;
+    });
+  };
+
+  const handleNextWeek = () => {
+    setCurrentWeekSunday(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + 7);
+      return d;
+    });
+  };
+
+  const handleTodayWeek = () => {
+    setCurrentWeekSunday(getSundayOfWeek(new Date()));
+  };
+
+  const weekInfo = useMemo(() => {
+    const days: { dateStr: string; dateObj: Date }[] = [];
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(currentWeekSunday);
+      cur.setDate(currentWeekSunday.getDate() + i);
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      days.push({
+        dateStr: `${y}-${m}-${d}`,
+        dateObj: cur,
+      });
+    }
+
+    const first = days[0].dateObj;
+    const last = days[6].dateObj;
+
+    const firstFormatted = first.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    const lastFormatted = last.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+    const label = `Semana de ${firstFormatted} a ${lastFormatted} (Dom a Sáb)`;
+
+    const thisSundayStr = getSundayOfWeek(new Date()).toISOString().split('T')[0];
+    const currentSundayStr = currentWeekSunday.toISOString().split('T')[0];
+    const isCurrentWeek = thisSundayStr === currentSundayStr;
+
+    return { days, label, isCurrentWeek };
+  }, [currentWeekSunday]);
+
   // Format Time/Deadline for individual task row
   const formatDeadline = (task: AdminTask) => {
     if (!task.dueDate) return 'Sem prazo';
@@ -81,37 +141,30 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   const groupedTasks = useMemo(() => {
     const groupMap = new Map<string, AdminTask[]>();
 
+    const targetVenueId = activeVenueId !== 'all' && activeVenueId ? activeVenueId : (adminState?.venues?.[0]?.id || 'all');
+    const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
+
+    // Se estiver no contexto de Visitas e Degustações, garante os 7 dias da semana atual (Dom a Sáb)
+    if (isVisitsContext) {
+      weekInfo.days.forEach(d => {
+        if (!groupMap.has(d.dateStr)) {
+          groupMap.set(d.dateStr, []);
+        }
+      });
+    }
+
     tasks.forEach(task => {
       const key = task.dueDate || 'no_date';
+      // Se estiver em visitas, apenas tarefas da semana ativa entram
+      if (isVisitsContext) {
+        const isDateInWeek = weekInfo.days.some(d => d.dateStr === key);
+        if (!isDateInWeek && key !== 'no_date') return;
+      }
       if (!groupMap.has(key)) {
         groupMap.set(key, []);
       }
       groupMap.get(key)!.push(task);
     });
-
-    // Se estiver no contexto de Visitas e Degustações, carrega os dias configurados da unidade
-    const targetVenueId = activeVenueId !== 'all' && activeVenueId ? activeVenueId : (adminState?.venues?.[0]?.id || 'all');
-    const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
-
-    if (isVisitsContext && venueConfig) {
-      // Gera os próximos 30 dias a partir de hoje
-      const now = new Date();
-      for (let i = 0; i < 30; i++) {
-        const nextD = new Date(now);
-        nextD.setDate(now.getDate() + i);
-        const dateStr = nextD.toISOString().split('T')[0];
-
-        // Checa se o dia tem visita ou degustação configurada
-        const hasVisits = agendaAvailabilityService.checkDayAvailability(venueConfig, dateStr, 'visit');
-        const hasTastings = agendaAvailabilityService.checkDayAvailability(venueConfig, dateStr, 'tasting');
-
-        if (hasVisits || hasTastings) {
-          if (!groupMap.has(dateStr)) {
-            groupMap.set(dateStr, []);
-          }
-        }
-      }
-    }
 
     const groups: DateGroup[] = [];
 
@@ -185,7 +238,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
     });
 
     return groups;
-  }, [tasks, todayStr, tomorrowStr, isVisitsContext, activeVenueId, venueAgendaConfigs, adminState?.venues]);
+  }, [tasks, todayStr, tomorrowStr, isVisitsContext, activeVenueId, venueAgendaConfigs, adminState?.venues, weekInfo]);
 
   // Helper for Visitas & Degustações: Calculate Notification 1 & 2 + Presence metric
   const getVisitNotificationData = (parentTask: AdminTask) => {
@@ -276,6 +329,103 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       margin: '16px 24px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
     }}>
+      {/* BARRA SUPERIOR DE NAVEGAÇÃO SEMANAL (Domingo a Sábado) */}
+      <div style={{
+        padding: '10px 20px',
+        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        background: 'var(--adm-bg-surface, #F8FAFC)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CalendarDays size={16} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+            {weekInfo.label}
+          </span>
+          {weekInfo.isCurrentWeek && (
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: '6px',
+              background: 'rgba(2,132,199,0.12)',
+              color: '#0284C7',
+              border: '1px solid rgba(2,132,199,0.25)',
+            }}>
+              Semana Atual
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={handlePrevWeek}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Semana anterior"
+          >
+            <ChevronLeft size={14} />
+            <span>Semana Anterior</span>
+          </button>
+
+          {!weekInfo.isCurrentWeek && (
+            <button
+              type="button"
+              onClick={handleTodayWeek}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '6px',
+                background: 'var(--adm-accent, #0284C7)',
+                border: 'none',
+                color: '#FFFFFF',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Esta Semana
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleNextWeek}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '6px',
+              background: 'var(--adm-bg-card, #FFFFFF)',
+              border: '1px solid var(--adm-border, #CBD5E1)',
+              color: 'var(--adm-text-title, #334155)',
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+            title="Próxima semana"
+          >
+            <span>Próxima Semana</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
       <div style={{ flex: 1, overflow: 'auto' }}>
         <table style={{
           width: '100%',
@@ -370,33 +520,41 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             </span>
                           )}
 
-                          {/* Badges de Disponibilidade da Casa de Festa */}
+                          {/* Badges de Disponibilidade da Casa de Festa com Ícones Lucide */}
                           {group.availableTypes && (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                               {group.availableTypes.visit && (
                                 <span style={{
-                                  fontSize: '0.66rem',
+                                  fontSize: '0.68rem',
                                   fontWeight: 800,
-                                  padding: '2px 7px',
+                                  padding: '3px 8px',
                                   borderRadius: '5px',
                                   background: 'rgba(16,185,129,0.12)',
                                   color: '#10B981',
                                   border: '1px solid rgba(16,185,129,0.25)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
                                 }}>
-                                  🏛️ Visita
+                                  <Building2 size={12} />
+                                  Visita
                                 </span>
                               )}
                               {group.availableTypes.tasting && (
                                 <span style={{
-                                  fontSize: '0.66rem',
+                                  fontSize: '0.68rem',
                                   fontWeight: 800,
-                                  padding: '2px 7px',
+                                  padding: '3px 8px',
                                   borderRadius: '5px',
                                   background: 'rgba(217,119,6,0.12)',
                                   color: '#D97706',
                                   border: '1px solid rgba(217,119,6,0.25)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
                                 }}>
-                                  🍽️ Degustação
+                                  <UtensilsCrossed size={12} />
+                                  Degustação
                                 </span>
                               )}
                             </div>
@@ -428,7 +586,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             fontWeight: 700,
                             padding: '2px 8px',
                             borderRadius: '999px',
-                            background: group.tasks.length === 0 ? 'rgba(255,255,255,0.05)' : (group.isToday ? '#DBEAFE' : '#E2E8F0'),
+                            background: group.tasks.length === 0 ? 'rgba(0,0,0,0.04)' : (group.isToday ? '#DBEAFE' : '#E2E8F0'),
                             color: group.tasks.length === 0 ? '#94A3B8' : (group.isToday ? '#1E40AF' : '#475569'),
                           }}>
                             {group.tasks.length} {group.tasks.length === 1 ? 'agendamento' : 'agendamentos'}
@@ -438,33 +596,13 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     </td>
                   </tr>
 
-                  {/* Linha para dia vazio configurado */}
+                  {/* Linha para dia vazio configurado: informativo limpo sem botão duplicado */}
                   {group.tasks.length === 0 && (
-                    <tr style={{ background: 'rgba(0,0,0,0.02)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
-                      <td colSpan={totalColumns} style={{ padding: '16px 20px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
-                            Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa
-                          </span>
-                          {onScheduleForDate && group.key !== 'no_date' && (
-                            <button
-                              type="button"
-                              onClick={() => onScheduleForDate(group.key)}
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                background: '#10B981',
-                                border: 'none',
-                                color: '#FFFFFF',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Agendar Agora
-                            </button>
-                          )}
-                        </div>
+                    <tr style={{ background: 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
+                      <td colSpan={totalColumns} style={{ padding: '14px 20px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
+                          Nenhum agendamento confirmado para esta data • Vagas disponíveis na casa
+                        </span>
                       </td>
                     </tr>
                   )}

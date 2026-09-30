@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
-  X, MessageSquare, Users, CheckSquare, Sliders
+  X, MessageSquare, Users, CheckSquare, Sliders, CalendarDays, Clock, LayoutGrid
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
@@ -410,7 +410,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         flexShrink: 0,
         boxSizing: 'border-box',
       }}>
-        {/* Left: View Mode Switchers */}
+        {/* Left: View Mode Switchers na ordem: Lista, Mês, Semana, Dia, Kanban */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -420,32 +420,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           borderRadius: '10px',
           border: '1px solid var(--adm-border, #E2E8F0)',
         }}>
-          {/* 1. Kanban Mode ||' */}
-          <button
-            type="button"
-            onClick={() => setViewMode('kanban')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: viewMode === 'kanban' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-              border: viewMode === 'kanban' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
-              color: viewMode === 'kanban' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontFamily: 'monospace',
-              boxShadow: viewMode === 'kanban' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-            title="Visualização em Colunas / Kanban"
-          >
-            ||'
-          </button>
-
-          {/* 2. Table / List Mode ☰ */}
+          {/* 1. Lista */}
           <button
             type="button"
             onClick={() => setViewMode('table')}
@@ -456,62 +431,21 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               border: viewMode === 'table' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
               color: viewMode === 'table' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: '0.82rem',
+              fontWeight: 700,
+              fontSize: '0.78rem',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: '6px',
               boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
             }}
-            title="Visualização em Tabela / Lista"
+            title="Visualização em Lista / Tabela"
           >
-            <List size={16} />
+            <List size={15} />
+            <span>Lista</span>
           </button>
 
-          {/* 3. Daily Timeline DIA */}
-          <button
-            type="button"
-            onClick={() => setViewMode('day')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: viewMode === 'day' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-              border: viewMode === 'day' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
-              color: viewMode === 'day' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: '0.74rem',
-              letterSpacing: '0.5px',
-              boxShadow: viewMode === 'day' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            DIA
-          </button>
-
-          {/* 4. Weekly Calendar SEMANA */}
-          <button
-            type="button"
-            onClick={() => setViewMode('week')}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: viewMode === 'week' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-              border: viewMode === 'week' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
-              color: viewMode === 'week' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-              cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: '0.74rem',
-              letterSpacing: '0.5px',
-              boxShadow: viewMode === 'week' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            SEMANA
-          </button>
-
-          {/* 5. Monthly Calendar MÊS */}
+          {/* 2. Mês */}
           <button
             type="button"
             onClick={() => setViewMode('month')}
@@ -522,14 +456,93 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               border: viewMode === 'month' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
               color: viewMode === 'month' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
               cursor: 'pointer',
-              fontWeight: 800,
-              fontSize: '0.74rem',
-              letterSpacing: '0.5px',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
               boxShadow: viewMode === 'month' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
             }}
+            title="Visualização Mensal"
           >
-            MÊS
+            <CalendarIcon size={15} />
+            <span>Mês</span>
+          </button>
+
+          {/* 3. Semana */}
+          <button
+            type="button"
+            onClick={() => setViewMode('week')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: viewMode === 'week' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'week' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'week' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: viewMode === 'week' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+            title="Visualização Semanal"
+          >
+            <CalendarDays size={15} />
+            <span>Semana</span>
+          </button>
+
+          {/* 4. Dia */}
+          <button
+            type="button"
+            onClick={() => setViewMode('day')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: viewMode === 'day' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'day' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'day' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: viewMode === 'day' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+            title="Visualização Diária"
+          >
+            <Clock size={15} />
+            <span>Dia</span>
+          </button>
+
+          {/* 5. Kanban */}
+          <button
+            type="button"
+            onClick={() => setViewMode('kanban')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: viewMode === 'kanban' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
+              border: viewMode === 'kanban' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
+              color: viewMode === 'kanban' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: viewMode === 'kanban' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+            title="Visualização em Colunas / Kanban"
+          >
+            <LayoutGrid size={15} />
+            <span>Kanban</span>
           </button>
         </div>
 
