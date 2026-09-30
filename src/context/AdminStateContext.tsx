@@ -7950,6 +7950,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
         return updated;
       });
+
+      leadService.addActivity(data.leadId, newActivity as any).catch(err => {
+        console.warn('Erro ao registrar atividade de tarefa no Supabase:', err);
+      });
     }
 
     const effectiveClientId = data.debutanteId || data.customProperties?.clientId;

@@ -263,6 +263,8 @@ html.dark {
   --adm-bg-header: #0B111A;
   --adm-bg-card: #0F1724;
   --adm-bg-card-hover: #141F30;
+  --adm-bg-surface: #101726;
+  --adm-bg-surface-subtle: #0B111A;
   --adm-bg-input: #0A1018;
   --adm-bg-elevated: #152236;
   --adm-border: rgba(255, 255, 255, 0.08);
@@ -312,6 +314,8 @@ html.dark {
   --adm-bg-header: #FFFFFF;
   --adm-bg-card: #FFFFFF;
   --adm-bg-card-hover: #F8FAFC;
+  --adm-bg-surface: #F8FAFC;
+  --adm-bg-surface-subtle: #F1F5F9;
   --adm-bg-input: #F1F5F9;
   --adm-bg-elevated: #E2E8F0;
   --adm-border: #E2E8F0;

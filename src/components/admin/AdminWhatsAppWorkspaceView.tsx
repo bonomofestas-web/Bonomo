@@ -501,6 +501,103 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [quickFollowupDate, setQuickFollowupDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [quickFollowupTime, setQuickFollowupTime] = useState<string>('14:00');
   const [quickFollowupNote, setQuickFollowupNote] = useState<string>('');
+  const [isQuickDatePickerOpen, setIsQuickDatePickerOpen] = useState(false);
+  const [quickCalendarMonth, setQuickCalendarMonth] = useState<Date>(() => new Date());
+  const quickDatePickerRef = useRef<HTMLDivElement>(null);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutsideQuickDate = (e: MouseEvent) => {
+      if (quickDatePickerRef.current && !quickDatePickerRef.current.contains(e.target as Node)) {
+        setIsQuickDatePickerOpen(false);
+      }
+    };
+    if (isQuickDatePickerOpen) {
+      document.addEventListener('mousedown', handleClickOutsideQuickDate);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideQuickDate);
+    };
+  }, [isQuickDatePickerOpen]);
+
+  const quickCalendarDays = useMemo(() => {
+    const year = quickCalendarMonth.getFullYear();
+    const month = quickCalendarMonth.getMonth();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const days: { day: number; dateStr: string; isCurrentMonth: boolean; isToday: boolean; isSelected: boolean }[] = [];
+
+    // Mês anterior
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const d = daysInPrevMonth - i;
+      const m = month === 0 ? 12 : month;
+      const y = month === 0 ? year - 1 : year;
+      const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      days.push({
+        day: d,
+        dateStr,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        isSelected: dateStr === quickFollowupDate,
+      });
+    }
+
+    // Mês atual
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      days.push({
+        day: d,
+        dateStr,
+        isCurrentMonth: true,
+        isToday: dateStr === todayStr,
+        isSelected: dateStr === quickFollowupDate,
+      });
+    }
+
+    // Próximo mês
+    const totalSlots = days.length <= 35 ? 35 : 42;
+    const remaining = totalSlots - days.length;
+    for (let d = 1; d <= remaining; d++) {
+      const m = month + 2 > 12 ? 1 : month + 2;
+      const y = month + 2 > 12 ? year + 1 : year;
+      const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      days.push({
+        day: d,
+        dateStr,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        isSelected: dateStr === quickFollowupDate,
+      });
+    }
+
+    return days;
+  }, [quickCalendarMonth, quickFollowupDate, todayStr]);
+
+  const quickMonthTitle = useMemo(() => {
+    const m = quickCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return m.charAt(0).toUpperCase() + m.slice(1);
+  }, [quickCalendarMonth]);
+
+  const formatQuickDateLabel = (dateStr: string) => {
+    if (!dateStr) return 'Definir data';
+    if (dateStr === todayStr) return 'Hoje';
+    if (dateStr === tomorrowStr) return 'Amanhã';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return dateStr;
+  };
 
   // Note Multimedia Attachments & Recording States
   const [isNoteRecording, setIsNoteRecording] = useState(false);
@@ -6090,32 +6187,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       </p>
                     </div>
 
-                    {isPostSaleFunnel && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingTask(null);
-                          setIsTaskModalOpen(true);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '8px 14px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: 'var(--adm-accent, #6366F1)',
-                          color: '#FFF',
-                          fontSize: '0.76rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
-                        }}
-                      >
-                        <Plus size={14} />
-                        <span>Nova Tarefa / Agendamento</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTask(null);
+                        setIsTaskModalOpen(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: 'var(--adm-accent, #0284C7)',
+                        color: '#FFF',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                      }}
+                    >
+                      <Plus size={14} />
+                      <span>{isPostSaleFunnel ? 'Nova Tarefa / Agendamento' : 'Novo Follow-up'}</span>
+                    </button>
                   </div>
 
                   {combinedLeadTasks.length === 0 ? (
@@ -7493,48 +7588,217 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     borderRadius: '12px',
                     padding: '8px 12px',
                     flexWrap: 'wrap',
+                    position: 'relative',
                   }}>
+                    {/* 1. Tipo de Follow-up (Sem Emojis, Padrão Lucide) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <select
                         value={quickFollowupType}
                         onChange={(e) => setQuickFollowupType(e.target.value)}
                         className="adm-input"
-                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 8px', fontWeight: 700 }}
+                        style={{
+                          height: '36px',
+                          fontSize: '0.74rem',
+                          borderRadius: '8px',
+                          padding: '0 10px',
+                          fontWeight: 700,
+                          background: 'var(--adm-bg-input)',
+                          color: 'var(--adm-text-title)',
+                          border: '1px solid var(--adm-border)',
+                          cursor: 'pointer',
+                        }}
                       >
-                        <option value="Ligação WhatsApp">📞 Ligação WhatsApp</option>
-                        <option value="Mensagem WhatsApp">💬 Mensagem</option>
-                        <option value="Reunião / Visita">🤝 Visita / Reunião</option>
-                        <option value="Proposta / Orçamento">📄 Enviar Proposta</option>
-                        <option value="Outro">📌 Outro Follow-up</option>
+                        <option value="Ligação WhatsApp">Ligação WhatsApp</option>
+                        <option value="Mensagem WhatsApp">Mensagem WhatsApp</option>
+                        <option value="Reunião / Visita">Visita / Reunião</option>
+                        <option value="Proposta / Orçamento">Enviar Proposta</option>
+                        <option value="Outro">Outro Follow-up</option>
                       </select>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <input
-                        type="date"
-                        value={quickFollowupDate}
-                        onChange={(e) => setQuickFollowupDate(e.target.value)}
-                        className="adm-input"
-                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px' }}
-                      />
+                    {/* 2. Pop-up de Calendário Bonitinho */}
+                    <div style={{ position: 'relative' }} ref={quickDatePickerRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickDatePickerOpen(!isQuickDatePickerOpen)}
+                        style={{
+                          height: '36px',
+                          padding: '0 10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--adm-border)',
+                          background: 'var(--adm-bg-input)',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        title="Escolher data do follow-up"
+                      >
+                        <Calendar size={14} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+                        <span>{formatQuickDateLabel(quickFollowupDate)}</span>
+                        <ChevronDown size={12} style={{ color: 'var(--adm-text-muted)' }} />
+                      </button>
+
+                      {isQuickDatePickerOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '100%',
+                          left: 0,
+                          marginBottom: '8px',
+                          zIndex: 999,
+                          background: 'var(--adm-bg-card)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '14px',
+                          boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                          width: '270px',
+                          padding: '14px',
+                          boxSizing: 'border-box',
+                        }}>
+                          {/* Top Header com Mês e Atalhos */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              {quickMonthTitle}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuickFollowupDate(todayStr);
+                                  setIsQuickDatePickerOpen(false);
+                                }}
+                                style={{
+                                  background: 'rgba(2, 132, 199, 0.12)',
+                                  border: '1px solid rgba(2, 132, 199, 0.25)',
+                                  color: 'var(--adm-accent, #0284C7)',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                }}
+                              >
+                                Hoje
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuickFollowupDate(tomorrowStr);
+                                  setIsQuickDatePickerOpen(false);
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid var(--adm-border)',
+                                  color: 'var(--adm-text-muted)',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                }}
+                              >
+                                Amanhã
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() - 1, 1))}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
+                              >
+                                <ChevronLeft size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setQuickCalendarMonth(new Date(quickCalendarMonth.getFullYear(), quickCalendarMonth.getMonth() + 1, 1))}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '3px' }}
+                              >
+                                <ChevronRight size={15} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Dias da Semana */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginBottom: '6px', fontWeight: 700 }}>
+                            <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                          </div>
+
+                          {/* Grid de Dias */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', textAlign: 'center' }}>
+                            {quickCalendarDays.map((d, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => {
+                                  setQuickFollowupDate(d.dateStr);
+                                  setIsQuickDatePickerOpen(false);
+                                }}
+                                style={{
+                                  background: d.isSelected 
+                                    ? 'var(--adm-accent, #0284C7)' 
+                                    : (d.isToday ? 'rgba(2, 132, 199, 0.15)' : 'transparent'),
+                                  color: d.isSelected 
+                                    ? '#FFFFFF' 
+                                    : (d.isCurrentMonth ? 'var(--adm-text-title)' : 'var(--adm-text-muted)'),
+                                  border: d.isToday && !d.isSelected ? '1px solid var(--adm-accent, #0284C7)' : 'none',
+                                  borderRadius: '6px',
+                                  padding: '5px 0',
+                                  fontSize: '0.74rem',
+                                  fontWeight: d.isSelected || d.isToday ? 800 : 500,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.1s ease',
+                                }}
+                              >
+                                {d.day}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Horário */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <input
                         type="time"
                         value={quickFollowupTime}
                         onChange={(e) => setQuickFollowupTime(e.target.value)}
                         className="adm-input"
-                        style={{ height: '36px', fontSize: '0.74rem', borderRadius: '8px', padding: '0 6px', width: '80px' }}
+                        style={{
+                          height: '36px',
+                          fontSize: '0.74rem',
+                          borderRadius: '8px',
+                          padding: '0 8px',
+                          width: '84px',
+                          background: 'var(--adm-bg-input)',
+                          color: 'var(--adm-text-title)',
+                          border: '1px solid var(--adm-border)',
+                          fontWeight: 600,
+                        }}
                       />
                     </div>
 
+                    {/* 4. Resumo */}
                     <input
                       type="text"
                       value={quickFollowupNote}
                       onChange={(e) => setQuickFollowupNote(e.target.value)}
                       placeholder="Resumo do follow-up (opcional)..."
                       className="adm-input"
-                      style={{ flex: 1, minWidth: '160px', height: '36px', borderRadius: '8px', fontSize: '0.76rem' }}
+                      style={{
+                        flex: 1,
+                        minWidth: '160px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        fontSize: '0.76rem',
+                        background: 'var(--adm-bg-input)',
+                        color: 'var(--adm-text-title)',
+                        border: '1px solid var(--adm-border)',
+                      }}
                     />
 
+                    {/* 5. Botão de Ação */}
                     <button
                       type="submit"
                       className="adm-btn-primary"
@@ -7548,7 +7812,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         fontSize: '0.74rem',
                         fontWeight: 800,
                         cursor: 'pointer',
-                        background: '#3B82F6',
+                        background: 'var(--adm-accent, #0284C7)',
+                        border: '1px solid var(--adm-accent, #0284C7)',
+                        color: '#FFFFFF',
+                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
                       }}
                     >
                       <Plus size={14} />

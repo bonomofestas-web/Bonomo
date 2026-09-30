@@ -480,9 +480,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                       <tr 
                         style={{
                           background: isDimmed 
-                            ? 'var(--adm-bg-surface, #F1F5F9)'
-                            : (group.isToday ? 'rgba(37, 99, 235, 0.08)' : 'var(--adm-bg-surface, #F8FAFC)'),
-                          borderTop: '2px solid var(--adm-border, #E2E8F0)',
+                            ? 'var(--adm-bg-surface-subtle, rgba(255,255,255,0.02))'
+                            : (group.isToday ? 'rgba(2, 132, 199, 0.10)' : 'var(--adm-bg-surface, #F8FAFC)'),
+                          borderTop: '1px solid var(--adm-border, #E2E8F0)',
                           borderBottom: '1px solid var(--adm-border, #E2E8F0)',
                           opacity: isDimmed ? 0.72 : 1,
                         }}
@@ -503,11 +503,11 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                           }}>
                             {/* Data Centralizada */}
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                              <Calendar size={14} style={{ color: isDimmed ? '#94A3B8' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-muted, #64748B)') }} />
+                              <Calendar size={14} style={{ color: isDimmed ? 'var(--adm-text-muted, #94A3B8)' : (group.isToday ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)') }} />
                               <span style={{
                                 fontWeight: 800,
                                 fontSize: '0.82rem',
-                                color: isDimmed ? '#64748B' : (group.isToday ? 'var(--adm-accent, #2563EB)' : 'var(--adm-text-title, #1E293B)'),
+                                color: isDimmed ? 'var(--adm-text-muted, #64748B)' : (group.isToday ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title, #1E293B)'),
                                 letterSpacing: '-0.2px',
                               }}>
                                 {group.title}
@@ -516,7 +516,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                 <span style={{
                                   fontSize: '0.74rem',
                                   fontWeight: 600,
-                                  color: isDimmed ? '#94A3B8' : (group.isToday ? '#3B82F6' : '#64748B'),
+                                  color: isDimmed ? 'var(--adm-text-muted, #94A3B8)' : (group.isToday ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)'),
                                 }}>
                                   • {group.subtitle}
                                 </span>
@@ -662,7 +662,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                   width: '24px',
                                   height: '24px',
                                   borderRadius: '6px',
-                                  background: '#FFFFFF',
+                                  background: 'var(--adm-bg-surface, #F8FAFC)',
                                   border: '1px solid var(--adm-border, #CBD5E1)',
                                   color: 'var(--adm-text-title, #334155)',
                                   cursor: 'pointer',
@@ -680,11 +680,11 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
                       {/* 2. Sub-cabeçalho das Colunas (Variáveis) dentro de cada Data */}
                       <tr style={{
-                        background: isDimmed ? 'rgba(241, 245, 249, 0.6)' : 'var(--adm-bg-surface, #F8FAFC)',
+                        background: 'var(--adm-bg-card, #FFFFFF)',
                         borderBottom: '1px solid var(--adm-border, #E2E8F0)',
                         fontSize: '0.68rem',
                         fontWeight: 800,
-                        color: isDimmed ? '#94A3B8' : 'var(--adm-text-muted, #64748B)',
+                        color: isDimmed ? 'var(--adm-text-muted, #94A3B8)' : 'var(--adm-text-muted, #64748B)',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         opacity: isDimmed ? 0.72 : 1,
@@ -719,10 +719,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                       {/* 3. Linha para dia vazio: informativo limpo */}
                       {group.tasks.length === 0 && (
                         <tr 
-                          style={{ background: isDimmed ? 'rgba(241, 245, 249, 0.4)' : 'rgba(0,0,0,0.01)', borderBottom: '1px solid var(--adm-border, #E2E8F0)', opacity: 0.72 }}
+                          style={{ background: 'transparent', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}
                         >
-                          <td colSpan={totalColumns} style={{ padding: '12px 20px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                          <td colSpan={totalColumns} style={{ padding: '14px 20px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted, #94A3B8)', fontStyle: 'italic' }}>
                               {isUnavailable 
                                 ? `Data indisponível para ${visitsSubFilter === 'visit' ? 'visitas comerciais' : (visitsSubFilter === 'tasting' ? 'degustações' : 'visitas ou degustações')}`
                                 : 'Nenhum agendamento para este dia'}
@@ -759,7 +759,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     let rowBg = isCancelledDueToBlock 
                       ? 'rgba(239, 68, 68, 0.08)' 
                       : (idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)');
-                    let rowHoverBg = isCancelledDueToBlock ? 'rgba(239, 68, 68, 0.14)' : 'var(--adm-bg-surface, #F0F9FF)';
+                    let rowHoverBg = isCancelledDueToBlock ? 'rgba(239, 68, 68, 0.14)' : 'var(--adm-bg-card-hover, #F0F9FF)';
 
                     if (isVisitsContext && visitData && !isCancelledDueToBlock) {
                       if (visitData.positiveCount === 2) {
@@ -770,7 +770,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         rowHoverBg = 'rgba(2, 132, 199, 0.2)';
                       } else {
                         rowBg = idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)';
-                        rowHoverBg = 'var(--adm-bg-surface, #F1F5F9)';
+                        rowHoverBg = 'var(--adm-bg-card-hover, #F1F5F9)';
                       }
                     }
 
@@ -857,7 +857,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                     border: '1.5px solid #3B82F6',
                                   }}
                                 />
-                                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#334155', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--adm-text-title, #334155)', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {assignedName.split(' ')[0]}
                                 </span>
                               </div>
@@ -887,7 +887,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             </div>
                           </td>
                         ) : (
-                          <td style={{ padding: '12px 16px', color: '#475569', fontWeight: 600 }}>
+                          <td style={{ padding: '12px 16px', color: 'var(--adm-text-title, #475569)', fontWeight: 600 }}>
                             {assignedName}
                           </td>
                         )}

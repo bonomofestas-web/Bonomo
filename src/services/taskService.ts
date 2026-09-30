@@ -51,7 +51,7 @@ export const taskService = {
         debutanteId: row.debutante_id || row.custom_properties?.debutanteId || row.custom_properties?.clientId || undefined,
         debutanteName: row.debutante_name || row.custom_properties?.debutanteName || row.custom_properties?.clientName || undefined,
         venueId: row.venue_id,
-        masterId: row.master_id || undefined,
+        masterId: row.master_id || row.custom_properties?.masterId || undefined,
         title: row.title,
         description: row.description,
         content: row.content || '',
@@ -107,12 +107,8 @@ export const taskService = {
       if (task.assignedToIds !== undefined) {
         payload.assigned_to_ids = (task.assignedToIds || []).filter(id => typeof id === 'string' && uuidRegex.test(id));
       }
-      if ((task as any).masterId !== undefined) {
-        payload.master_id = ((task as any).masterId && uuidRegex.test((task as any).masterId)) ? (task as any).masterId : null;
-      }
-      
       if (task.resolution !== undefined) {
-        payload.resolution = task.resolution;
+        payload.mandatory_feedback = task.resolution;
       }
 
       const effectiveLeadId = task.leadId || task.customProperties?.leadId;
@@ -127,6 +123,7 @@ export const taskService = {
         ...(task.observations !== undefined ? { observations: task.observations } : {}),
         ...(task.resolution !== undefined ? { resolution: task.resolution } : {}),
         ...(task.customType !== undefined ? { customType: task.customType } : {}),
+        ...((task as any).masterId !== undefined ? { masterId: (task as any).masterId } : {}),
       };
       payload.custom_properties = mergedCustomProps;
 

@@ -675,7 +675,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               placeholder="Novo filtro..."
               style={{
                 width: '100%',
-                padding: '8px 80px 8px 36px',
+                padding: '8px 84px 8px 36px',
                 borderRadius: '10px',
                 border: '1px solid var(--adm-border, #CBD5E1)',
                 background: 'var(--adm-bg-surface, #F8FAFC)',
@@ -691,23 +691,24 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               style={{
                 position: 'absolute',
                 right: '6px',
-                padding: '4px 8px',
+                padding: '4px 10px',
                 borderRadius: '6px',
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                background: hasActiveFilters ? '#E0F2FE' : '#F1F5F9',
-                color: hasActiveFilters ? '#0284C7' : '#64748B',
-                border: 'none',
+                gap: '5px',
+                background: hasActiveFilters ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.15))' : 'var(--adm-bg-card, #FFFFFF)',
+                color: hasActiveFilters ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
+                border: '1px solid var(--adm-border, #CBD5E1)',
                 cursor: 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
               <Filter size={12} />
               <span>Filtros</span>
               {hasActiveFilters && (
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#0284C7' }} />
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--adm-accent, #0284C7)' }} />
               )}
             </button>
           </div>
@@ -820,7 +821,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 >
                   <option value="all">Todos os bancos</option>
                   {databases.map(db => (
-                    <option key={db.id} value={db.id}>{db.icon || '📋'} {db.name}</option>
+                    <option key={db.id} value={db.id}>{db.name}</option>
                   ))}
                 </select>
               </div>
@@ -845,10 +846,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   }}
                 >
                   <option value="all">Todos os setores</option>
-                  <option value="comercial">💼 Comercial (SDR / Closer / CRM)</option>
-                  <option value="pos_venda">🎉 Pós-Venda (Sucesso do Cliente)</option>
-                  <option value="gerencia">🛡️ Gerência / Gestão</option>
-                  <option value="financeiro">💰 Financeiro</option>
+                  <option value="comercial">Comercial (SDR / Closer / CRM)</option>
+                  <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
+                  <option value="gerencia">Gerência / Gestão</option>
+                  <option value="financeiro">Financeiro</option>
                 </select>
               </div>
 
