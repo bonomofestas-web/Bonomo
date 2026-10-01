@@ -1048,6 +1048,11 @@ export const AdminSourcesView: React.FC = () => {
         onClose={() => setConnectModalSource(null)}
         source={connectModalSource}
         onOpenHistoryTriage={() => setHistoryTriageSource(connectModalSource)}
+        onNavigateToEditSource={(sourceToOpen) => {
+          setConnectModalSource(null);
+          setSourceToEdit(sourceToOpen);
+          setIsEditing(true);
+        }}
       />
 
       {/* Modal de Triagem Pré-CRM de Histórico */}

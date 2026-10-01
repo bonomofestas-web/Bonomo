@@ -126,7 +126,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail('');
     setFormPhone('');
     setFormCustomJobTitle('');
-    setFormPassword('123456');
+    setFormPassword('');
     setFormSectors(['comercial']);
     setFormSelectedVenueIds(venues.map(v => v.id));
     setFormAvatarUrl('');
@@ -149,11 +149,11 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail(collab.email || '');
     setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
     setFormCustomJobTitle(collab.customJobTitle || '');
-    setFormPassword(collab.password || '••••••••');
+    setFormPassword('');
     const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = collab.sectors && collab.sectors.length > 0
       ? collab.sectors
-      : collab.role === 'pos_venda' ? ['pos_venda']
-      : collab.role === 'admin' || collab.role === 'master' ? ['gerencia', 'comercial', 'pos_venda']
+      : collab.role === 'pos_venda' ? ['pos_venda', 'comercial']
+      : collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia' ? ['gerencia', 'comercial', 'pos_venda']
       : ['comercial'];
     setFormSectors(existingSectors);
     const vIds = collab.venueIds && collab.venueIds.length > 0 ? collab.venueIds : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : venues.map(v => v.id));
@@ -437,51 +437,42 @@ export const AdminCollaboratorsView: React.FC = () => {
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
-                  WhatsApp / Telefone
-                </label>
-                <input
-                  type="text"
-                  placeholder="(21) 99999-9999"
-                  value={formPhone}
-                  onChange={(e) => setFormPhone(maskPhoneInput(e.target.value))}
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    padding: '10px 14px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.86rem',
-                    outline: 'none',
-                  }}
-                />
-              </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
+                WhatsApp / Telefone
+              </label>
+              <input
+                type="text"
+                placeholder="(21) 99999-9999"
+                value={formPhone}
+                onChange={(e) => setFormPhone(maskPhoneInput(e.target.value))}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.86rem',
+                  outline: 'none',
+                }}
+              />
+            </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px' }}>
-                  Senha Provisória
-                </label>
-                <input
-                  type="text"
-                  placeholder="123456"
-                  value={formPassword}
-                  onChange={(e) => setFormPassword(e.target.value)}
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    background: 'var(--adm-bg-input)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '10px',
-                    padding: '10px 14px',
-                    color: 'var(--adm-text-title)',
-                    fontSize: '0.86rem',
-                    outline: 'none',
-                  }}
-                />
+            {/* Aviso de Primeiro Acesso por E-mail (Sem Senha Provisória) */}
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}>
+              <ShieldCheck size={20} color="var(--adm-accent, #3B82F6)" style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', lineHeight: 1.45 }}>
+                <strong style={{ color: 'var(--adm-text-title)' }}>Acesso Seguro por E-mail:</strong> Senhas provisórias foram removidas. O colaborador receberá um convite oficial por e-mail e definirá sua senha pessoal com código de segurança no primeiro acesso.
               </div>
             </div>
 
@@ -535,7 +526,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     2. Nível de Acesso por Setores
                   </h2>
                   <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-                    Selecione um ou mais setores. O colaborador terá liberdade de atuação em todos os blocos marcados.
+                    Defina os setores do colaborador. Gerentes têm acesso total com Pós-Venda e Comercial automáticos.
                   </span>
                 </div>
               </div>
@@ -545,6 +536,8 @@ export const AdminCollaboratorsView: React.FC = () => {
                 <div
                   onClick={() => {
                     const isSelected = formSectors.includes('comercial');
+                    // Se for gerente, não desmarca comercial
+                    if (formSectors.includes('gerencia')) return;
                     setFormSectors(isSelected ? formSectors.filter(s => s !== 'comercial') : [...formSectors, 'comercial']);
                   }}
                   style={{
@@ -555,27 +548,30 @@ export const AdminCollaboratorsView: React.FC = () => {
                     borderRadius: '12px',
                     border: formSectors.includes('comercial') ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
                     background: formSectors.includes('comercial') ? 'rgba(16, 185, 129, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: 'pointer',
+                    cursor: formSectors.includes('gerencia') ? 'default' : 'pointer',
                     transition: 'all 0.15s ease',
                   }}
                 >
                   <input
                     type="checkbox"
                     checked={formSectors.includes('comercial')}
+                    disabled={formSectors.includes('gerencia')}
                     onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#10B981' }}
+                    style={{ marginTop: '3px', cursor: formSectors.includes('gerencia') ? 'default' : 'pointer', accentColor: '#10B981' }}
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('comercial') ? '#10B981' : 'var(--adm-text-title)' }}>
                         Setor Comercial
                       </span>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.18)', color: '#10B981', padding: '1px 6px', borderRadius: '4px' }}>
-                        + Visitas & Degustação
-                      </span>
+                      {formSectors.includes('gerencia') && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6', padding: '1px 6px', borderRadius: '4px' }}>
+                          Incluso na Gerência
+                        </span>
+                      )}
                     </div>
                     <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso aos Funis de Vendas, Leads, Oportunidades, WhatsApp e Follow-up. Recebe automaticamente permissão para gerenciar a agenda de <strong>Visitas & Degustação</strong>.
+                      Acesso aos Funis de Vendas, Leads, WhatsApp Comercial, Oportunidades e Follow-up.
                     </p>
                   </div>
                 </div>
@@ -583,8 +579,20 @@ export const AdminCollaboratorsView: React.FC = () => {
                 {/* 2. Setor de Pós-Venda */}
                 <div
                   onClick={() => {
+                    // Se for gerente, não desmarca pós-venda
+                    if (formSectors.includes('gerencia')) return;
                     const isSelected = formSectors.includes('pos_venda');
-                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'pos_venda') : [...formSectors, 'pos_venda']);
+                    if (isSelected) {
+                      setFormSectors(formSectors.filter(s => s !== 'pos_venda'));
+                    } else {
+                      // Ao marcar Pós-Venda, garante que o Comercial em leitura também está disponível
+                      setFormSectors(prev => {
+                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = [...prev];
+                        if (!next.includes('pos_venda')) next.push('pos_venda');
+                        if (!next.includes('comercial')) next.push('comercial');
+                        return next;
+                      });
+                    }
                   }}
                   style={{
                     display: 'flex',
@@ -594,22 +602,28 @@ export const AdminCollaboratorsView: React.FC = () => {
                     borderRadius: '12px',
                     border: formSectors.includes('pos_venda') ? '1.5px solid #06B6D4' : '1px solid var(--adm-border)',
                     background: formSectors.includes('pos_venda') ? 'rgba(6, 182, 212, 0.08)' : 'var(--adm-bg-input)',
-                    cursor: 'pointer',
+                    cursor: formSectors.includes('gerencia') ? 'default' : 'pointer',
                     transition: 'all 0.15s ease',
                   }}
                 >
                   <input
                     type="checkbox"
                     checked={formSectors.includes('pos_venda')}
+                    disabled={formSectors.includes('gerencia')}
                     onChange={() => {}}
-                    style={{ marginTop: '3px', cursor: 'pointer', accentColor: '#06B6D4' }}
+                    style={{ marginTop: '3px', cursor: formSectors.includes('gerencia') ? 'default' : 'pointer', accentColor: '#06B6D4' }}
                   />
                   <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('pos_venda') ? '#06B6D4' : 'var(--adm-text-title)' }}>
-                      Setor de Pós-Venda
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('pos_venda') ? '#06B6D4' : 'var(--adm-text-title)' }}>
+                        Setor de Pós-Venda
+                      </span>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(6, 182, 212, 0.18)', color: '#06B6D4', padding: '1px 6px', borderRadius: '4px' }}>
+                        + Comercial (Leitura)
+                      </span>
+                    </div>
                     <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      Acesso aos Clientes fechados, gestão de Aniversariantes & Aplicativo, Jornada VIP de indicações, Compromissos e Visitas & Degustação.
+                      Acesso completo aos Clientes, Aniversariantes & App, Jornada VIP, Compromissos, mais consulta (leitura) ao setor comercial.
                     </p>
                   </div>
                 </div>
@@ -619,7 +633,18 @@ export const AdminCollaboratorsView: React.FC = () => {
                   onClick={() => {
                     if (isCurrentUserManager) return;
                     const isSelected = formSectors.includes('gerencia');
-                    setFormSectors(isSelected ? formSectors.filter(s => s !== 'gerencia') : [...formSectors, 'gerencia']);
+                    if (isSelected) {
+                      setFormSectors(formSectors.filter(s => s !== 'gerencia'));
+                    } else {
+                      // 🌟 Regra do F5 System: Gerência marca AUTOMATICAMENTE Pós-Venda e Comercial!
+                      setFormSectors(prev => {
+                        const next: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = [...prev];
+                        if (!next.includes('gerencia')) next.push('gerencia');
+                        if (!next.includes('comercial')) next.push('comercial');
+                        if (!next.includes('pos_venda')) next.push('pos_venda');
+                        return next;
+                      });
+                    }
                   }}
                   style={{
                     display: 'flex',
@@ -650,6 +675,9 @@ export const AdminCollaboratorsView: React.FC = () => {
                       <span style={{ fontSize: '0.86rem', fontWeight: 800, color: formSectors.includes('gerencia') && !isCurrentUserManager ? '#3B82F6' : 'var(--adm-text-title)' }}>
                         Setor de Gerência
                       </span>
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, background: 'rgba(59, 130, 246, 0.18)', color: '#3B82F6', padding: '1px 6px', borderRadius: '4px' }}>
+                        Inclui Comercial & Pós-Venda
+                      </span>
                       {isCurrentUserManager && (
                         <span style={{ fontSize: '0.62rem', fontWeight: 800, background: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', padding: '1px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <Lock size={10} /> Apenas Master
@@ -657,9 +685,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                       )}
                     </div>
                     <p style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', margin: '3px 0 0 0', lineHeight: 1.35 }}>
-                      {isCurrentUserManager
-                        ? 'Gerentes não possuem permissão para conceder acesso de gerência a outros usuários.'
-                        : 'Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.'}
+                      Acesso ao Dashboard Gerencial, Metas das unidades, Qualificação ICP, Origens de Tráfego, Gestão de Colaboradores e Configurações das Casas.
                     </p>
                   </div>
                 </div>

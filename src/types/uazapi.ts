@@ -13,7 +13,7 @@ export type UazapiInstanceStatus =
 
 export interface UazapiConnectOptions {
   phone?: string; // Número internacional (ex: 5511999999999) para gerar pairing code
-  browser?: 'auto' | 'safari' | 'firefox' | 'edge' | 'chrome';
+  browser?: 'auto' | 'safari' | 'firefox' | 'edge' | 'chrome' | string[];
   systemName?: string;
   proxy_managed_country?: string;
   proxy_managed_state?: string;

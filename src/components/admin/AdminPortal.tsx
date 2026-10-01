@@ -85,13 +85,50 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   useActiveTimeTracker(currentUser);
   const [activeTab, setActiveTab] = useState<AdminTabType>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlTab = params.get('tab') as AdminTabType | null;
+        if (urlTab) return urlTab;
+      }
       const saved = localStorage.getItem('bonomo_admin_active_tab') as AdminTabType | null;
       if (saved) return saved;
     } catch {}
     return 'home';
   });
   const [isSplashDismissed, setIsSplashDismissed] = useState(false);
-  const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
+  const [activeFunnelId, setActiveFunnelId] = useState<string | null>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlFunnel = params.get('funnel_id');
+        if (urlFunnel) return urlFunnel;
+      }
+      return localStorage.getItem('f5_active_funnel_id');
+    } catch {}
+    return null;
+  });
+  const [activeWhatsAppLeadId, setActiveWhatsAppLeadId] = useState<string | null>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlLead = params.get('lead_id');
+        if (urlLead) return urlLead;
+      }
+      return localStorage.getItem('f5_wa_active_lead_id');
+    } catch {}
+    return null;
+  });
+  const [crmOpenLeadId, setCrmOpenLeadId] = useState<string | undefined>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlLead = params.get('crm_lead_id');
+        if (urlLead) return urlLead;
+      }
+      return localStorage.getItem('f5_crm_active_lead_id') || undefined;
+    } catch {}
+    return undefined;
+  });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -197,8 +234,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Fast creation and settings modals
   const [isNewVenueModalOpen, setIsNewVenueModalOpen] = useState(false);
   const [isNewDebutanteModalOpen, setIsNewDebutanteModalOpen] = useState(false);
-  // CRM workspace: open lead directly from task click
-  const [crmOpenLeadId, setCrmOpenLeadId] = useState<string | undefined>(undefined);
+  // CRM workspace: open lead directly from task click (declared above with URL persistence)
 
   // Collapsible sidebar state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -221,10 +257,44 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setActiveTab(tab);
     try {
       localStorage.setItem('bonomo_admin_active_tab', tab);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tab);
+        if (tab === 'crm' && funnelId) {
+          url.searchParams.set('funnel_id', funnelId);
+        } else if (tab !== 'crm') {
+          url.searchParams.delete('funnel_id');
+        }
+        if (tab !== 'whatsapp') {
+          url.searchParams.delete('lead_id');
+        }
+        window.history.replaceState({}, '', url.toString());
+      }
     } catch {}
     if (tab === 'crm') {
       setActiveFunnelId(funnelId !== undefined ? funnelId : null);
+      if (funnelId) {
+        try { localStorage.setItem('f5_active_funnel_id', funnelId); } catch {}
+      }
     }
+  };
+
+  const handleOpenLeadInWhatsApp = (leadId: string) => {
+    setActiveWhatsAppLeadId(leadId);
+    setActiveTab('whatsapp');
+    try {
+      localStorage.setItem('bonomo_admin_active_tab', 'whatsapp');
+      localStorage.setItem('f5_wa_active_lead_id', leadId);
+      if (currentUser?.id) {
+        localStorage.setItem(`f5_wa_selected_lead_${currentUser.id}`, leadId);
+      }
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'whatsapp');
+        url.searchParams.set('lead_id', leadId);
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
   };
 
   // Dynamic First Available Tab calculation (Audio 1 & 2)
@@ -333,9 +403,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const totalSearchMatches = matchedVenues.length + matchedDebutantes.length + matchedLeads.length + matchedCollaborators.length;
 
   const handleOpenLeadFromTask = (leadId: string) => {
-    setCrmOpenLeadId(leadId);
-    setActiveFunnelId('indicacao');
-    setActiveTab('crm');
+    handleOpenLeadInWhatsApp(leadId);
   };
 
   // If not authenticated, show login view
@@ -444,7 +512,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'leads':
         return (
           <AdminLeadsListView
-            onOpenLead={(leadId) => handleOpenLeadFromTask(leadId)}
+            onOpenLead={(leadId) => handleOpenLeadInWhatsApp(leadId)}
             onNavigateFunnel={(funnelId) => {
               setActiveFunnelId(funnelId);
               handleSelectTab('crm', funnelId);
@@ -454,7 +522,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'followups':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="followup" />;
       case 'whatsapp':
-        return <AdminWhatsAppWorkspaceView />;
+        return (
+          <AdminWhatsAppWorkspaceView
+            initialLeadId={activeWhatsAppLeadId || undefined}
+            onClose={() => {
+              setActiveWhatsAppLeadId(null);
+              try {
+                localStorage.removeItem('f5_wa_active_lead_id');
+                if (currentUser?.id) {
+                  localStorage.removeItem(`f5_wa_selected_lead_${currentUser.id}`);
+                }
+                if (typeof window !== 'undefined') {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('lead_id');
+                  window.history.replaceState({}, '', url.toString());
+                }
+              } catch {}
+            }}
+          />
+        );
       case 'post-sale-crm':
         return <AdminPostSaleKanbanView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
       case 'vip-journey':

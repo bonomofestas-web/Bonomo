@@ -180,6 +180,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [activeTriggerStageId, setActiveTriggerStageId] = useState<string | null>(null);
   const [selectedTargetFunnelId, setSelectedTargetFunnelId] = useState<string>('');
   const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
+  const [funnelVenueId, setFunnelVenueId] = useState<string>('all');
+  const [disabledVenueIds, setDisabledVenueIds] = useState<string[]>([]);
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
@@ -269,6 +271,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       matchName: false,
       action: 'keep_recent',
     });
+    setFunnelVenueId(activeFunnel.venueId || 'all');
+    setDisabledVenueIds(activeFunnel.disabledVenueIds || (activeFunnel as any)?.duplicateRuleConfig?._disabledVenueIds || []);
     setPackageOptions(activeFunnel.packageOptions || []);
     setPaymentOptions(activeFunnel.paymentOptions || []);
     setPredefinedTags(activeFunnel.predefinedTags || []);
@@ -368,6 +372,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
     updateFunnel(activeFunnel.id, {
       name: funnelName.trim() || activeFunnel.name,
+      venueId: funnelVenueId === 'all' ? 'all' : funnelVenueId,
+      disabledVenueIds,
       icon: funnelIcon,
       badgeColor: funnelBadgeColor,
       description: funnelDescription,
@@ -1135,19 +1141,56 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   background: 'rgba(59, 130, 246, 0.15)',
                   color: 'var(--adm-accent)',
                 }}>
-                  {(() => {
-                    const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
-                      ? venues.filter(v => v.active !== false)
-                      : venues.filter(v => v.id === activeFunnel.venueId);
-                    return `${targetVenues.length} ${targetVenues.length === 1 ? 'Unidade' : 'Unidades'}`;
-                  })()}
+                  {venues.filter(v => !disabledVenueIds.includes(v.id)).length} Ativas • {disabledVenueIds.length} Desativadas
+                </span>
+              </div>
+
+              {/* Seletor de Unidade Principal do Funil */}
+              <div style={{
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                marginBottom: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>
+                    Unidade Proprietária do Funil
+                  </label>
+                  <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
+                    Casa de ancoragem
+                  </span>
+                </div>
+                <select
+                  value={funnelVenueId}
+                  onChange={(e) => setFunnelVenueId(e.target.value)}
+                  style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    color: 'var(--adm-text-title)',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="all">Geral da Rede (Multi-Casas)</option>
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
+                  Define a qual unidade física este funil pertence primordialmente.
                 </span>
               </div>
 
               {(() => {
-                const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
-                  ? venues.filter(v => v.active !== false)
-                  : venues.filter(v => v.id === activeFunnel.venueId);
+                const targetVenues = venues.filter(v => v.active !== false);
 
                 if (targetVenues.length === 0) {
                   return (
@@ -1160,7 +1203,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       fontSize: '0.72rem',
                       color: 'var(--adm-text-muted)',
                     }}>
-                      Nenhuma casa vinculada.
+                      Nenhuma casa cadastrada.
                     </div>
                   );
                 }
@@ -1168,10 +1211,17 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {targetVenues.map(venue => {
-                      const venueSources = (sources || []).filter(s => s.venueId === venue.id);
-                      const venueWhatsappSources = venueSources.filter(
-                        s => s.type === 'whatsapp_api' || (s as any).channelType === 'whatsapp' || s.name.toLowerCase().includes('whatsapp')
+                      const isDisabled = disabledVenueIds.includes(venue.id);
+                      const isOwner = funnelVenueId === venue.id;
+                      const venueFunnelSources = (sources || []).filter(
+                        s => s.venueId === venue.id && (s.funnelId === activeFunnel.id || enabledWhatsAppSourceIds.includes(s.id))
                       );
+                      const venueWhatsappSources = (sources || []).filter(
+                        s => s.venueId === venue.id && (s.type === 'whatsapp_api' || (s as any).channelType === 'whatsapp' || s.name.toLowerCase().includes('whatsapp'))
+                      );
+                      const venueLeadsCount = (leads || []).filter(
+                        l => (l.funnelId === activeFunnel.id || l.funnelId === activeFunnel.name) && l.venueId === venue.id
+                      ).length;
 
                       const venueConfig = venueDistributionConfig[venue.id] || {};
                       const venueDistMode = venueConfig.distributionMode || 'manual';
@@ -1182,57 +1232,117 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         <div
                           key={venue.id}
                           style={{
-                            background: 'var(--adm-bg-input)',
-                            border: '1px solid var(--adm-border)',
+                            background: isDisabled ? 'rgba(0, 0, 0, 0.25)' : 'var(--adm-bg-input)',
+                            border: isDisabled ? '1px dashed rgba(239, 68, 68, 0.4)' : '1px solid var(--adm-border)',
                             borderRadius: '10px',
                             padding: '12px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '10px',
+                            opacity: isDisabled ? 0.65 : 1,
+                            transition: 'all 0.2s ease',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Building2 size={13} color="var(--adm-accent)" />
-                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                {venue.name}
-                              </span>
-                            </div>
-                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                              {venueSources.length} {venueSources.length === 1 ? 'origem' : 'origens'}
-                            </span>
-                          </div>
-
-                          {/* Origens Vinculadas */}
-                          {venueSources.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
-                                Origens da Casa
-                              </span>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {venueSources.map(s => (
-                                  <span
-                                    key={s.id}
-                                    style={{
-                                      fontSize: '0.62rem',
-                                      fontWeight: 600,
-                                      padding: '2px 6px',
-                                      borderRadius: '4px',
-                                      background: 'var(--adm-bg-card)',
-                                      border: '1px solid var(--adm-border)',
-                                      color: 'var(--adm-text-title)',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '3px',
-                                    }}
-                                  >
-                                    <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: s.type === 'whatsapp_api' ? '#10B981' : '#3B82F6' }} />
-                                    <span>{s.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Building2 size={14} color={isDisabled ? '#EF4444' : 'var(--adm-accent)'} />
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                    {venue.name}
                                   </span>
-                                ))}
+                                  {isOwner && (
+                                    <span style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 800,
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(59, 130, 246, 0.15)',
+                                      color: 'var(--adm-accent)',
+                                    }}>
+                                      Proprietária
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                                  {venueLeadsCount} {venueLeadsCount === 1 ? 'lead ativo' : 'leads ativos'} no funil
+                                </div>
                               </div>
                             </div>
-                          )}
+
+                            {/* Botão de Ativar / Desativar a Unidade no Funil */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDisabledVenueIds(prev =>
+                                  prev.includes(venue.id)
+                                    ? prev.filter(id => id !== venue.id)
+                                    : [...prev, venue.id]
+                                );
+                              }}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                border: isDisabled ? '1px solid #10B981' : '1px solid rgba(239, 68, 68, 0.4)',
+                                background: isDisabled ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                color: isDisabled ? '#10B981' : '#EF4444',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {isDisabled ? 'Ativar Unidade' : 'Desativar Unidade'}
+                            </button>
+                          </div>
+
+                          {isDisabled ? (
+                            <div style={{
+                              background: 'rgba(239, 68, 68, 0.08)',
+                              borderRadius: '6px',
+                              padding: '8px 10px',
+                              fontSize: '0.70rem',
+                              color: 'var(--adm-text-muted)',
+                              lineHeight: '1.4',
+                            }}>
+                              <strong style={{ color: '#EF4444' }}>Unidade Desativada:</strong> Os colaboradores desta unidade não visualizam este funil no CRM, mesmo que ainda existam leads históricos.
+                            </div>
+                          ) : (
+                            <>
+                              {/* Origens Realmente Vinculadas a este Funil */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                  Origens deste Funil nesta Casa ({venueFunnelSources.length})
+                                </span>
+                                {venueFunnelSources.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {venueFunnelSources.map(s => (
+                                      <span
+                                        key={s.id}
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          fontWeight: 600,
+                                          padding: '2px 6px',
+                                          borderRadius: '4px',
+                                          background: 'var(--adm-bg-card)',
+                                          border: '1px solid var(--adm-border)',
+                                          color: 'var(--adm-text-title)',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                        }}
+                                      >
+                                        <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: s.type === 'whatsapp_api' ? '#10B981' : '#3B82F6' }} />
+                                        <span>{s.name}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                                    Nenhuma origem conectada diretamente a este funil nesta unidade.
+                                  </div>
+                                )}
+                              </div>
 
                           {/* WhatsApp da Unidade */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1621,7 +1731,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </div>
                             )}
                           </div>
-                        </div>
+                        </>
+                      )}
+                    </div>
                       );
                     })}
                   </div>

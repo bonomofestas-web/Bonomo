@@ -99,6 +99,7 @@ export interface Collaborator {
   department?: 'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
   sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]; // Setores que o colaborador participa
   primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'; // Setor prioritário de abertura
+  permissions?: string[]; // Permissões e metadados persistidos no Supabase
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;
@@ -785,6 +786,7 @@ export interface CommercialFunnel {
   description?: string;
   venueId: string; // ID específico da casa
   sharedVenueIds?: string[]; // IDs de casas adicionais que compartilham este funil
+  disabledVenueIds?: string[]; // IDs de casas desativadas manualmente de visualizar este funil
   allowedCollaboratorIds?: string[]; // IDs dos colaboradores permitidos (vazio = todos)
   allowedRoles?: AdminRole[]; // Cargos que podem interagir neste funil
   isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda

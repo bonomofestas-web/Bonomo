@@ -53,20 +53,34 @@ export const collaboratorService = {
       if (collab.email !== undefined) payload.email = collab.email.trim().toLowerCase();
       if (collab.role !== undefined) payload.role = collab.role;
       if (collab.isDev !== undefined) payload.is_dev = collab.isDev;
-      if (collab.customJobTitle !== undefined) payload.custom_job_title = collab.customJobTitle;
-      if (collab.department !== undefined) payload.department = collab.department;
-      if (collab.sectors !== undefined) payload.sectors = collab.sectors;
       if (collab.venueId !== undefined) payload.venue_id = collab.venueId === 'all' ? null : collab.venueId;
       if (collab.venueIds !== undefined) payload.venue_ids = collab.venueIds;
       if (collab.avatarUrl !== undefined) payload.avatar_url = collab.avatarUrl;
       if (collab.phone !== undefined) payload.phone = collab.phone;
       if (collab.active !== undefined) payload.active = collab.active;
-      if (collab.password !== undefined) payload.password = collab.password;
+      // Não sobrescreve hash de senha se for placeholder ou vazio
+      if (collab.password && collab.password !== '••••••••' && !collab.password.includes('••')) {
+        payload.password = collab.password;
+      }
       if (collab.theme !== undefined) payload.theme = collab.theme;
       if (collab.masterId !== undefined) payload.master_id = collab.masterId;
       if (collab.isFirstAccess !== undefined) payload.is_first_access = collab.isFirstAccess;
       if (collab.activatedAt !== undefined) payload.activated_at = collab.activatedAt;
       if (collab.lastLoginAt !== undefined) payload.last_login_at = collab.lastLoginAt;
+
+      // Preserva metadados de setores na coluna permissions (que é array no Supabase)
+      if (collab.sectors || collab.department || collab.permissions) {
+        const perms = Array.isArray(collab.permissions) ? [...collab.permissions] : [];
+        if (collab.department && !perms.includes(`dept:${collab.department}`)) {
+          perms.push(`dept:${collab.department}`);
+        }
+        if (Array.isArray(collab.sectors)) {
+          collab.sectors.forEach(s => {
+            if (!perms.includes(`sector:${s}`)) perms.push(`sector:${s}`);
+          });
+        }
+        payload.permissions = perms;
+      }
 
       // 1. Tenta atualizar por ID caso seja UUID
       if (isUuid && collab.id) {

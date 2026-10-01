@@ -359,11 +359,47 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId || null);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(() => {
+    if (initialLeadId) return initialLeadId;
+    try {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        const urlId = p.get('lead_id');
+        if (urlId) return urlId;
+      }
+      const saved = localStorage.getItem(`f5_wa_selected_lead_${currentUser?.id || 'default'}`) || localStorage.getItem('f5_wa_active_lead_id');
+      if (saved) return saved;
+    } catch {}
+    return null;
+  });
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isFunnelSelectOpen, setIsFunnelSelectOpen] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
   const funnelSelectRef = useRef<HTMLDivElement>(null);
+
+  // Sincroniza persistência do lead aberto no WhatsApp para reload (F5) e URL
+  useEffect(() => {
+    try {
+      const key = `f5_wa_selected_lead_${currentUser?.id || 'default'}`;
+      if (selectedLeadId) {
+        localStorage.setItem(key, selectedLeadId);
+        localStorage.setItem('f5_wa_active_lead_id', selectedLeadId);
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.searchParams.set('lead_id', selectedLeadId);
+          window.history.replaceState({}, '', url.toString());
+        }
+      } else {
+        localStorage.removeItem(key);
+        localStorage.removeItem('f5_wa_active_lead_id');
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('lead_id');
+          window.history.replaceState({}, '', url.toString());
+        }
+      }
+    } catch {}
+  }, [selectedLeadId, currentUser?.id]);
 
   // Ordenação Local com Persistência
   const [localSortBy, setLocalSortBy] = useState<string>(() => {
@@ -1214,13 +1250,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return;
     }
 
-    // Fallback: se não há seleção ou o lead selecionado saiu do filtro, seleciona o primeiro
-    if (filteredLeads.length > 0) {
+    // Se o lead selecionado existe no banco/sourceLeads, preserva a seleção (evita reset no reload)
+    if (selectedLeadId && sourceLeads.some(l => l.id === selectedLeadId)) {
+      return;
+    }
+
+    // Fallback: se não há seleção válida, seleciona o primeiro disponível
+    if (!selectedLeadId && filteredLeads.length > 0) {
       setSelectedLeadId(filteredLeads[0].id);
-    } else {
+    } else if (!selectedLeadId) {
       setSelectedLeadId(null);
     }
-  }, [filteredLeads, initialLeadId, selectedLeadId]);
+  }, [filteredLeads, sourceLeads, initialLeadId, selectedLeadId]);
 
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;

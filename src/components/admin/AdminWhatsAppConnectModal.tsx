@@ -14,6 +14,7 @@ interface AdminWhatsAppConnectModalProps {
   source: Source | null;
   onConnected?: () => void;
   onOpenHistoryTriage?: () => void;
+  onNavigateToEditSource?: (source: Source) => void;
 }
 
 export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps> = ({
@@ -22,8 +23,9 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
   source,
   onConnected,
   onOpenHistoryTriage,
+  onNavigateToEditSource,
 }) => {
-  const { venues, updateSource } = useAdminState();
+  const { sources, venues, updateSource } = useAdminState();
 
   const [connectionMode, setConnectionMode] = useState<'qrcode' | 'pairing_code'>('qrcode');
   const [pairingPhone, setPairingPhone] = useState('');
@@ -36,10 +38,35 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
   const [connectedProfileName, setConnectedProfileName] = useState<string>('');
   const [connectedAvatar, setConnectedAvatar] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [duplicateConflict, setDuplicateConflict] = useState<{
+    duplicateSource: Source;
+    phone: string;
+    duplicateVenueName: string;
+  } | null>(null);
 
   const pollIntervalRef = useRef<any>(null);
 
   const venue = venues.find(v => v.id === source?.venueId);
+
+  // Helper para verificar se outro número já existe cadastrado
+  const findDuplicateSource = (candidatePhone: string, currentSrcId: string) => {
+    const cleanCand = candidatePhone.replace(/\D/g, '');
+    if (!cleanCand || cleanCand.length < 8) return null;
+
+    return sources.find(s => {
+      if (s.id === currentSrcId) return false;
+      const cfg = (s.configuration as any) || {};
+      const otherPhone = (cfg.connectedPhone || '').replace(/\D/g, '');
+      if (!otherPhone || otherPhone.length < 8) return false;
+
+      // Match exato ou match pelos últimos 8 dígitos com mesmo prefixo nacional
+      if (otherPhone === cleanCand) return true;
+      if (cleanCand.length >= 10 && otherPhone.length >= 10) {
+        return cleanCand.slice(-8) === otherPhone.slice(-8);
+      }
+      return false;
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -53,6 +80,7 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
       setQrCodeData(null);
       setPairingCodeData(null);
       setErrorMsg('');
+      setDuplicateConflict(null);
 
       const config = (source.configuration as any) || {};
       const existingPhone = config.connectedPhone || '';
@@ -90,13 +118,14 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
 
     setIsConnecting(true);
     setErrorMsg('');
+    setDuplicateConflict(null);
     setPairingCodeData(null);
     setQrCodeData(null);
 
     try {
       let token = src.whatsappInstanceId?.trim();
 
-      // Resolve ou cria token da instância no servidor UAZAPI
+      // Resolve ou cria token da instância exclusiva no servidor UAZAPI
       if (!token) {
         const resolved = await uazapiService.getOrCreateInstance(src.name);
         token = resolved.token;
@@ -113,14 +142,48 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
 
       const connectRes = await uazapiService.connectInstance(token, {
         phone: cleanPhone || undefined,
-        browser: 'auto',
-        systemName: (src.configuration as any)?.whatsappDisplayName || src.name || 'F5 System',
+        browser: ['F5 System', 'Desktop', '1.0.0'],
+        systemName: 'F5 System',
       });
 
       if (connectRes.status === 'connected' || connectRes.loggedIn) {
         const ownerPhone = connectRes.instance?.owner || '';
         const profileName = connectRes.instance?.profileName || '';
         const profilePic = connectRes.instance?.profilePicUrl || '';
+
+        // 🛡️ REGRA SUPREMA: Verificação de Número Duplicado
+        const duplicate = findDuplicateSource(ownerPhone, src.id);
+        if (duplicate) {
+          // Desconecta e exclui a instância nova duplicada imediatamente
+          await uazapiService.disconnectInstance(token).catch(() => {});
+          await uazapiService.deleteInstance(token).catch(() => {});
+
+          setConnectionStatus('disconnected');
+          setConnectedPhone('');
+          setConnectedProfileName('');
+          setConnectedAvatar('');
+
+          await updateSource(src.id, {
+            whatsappInstanceId: undefined,
+            status: 'inactive',
+            configuration: {
+              ...((src.configuration as any) || {}),
+              connectedPhone: '',
+              connectedProfileName: '',
+              connectedAvatar: '',
+              isConnected: false,
+              connectionStatus: 'disconnected',
+            },
+          });
+
+          const duplicateVenue = venues.find(v => v.id === duplicate.venueId);
+          setDuplicateConflict({
+            duplicateSource: duplicate,
+            phone: ownerPhone,
+            duplicateVenueName: duplicateVenue?.name || 'Unidade Principal',
+          });
+          return;
+        }
 
         setConnectionStatus('connected');
         setConnectedPhone(ownerPhone);
@@ -164,6 +227,41 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
             const ownerPhone = statusRes.phone || '';
             const profileName = statusRes.profileName || '';
             const profilePic = statusRes.profilePictureUrl || '';
+
+            // 🛡️ REGRA SUPREMA: Verificação de Número Duplicado no Polling
+            const duplicate = findDuplicateSource(ownerPhone, src.id);
+            if (duplicate) {
+              await uazapiService.disconnectInstance(token).catch(() => {});
+              await uazapiService.deleteInstance(token).catch(() => {});
+
+              setConnectionStatus('disconnected');
+              setQrCodeData(null);
+              setPairingCodeData(null);
+              setConnectedPhone('');
+              setConnectedProfileName('');
+              setConnectedAvatar('');
+
+              await updateSource(src.id, {
+                whatsappInstanceId: undefined,
+                status: 'inactive',
+                configuration: {
+                  ...((src.configuration as any) || {}),
+                  connectedPhone: '',
+                  connectedProfileName: '',
+                  connectedAvatar: '',
+                  isConnected: false,
+                  connectionStatus: 'disconnected',
+                },
+              });
+
+              const duplicateVenue = venues.find(v => v.id === duplicate.venueId);
+              setDuplicateConflict({
+                duplicateSource: duplicate,
+                phone: ownerPhone,
+                duplicateVenueName: duplicateVenue?.name || 'Unidade Principal',
+              });
+              return;
+            }
 
             setConnectionStatus('connected');
             setQrCodeData(null);
@@ -319,27 +417,124 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
 
         {/* Modal Body */}
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {errorMsg && (
+          {duplicateConflict ? (
             <div style={{
-              padding: '12px 16px',
-              borderRadius: '12px',
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid #EF4444',
-              color: '#EF4444',
-              fontSize: '0.80rem',
-              fontWeight: 700,
+              background: 'rgba(239, 68, 68, 0.06)',
+              border: '1.5px solid #EF4444',
+              borderRadius: '18px',
+              padding: '24px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: '8px',
+              textAlign: 'center',
+              gap: '16px',
             }}>
-              <AlertTriangle size={16} />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#EF4444',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <AlertTriangle size={28} />
+              </div>
 
-          {/* Estado: CONECTADO */}
-          {connectionStatus === 'connected' ? (
-            <div style={{
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: '0 0 6px 0' }}>
+                  Este número já se encontra cadastrado
+                </h3>
+                <div style={{ fontSize: '0.88rem', color: '#EF4444', fontWeight: 800, marginBottom: '10px' }}>
+                  {formatPhone(duplicateConflict.phone)}
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', lineHeight: '1.5', margin: 0 }}>
+                  Este WhatsApp já está conectado à origem <strong>"{duplicateConflict.duplicateSource.name}"</strong> (Unidade: <strong>{duplicateConflict.duplicateVenueName}</strong>).
+                  <br /><br />
+                  A conexão recém-iniciada foi <strong>cancelada e desconectada automaticamente</strong> para evitar duplicidade de contatos. Caso queira alternar a unidade desta linha telefônica, edite diretamente a origem existente.
+                </p>
+              </div>
+
+              <div style={{
+                width: '100%',
+                padding: '12px 14px',
+                background: 'var(--adm-bg-card)',
+                borderRadius: '12px',
+                border: '1px solid var(--adm-border)',
+                fontSize: '0.72rem',
+                color: 'var(--adm-text-muted)',
+                textAlign: 'left',
+                lineHeight: '1.4',
+              }}>
+                📌 <strong>Regra de Unidade:</strong> Se você alternar a unidade da origem existente, os leads que já entraram por ela permanecem na unidade antiga. Apenas os novos contatos passarão a fazer parte da nova unidade.
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = duplicateConflict.duplicateSource;
+                    setDuplicateConflict(null);
+                    onClose();
+                    onNavigateToEditSource?.(target);
+                  }}
+                  className="adm-btn-primary"
+                  style={{
+                    flex: 1,
+                    height: '42px',
+                    borderRadius: '10px',
+                    fontSize: '0.80rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  Editar Origem Existente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDuplicateConflict(null);
+                    onClose();
+                  }}
+                  style={{
+                    padding: '0 16px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--adm-border)',
+                    background: 'var(--adm-bg-input)',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {errorMsg && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid #EF4444',
+                  color: '#EF4444',
+                  fontSize: '0.80rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {/* Estado: CONECTADO */}
+              {connectionStatus === 'connected' ? (
+                <div style={{
               background: 'rgba(16, 185, 129, 0.08)',
               border: '1.5px solid #10B981',
               borderRadius: '18px',
@@ -660,6 +855,8 @@ export const AdminWhatsAppConnectModal: React.FC<AdminWhatsAppConnectModalProps>
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </div>
       </div>

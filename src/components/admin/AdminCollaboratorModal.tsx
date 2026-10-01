@@ -21,7 +21,6 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('123456');
   const [role, setRole] = useState<AdminRole>('crm');
   const [customJobTitle, setCustomJobTitle] = useState('');
   const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | ''>('');
@@ -35,7 +34,6 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName(collaboratorToEdit.name);
       setEmail(collaboratorToEdit.email);
       setPhone(collaboratorToEdit.phone ? formatPhone(collaboratorToEdit.phone) : '');
-      setPassword(collaboratorToEdit.password || '••••••••');
       setRole(collaboratorToEdit.role);
       setCustomJobTitle(collaboratorToEdit.customJobTitle || '');
       setDepartment(collaboratorToEdit.department || '');
@@ -48,7 +46,6 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName('');
       setEmail('');
       setPhone('');
-      setPassword('123456');
       setRole('crm');
       setCustomJobTitle('');
       setDepartment('');
@@ -82,7 +79,6 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
         avatarUrl: avatarUrl.trim() || undefined,
         active,
-        password: password !== '••••••••' ? password : collaboratorToEdit.password,
       });
     } else {
       addCollaborator({
@@ -331,36 +327,20 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
           </div>
 
           {/* Informação de Primeiro Acesso por E-mail */}
-          {!collaboratorToEdit ? (
-            <div style={{
-              background: 'rgba(20, 169, 215, 0.08)',
-              border: '1px solid rgba(20, 169, 215, 0.3)',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}>
-              <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', lineHeight: 1.45 }}>
-                <strong style={{ color: 'var(--adm-accent, #14A9D7)' }}>Ativação por Código de E-mail:</strong> O colaborador receberá um código de segurança de 6 dígitos no seu primeiro acesso para definir sua própria senha pessoal e foto de perfil.
-              </div>
+          {/* Informação de Acesso Seguro por E-mail (Sem Senha Provisória) */}
+          <div style={{
+            background: 'rgba(20, 169, 215, 0.08)',
+            border: '1px solid rgba(20, 169, 215, 0.3)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}>
+            <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', lineHeight: 1.45 }}>
+              <strong style={{ color: 'var(--adm-accent, #14A9D7)' }}>Acesso Seguro por E-mail:</strong> Senhas provisórias foram descontinuadas. O colaborador acessa com código de segurança enviado por e-mail e define sua própria senha pessoal no primeiro acesso.
             </div>
-          ) : (
-            <div>
-              <label style={labelStyle}>
-                Alterar Senha do Colaborador (Opcional)
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  placeholder="Deixe em branco para manter a atual"
-                  value={password === '••••••••' ? '' : password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Cargo / Nível de Acesso */}
           <div>

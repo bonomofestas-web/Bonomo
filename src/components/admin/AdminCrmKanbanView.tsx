@@ -220,16 +220,37 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [leads]);
 
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
+    const disabledSet = new Set<string>(targetFunnel.disabledVenueIds || []);
     const venueIdSet = new Set<string>();
-    if (targetFunnel.venueId && targetFunnel.venueId !== 'all') venueIdSet.add(targetFunnel.venueId);
-    const funnelAny = targetFunnel as unknown as { venueIds?: string[] };
-    if (funnelAny.venueIds && Array.isArray(funnelAny.venueIds)) {
-      funnelAny.venueIds.forEach((id: string) => { if (id !== 'all') venueIdSet.add(id); });
+
+    // 1. Unidade Proprietária do Funil
+    if (targetFunnel.venueId && targetFunnel.venueId !== 'all') {
+      if (!disabledSet.has(targetFunnel.venueId)) {
+        venueIdSet.add(targetFunnel.venueId);
+      }
     }
-    // Origens conectadas a este funil
+    const funnelAny = targetFunnel as unknown as { venueIds?: string[]; sharedVenueIds?: string[] };
+    const sharedIds = funnelAny.sharedVenueIds || funnelAny.venueIds;
+    if (Array.isArray(sharedIds)) {
+      sharedIds.forEach((id: string) => {
+        if (id !== 'all' && !disabledSet.has(id)) venueIdSet.add(id);
+      });
+    }
+
+    // 2. Origens ativas conectadas a este funil
     (allSources || []).filter(s => s.funnelId === targetFunnel.id).forEach(s => {
-      if (s.venueId && s.venueId !== 'all') venueIdSet.add(s.venueId);
+      if (s.venueId && s.venueId !== 'all' && !disabledSet.has(s.venueId)) {
+        venueIdSet.add(s.venueId);
+      }
     });
+
+    // 3. Leads pertencentes àquela casa que estão dentro deste funil (pertence até que todos os leads saiam)
+    (leads || []).filter(l => (l.funnelId === targetFunnel.id || l.funnelId === targetFunnel.name)).forEach(l => {
+      if (l.venueId && l.venueId !== 'all' && !disabledSet.has(l.venueId)) {
+        venueIdSet.add(l.venueId);
+      }
+    });
+
     return venues.filter(v => venueIdSet.has(v.id));
   };
 
@@ -446,10 +467,35 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [isComoFunnelSettingsOpen, setIsComoFunnelSettingsOpen] = useState(false);
   const [comoFunnelId, setComoFunnelId] = useState<string | undefined>(undefined);
 
-  // View mode inside funnel
-  const [viewMode, setViewMode] = useState<'workspace' | 'kanban' | 'list'>(initialLeadId ? 'workspace' : 'kanban');
+  // View mode inside funnel com persistência para recarregamento de página (F5)
+  const [activeLeadIdForWorkspace, setActiveLeadIdForWorkspace] = useState<string | null>(() => {
+    if (initialLeadId) return initialLeadId;
+    try {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        const urlLead = p.get('lead_id') || p.get('crm_lead_id');
+        if (urlLead) return urlLead;
+      }
+      return localStorage.getItem('f5_crm_active_lead_id');
+    } catch {}
+    return null;
+  });
+
+  const [viewMode, setViewMode] = useState<'workspace' | 'kanban' | 'list'>(() => {
+    if (initialLeadId) return 'workspace';
+    try {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        if (p.get('lead_id') || p.get('crm_lead_id')) return 'workspace';
+        const urlMode = p.get('view_mode');
+        if (urlMode === 'kanban' || urlMode === 'list' || urlMode === 'workspace') return urlMode;
+      }
+      const savedMode = localStorage.getItem('f5_crm_view_mode');
+      if (savedMode === 'kanban' || savedMode === 'list' || savedMode === 'workspace') return savedMode;
+    } catch {}
+    return 'kanban';
+  });
   const [search, setSearch] = useState('');
-  const [activeLeadIdForWorkspace, setActiveLeadIdForWorkspace] = useState<string | null>(initialLeadId || null);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [activeHintStageId, setActiveHintStageId] = useState<string | null>(null);
 
@@ -745,6 +791,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
       // 2. Filtro estrito de Unidade Selecionada no Topo (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (funnel.disabledVenueIds && funnel.disabledVenueIds.includes(activeVenueId)) {
+          return false;
+        }
         const linkedVenues = getLinkedVenuesForFunnel(funnel);
         if (linkedVenues.length > 0) {
           if (!linkedVenues.some(v => v.id === activeVenueId)) return false;
@@ -1327,6 +1376,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setActiveLeadIdForWorkspace(lead.id);
     setInitialWorkspaceTab(tab);
     setViewMode('workspace');
+    try {
+      localStorage.setItem('f5_crm_active_lead_id', lead.id);
+      localStorage.setItem('f5_crm_view_mode', 'workspace');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('lead_id', lead.id);
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
   };
 
   // Handlers para Drag-to-Scroll horizontal do Kanban (arraste livre sem scrollbar aparente)
@@ -2672,7 +2730,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           searchQuery={search}
           leadOwnershipFilter={leadOwnershipFilter}
           sortBy={filterState.sortBy}
-          onClose={() => setViewMode('kanban')}
+          onClose={() => {
+            setViewMode('kanban');
+            setActiveLeadIdForWorkspace(null);
+            try {
+              localStorage.removeItem('f5_crm_active_lead_id');
+              localStorage.setItem('f5_crm_view_mode', 'kanban');
+              if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('lead_id');
+                window.history.replaceState({}, '', url.toString());
+              }
+            } catch {}
+          }}
           isMultiSelectActive={isMultiSelectMode}
           onToggleMultiSelect={setIsMultiSelectMode}
           selectedLeadIds={selectedLeadIds}

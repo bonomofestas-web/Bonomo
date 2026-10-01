@@ -3,7 +3,8 @@ import {
   ArrowLeft, Compass, PhoneCall, FileText,
   Plus, Trash2, Tag,
   QrCode, RefreshCw, CheckCircle2, Smartphone, Building2,
-  Check, AlertTriangle, ShieldCheck, Target, Users, Crown, Layers
+  Check, AlertTriangle, ShieldCheck, Target, Users, Crown, Layers,
+  ChevronDown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
@@ -55,6 +56,25 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   const [type, setType] = useState<SourceType>('whatsapp_api');
   const [funnelId, setFunnelId] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
+
+  // Custom Dropdowns States & Refs (Modern UX without unnecessary modals)
+  const [isVenueDropdownOpen, setIsVenueDropdownOpen] = useState(false);
+  const [isFunnelDropdownOpen, setIsFunnelDropdownOpen] = useState(false);
+  const venueDropdownRef = useRef<HTMLDivElement>(null);
+  const funnelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (venueDropdownRef.current && !venueDropdownRef.current.contains(e.target as Node)) {
+        setIsVenueDropdownOpen(false);
+      }
+      if (funnelDropdownRef.current && !funnelDropdownRef.current.contains(e.target as Node)) {
+        setIsFunnelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // WhatsApp Specifics
   const [whatsappDisplayName, setWhatsappDisplayName] = useState('');
@@ -761,40 +781,162 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
           </div>
 
           {/* Casa de Festa */}
-          <div>
+          <div ref={venueDropdownRef} style={{ position: 'relative' }}>
             <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
               Casa de Festa Vinculada *
             </label>
-            <select
-              value={venueId}
-              onChange={(e) => setVenueId(e.target.value)}
+            <button
+              type="button"
+              onClick={() => {
+                setIsVenueDropdownOpen(!isVenueDropdownOpen);
+                setIsFunnelDropdownOpen(false);
+              }}
               className="adm-input"
               style={{
                 width: '100%',
                 height: '46px',
                 borderRadius: '12px',
                 fontSize: '0.86rem',
-                padding: '0 16px',
+                padding: '0 14px',
                 background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
+                border: `1px solid ${isVenueDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                 color: 'var(--adm-text-title)',
                 boxSizing: 'border-box',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                textAlign: 'left',
               }}
-              required
             >
-              <option value="" disabled>Selecione uma Casa de Festa...</option>
-              {venues.map(v => (
-                <option key={v.id} value={v.id}>🏰 {v.name}</option>
-              ))}
-            </select>
+              {(() => {
+                const currentVenue = venues.find(v => v.id === venueId);
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    {currentVenue?.logoUrl ? (
+                      <img
+                        src={currentVenue.logoUrl}
+                        alt={currentVenue.name}
+                        style={{ width: '24px', height: '24px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '6px',
+                        background: 'rgba(212, 175, 55, 0.15)',
+                        color: 'var(--adm-accent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <Building2 size={14} />
+                      </div>
+                    )}
+                    <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {currentVenue?.name || 'Selecione uma Casa de Festa...'}
+                    </span>
+                  </div>
+                );
+              })()}
+              <ChevronDown
+                size={16}
+                color="var(--adm-text-muted)"
+                style={{ transform: isVenueDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease', flexShrink: 0 }}
+              />
+            </button>
+
+            {isVenueDropdownOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                right: 0,
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '14px',
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
+                zIndex: 9999,
+                padding: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                maxHeight: '260px',
+                overflowY: 'auto',
+              }}>
+                {venues.map(v => {
+                  const isSelected = v.id === venueId;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => {
+                        setVenueId(v.id);
+                        setIsVenueDropdownOpen(false);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        background: isSelected ? 'var(--adm-accent-bg)' : 'transparent',
+                        border: isSelected ? '1px solid rgba(212, 175, 55, 0.4)' : '1px solid transparent',
+                        color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                        fontSize: '0.82rem',
+                        fontWeight: isSelected ? 800 : 600,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        {v.logoUrl ? (
+                          <img
+                            src={v.logoUrl}
+                            alt={v.name}
+                            style={{ width: '26px', height: '26px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '26px',
+                            height: '26px',
+                            borderRadius: '6px',
+                            background: 'rgba(212, 175, 55, 0.15)',
+                            color: 'var(--adm-accent)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Building2 size={15} />
+                          </div>
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {v.name}
+                        </span>
+                      </div>
+                      {isSelected && <Check size={14} color="var(--adm-accent)" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
               Define a unidade responsável pelos leads que entrarem por este canal.
             </div>
           </div>
 
-          {/* Funil de Destino Principal com Modal de Cores */}
-          <div>
+          {/* Funil de Destino Automático */}
+          <div ref={funnelDropdownRef} style={{ position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Layers size={14} style={{ color: 'var(--adm-accent)' }} />
@@ -808,277 +950,280 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
             {(() => {
               const selectedF = funnels.find(f => f.id === funnelId);
               const isPostSale = funnelId === 'post_sale_default' || selectedF?.isPostSale || selectedF?.category === 'Pós-Venda' || selectedF?.category === 'pos_venda' || selectedF?.name?.toLowerCase().includes('pós-venda');
+              const funnelColor = isPostSale ? '#8B5CF6' : (selectedF?.badgeColor || '#D4AF37');
 
-              if (!funnelId) {
-                return (
-                  <div
-                    onClick={() => setIsFunnelModalOpen(true)}
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFunnelDropdownOpen(!isFunnelDropdownOpen);
+                      setIsVenueDropdownOpen(false);
+                    }}
+                    className="adm-input"
                     style={{
-                      padding: '16px 18px',
-                      borderRadius: '16px',
+                      width: '100%',
+                      height: '46px',
+                      borderRadius: '12px',
+                      fontSize: '0.86rem',
+                      padding: '0 14px',
                       background: 'var(--adm-bg-input)',
-                      border: '1.5px dashed var(--adm-border)',
+                      border: `1px solid ${isFunnelDropdownOpen ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                      color: 'var(--adm-text-title)',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      gap: '14px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--adm-accent)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--adm-border)')}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{
-                        width: '44px',
-                        height: '44px',
-                        borderRadius: '12px',
-                        background: 'rgba(100, 116, 139, 0.12)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--adm-text-muted)',
-                        flexShrink: 0,
-                      }}>
-                        <Target size={22} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          ⚪ Sem Funil Definido (Desvincular)
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px', lineHeight: '1.3' }}>
-                          Contatos entrarão como <strong>Sem Funil</strong> (desindexados), aguardando triagem manual pela equipe.
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsFunnelModalOpen(true);
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '10px',
-                        background: 'var(--adm-accent-bg, rgba(212, 175, 55, 0.12))',
-                        border: '1px solid var(--adm-accent)',
-                        color: 'var(--adm-accent)',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                    >
-                      Escolher Funil
-                    </button>
-                  </div>
-                );
-              }
-
-              if (isPostSale) {
-                return (
-                  <div
-                    onClick={() => setIsFunnelModalOpen(true)}
-                    style={{
-                      padding: '16px 18px',
-                      borderRadius: '16px',
-                      background: 'rgba(139, 92, 246, 0.08)',
-                      border: '1.5px solid #8B5CF6',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 4px 16px rgba(139, 92, 246, 0.12)',
+                      textAlign: 'left',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{
-                          width: '46px',
-                          height: '46px',
-                          borderRadius: '14px',
-                          background: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#fff',
-                          boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)',
-                          flexShrink: 0,
-                        }}>
-                          <Crown size={24} />
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.94rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
-                              {selectedF?.name || 'Sucesso do Cliente (Pós-Venda)'}
-                            </span>
-                            <span style={{
-                              fontSize: '0.66rem',
-                              fontWeight: 900,
-                              textTransform: 'uppercase',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: '#8B5CF6',
-                              color: '#fff',
-                              letterSpacing: '0.4px',
-                            }}>
-                              👑 Pós-Venda • Clientes
-                            </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      {!funnelId ? (
+                        <>
+                          <div style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '6px',
+                            background: 'rgba(100, 116, 139, 0.15)',
+                            color: 'var(--adm-text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Target size={14} />
                           </div>
-                          <div style={{ fontSize: '0.74rem', color: '#8B5CF6', fontWeight: 700, marginTop: '3px' }}>
-                            ✓ Todos os contatos que enviarem mensagem serão cadastrados como <u>CLIENTES</u>
+                          <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            ⚪ Sem Funil Definido (Desvinculado)
+                          </span>
+                        </>
+                      ) : isPostSale ? (
+                        <>
+                          <div style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '6px',
+                            background: 'rgba(139, 92, 246, 0.18)',
+                            color: '#8B5CF6',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Crown size={14} />
                           </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsFunnelModalOpen(true);
-                        }}
-                        style={{
-                          padding: '8px 16px',
-                          borderRadius: '10px',
-                          background: 'rgba(139, 92, 246, 0.15)',
-                          border: '1px solid #8B5CF6',
-                          color: '#8B5CF6',
-                          fontSize: '0.78rem',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Alterar Funil
-                      </button>
-                    </div>
-
-                    <div style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      background: 'rgba(139, 92, 246, 0.1)',
-                      fontSize: '0.72rem',
-                      color: 'var(--adm-text-title)',
-                      lineHeight: '1.4',
-                    }}>
-                      🛡️ <strong>Regra do F5 System:</strong> Leads comerciais não entram no Sucesso do Cliente. Qualquer número recebido aqui é catalogado como Card de Cliente.
-                    </div>
-                  </div>
-                );
-              }
-
-              // Funil Comercial com Badge Color
-              const funnelColor = selectedF?.badgeColor || '#3B82F6';
-              return (
-                <div
-                  onClick={() => setIsFunnelModalOpen(true)}
-                  style={{
-                    padding: '16px 18px',
-                    borderRadius: '16px',
-                    background: `${funnelColor}0D`,
-                    border: `1.5px solid ${funnelColor}`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: `0 4px 16px ${funnelColor}1A`,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{
-                        width: '46px',
-                        height: '46px',
-                        borderRadius: '14px',
-                        background: funnelColor,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#fff',
-                        boxShadow: `0 4px 12px ${funnelColor}40`,
-                        flexShrink: 0,
-                      }}>
-                        <Target size={24} />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.94rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>
+                          <span style={{ fontWeight: 800, color: '#8B5CF6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            👑 Sucesso do Cliente (Pós-Venda)
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '6px',
+                            background: `${funnelColor}22`,
+                            color: funnelColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            <Target size={14} />
+                          </div>
+                          <span style={{ fontWeight: 800, color: funnelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {selectedF?.name || 'Funil Comercial'}
                           </span>
-                          <span style={{
-                            fontSize: '0.66rem',
-                            fontWeight: 900,
-                            textTransform: 'uppercase',
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            background: funnelColor,
-                            color: '#fff',
-                            letterSpacing: '0.4px',
-                          }}>
-                            🎯 Funil Comercial
-                          </span>
-                          {selectedF?.isEntryStageActive === false && (
-                            <span style={{
-                              fontSize: '0.66rem',
-                              fontWeight: 800,
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              background: 'rgba(245, 158, 11, 0.15)',
-                              color: '#F59E0B',
-                              border: '1px solid rgba(245, 158, 11, 0.3)',
-                            }}>
-                              ⚠️ Caixa de Entrada Inativa
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '3px' }}>
-                          {selectedF?.stages?.length ? `${selectedF.stages.length} etapas no fluxo` : 'Fluxo padrão'} • Novos leads serão alocados na 1ª etapa
-                        </div>
-                      </div>
+                        </>
+                      )}
                     </div>
+                    <ChevronDown
+                      size={16}
+                      color="var(--adm-text-muted)"
+                      style={{ transform: isFunnelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease', flexShrink: 0 }}
+                    />
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsFunnelModalOpen(true);
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '10px',
-                        background: `${funnelColor}18`,
-                        border: `1px solid ${funnelColor}`,
-                        color: funnelColor,
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                    >
-                      Alterar Funil
-                    </button>
-                  </div>
-
-                  {selectedF?.isEntryStageActive === false && (
+                  {isFunnelDropdownOpen && (
                     <div style={{
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      border: '1px solid rgba(245, 158, 11, 0.3)',
-                      fontSize: '0.72rem',
-                      color: '#F59E0B',
-                      lineHeight: '1.4',
+                      position: 'absolute',
+                      top: 'calc(100% + 6px)',
+                      left: 0,
+                      right: 0,
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '14px',
+                      boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
+                      zIndex: 9999,
+                      padding: '6px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      maxHeight: '280px',
+                      overflowY: 'auto',
                     }}>
-                      ⚠️ <strong>Atenção:</strong> O funil selecionado possui a <em>Caixa de Entrada</em> desativada. Se preferir não alocar leads diretamente nas etapas negociadas, desvincule a origem selecionando a opção <em>Sem Funil Definido</em>.
+                      {/* Opção 1: Sem Funil / Desvincular */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFunnelId('');
+                          setIsFunnelDropdownOpen(false);
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '10px',
+                          background: !funnelId ? 'rgba(100, 116, 139, 0.12)' : 'transparent',
+                          border: !funnelId ? '1px solid rgba(100, 116, 139, 0.3)' : '1px solid transparent',
+                          color: !funnelId ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                          fontSize: '0.80rem',
+                          fontWeight: !funnelId ? 800 : 600,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          transition: 'all 0.12s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (funnelId) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (funnelId) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Target size={14} color="var(--adm-text-muted)" />
+                          <span>⚪ Sem Funil Definido (Desvincular)</span>
+                        </div>
+                        {!funnelId && <Check size={14} color="var(--adm-accent)" />}
+                      </button>
+
+                      {/* Divisor */}
+                      <div style={{ height: '1px', background: 'var(--adm-border)', margin: '2px 0' }} />
+
+                      {/* Opção 2: Funis Comerciais */}
+                      {(funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => {
+                        const isSelected = funnelId === f.id;
+                        const fColor = f.badgeColor || '#D4AF37';
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              setFunnelId(f.id);
+                              setIsFunnelDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '10px',
+                              background: isSelected ? `${fColor}18` : 'transparent',
+                              border: isSelected ? `1px solid ${fColor}40` : '1px solid transparent',
+                              color: isSelected ? fColor : 'var(--adm-text-title)',
+                              fontSize: '0.80rem',
+                              fontWeight: isSelected ? 800 : 600,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              transition: 'all 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              <div style={{
+                                width: '22px',
+                                height: '22px',
+                                borderRadius: '6px',
+                                background: `${fColor}22`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                <Target size={12} color={fColor} />
+                              </div>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {f.name}
+                              </span>
+                            </div>
+                            {isSelected && <Check size={14} color={fColor} />}
+                          </button>
+                        );
+                      })}
+
+                      {/* Opção 3: Sucesso do Cliente (Pós-Venda) */}
+                      {(() => {
+                        const postSaleFunnel = funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.id === 'post_sale_default');
+                        const isSelected = funnelId === 'post_sale_default' || funnelId === postSaleFunnel?.id;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFunnelId(postSaleFunnel?.id || 'post_sale_default');
+                              setIsFunnelDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '10px',
+                              background: isSelected ? 'rgba(139, 92, 246, 0.16)' : 'transparent',
+                              border: isSelected ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
+                              color: isSelected ? '#8B5CF6' : 'var(--adm-text-title)',
+                              fontSize: '0.80rem',
+                              fontWeight: isSelected ? 800 : 600,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              transition: 'all 0.12s ease',
+                              marginTop: '2px',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              <div style={{
+                                width: '22px',
+                                height: '22px',
+                                borderRadius: '6px',
+                                background: 'rgba(139, 92, 246, 0.2)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                <Crown size={12} color="#8B5CF6" />
+                              </div>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                Sucesso do Cliente (Pós-Venda)
+                              </span>
+                            </div>
+                            {isSelected && <Check size={14} color="#8B5CF6" />}
+                          </button>
+                        );
+                      })()}
                     </div>
                   )}
-                </div>
+
+                  <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
+                    {!funnelId 
+                      ? 'Contatos entrarão como Sem Funil para triagem manual.'
+                      : isPostSale 
+                        ? '👑 Contatos recebidos serão cadastrados diretamente como Clientes.'
+                        : `Fluxo automático • Novos leads serão alocados na 1ª etapa do funil ${selectedF?.name || ''}.`}
+                  </div>
+                </>
               );
             })()}
           </div>

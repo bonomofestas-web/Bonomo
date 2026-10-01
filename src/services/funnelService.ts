@@ -25,6 +25,7 @@ export const funnelService = {
         venueId: row.venue_id || 'all',
         masterId: row.master_id || undefined,
         sharedVenueIds: Array.isArray(row.shared_venue_ids) ? row.shared_venue_ids : [],
+        disabledVenueIds: Array.isArray(row.disabled_venue_ids) ? row.disabled_venue_ids : (row.duplicate_rule_config?._disabledVenueIds || []),
         allowedCollaboratorIds: row.allowed_collaborator_ids || [],
         badge: row.badge || row.category,
         badgeColor: row.badge_color || '#3B82F6',
@@ -103,11 +104,13 @@ export const funnelService = {
         ...(funnel.priorityWhatsappPerVenue !== undefined ? { _priorityWhatsappPerVenue: funnel.priorityWhatsappPerVenue } : {}),
         ...(funnel.defaultWhatsAppSourceId !== undefined ? { _defaultWhatsAppSourceId: funnel.defaultWhatsAppSourceId } : {}),
         ...(funnel.venueDistributionConfig !== undefined ? { _venueDistributionConfig: funnel.venueDistributionConfig } : {}),
+        ...(funnel.disabledVenueIds !== undefined ? { _disabledVenueIds: funnel.disabledVenueIds } : {}),
       };
 
       if (funnel.priorityWhatsappPerVenue !== undefined) payload.priority_whatsapp_per_venue = funnel.priorityWhatsappPerVenue;
       if (funnel.defaultWhatsAppSourceId !== undefined) payload.default_whatsapp_source_id = funnel.defaultWhatsAppSourceId;
       if (funnel.venueDistributionConfig !== undefined) payload.venue_distribution_config = funnel.venueDistributionConfig;
+      if (funnel.disabledVenueIds !== undefined) payload.disabled_venue_ids = funnel.disabledVenueIds;
 
       if (funnel.isPrimary !== undefined) payload.is_primary = funnel.isPrimary;
       if (funnel.isDemo !== undefined) payload.is_demo = funnel.isDemo;

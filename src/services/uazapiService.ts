@@ -233,7 +233,7 @@ export const uazapiService = {
   },
 
   /**
-   * Obtém um token de instância existente ou cria uma nova com recuperação inteligente de limites
+   * Obtém um token de instância existente ou cria uma nova com isolamento total
    */
   async getOrCreateInstance(name: string, preferredToken?: string): Promise<{ token: string; isNew: boolean }> {
     if (preferredToken && preferredToken.trim()) {
@@ -246,32 +246,46 @@ export const uazapiService = {
       return { token: fallbackToken, isNew: true };
     }
 
-    // 1. Consulta instâncias existentes
-    const existing = await this.listInstances();
-
-    // 2. Se encontrar uma instância desconectada, reutiliza-a
-    const disconnected = existing.find(i => i.status === 'disconnected' && i.token);
-    if (disconnected && disconnected.token) {
-      return { token: disconnected.token, isNew: false };
-    }
-
-    // 3. Tenta criar uma nova
+    // Tenta criar uma nova instância isolada para esta origem específica
     try {
-      const instanceName = `f5_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+      const sanitizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 16);
+      const uniqueSuffix = `${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+      const instanceName = `f5_${sanitizedName}_${uniqueSuffix}`;
       const created = await this.createInstance(instanceName);
       if (created.token) {
         return { token: created.token, isNew: true };
       }
     } catch (err: any) {
-      // Se estourou limite de instâncias (429), reutiliza a primeira instância disponível
-      if (existing.length > 0 && existing[0].token) {
-        return { token: existing[0].token, isNew: false };
-      }
+      console.warn('[UAZAPI createInstance Warning]:', err);
       throw err;
     }
 
     const fallbackToken = `inst_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     return { token: fallbackToken, isNew: true };
+  },
+
+  /**
+   * Exclui uma instância permanentemente do servidor UAZAPI
+   */
+  async deleteInstance(instanceToken: string): Promise<boolean> {
+    const baseUrl = this.getServerUrl();
+    const adminToken = this.getAdminToken();
+    if (!baseUrl || !instanceToken) return false;
+
+    try {
+      const res = await fetch(`${baseUrl}/instance/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'token': instanceToken,
+          ...(adminToken ? { 'admintoken': adminToken } : {}),
+        },
+        body: JSON.stringify({ token: instanceToken }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   },
 
   /**
@@ -286,7 +300,8 @@ export const uazapiService = {
     if (!instanceToken) throw new Error('Token da instância não fornecido.');
 
     const body: Record<string, any> = {
-      browser: 'auto',
+      browser: ['F5 System', 'Desktop', '1.0.0'],
+      systemName: 'F5 System',
     };
 
     if (typeof options === 'string') {
@@ -297,7 +312,9 @@ export const uazapiService = {
         const clean = options.phone.replace(/\D/g, '');
         if (clean) body.phone = clean;
       }
-      if (options.browser) body.browser = options.browser;
+      if (options.browser && options.browser !== 'auto') {
+        body.browser = options.browser;
+      }
       if (options.systemName) body.systemName = options.systemName;
       if (options.proxy_managed_country) body.proxy_managed_country = options.proxy_managed_country;
       if (options.proxy_managed_state) body.proxy_managed_state = options.proxy_managed_state;
