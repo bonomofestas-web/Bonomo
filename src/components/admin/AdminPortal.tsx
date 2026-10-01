@@ -277,15 +277,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       setActiveFunnelId(funnelId !== undefined ? funnelId : null);
       if (funnelId) {
         try { localStorage.setItem('f5_active_funnel_id', funnelId); } catch {}
+      } else {
+        try { localStorage.removeItem('f5_active_funnel_id'); } catch {}
       }
+    }
+    if (tab === 'whatsapp') {
+      setActiveWhatsAppSearchQuery('');
     }
   };
 
   const handleOpenLeadInWhatsApp = (leadId: string) => {
-    const targetLead = leads.find(l => l.id === leadId);
-    const searchName = targetLead?.name?.trim() || '';
     setActiveWhatsAppLeadId(leadId);
-    setActiveWhatsAppSearchQuery(searchName);
+    setActiveWhatsAppSearchQuery(''); // Mantém a busca limpa para não travar a lista de conversas em um único lead
     setActiveTab('whatsapp');
     try {
       localStorage.setItem('bonomo_admin_active_tab', 'whatsapp');
@@ -558,6 +561,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <AdminWhatsAppWorkspaceView
             initialLeadId={activeWhatsAppLeadId || undefined}
             searchQuery={activeWhatsAppSearchQuery}
+            onLeadOpened={() => {
+              setActiveWhatsAppLeadId(null);
+            }}
             onClose={() => {
               setActiveWhatsAppLeadId(null);
               setActiveWhatsAppSearchQuery('');

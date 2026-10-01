@@ -54,6 +54,25 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 async function runPhotoPurge() {
   console.log(`\n🔍 [F5 System] Iniciando varredura automática de fotos no banco (${supabaseUrl})...\n`);
 
+  // Teste rápido de conectividade com timeout de 2.5s
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const healthCheck = await fetch(`${supabaseUrl}/rest/v1/`, {
+      headers: { apikey: serviceRoleKey },
+      signal: controller.signal,
+    }).catch(err => ({ ok: false, err }));
+    clearTimeout(timeoutId);
+
+    if (!healthCheck || (healthCheck.err && !healthCheck.ok)) {
+      console.log('ℹ️  [F5 System] Banco local não está em execução ou inacessível no momento. Prosseguindo com o commit.');
+      return;
+    }
+  } catch (connErr) {
+    console.log('ℹ️  [F5 System] Banco local não respondeu ao teste de conectividade. Prosseguindo com o commit.');
+    return;
+  }
+
   let totalPurged = 0;
 
   // 1. Tentar via RPC purge_all_base64_photos se disponível

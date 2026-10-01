@@ -13,6 +13,9 @@ import {
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
+import { CloseDealValueModal } from './CloseDealValueModal';
+import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
+import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { isPhoneMatch } from '../../services/leadService';
@@ -40,6 +43,7 @@ interface AdminLeadInspectorProps {
   isPostSale?: boolean;
   selectedRecipientPhone?: string;
   onSelectRecipientPhone?: (phone: string) => void;
+  highlightMissingFields?: boolean;
 }
 
 const maskCpfInput = (value: string): string => {
@@ -92,6 +96,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   isPostSale = false,
   selectedRecipientPhone,
   onSelectRecipientPhone,
+  highlightMissingFields = false,
 }) => {
   const { 
     currentUser, 
@@ -115,8 +120,24 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     completeCommercialCommitment,
     cancelCommercialCommitment,
     reassignLeadFunnel,
+    closeLeadSaleWithValue,
   } = useAdminState();
 
+  const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
+  const [isMissingFieldsModalOpen, setIsMissingFieldsModalOpen] = useState(false);
+  const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
+  const [localHighlightMissing, setLocalHighlightMissing] = useState(false);
+  const shouldHighlightMissing = Boolean(highlightMissingFields || localHighlightMissing);
+
+  // Isolamento estrito entre leads: ao trocar de lead, reseta o destaque local de pendências
+  React.useEffect(() => {
+    setLocalHighlightMissing(false);
+  }, [lead.id]);
+
+  const missingFieldKeys = useMemo(() => {
+    if (!shouldHighlightMissing) return new Set<string>();
+    return getMissingLeadFieldKeys(lead);
+  }, [shouldHighlightMissing, lead]);
   const [isFunnelPickerOpen, setIsFunnelPickerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -242,6 +263,27 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [draftDownPayment, setDraftDownPayment] = useState<string>(() => lead.downPayment ? formatCurrency(lead.downPayment) : '');
   const [draftInstallments, setDraftInstallments] = useState<string>(() => lead.installments ? String(lead.installments) : '');
   const [draftProfession, setDraftProfession] = useState<string>(lead.profession || '');
+  const [draftDesiredPeriod, setDraftDesiredPeriod] = useState<string>(lead.desiredPeriod || '');
+  const [draftPackageSold, setDraftPackageSold] = useState<string>(lead.packageSold || lead.interestService || '');
+  const [draftPaymentMethod, setDraftPaymentMethod] = useState<string>(lead.paymentMethod || '');
+
+  // Helper visual para verificar e aplicar estilo em campo faltante para Ganho
+  const isFieldMissing = (fieldKey: string) => {
+    return shouldHighlightMissing && missingFieldKeys.has(fieldKey);
+  };
+
+  const getMissingHighlightStyle = (fieldKey: string, customBase?: React.CSSProperties): React.CSSProperties => {
+    if (!isFieldMissing(fieldKey)) return customBase || {};
+    return {
+      ...(customBase || {}),
+      border: '1.5px solid #EF4444',
+      borderRadius: '6px',
+      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+      boxShadow: '0 0 0 2px rgba(239, 68, 68, 0.25)',
+      padding: '2px 6px',
+      transition: 'all 0.2s ease',
+    };
+  };
 
   // Dynamic optional fields toggle
   const [showEmailField, setShowEmailField] = useState(false);
@@ -265,12 +307,15 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     setDraftDownPayment(lead.downPayment ? formatCurrency(lead.downPayment) : '');
     setDraftInstallments(lead.installments ? String(lead.installments) : '');
     setDraftProfession(lead.profession || '');
+    setDraftDesiredPeriod(lead.desiredPeriod || '');
+    setDraftPackageSold(lead.packageSold || lead.interestService || '');
+    setDraftPaymentMethod(lead.paymentMethod || '');
     setIsOutcomeUnlocked(false);
     setShowEmailField(false);
     setShowCpfField(false);
     setShowNeighborhoodField(false);
     setShowAddressField(false);
-  }, [lead.id, lead.name, lead.phone, lead.email, lead.neighborhood, lead.address, lead.birthday, lead.debutanteBirthDate, lead.cpf, lead.estimatedGuests, lead.dealValue, lead.estimatedBudget, lead.eventYear, lead.decisionMakers, lead.downPayment, lead.installments, lead.profession]);
+  }, [lead.id, lead.name, lead.phone, lead.email, lead.neighborhood, lead.address, lead.birthday, lead.debutanteBirthDate, lead.cpf, lead.estimatedGuests, lead.dealValue, lead.estimatedBudget, lead.eventYear, lead.decisionMakers, lead.downPayment, lead.installments, lead.profession, lead.desiredPeriod, lead.packageSold, lead.interestService, lead.paymentMethod]);
 
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
@@ -354,11 +399,43 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
       alert('Regra do CRM: A etapa "NOVO LEAD" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
       return;
     }
+
+    const targetStageConfig = funnelStages.find(s => s.id === newStageId);
+    const isTargetWon = Boolean(
+      targetStageConfig?.isWon === true ||
+      newStageId === 'contract_signed' ||
+      newStageId === 'deal_closed' ||
+      newStageId === 'contrato_fechado' ||
+      newStageId === 'ganho'
+    );
+
+    if (isTargetWon) {
+      // Validação estrita da ficha completa (sem obrigatoriedade de data do evento)
+      const missing = validateLeadForWon(lead);
+      if (missing.length > 0) {
+        setMissingFieldsList(missing);
+        setIsMissingFieldsModalOpen(true);
+        setIsStageDropdownOpen(false);
+        return;
+      }
+      setIsCloseDealModalOpen(true);
+      setIsStageDropdownOpen(false);
+      return;
+    }
+
     if (onStageChange) {
       onStageChange(newStageId as CrmStage);
     } else {
       updateLeadStage(lead.id, newStageId as CrmStage);
     }
+
+    // Gatilho de Automação: Agendamento Automático
+    const scheduleTrigger = targetStageConfig?.triggers?.find(t => t.type === 'open_schedule');
+    if (scheduleTrigger || targetStageConfig?.isMeetingStage) {
+      const initialType: CommercialCommitmentType = scheduleTrigger?.scheduleType === 'tasting' ? 'tasting' : 'visit';
+      setScheduleCommitmentType(initialType);
+    }
+
     setIsStageDropdownOpen(false);
   };
 
@@ -2227,6 +2304,44 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         {activeTab === 'principal' && (
           <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
+            {/* Banner de Alerta para Campos Obrigatórios Pendentes (Apenas no Lead Específico) */}
+            {shouldHighlightMissing && missingFieldKeys.size > 0 && (
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                fontSize: '0.74rem',
+                color: '#EF4444',
+                fontWeight: 700,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={15} color="#EF4444" />
+                  <span>Preencha os campos obrigatórios destacados em vermelho para mover para Ganho.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLocalHighlightMissing(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#EF4444',
+                    cursor: 'pointer',
+                    fontSize: '0.70rem',
+                    textDecoration: 'underline',
+                    padding: '2px 4px',
+                    fontWeight: 700,
+                  }}
+                >
+                  Dispensar
+                </button>
+              </div>
+            )}
+
             {/* ── SEÇÃO 1: ⭐ DADOS PRIORITÁRIOS UNIFICADOS (16 CAMPOS ESSENCIAIS) ── */}
             <div style={sectionTitleStyle}>
               <Sparkles size={13} color="var(--adm-accent)" />
@@ -2695,8 +2810,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               )}
 
               {/* 4. Valor Venda R$ */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Valor Venda</span>
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('dealValue') }}>
+                <span style={cardLabelStyle}>
+                  Valor Venda {isFieldMissing('dealValue') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px' }}>
                   <span style={{ color: '#10B981', fontWeight: 900, fontSize: '0.82rem', flexShrink: 0 }}>R$</span>
                   <input
@@ -2843,8 +2960,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 8. Tipo de Evento (Dropdown Popover Integrado) */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Tipo Evento</span>
+              <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('eventType'), position: 'relative' }}>
+                <span style={cardLabelStyle}>
+                  Tipo Evento {isFieldMissing('eventType') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={cardValueStyle}>
                   <div
                     onClick={() => {
@@ -2918,8 +3037,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 9. N° Pessoas */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>N° Pessoas</span>
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('estimatedGuests') }}>
+                <span style={cardLabelStyle}>
+                  N° Pessoas {isFieldMissing('estimatedGuests') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={cardValueStyle}>
                   <input
                     type="number"
@@ -2936,7 +3057,61 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
               </div>
 
-              {/* 10. Ano Evento */}
+              {/* 10. Período Desejado */}
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('desiredPeriod') }}>
+                <span style={cardLabelStyle}>
+                  Período {isFieldMissing('desiredPeriod') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: 2º Semestre 2026, Outubro..."
+                    value={draftDesiredPeriod}
+                    onChange={(e) => setDraftDesiredPeriod(e.target.value)}
+                    onBlur={() => handleUpdate({ desiredPeriod: draftDesiredPeriod.trim() || undefined })}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 11. Pacote de Interesse / Vendido */}
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('packageSold') }}>
+                <span style={cardLabelStyle}>
+                  Pacote {isFieldMissing('packageSold') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: Pacote Ouro, Completo, Buffet..."
+                    value={draftPackageSold}
+                    onChange={(e) => setDraftPackageSold(e.target.value)}
+                    onBlur={() => handleUpdate({ packageSold: draftPackageSold.trim() || undefined, interestService: draftPackageSold.trim() || undefined })}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 12. Forma de Pagamento */}
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('paymentMethod') }}>
+                <span style={cardLabelStyle}>
+                  Pagamento {isFieldMissing('paymentMethod') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
+                <div style={cardValueStyle}>
+                  <input
+                    type="text"
+                    disabled={effectiveReadOnly}
+                    placeholder="Ex: PIX, Cartão 12x, Sinal + Parcelas..."
+                    value={draftPaymentMethod}
+                    onChange={(e) => setDraftPaymentMethod(e.target.value)}
+                    onBlur={() => handleUpdate({ paymentMethod: draftPaymentMethod.trim() || undefined })}
+                    style={seamlessInputStyle}
+                  />
+                </div>
+              </div>
+
+              {/* 13. Ano Evento */}
               <div style={cardRowStyle}>
                 <span style={cardLabelStyle}>Ano Evento</span>
                 <div style={cardValueStyle}>
@@ -3196,7 +3371,20 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               {/* CARD 1: CONTATO PRINCIPAL (LEAD) */}
               <div style={cardStyle}>
                 {/* Header do Contato Principal */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingBottom: '6px',
+                  borderBottom: '1px solid var(--adm-border)',
+                  gap: '8px',
+                  ...(isFieldMissing('birthdayPersonName') ? {
+                    border: '1.5px solid #EF4444',
+                    borderRadius: '8px',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    padding: '6px 8px',
+                  } : {}),
+                }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
                     <div style={{
                       width: '34px',
@@ -3242,6 +3430,9 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
                   {/* Decisor Badge / Botão */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {isFieldMissing('birthdayPersonName') && (
+                      <span style={{ fontSize: '0.62rem', color: '#EF4444', fontWeight: 800 }}>* Nome Obrigatório</span>
+                    )}
                     {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none' ? (
                       <span style={{
                         fontSize: '0.65rem',
@@ -3312,8 +3503,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* Telefone */}
-                <div style={cardRowStyle}>
-                  <span style={cardLabelStyle}>Telefone</span>
+                <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('phone') }}>
+                  <span style={cardLabelStyle}>
+                    Telefone {isFieldMissing('phone') && <span style={{ color: '#EF4444' }}>*</span>}
+                  </span>
                   <div style={cardValueStyle}>
                     <input
                       type="text"
@@ -3362,8 +3555,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                 {/* Campos de Aniversário & Data Evento: Exibidos APENAS se o papel for Aniversariante/Debutante */}
                 {(lead.primaryContactRole === 'debutante' || !lead.primaryContactRole) && (
                   <>
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>Aniversário</span>
+                    <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('debutanteBirthDate') }}>
+                      <span style={cardLabelStyle}>
+                        Aniversário {isFieldMissing('debutanteBirthDate') && <span style={{ color: '#EF4444' }}>*</span>}
+                      </span>
                       <div style={cardValueStyle}>
                         <input
                           type="date"
@@ -5798,6 +5993,32 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Fechamento de Venda / Ganho */}
+      <CloseDealValueModal
+        isOpen={isCloseDealModalOpen}
+        onClose={() => setIsCloseDealModalOpen(false)}
+        lead={lead}
+        onConfirmSale={(leadId, dealValue, packageSold, closerNotes, extraOptions) => {
+          closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes, extraOptions);
+          setIsCloseDealModalOpen(false);
+          if (onStageChange) {
+            onStageChange('contract_signed');
+          }
+        }}
+      />
+
+      {/* Modal de Pendências / Campos Faltantes da Ficha */}
+      <AdminLeadMissingFieldsModal
+        isOpen={isMissingFieldsModalOpen}
+        onClose={() => setIsMissingFieldsModalOpen(false)}
+        lead={lead}
+        missingFields={missingFieldsList}
+        onOpenInspector={() => {
+          setIsMissingFieldsModalOpen(false);
+          setLocalHighlightMissing(true);
+        }}
+      />
 
     </div>
   );

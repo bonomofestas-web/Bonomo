@@ -8,12 +8,14 @@ interface AdminLeadDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   lead: Lead | null;
+  highlightMissingFields?: boolean;
 }
 
 export const AdminLeadDetailModal: React.FC<AdminLeadDetailModalProps> = ({
   isOpen,
   onClose,
   lead,
+  highlightMissingFields = false,
 }) => {
   const { updateLeadStage } = useAdminState();
 
@@ -78,6 +80,7 @@ export const AdminLeadDetailModal: React.FC<AdminLeadDetailModalProps> = ({
             lead={lead}
             onStageChange={(newStage: CrmStage) => updateLeadStage(lead.id, newStage)}
             onToggleCollapse={onClose}
+            highlightMissingFields={highlightMissingFields}
           />
         </div>
       </div>

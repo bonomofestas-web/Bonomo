@@ -15,6 +15,7 @@ import { GuestCapacityModal } from './components/guests/GuestCapacityModal';
 import { ReferralFormModal } from './components/referrals/ReferralFormModal';
 import { GuestPublicLandingPage } from './components/guests/GuestPublicLandingPage';
 import { AdminPortal } from './components/admin/AdminPortal';
+import { AdminCollabInviteView } from './components/admin/AdminCollabInviteView';
 import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroView';
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
@@ -219,14 +220,24 @@ export const AppContent: React.FC = () => {
 };
 
 const parseRouteFromLocation = (): { 
-  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite'; 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'collab_invite'; 
   slug?: string;
   guestId?: string;
+  inviteToken?: string;
 } => {
   if (typeof window === 'undefined') return { mode: 'admin', slug: 'maria-eduarda-2027' };
 
   const urlParams = new URLSearchParams(window.location.search);
   const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+
+  // 0. Link de Entrada / Ativação de Colaborador (?collab_invite=TOKEN ou ?invite_collab=TOKEN ou /collab/TOKEN)
+  if (urlParams.has('collab_invite') || urlParams.has('invite_collab') || pathname.startsWith('collab/')) {
+    const rawToken = urlParams.get('collab_invite') || urlParams.get('invite_collab') || (pathname.startsWith('collab/') ? pathname.replace(/^collab\//, '') : '');
+    return {
+      mode: 'collab_invite',
+      inviteToken: decodeURIComponent(rawToken || '').trim(),
+    };
+  }
 
   // 1. Convite Oficial do Convidado (/convite ou ?convite=slug ou ?guestId=id)
   if (urlParams.has('convite') || urlParams.has('invite') || pathname === 'convite' || pathname.startsWith('convite/')) {
@@ -393,6 +404,12 @@ const RootAppRouter: React.FC = () => {
       link.type = 'image/png';
       appleLink.href = '/favicon.png';
       appleTitleMeta.content = 'F5 System';
+    } else if (viewMode === 'collab_invite') {
+      document.title = 'F5 System • Ativação de Acesso da Equipe';
+      link.href = '/favicon.png';
+      link.type = 'image/png';
+      appleLink.href = '/favicon.png';
+      appleTitleMeta.content = 'F5 System';
     } else {
       const debTitle = activeDeb ? `${activeDeb.name} • 15 Anos` : 'Minha Festa de 15 Anos';
       const venueName = activeVenue?.name || 'Bonomo Festas';
@@ -484,6 +501,18 @@ const RootAppRouter: React.FC = () => {
           }} 
         />
       </AppStateProvider>
+    );
+  }
+
+  if (viewMode === 'collab_invite') {
+    return (
+      <AdminCollabInviteView 
+        token={routeInfo.inviteToken} 
+        onSuccessLogin={() => {
+          window.history.replaceState({}, '', window.location.origin + '?admin=true');
+          setRouteInfo({ mode: 'admin', slug: '' });
+        }} 
+      />
     );
   }
 

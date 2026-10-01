@@ -31,10 +31,13 @@ import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLostReasonModal } from './AdminLostReasonModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
+import { AdminLeadDetailModal } from './AdminLeadDetailModal';
+import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { validateLeadForWon } from '../../utils/leadValidation';
 import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
-import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig } from '../../types/admin';
+import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, CommercialCommitmentType } from '../../types/admin';
 
 interface AdminCrmKanbanViewProps {
   initialLeadId?: string;
@@ -450,18 +453,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // Active Funnel selection: specific funnel ID or fallback
   const [selectedFunnelId, setSelectedFunnelIdState] = useState<string | null>(() => {
-    if (activeFunnelId !== undefined && activeFunnelId !== null) return activeFunnelId;
+    if (activeFunnelId !== undefined) return activeFunnelId;
     if (typeof window !== 'undefined') {
       try {
         const p = new URLSearchParams(window.location.search);
         const urlFunnel = p.get('funnel_id');
         if (urlFunnel) return urlFunnel;
-        const saved = localStorage.getItem('f5_crm_active_funnel_id');
-        if (saved) return saved;
       } catch {}
     }
     if (initialLeadId) return 'indicacao';
-    if (isPostSaleView) return 'post_sale_default';
     return null;
   });
 
@@ -469,11 +469,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     setSelectedFunnelIdState(id);
     if (id) {
       try { localStorage.setItem('f5_crm_active_funnel_id', id); } catch {}
+    } else {
+      try { localStorage.removeItem('f5_crm_active_funnel_id'); } catch {}
     }
     if (onSelectFunnel) {
       onSelectFunnel(id);
     }
   };
+  const [autoScheduleLead, setAutoScheduleLead] = useState<{ lead: Lead; type: CommercialCommitmentType } | null>(null);
   const [funnelSearch, setFunnelSearch] = useState('');
 
   // Como CRM Funnel Settings Modal com persistência no F5
@@ -610,6 +613,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [missingFieldsLead, setMissingFieldsLead] = useState<Lead | null>(null);
   const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
   const [isMissingFieldsModalOpen, setIsMissingFieldsModalOpen] = useState(false);
+  const [detailModalLead, setDetailModalLead] = useState<Lead | null>(null);
+  const [detailModalHighlightMissing, setDetailModalHighlightMissing] = useState(false);
 
   // Reopen negotiation confirmation modal state for Won leads
   const [reopeningLeadConfirm, setReopeningLeadConfirm] = useState<{ lead: Lead; targetStage: string } | null>(null);
@@ -917,10 +922,10 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [funnels, leads, venues, activeVenueId, userAllowedVenueIds, canConfigureFunnels, currentUser, isPostSaleView]);
 
   useEffect(() => {
-    if (funnelsList.length > 0) {
+    if (funnelsList.length > 0 && selectedFunnelId) {
       const exists = funnelsList.some(f => f.id === selectedFunnelId);
-      if (!selectedFunnelId || !exists) {
-        setSelectedFunnelId(funnelsList[0].id);
+      if (!exists) {
+        setSelectedFunnelId(null);
       }
     }
   }, [selectedFunnelId, funnelsList]);
@@ -1297,8 +1302,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       return;
     }
 
+    const targetStageConfig = (currentFunnel?.stages || []).find(s => s.id === targetStage);
     const isCurrentlyWon = lead.stage === 'contract_signed' || (lead.stage as string) === 'deal_closed' || (lead.stage as string) === 'contrato_fechado';
-    const isTargetWon = (targetStage as string) === 'contract_signed' || (targetStage as string) === 'deal_closed' || (targetStage as string) === 'contrato_fechado';
+    const isTargetWon = Boolean(
+      targetStageConfig?.isWon === true ||
+      (targetStage as string) === 'contract_signed' || 
+      (targetStage as string) === 'deal_closed' || 
+      (targetStage as string) === 'contrato_fechado' ||
+      (targetStage as string) === 'ganho'
+    );
 
     // Regra F5 System: Leads que já avançaram no pipeline não podem retornar para a Caixa de Entrada
     const isTargetEntry = (targetStage as string) === 'new_lead' || (targetStage as string) === 'onboarding' || (columns.length > 0 && targetStage === columns[0].id && (columns[0].title.toLowerCase().includes('entrada') || columns[0].title.toLowerCase().includes('novo lead')));
@@ -1310,7 +1322,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     }
 
     // Automação de Gatilho da Etapa: Transferência Automática de Funil
-    const targetStageConfig = (currentFunnel?.stages || []).find(s => s.id === targetStage);
     const transferTrigger = targetStageConfig?.triggers?.find(t => (t.type === 'move_to_funnel' || (t as any).type === 'transfer_funnel') && t.targetFunnelId);
     if (transferTrigger && transferTrigger.targetFunnelId) {
       setDraggedLeadId(null);
@@ -1331,57 +1342,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     }
 
     if (isTargetWon) {
-      // Validar requisitos obrigatórios para Ganho (Audio 2: Closer não é obrigatório)
-      const missing: string[] = [];
-
-      // 1. Contato vinculado (Decisor / Responsável)
-      const validContacts = (lead.contacts || []).filter(c => c.name?.trim() && c.phone?.trim() && c.phone.replace(/\D/g, '').length >= 8);
-      if (validContacts.length === 0) {
-        missing.push('Pelo menos 1 Contato Vinculado (com Nome e Telefone/WhatsApp)');
-      }
-
-      // 3. Tipo de Evento
-      if (!lead.eventType) {
-        missing.push('Tipo do Evento');
-      }
-
-      // 4. Data do Evento / Festa
-      const eventDate = lead.partyDate || lead.eventDate;
-      if (!eventDate) {
-        missing.push('Data do Evento / Festa');
-      }
-
-      // 5. Data de Aniversário da Debutante / Aniversariante
-      if (!lead.debutanteBirthDate) {
-        missing.push('Data de Aniversário do(a) Aniversariante');
-      }
-
-      // 6. Quantidade de Convidados
-      if (!lead.estimatedGuests || lead.estimatedGuests <= 0) {
-        missing.push('Quantidade Estimada de Convidados');
-      }
-
-      // 7. Período Desejado
-      if (!lead.desiredPeriod?.trim()) {
-        missing.push('Período Desejado');
-      }
-
-      // 8. Valor da Venda / Orçamento
-      const hasValue = (lead.dealValue && lead.dealValue > 0) || (lead.estimatedBudget && lead.estimatedBudget > 0);
-      if (!hasValue) {
-        missing.push('Valor da Venda / Orçamento');
-      }
-
-      // 9. Pacote Vendido / Interesse
-      const hasPackage = lead.packageSold?.trim() || lead.interestService?.trim();
-      if (!hasPackage) {
-        missing.push('Pacote de Interesse / Vendido');
-      }
-
-      // 10. Formato de Pagamento
-      if (!lead.paymentMethod?.trim()) {
-        missing.push('Formato de Pagamento');
-      }
+      // Validar requisitos obrigatórios para Ganho (Data do Evento NÃO é obrigatória conforme áudio do usuário)
+      const missing = validateLeadForWon(lead);
 
       if (missing.length > 0) {
         setMissingFieldsLead(lead);
@@ -1403,6 +1365,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }
 
       updateLeadStage(leadId, targetStage as CrmStage);
+
+      // Automação de Gatilho de Ação: Agendamento Automático ao mover para etapa
+      const scheduleTrigger = targetStageConfig?.triggers?.find(t => t.type === 'open_schedule');
+      if (scheduleTrigger || targetStageConfig?.isMeetingStage) {
+        const scheduleType: CommercialCommitmentType = scheduleTrigger?.scheduleType === 'tasting' ? 'tasting' : 'visit';
+        setAutoScheduleLead({ lead, type: scheduleType });
+      }
     }
     setDraggedLeadId(null);
   };
@@ -1528,7 +1497,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     );
   }
 
-  if (!isPostSaleView && !selectedFunnelId) {
+  if (!selectedFunnelId) {
     const totalPipelineSum = funnelsList.reduce((acc, curr) => acc + curr.openPipelineValue, 0);
     const totalLeadsSum = funnelsList.reduce((acc, curr) => acc + curr.leadCount, 0);
 
@@ -4925,12 +4894,36 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         onClose={() => setIsMissingFieldsModalOpen(false)}
         onOpenInspector={() => {
           if (missingFieldsLead) {
-            handleOpenLeadWorkspace(missingFieldsLead);
+            const target = missingFieldsLead;
+            setIsMissingFieldsModalOpen(false);
+            setDetailModalLead(target);
+            setDetailModalHighlightMissing(true);
           }
         }}
         lead={missingFieldsLead}
         missingFields={missingFieldsList}
       />
+
+      {/* Modal Ficha do Lead com Destaque de Campos Faltantes (Escopo Exclusivo deste Lead) */}
+      <AdminLeadDetailModal
+        isOpen={Boolean(detailModalLead)}
+        onClose={() => {
+          setDetailModalLead(null);
+          setDetailModalHighlightMissing(false);
+        }}
+        lead={detailModalLead}
+        highlightMissingFields={detailModalHighlightMissing}
+      />
+
+      {/* Modal de Agendamento Automático (Gatilho da Etapa / Arrastar para Visita/Degustação) */}
+      {autoScheduleLead && (
+        <AdminScheduleCommitmentModal
+          lead={autoScheduleLead.lead}
+          initialType={autoScheduleLead.type}
+          onClose={() => setAutoScheduleLead(null)}
+          onScheduled={() => setAutoScheduleLead(null)}
+        />
+      )}
 
       {/* New Lead Modal */}
       <AdminNewLeadModal

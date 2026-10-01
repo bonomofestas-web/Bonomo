@@ -7,10 +7,12 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { validateLeadForWon } from '../../utils/leadValidation';
 import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import type { Lead, CrmStage, AdminTask, TaskStatus } from '../../types/admin';
 
@@ -61,6 +63,9 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const [activeTabCol3, setActiveTabCol3] = useState<'whatsapp' | 'history' | 'tasks'>('history');
   const [noteText, setNoteText] = useState('');
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
+  const [isMissingFieldsModalOpen, setIsMissingFieldsModalOpen] = useState(false);
+  const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
+  const [isHighlightMissingActive, setIsHighlightMissingActive] = useState(false);
 
   // ── Task detail modal & completion state ───────────────────────────────────
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -123,6 +128,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
   const handleSelectLead = (lead: Lead) => {
     setSelectedLeadId(lead.id);
     setIsMiddleCollapsed(false);
+    setIsHighlightMissingActive(false);
   };
 
   const handleStageChange = (newStage: CrmStage) => {
@@ -132,7 +138,14 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
       assignLeadSdr(currentLead.id, currentUser.id);
     }
 
-    if (newStage === 'contract_signed') { 
+    const isTargetWon = newStage === 'contract_signed' || (newStage as string) === 'deal_closed' || (newStage as string) === 'contrato_fechado' || (newStage as string) === 'ganho';
+    if (isTargetWon) { 
+      const missing = validateLeadForWon(currentLead);
+      if (missing.length > 0) {
+        setMissingFieldsList(missing);
+        setIsMissingFieldsModalOpen(true);
+        return;
+      }
       setIsCloseDealModalOpen(true); 
     } else { 
       updateLeadStage(currentLead.id, newStage); 
@@ -516,6 +529,7 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
               onStageChange={handleStageChange}
               onToggleCollapse={() => setIsMiddleCollapsed(true)}
               isCollapsed={false}
+              highlightMissingFields={isHighlightMissingActive}
             />
           )}
         </div>
@@ -1186,6 +1200,19 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
           }}
         />
       )}
+
+      {/* Modal Campos Obrigatórios Pendentes para Ganho */}
+      <AdminLeadMissingFieldsModal
+        isOpen={isMissingFieldsModalOpen}
+        onClose={() => setIsMissingFieldsModalOpen(false)}
+        lead={currentLead}
+        missingFields={missingFieldsList}
+        onOpenInspector={() => {
+          setIsMissingFieldsModalOpen(false);
+          setIsMiddleCollapsed(false);
+          setIsHighlightMissingActive(true);
+        }}
+      />
 
       {/* Modal Nova / Editar Tarefa com AdminTaskDetailModal */}
       {isTaskModalOpen && currentLead && (

@@ -372,13 +372,14 @@ export interface PodiumConfig {
 
 export interface FunnelStageTrigger {
   id: string;
-  type: 'move_to_funnel' | 'move_copy_to_funnel' | 'notify_closer' | 'assign_role' | 'send_whatsapp';
+  type: 'move_to_funnel' | 'move_copy_to_funnel' | 'notify_closer' | 'assign_role' | 'send_whatsapp' | 'open_schedule';
   label: string;
   targetFunnelId?: string;
   targetStageId?: string;
   targetRoleId?: string;
   description?: string;
   whatsappTemplate?: string;
+  scheduleType?: 'visit' | 'tasting' | 'any'; // Tipo de agendamento automático ao entrar na etapa (Visita Comercial ou Degustação)
 }
 
 export interface FunnelStageConfig {

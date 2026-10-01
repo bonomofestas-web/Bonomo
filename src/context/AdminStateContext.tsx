@@ -4506,12 +4506,68 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
     }));
 
-    // Sincronização automática com a Debutante caso seja Ganho (Venda)
-    const isWonStageTransition = finalStage === 'contract_signed' || (finalStage as string) === 'deal_closed' || (finalStage as string) === 'contrato_fechado';
-    if (isWonStageTransition && targetLead?.debutanteId) {
-      setTimeout(() => {
-        syncDebutanteLeadStats(targetLead.debutanteId);
-      }, 60);
+    // Sincronização automática com a Debutante e criação do Cliente no Pós-Venda caso seja Ganho (Venda)
+    const isWonStageTransition = destStageConfig?.isWon === true || finalStage === 'contract_signed' || (finalStage as string) === 'deal_closed' || (finalStage as string) === 'contrato_fechado' || (finalStage as string) === 'ganho';
+    if (isWonStageTransition) {
+      if (targetLead?.debutanteId) {
+        setTimeout(() => {
+          syncDebutanteLeadStats(targetLead.debutanteId);
+        }, 60);
+      }
+
+      if (targetLead) {
+        setClients(prevClients => {
+          const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === targetLead.phone));
+          if (existingIdx < 0) {
+            const newCliId = generateUuid();
+            const targetVenueId = targetLead.venueId || venues[0]?.id || '';
+            const venueObj = venues.find(v => v.id === targetVenueId);
+            const pDate = targetLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const birthdayName = (targetLead as any).birthdayPersonName?.trim() || targetLead.name.trim();
+            const primaryDecisor = (targetLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (targetLead.contacts || [])[0];
+            const payer = primaryDecisor?.name || (targetLead as any).decisionMakerName?.trim() || (targetLead as any).payerName?.trim() || `${targetLead.name.trim()} (Responsável)`;
+            const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
+            const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
+
+            const newClient: Client = {
+              id: newCliId,
+              code: generateClientCode(),
+              name: birthdayName,
+              birthdayPersonName: birthdayName,
+              commercialLeadId: leadId,
+              venueId: targetVenueId,
+              venueName: venueObj?.name || 'Unidade Principal',
+              eventType: targetLead.eventType || '15_anos',
+              eventDate: pDate,
+              partyDate: pDate,
+              eventYear: pDate ? parseInt(pDate.split('-')[0], 10) : new Date().getFullYear(),
+              payerName: payer,
+              payerPhone: payerPhone,
+              payerRelationship: payerRel as any,
+              guestCount: targetLead.estimatedGuests || 150,
+              packageSold: targetLead.packageSold || targetLead.interestService || 'Pacote Completo',
+              baseContractValue: targetLead.dealValue || targetLead.estimatedBudget || 0,
+              dealValue: targetLead.dealValue || targetLead.estimatedBudget || 0,
+              contractDate: targetLead.contractDate || new Date().toISOString().split('T')[0],
+              contractDownPayment: 0,
+              contractInstallmentsCount: 10,
+              contractInstallmentsRemaining: targetLead.dealValue || targetLead.estimatedBudget || 0,
+              signalPaid: false,
+              signalValue: 0,
+              hasCreditCard: false,
+              contacts: targetLead.contacts || [],
+              stage: 'onboarding',
+              activities: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString().split('T')[0],
+            };
+            safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify([newClient, ...prevClients]));
+            clientService.upsert(newClient).catch(() => {});
+            return [newClient, ...prevClients];
+          }
+          return prevClients;
+        });
+      }
     }
 
     // Sincronização automática com o Pós-Venda se for um Cliente ou Funil de Pós-Venda

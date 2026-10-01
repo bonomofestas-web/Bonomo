@@ -178,6 +178,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
   // Estados de Gatilhos / Automação da Etapa
   const [activeTriggerStageId, setActiveTriggerStageId] = useState<string | null>(null);
+  const [selectedTriggerType, setSelectedTriggerType] = useState<'move_to_funnel' | 'open_schedule'>('open_schedule');
+  const [selectedScheduleType, setSelectedScheduleType] = useState<'visit' | 'tasting' | 'any'>('visit');
   const [selectedTargetFunnelId, setSelectedTargetFunnelId] = useState<string>('');
   const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
   const [funnelVenueId, setFunnelVenueId] = useState<string>('all');
@@ -615,18 +617,34 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     return list;
   }, [stages, isEntryStageActive, isWonStageEnabled]);
 
-  const handleSaveTransferTrigger = (stageId: string) => {
-    if (!selectedTargetFunnelId) return;
-    const newTrigger = {
-      id: `trig_${Date.now()}`,
-      type: 'move_to_funnel' as const,
-      label: 'Transferência de Funil',
-      targetFunnelId: selectedTargetFunnelId,
-      targetStageId: selectedTargetStageId,
-    };
+  const handleSaveTrigger = (stageId: string) => {
+    let newTrigger: any;
+    if (selectedTriggerType === 'move_to_funnel') {
+      if (!selectedTargetFunnelId) return;
+      newTrigger = {
+        id: `trig_${Date.now()}`,
+        type: 'move_to_funnel' as const,
+        label: 'Transferência de Funil',
+        targetFunnelId: selectedTargetFunnelId,
+        targetStageId: selectedTargetStageId,
+      };
+    } else {
+      const scheduleLabel = selectedScheduleType === 'tasting' 
+        ? 'Agendamento: Degustação Gastronômica' 
+        : selectedScheduleType === 'visit' 
+          ? 'Agendamento: Visita Comercial' 
+          : 'Agendamento Automático';
+      newTrigger = {
+        id: `trig_${Date.now()}`,
+        type: 'open_schedule' as const,
+        label: scheduleLabel,
+        scheduleType: selectedScheduleType,
+      };
+    }
+
     setStages(prev => prev.map(s => {
       if (s.id !== stageId) return s;
-      const existing = (s.triggers || []).filter(t => t.type !== 'move_to_funnel');
+      const existing = (s.triggers || []).filter(t => t.type !== selectedTriggerType);
       return {
         ...s,
         triggers: [...existing, newTrigger],
@@ -2125,16 +2143,23 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         </div>
 
                         {/* Lista de Gatilhos configurados */}
-                        {((stage.triggers || []).filter(t => t.type === 'move_to_funnel')).map(trigger => {
+                        {(stage.triggers || []).map(trigger => {
+                          const isSchedule = trigger.type === 'open_schedule';
                           const targetFunnel = funnels.find(f => f.id === trigger.targetFunnelId);
                           const targetStage = targetFunnel?.stages?.find(s => s.id === trigger.targetStageId);
+
+                          const scheduleTypeText = trigger.scheduleType === 'tasting'
+                            ? 'Degustação Gastronômica'
+                            : trigger.scheduleType === 'visit'
+                              ? 'Visita Comercial'
+                              : 'Visita / Degustação';
 
                           return (
                             <div
                               key={trigger.id}
                               style={{
-                                background: 'rgba(139, 92, 246, 0.08)',
-                                border: '1px solid rgba(139, 92, 246, 0.25)',
+                                background: isSchedule ? 'rgba(59, 130, 246, 0.08)' : 'rgba(139, 92, 246, 0.08)',
+                                border: `1px solid ${isSchedule ? 'rgba(59, 130, 246, 0.25)' : 'rgba(139, 92, 246, 0.25)'}`,
                                 borderRadius: '6px',
                                 padding: '6px 8px',
                                 display: 'flex',
@@ -2144,11 +2169,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               }}
                             >
                               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#8B5CF6', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Zap size={10} /> Transferência de Funil
+                                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: isSchedule ? '#3B82F6' : '#8B5CF6', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {isSchedule ? <Calendar size={11} /> : <Zap size={11} />}
+                                  {isSchedule ? 'Agendamento Automático' : 'Transferência de Funil'}
                                 </span>
                                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  Para: <strong>{targetFunnel?.name || 'Outro Funil'}</strong> {targetStage ? `• ${targetStage.name}` : ''}
+                                  {isSchedule 
+                                    ? `Abre agendamento de: ${scheduleTypeText}`
+                                    : `Para: ${targetFunnel?.name || 'Outro Funil'} ${targetStage ? `• ${targetStage.name}` : ''}`}
                                 </span>
                               </div>
                               <button
@@ -2179,69 +2207,152 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             background: 'var(--adm-bg-input)',
                             border: '1px solid var(--adm-accent)',
                             borderRadius: '6px',
-                            padding: '8px',
+                            padding: '10px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '6px',
+                            gap: '8px',
                           }}>
-                            <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              Novo Gatilho: Transferência de Funil
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                              Configurar Novo Gatilho da Etapa
                             </span>
-                            
-                            <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                              Funil de Destino:
-                            </label>
-                            <select
-                              value={selectedTargetFunnelId}
-                              onChange={(e) => {
-                                setSelectedTargetFunnelId(e.target.value);
-                                const f = funnels.find(fun => fun.id === e.target.value);
-                                setSelectedTargetStageId(f?.stages?.[0]?.id || '');
-                              }}
-                              style={{
-                                width: '100%',
-                                background: 'var(--adm-bg-card)',
-                                border: '1px solid var(--adm-border)',
-                                borderRadius: '4px',
-                                padding: '4px 6px',
-                                fontSize: '0.72rem',
-                                color: 'var(--adm-text-body)',
-                                outline: 'none',
-                              }}
-                            >
-                              <option value="">Selecione o funil de destino...</option>
-                              {funnels.filter(f => f.id !== activeFunnel?.id).map(f => (
-                                <option key={f.id} value={f.id}>{f.name}</option>
-                              ))}
-                            </select>
 
-                            {selectedTargetFunnelId && (
-                              <>
+                            {/* Seletor de Tipo de Ação do Gatilho */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTriggerType('open_schedule')}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '5px',
+                                  padding: '6px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: selectedTriggerType === 'open_schedule' ? '1px solid #3B82F6' : '1px solid var(--adm-border)',
+                                  background: selectedTriggerType === 'open_schedule' ? 'rgba(59, 130, 246, 0.15)' : 'var(--adm-bg-card)',
+                                  color: selectedTriggerType === 'open_schedule' ? '#3B82F6' : 'var(--adm-text-muted)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <Calendar size={12} />
+                                <span>Agendamento</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTriggerType('move_to_funnel')}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '5px',
+                                  padding: '6px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  border: selectedTriggerType === 'move_to_funnel' ? '1px solid #8B5CF6' : '1px solid var(--adm-border)',
+                                  background: selectedTriggerType === 'move_to_funnel' ? 'rgba(139, 92, 246, 0.15)' : 'var(--adm-bg-card)',
+                                  color: selectedTriggerType === 'move_to_funnel' ? '#8B5CF6' : 'var(--adm-text-muted)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <Zap size={12} />
+                                <span>Mudar Funil</span>
+                              </button>
+                            </div>
+
+                            {/* Conteúdo: Agendamento Automático */}
+                            {selectedTriggerType === 'open_schedule' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                                  Etapa de Destino:
+                                  Tipo de Compromisso ao mover para esta etapa:
                                 </label>
                                 <select
-                                  value={selectedTargetStageId}
-                                  onChange={(e) => setSelectedTargetStageId(e.target.value)}
+                                  value={selectedScheduleType}
+                                  onChange={(e) => setSelectedScheduleType(e.target.value as any)}
                                   style={{
                                     width: '100%',
                                     background: 'var(--adm-bg-card)',
                                     border: '1px solid var(--adm-border)',
                                     borderRadius: '4px',
-                                    padding: '4px 6px',
+                                    padding: '5px 8px',
                                     fontSize: '0.72rem',
                                     color: 'var(--adm-text-body)',
                                     outline: 'none',
                                   }}
                                 >
-                                  {funnels.find(f => f.id === selectedTargetFunnelId)?.stages?.map(st => (
-                                    <option key={st.id} value={st.id}>{st.name}</option>
-                                  ))}
+                                  <option value="visit">Visita Comercial (Casa de Festas)</option>
+                                  <option value="tasting">Degustação Gastronômica</option>
+                                  <option value="any">Qualquer Agendamento (À escolha do usuário)</option>
                                 </select>
-                              </>
+                                <p style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.3 }}>
+                                  Ao arrastar ou transferir um lead para esta etapa, a janela de agendamento abrirá automaticamente com a ficha do lead pronta para marcar a data e horário.
+                                </p>
+                              </div>
                             )}
 
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', marginTop: '4px' }}>
+                            {/* Conteúdo: Transferência de Funil */}
+                            {selectedTriggerType === 'move_to_funnel' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                                <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                  Funil de Destino:
+                                </label>
+                                <select
+                                  value={selectedTargetFunnelId}
+                                  onChange={(e) => {
+                                    setSelectedTargetFunnelId(e.target.value);
+                                    const f = funnels.find(fun => fun.id === e.target.value);
+                                    setSelectedTargetStageId(f?.stages?.[0]?.id || '');
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    background: 'var(--adm-bg-card)',
+                                    border: '1px solid var(--adm-border)',
+                                    borderRadius: '4px',
+                                    padding: '5px 8px',
+                                    fontSize: '0.72rem',
+                                    color: 'var(--adm-text-body)',
+                                    outline: 'none',
+                                  }}
+                                >
+                                  <option value="">Selecione o funil de destino...</option>
+                                  {funnels.filter(f => f.id !== activeFunnel?.id).map(f => (
+                                    <option key={f.id} value={f.id}>{f.name}</option>
+                                  ))}
+                                </select>
+
+                                {selectedTargetFunnelId && (
+                                  <>
+                                    <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                      Etapa de Destino:
+                                    </label>
+                                    <select
+                                      value={selectedTargetStageId}
+                                      onChange={(e) => setSelectedTargetStageId(e.target.value)}
+                                      style={{
+                                        width: '100%',
+                                        background: 'var(--adm-bg-card)',
+                                        border: '1px solid var(--adm-border)',
+                                        borderRadius: '4px',
+                                        padding: '5px 8px',
+                                        fontSize: '0.72rem',
+                                        color: 'var(--adm-text-body)',
+                                        outline: 'none',
+                                      }}
+                                    >
+                                      {funnels.find(f => f.id === selectedTargetFunnelId)?.stages?.map(st => (
+                                        <option key={st.id} value={st.id}>{st.name}</option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
                               <button
                                 type="button"
                                 onClick={() => setActiveTriggerStageId(null)}
@@ -2257,17 +2368,17 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </button>
                               <button
                                 type="button"
-                                disabled={!selectedTargetFunnelId}
-                                onClick={() => handleSaveTransferTrigger(stage.id)}
+                                disabled={selectedTriggerType === 'move_to_funnel' && !selectedTargetFunnelId}
+                                onClick={() => handleSaveTrigger(stage.id)}
                                 style={{
-                                  background: selectedTargetFunnelId ? 'var(--adm-accent)' : 'var(--adm-border)',
+                                  background: (selectedTriggerType === 'open_schedule' || selectedTargetFunnelId) ? 'var(--adm-accent)' : 'var(--adm-border)',
                                   color: '#fff',
                                   border: 'none',
                                   borderRadius: '4px',
-                                  padding: '3px 8px',
+                                  padding: '4px 10px',
                                   fontSize: '0.68rem',
                                   fontWeight: 700,
-                                  cursor: selectedTargetFunnelId ? 'pointer' : 'not-allowed',
+                                  cursor: (selectedTriggerType === 'open_schedule' || selectedTargetFunnelId) ? 'pointer' : 'not-allowed',
                                 }}
                               >
                                 Salvar Gatilho
@@ -2279,6 +2390,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             type="button"
                             onClick={() => {
                               setActiveTriggerStageId(stage.id);
+                              setSelectedTriggerType('open_schedule');
+                              setSelectedScheduleType('visit');
                               const otherFunnel = funnels.find(f => f.id !== activeFunnel?.id);
                               setSelectedTargetFunnelId(otherFunnel?.id || '');
                               setSelectedTargetStageId(otherFunnel?.stages?.[0]?.id || '');

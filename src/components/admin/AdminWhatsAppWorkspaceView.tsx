@@ -91,6 +91,7 @@ export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): s
 
 interface AdminWhatsAppWorkspaceViewProps {
   initialLeadId?: string;
+  onLeadOpened?: () => void;
   activeFunnelId?: string;
   searchQuery?: string;
   leadOwnershipFilter?: 'all' | 'open' | 'mine';
@@ -238,6 +239,7 @@ function renderFormattedTextWithLinks(text?: string, isDarkMode = false): React.
 
 export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProps> = ({
   initialLeadId,
+  onLeadOpened,
   activeFunnelId,
   searchQuery = '',
   leadOwnershipFilter,
@@ -376,6 +378,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [isFunnelSelectOpen, setIsFunnelSelectOpen] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
   const funnelSelectRef = useRef<HTMLDivElement>(null);
+  const isChatClosedByUserRef = useRef<boolean>(false);
 
   // Sincroniza persistência do lead aberto no WhatsApp para reload (F5) e URL
   useEffect(() => {
@@ -410,15 +413,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   useEffect(() => {
     if (initialLeadId) {
+      isChatClosedByUserRef.current = false;
       setSelectedLeadId(initialLeadId);
-      const targetLead = leads.find(l => l.id === initialLeadId);
-      if (targetLead?.name && !searchTerm) {
-        setSearchTerm(targetLead.name);
+      if (onLeadOpened) {
+        onLeadOpened();
       }
     }
-  }, [initialLeadId, leads]);
+  }, [initialLeadId, onLeadOpened]);
 
   const handleCloseActiveChat = () => {
+    isChatClosedByUserRef.current = true;
     setSelectedLeadId(null);
     setSearchTerm('');
     try {
@@ -911,13 +915,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Sync searchQuery prop
-  useEffect(() => {
-    if (searchQuery) {
-      setSearchTerm(searchQuery);
-    }
-  }, [searchQuery]);
-
   // Close filter dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1109,7 +1106,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const matchesCode = (lead.code || '').toLowerCase().includes(cleanSearch);
 
         const isMatched = matchesName || matchesPhone || matchesJid || matchesLid || matchesDeb || matchesPayer || matchesCode;
-        if (!isMatched && lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+        if (!isMatched) {
           return false;
         }
         return true;
@@ -1268,16 +1265,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Sincronização inteligente de seleção: preserva a escolha manual do usuário e do lead recém-criado
   useEffect(() => {
-    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban ou criou novo lead)
+    // Se o usuário fechou intencionalmente a conversa e não há seleção ativa, respeita o fechamento!
+    if (isChatClosedByUserRef.current && !selectedLeadId) {
+      return;
+    }
+
+    // Se o initialLeadId mudou externamente (ex: clicou em outro lead pelo Kanban ou lista)
     if (initialLeadId && initialLeadId !== lastInitialLeadIdRef.current) {
       lastInitialLeadIdRef.current = initialLeadId;
+      isChatClosedByUserRef.current = false;
       setSelectedLeadId(initialLeadId);
+      if (onLeadOpened) {
+        onLeadOpened();
+      }
       return;
     }
 
     // Se ainda não temos seleção mas temos initialLeadId válido presente em filteredLeads
     if (!selectedLeadId && initialLeadId && filteredLeads.some(l => l.id === initialLeadId)) {
+      isChatClosedByUserRef.current = false;
       setSelectedLeadId(initialLeadId);
+      if (onLeadOpened) {
+        onLeadOpened();
+      }
       return;
     }
 
@@ -1291,13 +1301,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return;
     }
 
-    // Fallback: se não há seleção válida, seleciona o primeiro disponível
-    if (!selectedLeadId && filteredLeads.length > 0) {
+    // Fallback: se não há seleção válida e o usuário NÃO fechou intencionalmente a conversa, seleciona o primeiro disponível
+    if (!selectedLeadId && !isChatClosedByUserRef.current && filteredLeads.length > 0) {
       setSelectedLeadId(filteredLeads[0].id);
     } else if (!selectedLeadId) {
       setSelectedLeadId(null);
     }
-  }, [filteredLeads, sourceLeads, initialLeadId, selectedLeadId]);
+  }, [filteredLeads, sourceLeads, initialLeadId, selectedLeadId, onLeadOpened]);
 
   const selectedLead = useMemo(() => {
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
@@ -2584,34 +2594,69 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (type === 'audio' && fileAudioInputRef.current) fileAudioInputRef.current.click();
   };
 
-  const handleSendUploadedFile = async (e: React.ChangeEvent<HTMLInputElement>, fileCategory: 'document' | 'image' | 'video' | 'audio') => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedLead) return;
+  const handleSendUploadedFiles = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    forcedCategory?: 'document' | 'image' | 'video' | 'audio'
+  ) => {
+    const fileList = e.target.files ? Array.from(e.target.files) : [];
+    if (fileList.length === 0 || !selectedLead) return;
+
+    // Reseta o valor do input imediatamente
+    e.target.value = '';
 
     const author = currentUser?.name || 'Equipe Comercial';
-    const reader = new FileReader();
+    const targetPhone = selectedRecipientPhone || selectedLead.phone;
+    const currentCaption = messageText.trim();
+    // Limpa o campo de mensagem se foi usado como legenda
+    if (currentCaption) {
+      setMessageText('');
+    }
 
-    reader.onload = async () => {
-      const base64Data = reader.result as string;
+    for (let index = 0; index < fileList.length; index++) {
+      const file = fileList[index];
+      const isVid = file.type.startsWith('video');
+      const isAud = file.type.startsWith('audio');
+      const isImg = file.type.startsWith('image');
+      const fileCategory: 'document' | 'image' | 'video' | 'audio' =
+        forcedCategory || (isVid ? 'video' : isImg ? 'image' : isAud ? 'audio' : 'document');
+
+      // Aplica a legenda no primeiro arquivo do lote
+      const fileCaption = (index === 0 && currentCaption) ? currentCaption : '';
+
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      }).catch(err => {
+        console.error('Erro ao ler arquivo local:', err);
+        return null;
+      });
+
+      if (!base64Data) continue;
 
       const activityId = generateUuid();
       const existingActs = selectedLead.activities || [];
       const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
-      const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
+      const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000 + (index * 500))).toISOString();
 
       const newActivity: LeadActivity = {
         id: activityId,
         leadId: selectedLead.id,
         timestamp: finalTimestampIso,
         type: 'contact',
-        title: `${fileCategory === 'image' ? 'Foto' : fileCategory === 'video' ? 'Vídeo' : fileCategory === 'audio' ? 'Áudio' : 'Documento'} enviado: ${file.name}`,
-        text: fileCategory === 'audio' ? `🎵 ${file.name}` : `Arquivo enviado via WhatsApp: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+        title: fileCategory === 'image' ? 'Foto enviada' : fileCategory === 'video' ? 'Vídeo enviado' : fileCategory === 'audio' ? 'Áudio enviado' : `Documento: ${file.name}`,
+        text: fileCaption || (fileCategory === 'audio' ? `🎵 ${file.name}` : undefined),
         mediaUrl: base64Data,
         mediaType: fileCategory,
         authorName: currentUser?.name || author,
         authorId: currentUser?.id,
         authorAvatarUrl: currentUser?.avatarUrl,
-        metadata: getAppSenderMetadata(),
+        metadata: {
+          ...getAppSenderMetadata(),
+          fileName: file.name,
+          caption: fileCaption || undefined,
+        },
       } as any;
 
       const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
@@ -2625,15 +2670,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           .catch(err => console.error('Erro ao salvar mídia no Supabase:', err));
       }
 
-      const targetPhone = selectedRecipientPhone || selectedLead.phone;
       if (targetPhone && activeSenderToken) {
         try {
           await uazapiService.sendMedia(activeSenderToken, {
             number: targetPhone,
             file: base64Data,
-            type: fileCategory === 'audio' ? 'audio' : (fileCategory === 'image' || fileCategory === 'video') ? 'image' : 'document',
+            type: fileCategory === 'audio' ? 'audio' : fileCategory === 'video' ? 'video' : fileCategory === 'image' ? 'image' : 'document',
             fileName: file.name,
-            caption: file.name,
+            caption: fileCaption || undefined,
             ptt: false,
             delay: 0,
           });
@@ -2650,10 +2694,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           }
         })
         .catch(err => console.warn('Erro ao salvar mídia enviada no R2:', err));
-    };
-
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    }
   };
 
   // Envio de Figurinha / Sticker no WhatsApp
@@ -3838,6 +3879,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 <div
                   key={lead.id}
                   onClick={() => {
+                    isChatClosedByUserRef.current = false;
                     if (isMultiSelectMode) {
                       toggleLeadSelection(lead.id);
                       return;
@@ -5234,10 +5276,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                       <div
                                         style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
-                                        onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.text || 'Foto' })}
+                                        onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: act.text || 'Foto' })}
                                       >
                                         <img
-                                          src={act.mediaUrl}
+                                          src={effectiveMediaUrl}
                                           alt={act.text || 'Foto'}
                                           style={{
                                             maxWidth: '280px',
@@ -5686,14 +5728,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     isDarkMode={isDarkMode}
                                     status={act.status === 'failed' ? 'failed' : 'read'}
                                   />
-                                ) : act.mediaType === 'image' && act.mediaUrl ? (
+                                ) : (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     <div
                                       style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
-                                      onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.text || 'Foto' })}
+                                      onClick={() => setLightboxMedia({ url: (act.mediaUrl || effectiveMediaUrl)!, type: 'image', title: act.text || 'Foto' })}
                                     >
                                       <img
-                                        src={act.mediaUrl}
+                                        src={act.mediaUrl || effectiveMediaUrl}
                                         alt={act.text || 'Foto'}
                                         style={{
                                           maxWidth: '280px',
@@ -7802,28 +7844,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               ref={fileDocInputRef}
               type="file"
               style={{ display: 'none' }}
+              multiple
               accept=".pdf,.doc,.docx,.xlsx,.xls,.txt,.csv"
-              onChange={(e) => handleSendUploadedFile(e, 'document')}
+              onChange={(e) => handleSendUploadedFiles(e, 'document')}
             />
             <input
               ref={fileMediaInputRef}
               type="file"
               style={{ display: 'none' }}
+              multiple
               accept="image/*,video/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const isVid = file.type.startsWith('video');
-                  handleSendUploadedFile(e, isVid ? 'video' : 'image');
-                }
-              }}
+              onChange={(e) => handleSendUploadedFiles(e)}
             />
             <input
               ref={fileAudioInputRef}
               type="file"
               style={{ display: 'none' }}
+              multiple
               accept="audio/*"
-              onChange={(e) => handleSendUploadedFile(e, 'audio')}
+              onChange={(e) => handleSendUploadedFiles(e, 'audio')}
             />
 
             {/* Hidden Native File Inputs for Note Multimedia Uploads */}

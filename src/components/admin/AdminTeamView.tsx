@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Users, Crown, ShieldCheck, PhoneCall, Handshake, 
-  Building2, Sparkles, Compass
+  Building2, Sparkles, Compass, KeyRound
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { AdminCollabInviteModal } from './AdminCollabInviteModal';
+import type { Collaborator } from '../../types/admin';
 
 // WhatsApp Brand SVG Icon
 const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size = 14, color = '#25D366' }) => (
@@ -27,6 +29,9 @@ const HIERARCHY_ORDER: Record<string, number> = {
 export const AdminTeamView: React.FC = () => {
   const { collaborators, venues, currentUser, activeVenueId } = useAdminState();
   const [selectedVenueFilter, setSelectedVenueFilter] = useState<string>(activeVenueId || 'all');
+  const [collabForInviteModal, setCollabForInviteModal] = useState<Collaborator | null>(null);
+
+  const isMasterOrManager = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
 
   // Filter and sort collaborators by strict hierarchy
   const sortedCollaborators = useMemo(() => {
@@ -296,58 +301,103 @@ export const AdminTeamView: React.FC = () => {
                 </div>
               )}
 
-              {/* WhatsApp Button (wa.me) */}
-              <div style={{ marginTop: 'auto', width: '100%', paddingTop: '4px' }}>
-                {cleanPhone ? (
-                  <a
-                    href={`https://wa.me/${cleanPhone}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '8px',
-                      background: 'rgba(37, 211, 102, 0.12)',
-                      border: '1px solid rgba(37, 211, 102, 0.35)',
-                      color: '#25D366',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      textDecoration: 'none',
-                      transition: 'all 0.15s ease',
-                      boxSizing: 'border-box',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(37, 211, 102, 0.22)';
-                      e.currentTarget.style.borderColor = '#25D366';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(37, 211, 102, 0.12)';
-                      e.currentTarget.style.borderColor = 'rgba(37, 211, 102, 0.35)';
-                    }}
-                  >
-                    <WhatsAppBrandIcon size={13} color="#25D366" />
-                    <span>{formatPhone(collab.phone || '')}</span>
-                  </a>
-                ) : (
-                  <span style={{
-                    fontSize: '0.66rem',
-                    color: 'var(--adm-text-muted)',
-                    fontStyle: 'italic',
-                    padding: '4px 0',
-                    display: 'block',
-                  }}>
-                    Sem WhatsApp
-                  </span>
-                )}
-              </div>
+                {/* WhatsApp Button (wa.me) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                  {cleanPhone ? (
+                    <a
+                      href={`https://wa.me/${cleanPhone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        width: '100%',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        background: 'rgba(37, 211, 102, 0.12)',
+                        border: '1px solid rgba(37, 211, 102, 0.35)',
+                        color: '#25D366',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        transition: 'all 0.15s ease',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(37, 211, 102, 0.22)';
+                        e.currentTarget.style.borderColor = '#25D366';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(37, 211, 102, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(37, 211, 102, 0.35)';
+                      }}
+                    >
+                      <WhatsAppBrandIcon size={13} color="#25D366" />
+                      <span>{formatPhone(collab.phone || '')}</span>
+                    </a>
+                  ) : (
+                    <span style={{
+                      fontSize: '0.66rem',
+                      color: 'var(--adm-text-muted)',
+                      fontStyle: 'italic',
+                      padding: '4px 0',
+                      display: 'block',
+                    }}>
+                      Sem WhatsApp
+                    </span>
+                  )}
+
+                  {isMasterOrManager && collab.role !== 'master' && (
+                    <button
+                      type="button"
+                      onClick={() => setCollabForInviteModal(collab)}
+                      title="Gerar / Copiar Link de Entrada (Primeiro Acesso) do colaborador"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '5px',
+                        width: '100%',
+                        padding: '5px 8px',
+                        borderRadius: '8px',
+                        background: 'rgba(212, 175, 55, 0.12)',
+                        border: '1px solid rgba(212, 175, 55, 0.35)',
+                        color: 'var(--adm-gold, #D4AF37)',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.22)';
+                        e.currentTarget.style.borderColor = 'var(--adm-gold, #D4AF37)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.35)';
+                      }}
+                    >
+                      <KeyRound size={11} />
+                      <span>Link de Entrada</span>
+                    </button>
+                  )}
+                </div>
             </div>
           );
         })}
       </div>
+
+      {collabForInviteModal && (
+        <AdminCollabInviteModal
+          isOpen={Boolean(collabForInviteModal)}
+          collaborator={collabForInviteModal}
+          isNewUser={Boolean(collabForInviteModal.isFirstAccess)}
+          onClose={() => setCollabForInviteModal(null)}
+        />
+      )}
     </div>
   );
 };

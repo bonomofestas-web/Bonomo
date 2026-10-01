@@ -3,6 +3,7 @@ import { X, User, Mail, Phone, Building2 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
+import { AdminCollabInviteModal } from './AdminCollabInviteModal';
 import type { Collaborator, AdminRole } from '../../types/admin';
 
 interface AdminCollaboratorModalProps {
@@ -28,6 +29,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [selectedVenueIds, setSelectedVenueIds] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [active, setActive] = useState(true);
+  const [createdCollabForInvite, setCreatedCollabForInvite] = useState<Collaborator | null>(null);
 
   useEffect(() => {
     if (collaboratorToEdit) {
@@ -80,8 +82,9 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         avatarUrl: avatarUrl.trim() || undefined,
         active,
       });
+      onClose();
     } else {
-      addCollaborator({
+      const payload = {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
@@ -94,10 +97,16 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         avatarUrl: avatarUrl.trim() || undefined,
         active,
         isFirstAccess: true,
+      };
+      const newId = addCollaborator(payload);
+      
+      // Exibe imediatamente o modal de link de entrada
+      setCreatedCollabForInvite({
+        ...payload,
+        id: newId,
+        createdAt: new Date().toISOString().split('T')[0],
       });
     }
-
-    onClose();
   };
 
   const inputStyle: React.CSSProperties = {
@@ -585,6 +594,18 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
           </div>
         </form>
       </div>
+
+      {createdCollabForInvite && (
+        <AdminCollabInviteModal
+          isOpen={Boolean(createdCollabForInvite)}
+          collaborator={createdCollabForInvite}
+          isNewUser={true}
+          onClose={() => {
+            setCreatedCollabForInvite(null);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 };
