@@ -156,8 +156,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isDevUser = Boolean(currentUser?.isDev);
-  const userRole = currentUser?.role || 'master';
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const isDevUser = Boolean(effectiveUser?.isDev);
+  const userRole = effectiveUser?.role || 'master';
+
+  const effectiveSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = useMemo(() => {
+    if (isDevUser || userRole === 'master') {
+      return ['comercial', 'pos_venda', 'gerencia', 'financeiro'];
+    }
+    if (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0) {
+      return (effectiveUser as any).sectors;
+    }
+    if (userRole === 'admin') return ['gerencia', 'comercial', 'pos_venda'];
+    if (userRole === 'pos_venda') return ['pos_venda', 'comercial'];
+    return ['comercial'];
+  }, [effectiveUser, isDevUser, userRole]);
+
   const activeVenue = venues.find(v => v.id === activeVenueId) || null;
 
   // Map each tab to its controlling feature flag (if applicable)
@@ -218,9 +232,16 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
   const allowedVenues = useMemo(() => {
     if (userRole === 'master') return venues;
-    if (!currentUser?.venueIds || currentUser.venueIds.length === 0) return venues;
-    return venues.filter(v => currentUser.venueIds?.includes(v.id));
-  }, [venues, currentUser, userRole]);
+    const targetVenueIds = effectiveUser?.venueIds;
+    if (!targetVenueIds || targetVenueIds.length === 0) {
+      const singleVenueId = (effectiveUser as any)?.venueId;
+      if (singleVenueId && singleVenueId !== 'all') {
+        return venues.filter(v => v.id === singleVenueId);
+      }
+      return venues;
+    }
+    return venues.filter(v => targetVenueIds.includes(v.id));
+  }, [venues, effectiveUser, userRole]);
 
 
   const visiblePinnedFunnels = useMemo(() => {
@@ -333,12 +354,11 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     // Check Role & Sector Access for this item
     const itemRoles = (item as any).roles as string[] | undefined;
     if (itemRoles && !isDevUser && userRole !== 'master') {
-      const userSectors = currentUser?.sectors;
       const hasRole = itemRoles.includes(userRole);
-      const hasSectorMatch = userSectors && (
-        (userSectors.includes('comercial') && (itemRoles.includes('crm') || itemRoles.includes('sdr') || itemRoles.includes('closer') || item.id === 'post-sale-visits-tastings')) ||
-        (userSectors.includes('pos_venda') && itemRoles.includes('pos_venda')) ||
-        (userSectors.includes('gerencia') && (itemRoles.includes('admin') || itemRoles.includes('master')))
+      const hasSectorMatch = (
+        (effectiveSectors.includes('comercial') && (itemRoles.includes('crm') || itemRoles.includes('sdr') || itemRoles.includes('closer') || item.id === 'post-sale-visits-tastings')) ||
+        (effectiveSectors.includes('pos_venda') && itemRoles.includes('pos_venda')) ||
+        (effectiveSectors.includes('gerencia') && (itemRoles.includes('admin') || itemRoles.includes('master')))
       );
       if (!hasRole && !hasSectorMatch) {
         return null;
@@ -1297,45 +1317,49 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           </div>
 
           {/* 2. Setor Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Agendamentos */}
-          <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#14A9D7',
-                letterSpacing: '0.6px',
-                padding: '0 6px 3px 6px',
-              }}>
-                Comercial
+          {effectiveSectors.includes('comercial') && (
+            <div>
+              {!isCollapsed && (
+                <div style={{
+                  fontSize: '0.56rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  color: '#14A9D7',
+                  letterSpacing: '0.6px',
+                  padding: '0 6px 3px 6px',
+                }}>
+                  Comercial
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {commercialItems.map(item => renderNavButton(item))}
               </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {commercialItems.map(item => renderNavButton(item))}
             </div>
-          </div>
+          )}
 
           {/* 3. Setor Pós-Venda: Aniversariantes */}
-          <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#D4AF37',
-                letterSpacing: '0.6px',
-                padding: '0 6px 3px 6px',
-              }}>
-                Pós-Venda
+          {effectiveSectors.includes('pos_venda') && (
+            <div>
+              {!isCollapsed && (
+                <div style={{
+                  fontSize: '0.56rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  color: '#D4AF37',
+                  letterSpacing: '0.6px',
+                  padding: '0 6px 3px 6px',
+                }}>
+                  Pós-Venda
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {postSaleItems.map(item => renderNavButton(item))}
               </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {postSaleItems.map(item => renderNavButton(item))}
             </div>
-          </div>
+          )}
 
           {/* 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa */}
-          {(isDevUser || userRole === 'master' || userRole === 'admin') && (
+          {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
             <div>
               {!isCollapsed && (
                 <div style={{

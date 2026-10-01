@@ -2006,6 +2006,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  // Sempre sincroniza a visão simulada com as atualizações mais recentes do colaborador (ex: setores alterados)
+  const effectiveViewingAsCollaborator = useMemo(() => {
+    if (!viewingAsCollaborator) return null;
+    const fresh = collaborators.find(c => c.id === viewingAsCollaborator.id);
+    return fresh ? { ...viewingAsCollaborator, ...fresh } : viewingAsCollaborator;
+  }, [viewingAsCollaborator, collaborators]);
+
   // Proteção / Autocorreção: se houver resquício de impersonação antiga no localStorage, limpa e restaura
   const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {
     const saved = localStorage.getItem('bonomo_impersonating_master');
@@ -8406,7 +8413,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       impersonatingMaster,
       startImpersonation,
       stopImpersonation,
-      viewingAsCollaborator,
+      viewingAsCollaborator: effectiveViewingAsCollaborator,
       setViewingAsCollaborator,
       allLeads: leads,
       allTasks: tasks,

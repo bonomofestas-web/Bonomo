@@ -199,9 +199,15 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
     return funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda' || f.name?.toLowerCase().includes('pós-venda'));
   }, [funnels]);
 
-  // Lista de funis disponíveis para esta casa de festas
+  // Lista de funis disponíveis para esta casa de festas (excluindo os que foram desativados para esta unidade)
   const availableVenueFunnels = useMemo(() => {
-    return funnels.filter(f => !venueId || f.venueId === venueId || f.venueId === 'all');
+    return funnels.filter(f => {
+      if (venueId) {
+        const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
+        if (disabled.includes(venueId)) return false;
+      }
+      return !venueId || f.venueId === venueId || f.venueId === 'all';
+    });
   }, [funnels, venueId]);
 
   // Leads captados por esta origem específica
@@ -1103,7 +1109,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                       <div style={{ height: '1px', background: 'var(--adm-border)', margin: '2px 0' }} />
 
                       {/* Opção 2: Funis Comerciais */}
-                      {(funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => {
+                      {(funnels || []).filter(f => {
+                        if (f.isPostSale || f.category === 'Pós-Venda') return false;
+                        if (venueId) {
+                          const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
+                          if (disabled.includes(venueId)) return false;
+                        }
+                        return true;
+                      }).map(f => {
                         const isSelected = funnelId === f.id;
                         const fColor = f.badgeColor || '#D4AF37';
                         return (

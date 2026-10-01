@@ -87,6 +87,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     try {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
+        if (params.get('funnel_settings') === 'true') return 'crm';
         const urlTab = params.get('tab') as AdminTabType | null;
         if (urlTab) return urlTab;
       }
@@ -299,7 +300,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Dynamic First Available Tab calculation (Audio 1 & 2)
   const getFirstAvailableTab = useCallback((): AdminTabType => {
-    if (currentUser?.isDev) return 'home';
+    const effectiveUser = viewingAsCollaborator || currentUser;
+    if (effectiveUser?.isDev) return 'home';
+
+    const effectiveRole = effectiveUser?.role || 'master';
+    const effectiveSectors = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+      ? (effectiveUser as any).sectors
+      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
 
     const menuTabsInOrder: AdminTabType[] = [
       'home',
@@ -317,11 +324,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     ];
 
     for (const tab of menuTabsInOrder) {
-      if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues') {
-        if (currentUser?.role !== 'master') continue;
+      if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues' || tab === 'sources' || tab === 'mql' || tab === 'venue-goals') {
+        if (effectiveRole !== 'master' && !effectiveSectors.includes('gerencia')) continue;
       }
-      if (tab === 'debutantes' || tab === 'venue-goals' || tab === 'sources' || tab === 'mql') {
-        if (currentUser?.role === 'sdr' || currentUser?.role === 'closer') continue;
+      if (tab === 'debutantes') {
+        if (effectiveRole !== 'master' && !effectiveSectors.includes('pos_venda')) continue;
       }
 
       const flag = TAB_FEATURE_FLAG[tab];
@@ -333,11 +340,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       }
     }
     return 'crm';
-  }, [currentUser?.role, currentUser?.isDev, getFeatureStatus]);
+  }, [viewingAsCollaborator, currentUser, getFeatureStatus]);
+
+  // Guarda de setores e telas proibidas durante visualização com os olhos de um colaborador
+  useEffect(() => {
+    if (!viewingAsCollaborator) return;
+    const effectiveUser = viewingAsCollaborator;
+    const effectiveRole = effectiveUser.role || 'master';
+    const effectiveSectors: string[] = (effectiveUser.sectors && effectiveUser.sectors.length > 0)
+      ? effectiveUser.sectors
+      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+
+    const gerenciaTabs: AdminTabType[] = ['collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
+    const posVendaTabs: AdminTabType[] = ['post-sale-crm', 'debutantes'];
+
+    if (gerenciaTabs.includes(activeTab) && effectiveRole !== 'master' && !effectiveSectors.includes('gerencia')) {
+      const fallback = getFirstAvailableTab();
+      handleSelectTab(fallback);
+    } else if (posVendaTabs.includes(activeTab) && effectiveRole !== 'master' && !effectiveSectors.includes('pos_venda')) {
+      const fallback = getFirstAvailableTab();
+      handleSelectTab(fallback);
+    }
+  }, [viewingAsCollaborator, activeTab, getFirstAvailableTab]);
 
   // Audio 2: Redirecionamento automático se a aba ativa estiver desativada por feature flag
   useEffect(() => {
-    if (!isInitialSyncComplete || currentUser?.isDev) return;
+    if (!isInitialSyncComplete || (viewingAsCollaborator ? viewingAsCollaborator.isDev : currentUser?.isDev)) return;
     const flag = TAB_FEATURE_FLAG[activeTab];
     if (flag) {
       const status = getFeatureStatus(flag);
@@ -349,7 +377,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         }
       }
     }
-  }, [isInitialSyncComplete, activeTab, currentUser?.isDev, getFeatureStatus, getFirstAvailableTab]);
+  }, [isInitialSyncComplete, activeTab, currentUser?.isDev, viewingAsCollaborator, getFeatureStatus, getFirstAvailableTab]);
 
   // Listener para troca de aba disparada por componentes filhos
   useEffect(() => {

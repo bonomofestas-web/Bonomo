@@ -463,9 +463,60 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
   const [funnelSearch, setFunnelSearch] = useState('');
 
-  // Como CRM Funnel Settings Modal
-  const [isComoFunnelSettingsOpen, setIsComoFunnelSettingsOpen] = useState(false);
-  const [comoFunnelId, setComoFunnelId] = useState<string | undefined>(undefined);
+  // Como CRM Funnel Settings Modal com persistência no F5
+  const [isComoFunnelSettingsOpen, setIsComoFunnelSettingsOpen] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        if (p.get('funnel_settings') === 'true') return true;
+      }
+      return localStorage.getItem('f5_crm_funnel_settings_open') === 'true';
+    } catch {}
+    return false;
+  });
+
+  const [comoFunnelId, setComoFunnelId] = useState<string | undefined>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const p = new URLSearchParams(window.location.search);
+        const urlId = p.get('settings_funnel_id') || p.get('funnel_id');
+        if (urlId && p.get('funnel_settings') === 'true') return urlId;
+      }
+      return localStorage.getItem('f5_crm_como_funnel_id') || undefined;
+    } catch {}
+    return undefined;
+  });
+
+  const openComoFunnelSettings = (targetId?: string) => {
+    setIsComoFunnelSettingsOpen(true);
+    if (targetId) setComoFunnelId(targetId);
+    try {
+      localStorage.setItem('f5_crm_funnel_settings_open', 'true');
+      if (targetId) localStorage.setItem('f5_crm_como_funnel_id', targetId);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'crm');
+        url.searchParams.set('funnel_settings', 'true');
+        if (targetId) url.searchParams.set('settings_funnel_id', targetId);
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
+  };
+
+  const closeComoFunnelSettings = () => {
+    setIsComoFunnelSettingsOpen(false);
+    setComoFunnelId(undefined);
+    try {
+      localStorage.removeItem('f5_crm_funnel_settings_open');
+      localStorage.removeItem('f5_crm_como_funnel_id');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('funnel_settings');
+        url.searchParams.delete('settings_funnel_id');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
+  };
 
   // View mode inside funnel com persistência para recarregamento de página (F5)
   const [activeLeadIdForWorkspace, setActiveLeadIdForWorkspace] = useState<string | null>(() => {
@@ -737,15 +788,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       isEntryStageActive: isPostSaleView ? false : true,
       stages: isPostSaleView ? DEFAULT_POST_SALE_FORM_STAGES : DEFAULT_FORM_STAGES,
     });
-    setComoFunnelId(newId);
-    setIsComoFunnelSettingsOpen(true);
+    openComoFunnelSettings(newId);
   };
 
   // Open Funnel Configuration in Full Content Area View
   const handleOpenConfigureFunnel = (funnel: CommercialFunnel, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setComoFunnelId(funnel.id);
-    setIsComoFunnelSettingsOpen(true);
+    openComoFunnelSettings(funnel.id);
   };
 
 
@@ -1444,18 +1493,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       <AdminFunnelSettingsView
         initialFunnelId={comoFunnelId || selectedFunnelId || undefined}
         onClose={() => {
-          setIsComoFunnelSettingsOpen(false);
-          setComoFunnelId(undefined);
+          closeComoFunnelSettings();
           setViewMode('kanban');
         }}
         onSaved={() => {
-          setIsComoFunnelSettingsOpen(false);
-          setComoFunnelId(undefined);
+          closeComoFunnelSettings();
           setViewMode('kanban');
         }}
         onDeleted={() => {
-          setIsComoFunnelSettingsOpen(false);
-          setComoFunnelId(undefined);
+          closeComoFunnelSettings();
           setSelectedFunnelId(null);
         }}
       />

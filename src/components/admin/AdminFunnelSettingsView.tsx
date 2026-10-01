@@ -185,6 +185,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
+  const [explicitlyAddedVenueIds, setExplicitlyAddedVenueIds] = useState<string[]>([]);
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -273,6 +274,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     });
     setFunnelVenueId(activeFunnel.venueId || 'all');
     setDisabledVenueIds(activeFunnel.disabledVenueIds || (activeFunnel as any)?.duplicateRuleConfig?._disabledVenueIds || []);
+    setExplicitlyAddedVenueIds([]);
     setPackageOptions(activeFunnel.packageOptions || []);
     setPaymentOptions(activeFunnel.paymentOptions || []);
     setPredefinedTags(activeFunnel.predefinedTags || []);
@@ -386,6 +388,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       duplicateRuleConfig: {
         ...duplicateRuleConfig,
         _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
+        _disabledVenueIds: disabledVenueIds,
       },
       enabledWhatsAppSourceIds,
       stages: finalStages,
@@ -1190,7 +1193,49 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               </div>
 
               {(() => {
-                const targetVenues = venues.filter(v => v.active !== false);
+                const targetVenues = venues.filter(venue => {
+                  if (venue.active === false) return false;
+                  const isOwner = funnelVenueId === venue.id;
+                  const isExplicitlyAdded = explicitlyAddedVenueIds.includes(venue.id);
+                  const isDisabled = disabledVenueIds.includes(venue.id);
+                  const hasFunnelSources = (sources || []).some(
+                    s => s.venueId === venue.id && (s.funnelId === activeFunnel?.id || enabledWhatsAppSourceIds.includes(s.id))
+                  );
+                  const hasLeadsInFunnel = (leads || []).some(
+                    l => (l.funnelId === activeFunnel?.id || l.funnelId === activeFunnel?.name) && l.venueId === venue.id
+                  );
+
+                  return isOwner || isExplicitlyAdded || isDisabled || hasFunnelSources || hasLeadsInFunnel;
+                });
+
+                const unlinkedVenues = venues.filter(v => v.active !== false && !targetVenues.some(tv => tv.id === v.id));
+
+                const handleToggleVenueDisabled = async (venueId: string) => {
+                  const isCurrentlyDisabled = disabledVenueIds.includes(venueId);
+                  if (!isCurrentlyDisabled) {
+                    setDisabledVenueIds(prev => [...new Set([...prev, venueId])]);
+
+                    const venueWhatsappIds = (sources || [])
+                      .filter(s => s.venueId === venueId)
+                      .map(s => s.id);
+                    setEnabledWhatsAppSourceIds(prev => prev.filter(id => !venueWhatsappIds.includes(id)));
+
+                    setPriorityWhatsappPerVenue(prev => {
+                      const copy = { ...prev };
+                      delete copy[venueId];
+                      return copy;
+                    });
+
+                    const sourcesToUnlink = (sources || []).filter(
+                      s => s.venueId === venueId && (s.funnelId === activeFunnel?.id || s.funnelId === activeFunnel?.name)
+                    );
+                    for (const src of sourcesToUnlink) {
+                      updateSource(src.id, { funnelId: '' });
+                    }
+                  } else {
+                    setDisabledVenueIds(prev => prev.filter(id => id !== venueId));
+                  }
+                };
 
                 if (targetVenues.length === 0) {
                   return (
@@ -1203,7 +1248,32 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       fontSize: '0.72rem',
                       color: 'var(--adm-text-muted)',
                     }}>
-                      Nenhuma casa cadastrada.
+                      Nenhuma casa relacionada a este funil.
+                      {unlinkedVenues.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) setExplicitlyAddedVenueIds(prev => [...prev, e.target.value]);
+                            }}
+                            style={{
+                              padding: '5px 8px',
+                              borderRadius: '6px',
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              color: 'var(--adm-accent)',
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">+ Relacionar Casa a este Funil...</option>
+                            {unlinkedVenues.map(v => (
+                              <option key={v.id} value={v.id}>{v.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 }
@@ -1273,13 +1343,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             {/* Botão de Ativar / Desativar a Unidade no Funil */}
                             <button
                               type="button"
-                              onClick={() => {
-                                setDisabledVenueIds(prev =>
-                                  prev.includes(venue.id)
-                                    ? prev.filter(id => id !== venue.id)
-                                    : [...prev, venue.id]
-                                );
-                              }}
+                              onClick={() => handleToggleVenueDisabled(venue.id)}
                               style={{
                                 padding: '4px 10px',
                                 borderRadius: '6px',
@@ -1736,6 +1800,37 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     </div>
                       );
                     })}
+
+                    {unlinkedVenues.length > 0 && (
+                      <div style={{ marginTop: '4px' }}>
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) setExplicitlyAddedVenueIds(prev => [...prev, e.target.value]);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            borderRadius: '8px',
+                            background: 'transparent',
+                            border: '1px dashed var(--adm-border)',
+                            color: 'var(--adm-accent)',
+                            fontSize: '0.70rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <option value="" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
+                            + Relacionar Outra Casa a este Funil...
+                          </option>
+                          {unlinkedVenues.map(v => (
+                            <option key={v.id} value={v.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
