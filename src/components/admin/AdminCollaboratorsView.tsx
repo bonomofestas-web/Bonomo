@@ -121,6 +121,7 @@ export const AdminCollaboratorsView: React.FC = () => {
 
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master') return false;
+    if (c.activatedAt || c.lastLoginAt) return false;
     return Boolean(c.isFirstAccess);
   };
 
@@ -1227,105 +1228,71 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {collab.active && collab.role !== 'master' && (
-                    <button
-                      type="button"
-                      onClick={() => setCollabForInviteModal(collab)}
-                      title="Copiar Link de Entrada ou enviar diretamente no WhatsApp do colaborador"
-                      style={{
-                        background: 'rgba(212, 175, 55, 0.14)',
-                        border: '1px solid rgba(212, 175, 55, 0.4)',
-                        color: 'var(--adm-gold, #D4AF37)',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.25)';
-                        e.currentTarget.style.borderColor = 'var(--adm-gold, #D4AF37)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.14)';
-                        e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.4)';
-                      }}
-                    >
-                      <KeyRound size={11} />
-                      <span>Link de Entrada</span>
-                    </button>
-                  )}
+                  {collab.active && isPendingFirstAccess(collab) && collab.role !== 'master' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setCollabForInviteModal(collab)}
+                        title="Copiar Link de Entrada ou enviar diretamente no WhatsApp do colaborador"
+                        style={{
+                          background: 'rgba(212, 175, 55, 0.14)',
+                          border: '1px solid rgba(212, 175, 55, 0.4)',
+                          color: 'var(--adm-gold, #D4AF37)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'rgba(212, 175, 55, 0.25)';
+                          e.currentTarget.style.borderColor = 'var(--adm-gold, #D4AF37)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'rgba(212, 175, 55, 0.14)';
+                          e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.4)';
+                        }}
+                      >
+                        <KeyRound size={11} />
+                        <span>Link de Entrada</span>
+                      </button>
 
-                  {collab.active && isPendingFirstAccess(collab) && (
-                    <button
-                      type="button"
-                      onClick={() => handleSendInviteEmail(collab)}
-                      disabled={sendingInviteEmail === collab.email}
-                      title="Disparar e-mail de convite oficial com instruções de 1º acesso"
-                      style={{
-                        background: 'rgba(20, 169, 215, 0.12)',
-                        border: '1px solid rgba(20, 169, 215, 0.3)',
-                        color: '#14A9D7',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {inviteSentEmail === collab.email ? (
-                        <>
-                          <Check size={11} color="#10B981" />
-                          <span style={{ color: '#10B981' }}>Enviado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail size={11} />
-                          <span>{sendingInviteEmail === collab.email ? '...' : 'E-mail'}</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-
-                  {collab.active && !isPendingFirstAccess(collab) && collab.role !== 'master' && (
-                    <button
-                      type="button"
-                      onClick={() => handleSendInviteEmail(collab)}
-                      disabled={sendingInviteEmail === collab.email}
-                      title="Disparar e-mail de redefinição de senha para este colaborador"
-                      style={{
-                        background: 'rgba(20, 169, 215, 0.10)',
-                        border: '1px solid rgba(20, 169, 215, 0.25)',
-                        color: '#14A9D7',
-                        borderRadius: '6px',
-                        padding: '3px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      {inviteSentEmail === collab.email ? (
-                        <>
-                          <Check size={11} color="#10B981" />
-                          <span style={{ color: '#10B981' }}>Enviado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail size={11} />
-                          <span>{sendingInviteEmail === collab.email ? '...' : 'E-mail'}</span>
-                        </>
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSendInviteEmail(collab)}
+                        disabled={sendingInviteEmail === collab.email}
+                        title="Disparar e-mail de convite oficial com instruções de 1º acesso"
+                        style={{
+                          background: 'rgba(20, 169, 215, 0.12)',
+                          border: '1px solid rgba(20, 169, 215, 0.3)',
+                          color: '#14A9D7',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        {inviteSentEmail === collab.email ? (
+                          <>
+                            <Check size={11} color="#10B981" />
+                            <span style={{ color: '#10B981' }}>Enviado!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mail size={11} />
+                            <span>{sendingInviteEmail === collab.email ? '...' : 'E-mail'}</span>
+                          </>
+                        )}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

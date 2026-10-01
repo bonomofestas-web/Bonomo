@@ -349,7 +349,7 @@ export const AdminTeamView: React.FC = () => {
                     </span>
                   )}
 
-                  {isMasterOrManager && collab.role !== 'master' && (
+                  {isMasterOrManager && collab.role !== 'master' && Boolean(collab.isFirstAccess) && !collab.activatedAt && !collab.lastLoginAt && (
                     <button
                       type="button"
                       onClick={() => setCollabForInviteModal(collab)}
