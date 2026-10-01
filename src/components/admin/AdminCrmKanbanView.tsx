@@ -213,6 +213,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     togglePinFunnel,
     isFunnelPinned,
     reassignLeadFunnel,
+    viewingAsCollaborator,
   } = useAdminState();
 
   const totalUnreadMessages = useMemo(() => {
@@ -447,9 +448,18 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
 
 
-  // Active Funnel selection: null = Hub de Funis (Cards), or specific funnel ID
+  // Active Funnel selection: specific funnel ID or fallback
   const [selectedFunnelId, setSelectedFunnelIdState] = useState<string | null>(() => {
-    if (activeFunnelId !== undefined) return activeFunnelId;
+    if (activeFunnelId !== undefined && activeFunnelId !== null) return activeFunnelId;
+    if (typeof window !== 'undefined') {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const urlFunnel = p.get('funnel_id');
+        if (urlFunnel) return urlFunnel;
+        const saved = localStorage.getItem('f5_crm_active_funnel_id');
+        if (saved) return saved;
+      } catch {}
+    }
     if (initialLeadId) return 'indicacao';
     if (isPostSaleView) return 'post_sale_default';
     return null;
@@ -457,6 +467,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const setSelectedFunnelId = (id: string | null) => {
     setSelectedFunnelIdState(id);
+    if (id) {
+      try { localStorage.setItem('f5_crm_active_funnel_id', id); } catch {}
+    }
     if (onSelectFunnel) {
       onSelectFunnel(id);
     }
@@ -568,7 +581,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [isFilterBarExpanded, setIsFilterBarExpanded] = useState(false);
 
   const sortOptions = [
-    { id: 'waiting_time', label: '⏱️ Tempo de Espera (Prioridade)' },
+    { id: 'waiting_time', label: 'Tempo de Espera (Prioridade)' },
     { id: 'recent', label: 'Mais Recentes (Data)' },
     { id: 'oldest', label: 'Mais Antigos (Data)' },
     { id: 'message_recent', label: 'Mais Recente (Mensagem)' },
@@ -725,8 +738,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return () => document.removeEventListener('click', handleGlobalClick);
   }, []);
 
-  // Check if current user is manager (Master or Admin)
-  const canConfigureFunnels = currentUser?.role === 'master' || currentUser?.role === 'admin';
+  // Check if current user is manager (Master or Admin com setor de Gerência)
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const effectiveRole = effectiveUser?.role;
+  const effectiveSectors: string[] = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+    ? (effectiveUser as any).sectors
+    : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+  const isManagerOrMaster = effectiveRole === 'master' || (effectiveRole === 'admin' && effectiveSectors.includes('gerencia')) || effectiveRole === 'gerencia';
+  const canConfigureFunnels = isManagerOrMaster;
 
   // Allowed venues for user
   const userAllowedVenueIds = useMemo(() => {
@@ -898,12 +917,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [funnels, leads, venues, activeVenueId, userAllowedVenueIds, canConfigureFunnels, currentUser, isPostSaleView]);
 
   useEffect(() => {
-    if (isPostSaleView && (!selectedFunnelId || selectedFunnelId === 'indicacao' || selectedFunnelId === 'post_sale_default')) {
-      if (funnelsList.length > 0) {
+    if (funnelsList.length > 0) {
+      const exists = funnelsList.some(f => f.id === selectedFunnelId);
+      if (!selectedFunnelId || !exists) {
         setSelectedFunnelId(funnelsList[0].id);
       }
     }
-  }, [isPostSaleView, selectedFunnelId, funnelsList]);
+  }, [selectedFunnelId, funnelsList]);
 
   const renderFunnelIcon = (iconName?: string, size = 16, color?: string) => {
     return renderFunnelOrStageIcon(iconName, size, color, 'target');
@@ -2235,43 +2255,45 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     )}
                   </div>
 
-                  {/* Link para Central de Funis */}
-                  <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleSelectFunnel(null);
-                        setIsFunnelSwitcherOpen(false);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--adm-text-muted)',
-                        fontSize: '0.70rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        width: '100%',
-                        textAlign: 'left',
-                        transition: 'color 0.1s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = 'var(--adm-text-title)';
-                        e.currentTarget.style.background = 'var(--adm-bg-input)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--adm-text-muted)';
-                        e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <Layers size={12} />
-                      <span>Ver todos os funis (Central)</span>
-                    </button>
-                  </div>
+                  {/* Link para Central de Funis (Exclusivo Gerência / Master) */}
+                  {canConfigureFunnels && (
+                    <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelectFunnel(null);
+                          setIsFunnelSwitcherOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--adm-text-muted)',
+                          fontSize: '0.70rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          width: '100%',
+                          textAlign: 'left',
+                          transition: 'color 0.1s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--adm-text-title)';
+                          e.currentTarget.style.background = 'var(--adm-bg-input)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--adm-text-muted)';
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <Layers size={12} />
+                        <span>Ver todos os funis (Central)</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

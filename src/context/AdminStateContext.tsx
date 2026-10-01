@@ -1956,7 +1956,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     setCurrentUser(user);
     safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(user));
-    if (foundCollab.venueId && foundCollab.venueId !== 'all') {
+    if (foundCollab.venueIds && foundCollab.venueIds.length > 1) {
+      const savedVenue = localStorage.getItem(STORAGE_KEY_ACTIVE_VENUE);
+      if (savedVenue && foundCollab.venueIds.includes(savedVenue)) {
+        setActiveVenueId(savedVenue);
+      } else {
+        setActiveVenueId(null);
+      }
+    } else if (foundCollab.venueId && foundCollab.venueId !== 'all') {
       setActiveVenueId(foundCollab.venueId);
     } else {
       setActiveVenueId(null);

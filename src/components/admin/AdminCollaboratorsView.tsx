@@ -5,13 +5,14 @@ import {
   UserPlus, ShieldCheck, Plus,
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
-  Power, Lock
+  Power, Lock, UserCheck, Shield, SlidersHorizontal,
+  ArrowRightLeft, Search
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { formatPhone, maskPhoneInput } from '../../utils/phoneFormatter';
-import type { Collaborator, AdminRole } from '../../types/admin';
+import type { Collaborator, AdminRole, LeadActivity, Lead } from '../../types/admin';
 
 export const AdminCollaboratorsView: React.FC = () => {
   const { 
@@ -24,6 +25,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     leads,
     tasks,
     sendCollaboratorInvite,
+    updateLeadData,
   } = useAdminState();
 
   const isCurrentUserManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
@@ -45,7 +47,26 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
   const [formActive, setFormActive] = useState(true);
 
-  // Estados do Modal de Revinculação / Transferência
+  // Estados da Central de Super Gestão do Colaborador
+  const [collabForManagement, setCollabForManagement] = useState<Collaborator | null>(null);
+  const [managementTab, setManagementTab] = useState<'leads' | 'tasks'>('leads');
+  const [managementSearchQuery, setManagementSearchQuery] = useState('');
+  const [selectedLeadIdsForTransfer, setSelectedLeadIdsForTransfer] = useState<string[]>([]);
+  const [transferTargetCollabId, setTransferTargetCollabId] = useState<string>('');
+  const [transferRoleMode, setTransferRoleMode] = useState<'sdr' | 'closer' | 'all'>('all');
+  const [isTransferringLeads, setIsTransferringLeads] = useState(false);
+  const [transferSuccessMessage, setTransferSuccessMessage] = useState<string | null>(null);
+
+  // Estados do Modal de Edição de Perfil do Master (Audio 1)
+  const [isMasterProfileOpen, setIsMasterProfileOpen] = useState(false);
+  const [masterFormName, setMasterFormName] = useState('');
+  const [masterFormEmail, setMasterFormEmail] = useState('');
+  const [masterFormPhone, setMasterFormPhone] = useState('');
+  const [masterFormAvatarUrl, setMasterFormAvatarUrl] = useState('');
+  const [masterFormPassword, setMasterFormPassword] = useState('');
+  const [isSavingMasterProfile, setIsSavingMasterProfile] = useState(false);
+
+  // Estados do Modal de Revinculação / Transferência na Exclusão
   const [reassignMode, setReassignMode] = useState<'transfer' | 'open'>('transfer');
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>('');
 
@@ -232,58 +253,176 @@ export const AdminCollaboratorsView: React.FC = () => {
     setSelectedAssigneeId(firstOther?.id || '');
   };
 
-  const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'dev':
-        return {
-          label: 'Desenvolvedor (Root)',
-          bg: 'rgba(20, 169, 215, 0.15)',
-          color: '#14A9D7',
-          border: '1px solid rgba(20, 169, 215, 0.4)',
+
+
+  const getCollabRoleTitle = (collab: Collaborator) => {
+    if (collab.customJobTitle && collab.customJobTitle.trim()) {
+      return collab.customJobTitle.trim();
+    }
+    if (collab.role === 'master') return 'Diretoria Geral';
+    if (collab.isDev || collab.role === 'dev') return 'Desenvolvedor';
+    return '';
+  };
+
+  const getCollabSectors = (collab: Collaborator): ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] => {
+    if (collab.sectors && collab.sectors.length > 0) return collab.sectors;
+    if (collab.role === 'master' || collab.role === 'admin' || collab.role === 'gerencia') {
+      return ['gerencia', 'comercial', 'pos_venda'];
+    }
+    if (collab.role === 'pos_venda') return ['pos_venda'];
+    return ['comercial'];
+  };
+
+  const getCollabLeads = (collab: Collaborator) => {
+    return leads.filter(l => 
+      l.sdrId === collab.id || 
+      l.closerId === collab.id || 
+      (collab.name && l.sdrName === collab.name) ||
+      (collab.name && l.closerName === collab.name) ||
+      l.assignedTo === collab.name ||
+      l.assignedTo === collab.id
+    );
+  };
+
+  const getCollabTasks = (collab: Collaborator) => {
+    return tasks.filter(t => 
+      (t.assignedToIds && t.assignedToIds.includes(collab.id)) ||
+      t.createdById === collab.id
+    );
+  };
+
+  // Leads & Tarefas da modal de super gestão do colaborador selecionado
+  const collabManagementLeads = useMemo(() => {
+    if (!collabForManagement) return [];
+    return getCollabLeads(collabForManagement);
+  }, [leads, collabForManagement]);
+
+  const filteredManagementLeads = useMemo(() => {
+    if (!managementSearchQuery.trim()) return collabManagementLeads;
+    const q = managementSearchQuery.toLowerCase();
+    return collabManagementLeads.filter(l => 
+      (l.name && l.name.toLowerCase().includes(q)) ||
+      (l.phone && l.phone.includes(q)) ||
+      (l.code && l.code.toLowerCase().includes(q)) ||
+      (l.sourceName && l.sourceName.toLowerCase().includes(q))
+    );
+  }, [collabManagementLeads, managementSearchQuery]);
+
+  const collabManagementTasks = useMemo(() => {
+    if (!collabForManagement) return [];
+    return getCollabTasks(collabForManagement);
+  }, [tasks, collabForManagement]);
+
+  const handleOpenSuperManagement = (collab: Collaborator, tab: 'leads' | 'tasks' = 'leads') => {
+    setCollabForManagement(collab);
+    setManagementTab(tab);
+    setManagementSearchQuery('');
+    setSelectedLeadIdsForTransfer([]);
+    setTransferSuccessMessage(null);
+    const eligibleOthers = collaborators.filter(c => c.id !== collab.id && c.active && c.role !== 'dev');
+    setTransferTargetCollabId(eligibleOthers[0]?.id || '');
+  };
+
+  const handleExecuteLeadTransfer = async () => {
+    if (!collabForManagement || selectedLeadIdsForTransfer.length === 0) return;
+    const targetCollab = collaborators.find(c => c.id === transferTargetCollabId);
+    if (!targetCollab) {
+      alert('Selecione o colaborador de destino para transferir os leads.');
+      return;
+    }
+
+    setIsTransferringLeads(true);
+    try {
+      const now = new Date().toISOString();
+      for (const leadId of selectedLeadIdsForTransfer) {
+        const lead = leads.find(l => l.id === leadId);
+        if (!lead) continue;
+
+        const patch: Partial<Lead> = {};
+        if (transferRoleMode === 'sdr') {
+          patch.sdrId = targetCollab.id;
+          patch.sdrName = targetCollab.name;
+          if (!lead.closerId || lead.assignedTo === collabForManagement.name) {
+            patch.assignedTo = targetCollab.name;
+          }
+        } else if (transferRoleMode === 'closer') {
+          patch.closerId = targetCollab.id;
+          patch.closerName = targetCollab.name;
+          patch.assignedTo = targetCollab.name;
+        } else {
+          // Transferência Geral
+          patch.sdrId = targetCollab.id;
+          patch.sdrName = targetCollab.name;
+          patch.closerId = targetCollab.id;
+          patch.closerName = targetCollab.name;
+          patch.assignedTo = targetCollab.name;
+        }
+
+        const auditNote: LeadActivity = {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          leadId,
+          timestamp: now,
+          type: 'assignment',
+          title: 'Remanejamento de Responsável',
+          text: `Lead transferido de ${collabForManagement.name} para ${targetCollab.name} por ${currentUser?.name || 'Administração'}.`,
+          authorName: currentUser?.name || 'Administração',
+          authorId: currentUser?.id,
+          authorAvatarUrl: currentUser?.avatarUrl,
         };
-      case 'master':
-        return {
-          label: 'Master (Diretoria)',
-          bg: 'var(--adm-gold-bg)',
-          color: 'var(--adm-gold)',
-          border: '1px solid rgba(20, 169, 215, 0.4)',
-        };
-      case 'admin':
-        return {
-          label: 'Gerente da Casa',
-          bg: 'rgba(59, 130, 246, 0.15)',
-          color: '#60A5FA',
-          border: '1px solid rgba(59, 130, 246, 0.35)',
-        };
-      case 'sdr':
-      case 'crm':
-        return {
-          label: 'SDR / Pré-Vendas',
-          bg: 'rgba(139, 92, 246, 0.15)',
-          color: '#A78BFA',
-          border: '1px solid rgba(139, 92, 246, 0.35)',
-        };
-      case 'closer':
-        return {
-          label: 'Closer / Vendas',
-          bg: 'rgba(249, 115, 22, 0.15)',
-          color: '#FB923C',
-          border: '1px solid rgba(249, 115, 22, 0.35)',
-        };
-      case 'pos_venda':
-        return {
-          label: 'Pós-Venda',
-          bg: 'rgba(6, 182, 212, 0.15)',
-          color: '#06B6D4',
-          border: '1px solid rgba(6, 182, 212, 0.35)',
-        };
-      default:
-        return {
-          label: role,
-          bg: 'var(--adm-bg-elevated)',
-          color: 'var(--adm-text-body)',
-          border: '1px solid var(--adm-border)',
-        };
+
+        patch.activities = [auditNote, ...(lead.activities || [])];
+        updateLeadData(leadId, patch);
+      }
+
+      setTransferSuccessMessage(`${selectedLeadIdsForTransfer.length} lead(s) remanejado(s) com sucesso para ${targetCollab.name}!`);
+      setSelectedLeadIdsForTransfer([]);
+      setTimeout(() => setTransferSuccessMessage(null), 4000);
+    } catch (e) {
+      console.warn('Erro ao transferir leads:', e);
+      alert('Erro ao remanejar leads.');
+    } finally {
+      setIsTransferringLeads(false);
+    }
+  };
+
+  const handleOpenMasterProfile = () => {
+    const masterCollab = collaborators.find(c => c.role === 'master' && (c.id === currentUser?.id || c.email === currentUser?.email)) || currentUser;
+    setMasterFormName(masterCollab?.name || currentUser?.name || '');
+    setMasterFormEmail(masterCollab?.email || currentUser?.email || '');
+    setMasterFormPhone(masterCollab?.phone ? formatPhone(masterCollab.phone) : '');
+    setMasterFormAvatarUrl(masterCollab?.avatarUrl || currentUser?.avatarUrl || '');
+    setMasterFormPassword('');
+    setIsMasterProfileOpen(true);
+  };
+
+  const handleSaveMasterProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!masterFormName.trim() || !masterFormEmail.trim()) {
+      alert('Preencha seu nome e e-mail.');
+      return;
+    }
+    setIsSavingMasterProfile(true);
+    try {
+      const masterId = currentUser?.id || collaborators.find(c => c.role === 'master')?.id;
+      if (!masterId) return;
+
+      const payload: Partial<Collaborator> = {
+        name: masterFormName.trim(),
+        email: masterFormEmail.trim().toLowerCase(),
+        phone: masterFormPhone.trim() || undefined,
+        avatarUrl: masterFormAvatarUrl.trim() || undefined,
+      };
+      if (masterFormPassword.trim()) {
+        payload.password = masterFormPassword.trim();
+      }
+
+      updateCollaborator(masterId, payload);
+      setIsMasterProfileOpen(false);
+    } catch (err: any) {
+      console.warn('Erro ao atualizar perfil do Master:', err);
+      alert('Não foi possível salvar as alterações.');
+    } finally {
+      setIsSavingMasterProfile(false);
     }
   };
 
@@ -924,15 +1063,18 @@ export const AdminCollaboratorsView: React.FC = () => {
           gap: '18px',
         }}>
           {sortedCollaborators.map(collab => {
-          const badge = getRoleBadge(collab.role);
           const venue = venues.find(v => v.id === collab.venueId);
           const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
           const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
           const isMasterRole = collab.role === 'master';
+          const isManagerRole = isMasterRole || collab.role === 'admin' || collab.role === 'gerencia';
           const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
           const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
+          const collabLeads = getCollabLeads(collab);
+          const collabTasks = getCollabTasks(collab);
+          const collabSectors = getCollabSectors(collab);
 
           return (
             <div
@@ -941,15 +1083,15 @@ export const AdminCollaboratorsView: React.FC = () => {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
+                gap: '12px',
                 opacity: collab.active ? 1 : 0.65,
                 filter: collab.active ? 'none' : 'grayscale(100%)',
                 transition: 'all 0.25s ease',
               }}
             >
-              {/* Profile Row */}
+              {/* Profile Row: Foto + Nome + Cargo Pré-definido */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                   <img
                     src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
                     alt={collab.name}
@@ -958,75 +1100,60 @@ export const AdminCollaboratorsView: React.FC = () => {
                       height: '46px',
                       borderRadius: '50%',
                       objectFit: 'cover',
-                      border: `1.5px solid ${collab.active ? 'var(--adm-accent)' : 'rgba(100, 116, 139, 0.4)'}`,
+                      border: `1.5px solid ${collab.active ? (isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-accent)') : 'rgba(100, 116, 139, 0.4)'}`,
                       filter: collab.active ? 'none' : 'grayscale(100%)',
                       transition: 'all 0.2s ease',
+                      flexShrink: 0,
                     }}
                   />
-                  <div>
-                    <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{
+                      fontSize: '0.96rem',
+                      fontWeight: 800,
+                      color: 'var(--adm-text-title)',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
                       {collab.name}
                     </h3>
-                    {collab.customJobTitle && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 700, marginTop: '2px' }}>
-                        {collab.customJobTitle}
+                    {/* Cargo Personalizado cadastrado na empresa (Audio 1) */}
+                    {getCollabRoleTitle(collab) ? (
+                      <div style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-text-title)',
+                        marginTop: '2px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {getCollabRoleTitle(collab)}
+                      </div>
+                    ) : (
+                      <div style={{
+                        fontSize: '0.70rem',
+                        fontWeight: 500,
+                        color: 'var(--adm-text-muted)',
+                        fontStyle: 'italic',
+                        marginTop: '2px',
+                      }}>
+                        Cargo não informado
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                      <span style={{
-                        background: badge.bg,
-                        color: badge.color,
-                        border: badge.border,
-                        borderRadius: '8px',
-                        padding: '2px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                      }}>
-                        {badge.label}
-                      </span>
-                      {collab.department && (
-                        <span style={{
-                          background: 'rgba(99, 102, 241, 0.1)',
-                          color: '#818cf8',
-                          border: '1px solid rgba(99, 102, 241, 0.25)',
-                          borderRadius: '8px',
-                          padding: '2px 7px',
-                          fontSize: '0.64rem',
-                          fontWeight: 700,
-                        }}>
-                          {collab.department}
-                        </span>
-                      )}
-                      {isPendingFirstAccess(collab) && (
-                        <span style={{
-                          background: 'rgba(245, 158, 11, 0.15)',
-                          color: '#F59E0B',
-                          border: '1px solid rgba(245, 158, 11, 0.4)',
-                          borderRadius: '8px',
-                          padding: '2px 8px',
-                          fontSize: '0.66rem',
-                          fontWeight: 800,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}>
-                          <Clock size={10} />
-                          Aguardando 1º Acesso
-                        </span>
-                      )}
-                    </div>
                   </div>
                 </div>
 
-                {/* Botão de Power Liga/Desliga — Exibido APENAS quando o usuário tem permissão para gerenciar este perfil */}
+                {/* Botão de Power Liga/Desliga */}
                 {canToggle && (
                   <button
                     type="button"
                     onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
                     title={collab.active ? 'Colaborador Ativo • Clique para desativar' : 'Colaborador Desativado • Clique para reativar'}
                     style={{
-                      width: '36px',
-                      height: '36px',
+                      width: '34px',
+                      height: '34px',
                       borderRadius: '10px',
                       background: collab.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
                       border: `1.5px solid ${collab.active ? 'rgba(16, 185, 129, 0.5)' : 'rgba(100, 116, 139, 0.35)'}`,
@@ -1036,17 +1163,13 @@ export const AdminCollaboratorsView: React.FC = () => {
                       justifyContent: 'center',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
-                      boxShadow: collab.active ? '0 0 12px rgba(16, 185, 129, 0.3)' : 'none',
+                      boxShadow: collab.active ? '0 0 10px rgba(16, 185, 129, 0.25)' : 'none',
                       flexShrink: 0,
                     }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'scale(1.08)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.08)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
                   >
-                    <Power size={18} />
+                    <Power size={17} />
                   </button>
                 )}
               </div>
@@ -1057,7 +1180,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '8px',
-                padding: '8px 12px',
+                padding: '7px 12px',
                 borderRadius: '10px',
                 background: !collab.active 
                   ? 'rgba(239, 68, 68, 0.08)'
@@ -1095,110 +1218,116 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
 
                 {collab.active && isPendingFirstAccess(collab) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleSendInviteEmail(collab)}
-                      disabled={sendingInviteEmail === collab.email}
-                      title="Disparar e-mail de convite oficial com instruções de 1º acesso"
-                      style={{
-                        background: 'rgba(20, 169, 215, 0.15)',
-                        border: '1px solid rgba(20, 169, 215, 0.35)',
-                        color: '#14A9D7',
-                        borderRadius: '6px',
-                        padding: '4px 10px',
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {inviteSentEmail === collab.email ? (
-                        <>
-                          <Check size={12} color="#10B981" />
-                          <span style={{ color: '#10B981' }}>E-mail Enviado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail size={12} />
-                          <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'Reenviar Convite'}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSendInviteEmail(collab)}
+                    disabled={sendingInviteEmail === collab.email}
+                    title="Disparar e-mail de convite oficial com instruções de 1º acesso"
+                    style={{
+                      background: 'rgba(20, 169, 215, 0.15)',
+                      border: '1px solid rgba(20, 169, 215, 0.35)',
+                      color: '#14A9D7',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {inviteSentEmail === collab.email ? (
+                      <>
+                        <Check size={11} color="#10B981" />
+                        <span style={{ color: '#10B981' }}>Enviado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={11} />
+                        <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'Reenviar Convite'}</span>
+                      </>
+                    )}
+                  </button>
                 )}
 
                 {collab.active && !isPendingFirstAccess(collab) && collab.role !== 'master' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleSendInviteEmail(collab)}
-                      disabled={sendingInviteEmail === collab.email}
-                      title="Disparar e-mail de redefinição de senha para este colaborador"
-                      style={{
-                        background: 'rgba(20, 169, 215, 0.12)',
-                        border: '1px solid rgba(20, 169, 215, 0.3)',
-                        color: '#14A9D7',
-                        borderRadius: '6px',
-                        padding: '4px 10px',
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {inviteSentEmail === collab.email ? (
-                        <>
-                          <Check size={12} color="#10B981" />
-                          <span style={{ color: '#10B981' }}>Enviado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail size={12} />
-                          <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'E-mail Senha'}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSendInviteEmail(collab)}
+                    disabled={sendingInviteEmail === collab.email}
+                    title="Disparar e-mail de redefinição de senha para este colaborador"
+                    style={{
+                      background: 'rgba(20, 169, 215, 0.12)',
+                      border: '1px solid rgba(20, 169, 215, 0.3)',
+                      color: '#14A9D7',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      cursor: sendingInviteEmail === collab.email ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {inviteSentEmail === collab.email ? (
+                      <>
+                        <Check size={11} color="#10B981" />
+                        <span style={{ color: '#10B981' }}>Enviado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={11} />
+                        <span>{sendingInviteEmail === collab.email ? 'Enviando...' : 'E-mail Senha'}</span>
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
 
-              {/* Details */}
+              {/* Details: E-mail, Telefone, Casa e Último Acesso */}
               <div style={{
                 background: 'var(--adm-bg-input)',
                 borderRadius: '12px',
-                padding: '12px 14px',
+                padding: '11px 13px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                fontSize: '0.76rem',
+                gap: '7px',
+                fontSize: '0.75rem',
                 color: 'var(--adm-text-muted)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Mail size={13} color="var(--adm-accent)" />
-                  <span style={{ color: 'var(--adm-text-title)' }}>{collab.email}</span>
+                  <Mail size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
+                  <span style={{ color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{collab.email}</span>
                 </div>
 
                 {collab.phone && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Phone size={13} color="var(--adm-accent)" />
+                    <Phone size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
                     <span>{formatPhone(collab.phone)}</span>
                   </div>
                 )}
 
+                {/* Casa / Unidade (Audio 1: Master é soberano de tudo) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Building2 size={13} color="var(--adm-accent)" />
-                  <span>{venueName}</span>
+                  {isMasterRole ? (
+                    <>
+                      <ShieldCheck size={13} color="var(--adm-gold, #D4AF37)" style={{ flexShrink: 0 }} />
+                      <span style={{ color: 'var(--adm-gold, #D4AF37)', fontWeight: 700 }}>
+                        Acesso Master (Todas as Unidades da Rede)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venueName}</span>
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px dashed var(--adm-border)', paddingTop: '6px', marginTop: '2px' }}>
-                  <Clock size={13} color={isPendingFirstAccess(collab) ? '#F59E0B' : '#10B981'} />
+                  <Clock size={13} color={isPendingFirstAccess(collab) ? '#F59E0B' : '#10B981'} style={{ flexShrink: 0 }} />
                   <span>
                     <strong style={{ color: 'var(--adm-text-title)' }}>Último Acesso:</strong>{' '}
                     <span style={{ color: isPendingFirstAccess(collab) ? '#F59E0B' : 'var(--adm-text-body)', fontWeight: isPendingFirstAccess(collab) ? 700 : 500 }}>
@@ -1214,13 +1343,127 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Actions Row */}
+              {/* Tags de Setores Vinculados (Audio 1: Posicionado mais abaixo) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, marginRight: '2px' }}>
+                  Setores:
+                </span>
+                {isManagerRole ? (
+                  <span style={{
+                    background: 'rgba(212, 175, 55, 0.12)',
+                    color: 'var(--adm-gold, #D4AF37)',
+                    border: '1px solid rgba(212, 175, 55, 0.35)',
+                    borderRadius: '8px',
+                    padding: '2px 8px',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}>
+                    <ShieldCheck size={11} />
+                    Gerência (Acesso Global)
+                  </span>
+                ) : (
+                  <>
+                    {collabSectors.includes('comercial') && (
+                      <span style={{
+                        background: 'rgba(20, 169, 215, 0.12)',
+                        color: '#14A9D7',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        borderRadius: '8px',
+                        padding: '2px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                      }}>
+                        Comercial
+                      </span>
+                    )}
+                    {collabSectors.includes('pos_venda') && (
+                      <span style={{
+                        background: 'rgba(6, 182, 212, 0.12)',
+                        color: '#06B6D4',
+                        border: '1px solid rgba(6, 182, 212, 0.35)',
+                        borderRadius: '8px',
+                        padding: '2px 8px',
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                      }}>
+                        Pós-Venda
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Mini Faixa de Super Gestão: Leads e Tarefas Vinculadas (Audio 1) */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '8px',
+                marginTop: '2px',
+              }}>
+                <div 
+                  onClick={() => handleOpenSuperManagement(collab, 'leads')}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '10px',
+                    background: 'rgba(20, 169, 215, 0.08)',
+                    border: '1px solid rgba(20, 169, 215, 0.22)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Clique para ver e remanejar os leads deste colaborador"
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.22)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Target size={13} color="var(--adm-accent)" />
+                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>Leads</span>
+                  </div>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    {collabLeads.length}
+                  </span>
+                </div>
+
+                <div 
+                  onClick={() => handleOpenSuperManagement(collab, 'tasks')}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '10px',
+                    background: 'rgba(139, 92, 246, 0.08)',
+                    border: '1px solid rgba(139, 92, 246, 0.22)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Clique para ver as tarefas vinculadas a este colaborador"
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#A78BFA'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.22)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckSquare size={13} color="#A78BFA" />
+                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>Tarefas</span>
+                  </div>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    {collabTasks.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions Row: Super Gestão / Editar / Remover / Perfil Master */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 borderTop: '1px solid var(--adm-border)',
-                paddingTop: '12px',
+                paddingTop: '11px',
+                gap: '8px',
               }}>
                 {collab.isDev ? (
                   <span style={{
@@ -1228,24 +1471,41 @@ export const AdminCollaboratorsView: React.FC = () => {
                     fontWeight: 800,
                     color: '#14A9D7',
                     background: 'rgba(20, 169, 215, 0.12)',
-                    padding: '4px 10px',
+                    padding: '5px 12px',
                     borderRadius: '8px',
                     border: '1px solid rgba(20, 169, 215, 0.3)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
                   }}>
-                    🛡️ Conta Desenvolvedor
+                    <Shield size={12} />
+                    <span>Conta Desenvolvedor</span>
                   </span>
-                ) : isSelf ? (
-                  <span style={{
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    color: 'var(--adm-accent)',
-                    background: 'rgba(212, 175, 55, 0.1)',
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(212, 175, 55, 0.25)',
-                  }}>
-                    👤 Seu Perfil
-                  </span>
+                ) : (isSelf || isMasterRole) ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenMasterProfile}
+                    style={{
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      color: 'var(--adm-gold, #D4AF37)',
+                      background: 'rgba(212, 175, 55, 0.12)',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(212, 175, 55, 0.35)',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.22)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.12)'; }}
+                    title="Editar meus dados pessoais de login e contato"
+                  >
+                    <UserCheck size={14} />
+                    <span>Editar Meu Perfil</span>
+                  </button>
                 ) : isCurrentUserManager && isTargetManagerOrAbove ? (
                   <span style={{
                     fontSize: '0.72rem',
@@ -1262,50 +1522,77 @@ export const AdminCollaboratorsView: React.FC = () => {
                     <Lock size={12} /> Perfil Gerencial Protegido
                   </span>
                 ) : (
-                  <>
-                    {canEdit && (
-                      <button
-                        onClick={() => handleOpenEdit(collab)}
-                        style={{
-                          background: 'var(--adm-bg-elevated)',
-                          border: '1px solid var(--adm-border)',
-                          color: 'var(--adm-text-title)',
-                          borderRadius: '10px',
-                          padding: '6px 14px',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Edit3 size={13} color="var(--adm-accent)" />
-                        <span>Editar</span>
-                      </button>
-                    )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSuperManagement(collab)}
+                      style={{
+                        background: 'rgba(20, 169, 215, 0.12)',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        color: '#14A9D7',
+                        borderRadius: '10px',
+                        padding: '6px 12px',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Abrir Central de Super Gestão (Leads & Tarefas)"
+                    >
+                      <SlidersHorizontal size={13} />
+                      <span>Super Gestão</span>
+                    </button>
 
-                    {canDelete && (
-                      <button
-                        onClick={() => handleOpenDelete(collab)}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--adm-red)',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        <Trash2 size={13} />
-                        <span>Remover</span>
-                      </button>
-                    )}
-                  </>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(collab)}
+                          style={{
+                            background: 'var(--adm-bg-elevated)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
+                            borderRadius: '10px',
+                            padding: '6px 12px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Edit3 size={13} color="var(--adm-accent)" />
+                          <span>Editar</span>
+                        </button>
+                      )}
+
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDelete(collab)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--adm-red)',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          <span>Remover</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1639,6 +1926,798 @@ export const AdminCollaboratorsView: React.FC = () => {
               >
                 <Trash2 size={14} />
                 <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição de Perfil do Master (Audio 1) */}
+      {isMasterProfileOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200,
+          padding: '20px',
+          animation: 'fadeIn 0.2s ease-out',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            borderRadius: '20px',
+            maxWidth: '500px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '28px',
+            position: 'relative',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
+          }}>
+            {/* Fechar */}
+            <button
+              type="button"
+              onClick={() => setIsMasterProfileOpen(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'var(--adm-bg-elevated)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--adm-text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                background: 'rgba(212, 175, 55, 0.15)',
+                border: '1px solid rgba(212, 175, 55, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--adm-gold)',
+              }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Meu Perfil Master
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                  Diretoria & Gestão Geral da Rede
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveMasterProfile} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+              {/* Foto de Perfil */}
+              <ImageUploadField
+                label="Sua Foto de Perfil"
+                value={masterFormAvatarUrl}
+                onChange={(url) => setMasterFormAvatarUrl(url)}
+                folder="avatars"
+                aspectRatio="1:1"
+                previewHeight="80px"
+                placeholder="Subir foto de perfil"
+              />
+
+              {/* Nome */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                  Nome Completo *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <UserCheck size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <input
+                    type="text"
+                    required
+                    value={masterFormName}
+                    onChange={(e) => setMasterFormName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '10px 14px 10px 38px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.84rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* E-mail e Telefone */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    E-mail de Acesso *
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Mail size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                    <input
+                      type="email"
+                      required
+                      value={masterFormEmail}
+                      onChange={(e) => setMasterFormEmail(e.target.value)}
+                      style={{
+                        width: '100%',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '10px',
+                        padding: '10px 14px 10px 38px',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.84rem',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                    WhatsApp
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Phone size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                    <input
+                      type="tel"
+                      value={masterFormPhone}
+                      onChange={(e) => setMasterFormPhone(maskPhoneInput(e.target.value))}
+                      placeholder="(21) 99999-9999"
+                      style={{
+                        width: '100%',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '10px',
+                        padding: '10px 14px 10px 38px',
+                        color: 'var(--adm-text-title)',
+                        fontSize: '0.84rem',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Senha */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                  Nova Senha de Acesso (Opcional)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Lock size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <input
+                    type="password"
+                    placeholder="Deixe em branco para manter a senha atual"
+                    value={masterFormPassword}
+                    onChange={(e) => setMasterFormPassword(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '10px 14px 10px 38px',
+                      color: 'var(--adm-text-title)',
+                      fontSize: '0.84rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Card de Aviso Soberano */}
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '12px',
+                background: 'rgba(212, 175, 55, 0.08)',
+                border: '1px solid rgba(212, 175, 55, 0.25)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                fontSize: '0.75rem',
+                color: 'var(--adm-gold)',
+                lineHeight: 1.45,
+              }}>
+                <Shield size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  <strong>Acesso Master Soberano:</strong> Seu perfil possui permissão total e irrestrita a todas as casas de festas, funis, leads e setores do F5 System.
+                </span>
+              </div>
+
+              {/* Ações */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsMasterProfileOpen(false)}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--adm-border)',
+                    background: 'transparent',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingMasterProfile}
+                  style={{
+                    padding: '9px 22px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, var(--adm-gold) 0%, #b8860b 100%)',
+                    color: '#000',
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(212, 175, 55, 0.3)',
+                    opacity: isSavingMasterProfile ? 0.7 : 1,
+                  }}
+                >
+                  {isSavingMasterProfile ? 'Salvando...' : 'Salvar Perfil'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal da Central de Super Gestão do Colaborador (Audio 1) */}
+      {collabForManagement && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200,
+          padding: '20px',
+          animation: 'fadeIn 0.2s ease-out',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '20px',
+            maxWidth: '860px',
+            width: '100%',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
+          }}>
+            {/* Header com dados do Colaborador */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--adm-bg-input)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <img
+                  src={(collabForManagement.avatarUrl && !collabForManagement.avatarUrl.includes('unsplash.com')) ? collabForManagement.avatarUrl : createMonogramAvatar(collabForManagement.name)}
+                  alt={collabForManagement.name}
+                  style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--adm-accent)' }}
+                />
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      {collabForManagement.name}
+                    </h3>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'var(--adm-accent-bg)',
+                      color: 'var(--adm-accent)',
+                      border: '1px solid var(--adm-border)',
+                    }}>
+                      {getCollabRoleTitle(collabForManagement)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '0.76rem', color: 'var(--adm-text-muted)' }}>
+                    <span>{collabForManagement.email}</span>
+                    {collabForManagement.phone && <span>• {formatPhone(collabForManagement.phone)}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCollabForManagement(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--adm-text-muted)',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  borderRadius: '8px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Abas */}
+            <div style={{
+              display: 'flex',
+              borderBottom: '1px solid var(--adm-border)',
+              background: 'var(--adm-bg-card)',
+              padding: '0 24px',
+              gap: '12px',
+            }}>
+              <button
+                type="button"
+                onClick={() => setManagementTab('leads')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '14px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: managementTab === 'leads' ? '2px solid var(--adm-accent)' : '2px solid transparent',
+                  color: managementTab === 'leads' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  fontWeight: managementTab === 'leads' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <Target size={16} />
+                <span>Leads Atribuídos</span>
+                <span style={{
+                  padding: '1px 7px',
+                  borderRadius: '10px',
+                  background: managementTab === 'leads' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                  fontSize: '0.72rem',
+                }}>
+                  {collabManagementLeads.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setManagementTab('tasks')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '14px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: managementTab === 'tasks' ? '2px solid var(--adm-accent)' : '2px solid transparent',
+                  color: managementTab === 'tasks' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                  fontWeight: managementTab === 'tasks' ? 800 : 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <CheckSquare size={16} />
+                <span>Tarefas Vinculadas</span>
+                <span style={{
+                  padding: '1px 7px',
+                  borderRadius: '10px',
+                  background: managementTab === 'tasks' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                  fontSize: '0.72rem',
+                }}>
+                  {collabManagementTasks.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Conteúdo das Abas */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {managementTab === 'leads' ? (
+                <>
+                  {/* Feedback de Transferência Sucesso */}
+                  {transferSuccessMessage && (
+                    <div style={{
+                      padding: '12px 16px',
+                      borderRadius: '12px',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      fontSize: '0.82rem',
+                      color: '#10B981',
+                      fontWeight: 700,
+                    }}>
+                      <CheckCircle2 size={18} />
+                      <span>{transferSuccessMessage}</span>
+                    </div>
+                  )}
+
+                  {/* Barra de Pesquisa e Filtros */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+                      <Search size={15} color="var(--adm-text-muted)" style={{ position: 'absolute', left: '12px', top: '11px' }} />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nome, telefone, código ou origem..."
+                        value={managementSearchQuery}
+                        onChange={(e) => setManagementSearchQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          borderRadius: '10px',
+                          padding: '8px 12px 8px 36px',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+
+                    {filteredManagementLeads.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedLeadIdsForTransfer.length === filteredManagementLeads.length) {
+                              setSelectedLeadIdsForTransfer([]);
+                            } else {
+                              setSelectedLeadIdsForTransfer(filteredManagementLeads.map(l => l.id));
+                            }
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid var(--adm-border)',
+                            background: 'var(--adm-bg-elevated)',
+                            color: 'var(--adm-text-title)',
+                            fontSize: '0.76rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {selectedLeadIdsForTransfer.length === filteredManagementLeads.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                        </button>
+                        <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                          {selectedLeadIdsForTransfer.length} selecionado(s)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Banner de Ação em Lote (Transferência) */}
+                  {selectedLeadIdsForTransfer.length > 0 && (
+                    <div style={{
+                      padding: '16px',
+                      borderRadius: '14px',
+                      background: 'rgba(20, 169, 215, 0.08)',
+                      border: '1px solid rgba(20, 169, 215, 0.35)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', fontSize: '0.82rem', fontWeight: 800 }}>
+                        <ArrowRightLeft size={16} />
+                        <span>Remanejar {selectedLeadIdsForTransfer.length} lead(s) selecionado(s)</span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr auto', gap: '10px', alignItems: 'center' }}>
+                        {/* Seletor de Colaborador */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                            Novo Responsável
+                          </label>
+                          <select
+                            value={transferTargetCollabId}
+                            onChange={(e) => setTransferTargetCollabId(e.target.value)}
+                            style={{
+                              width: '100%',
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '8px',
+                              padding: '8px 10px',
+                              color: 'var(--adm-text-title)',
+                              fontSize: '0.8rem',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="">Selecione o colaborador...</option>
+                            {collaborators
+                              .filter(c => c.id !== collabForManagement.id && c.active && c.role !== 'dev')
+                              .map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} ({getCollabRoleTitle(c)})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        {/* Seletor de Papel */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                            Atribuir Como
+                          </label>
+                          <select
+                            value={transferRoleMode}
+                            onChange={(e) => setTransferRoleMode(e.target.value as any)}
+                            style={{
+                              width: '100%',
+                              background: 'var(--adm-bg-card)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '8px',
+                              padding: '8px 10px',
+                              color: 'var(--adm-text-title)',
+                              fontSize: '0.8rem',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="all">Responsabilidade Completa (SDR + Closer)</option>
+                            <option value="sdr">Apenas SDR / Pré-Vendas</option>
+                            <option value="closer">Apenas Closer / Vendas</option>
+                          </select>
+                        </div>
+
+                        {/* Botão de Transferência */}
+                        <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%' }}>
+                          <button
+                            type="button"
+                            onClick={handleExecuteLeadTransfer}
+                            disabled={isTransferringLeads || !transferTargetCollabId}
+                            style={{
+                              padding: '9px 18px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'var(--adm-accent)',
+                              color: '#fff',
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              opacity: (isTransferringLeads || !transferTargetCollabId) ? 0.6 : 1,
+                            }}
+                          >
+                            <ArrowRightLeft size={14} />
+                            <span>{isTransferringLeads ? 'Transferindo...' : 'Transferir Agora'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lista de Leads */}
+                  {filteredManagementLeads.length === 0 ? (
+                    <div style={{
+                      padding: '36px 20px',
+                      textAlign: 'center',
+                      borderRadius: '12px',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px dashed var(--adm-border)',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.84rem',
+                    }}>
+                      Nenhum lead encontrado para este colaborador.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {filteredManagementLeads.map((l) => {
+                        const isChecked = selectedLeadIdsForTransfer.includes(l.id);
+                        const isSdr = l.sdrId === collabForManagement.id || (collabForManagement.name && l.sdrName === collabForManagement.name);
+                        const isCloser = l.closerId === collabForManagement.id || (collabForManagement.name && l.closerName === collabForManagement.name);
+
+                        return (
+                          <div
+                            key={l.id}
+                            onClick={() => {
+                              setSelectedLeadIdsForTransfer(prev => 
+                                prev.includes(l.id) ? prev.filter(id => id !== l.id) : [...prev, l.id]
+                              );
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 14px',
+                              borderRadius: '12px',
+                              background: isChecked ? 'rgba(20, 169, 215, 0.08)' : 'var(--adm-bg-input)',
+                              border: `1px solid ${isChecked ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {}} // controlado pelo onClick da div
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--adm-accent)' }}
+                              />
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                    {l.name}
+                                  </span>
+                                  {l.code && (
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-card)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--adm-border)' }}>
+                                      {l.code}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '3px', fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>
+                                  {l.phone && <span>{formatPhone(l.phone)}</span>}
+                                  {l.sourceName && <span>• {l.sourceName}</span>}
+                                  {l.venueId && (
+                                    <span>
+                                      • {venues.find(v => v.id === l.venueId)?.name || 'Unidade'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'var(--adm-bg-card)',
+                                border: '1px solid var(--adm-border)',
+                                color: 'var(--adm-text-title)',
+                              }}>
+                                {isSdr && isCloser ? 'SDR & Closer' : isSdr ? 'SDR (Pré-Vendas)' : isCloser ? 'Closer (Vendas)' : 'Responsável'}
+                              </span>
+                              {l.stage && (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(20, 169, 215, 0.12)',
+                                  color: 'var(--adm-accent)',
+                                }}>
+                                  {l.stage}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Aba de Tarefas */
+                <>
+                  {collabManagementTasks.length === 0 ? (
+                    <div style={{
+                      padding: '36px 20px',
+                      textAlign: 'center',
+                      borderRadius: '12px',
+                      background: 'var(--adm-bg-input)',
+                      border: '1px dashed var(--adm-border)',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.84rem',
+                    }}>
+                      Nenhuma tarefa vinculada a este colaborador.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {collabManagementTasks.map((t) => {
+                        const isDone = t.status === 'completed';
+                        return (
+                          <div
+                            key={t.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '12px 14px',
+                              borderRadius: '12px',
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '8px',
+                                background: isDone ? 'rgba(16, 185, 129, 0.12)' : 'rgba(20, 169, 215, 0.12)',
+                                color: isDone ? '#10B981' : 'var(--adm-accent)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}>
+                                {isDone ? <Check size={14} /> : <Clock size={14} />}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--adm-text-title)', textDecoration: isDone ? 'line-through' : 'none' }}>
+                                  {t.title}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                                  {t.dueDate && <span>Vence em: {t.dueDate}</span>}
+                                  {t.priority && <span>• Prioridade: {t.priority}</span>}
+                                </div>
+                              </div>
+                            </div>
+
+                            <span style={{
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: isDone ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                              color: isDone ? '#10B981' : '#F59E0B',
+                            }}>
+                              {isDone ? 'Concluída' : 'Pendente'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid var(--adm-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              background: 'var(--adm-bg-input)',
+            }}>
+              <button
+                type="button"
+                onClick={() => setCollabForManagement(null)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--adm-border)',
+                  background: 'var(--adm-bg-card)',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Concluir & Fechar
               </button>
             </div>
           </div>

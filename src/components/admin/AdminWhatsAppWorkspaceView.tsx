@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, XCircle
+  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -400,6 +400,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
     } catch {}
   }, [selectedLeadId, currentUser?.id]);
+
+  // Audio 1: Sincroniza busca com o nome do lead selecionado e permite destravar ao limpar
+  useEffect(() => {
+    if (searchQuery) {
+      setSearchTerm(searchQuery);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (initialLeadId) {
+      setSelectedLeadId(initialLeadId);
+      const targetLead = leads.find(l => l.id === initialLeadId);
+      if (targetLead?.name && !searchTerm) {
+        setSearchTerm(targetLead.name);
+      }
+    }
+  }, [initialLeadId, leads]);
+
+  const handleCloseActiveChat = () => {
+    setSelectedLeadId(null);
+    setSearchTerm('');
+    try {
+      localStorage.removeItem('f5_wa_active_lead_id');
+      if (currentUser?.id) {
+        localStorage.removeItem(`f5_wa_selected_lead_${currentUser.id}`);
+      }
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('lead_id');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch {}
+    if (onClose) {
+      onClose();
+    }
+  };
 
   // Ordenação Local com Persistência
   const [localSortBy, setLocalSortBy] = useState<string>(() => {
@@ -3443,6 +3479,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     style={{
                       width: '100%',
                       paddingLeft: '32px',
+                      paddingRight: searchTerm ? '32px' : '10px',
                       height: '38px',
                       borderRadius: '10px',
                       fontSize: '0.78rem',
@@ -3452,6 +3489,33 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       outline: 'none',
                     }}
                   />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      title="Limpar pesquisa e ver todas as conversas"
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'var(--adm-bg-elevated)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--adm-text-muted)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
 
                 {/* Filter Toggle Button */}
@@ -3477,68 +3541,104 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <SlidersHorizontal size={17} />
                   </button>
 
-                  {/* Filter Popover Dropdown */}
+                  {/* Filter Popover Dropdown Redesenhado (Audio 1) */}
                   {isFilterDropdownOpen && (
                     <div style={{
                       position: 'absolute',
                       top: '100%',
                       right: 0,
                       marginTop: '8px',
-                      width: '280px',
-                      background: '#141118',
-                      border: '1px solid rgba(212, 175, 55, 0.35)',
+                      width: '300px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
                       borderRadius: '16px',
                       padding: '16px',
-                      boxShadow: '0 16px 40px rgba(0,0,0,0.8)',
+                      boxShadow: '0 20px 48px rgba(0,0,0,0.5)',
                       zIndex: 9999,
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '12px',
+                      gap: '14px',
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#FFF' }}>Filtros & Ordenação</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <SlidersHorizontal size={14} color="var(--adm-accent)" />
+                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                            Filtros & Ordenação
+                          </span>
+                        </div>
                         {isFilterActive && (
                           <button
                             type="button"
                             onClick={resetFilters}
-                            style={{ background: 'transparent', border: 'none', color: '#D4AF37', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--adm-accent)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
                           >
-                            Limpar
+                            Limpar Filtros
                           </button>
                         )}
                       </div>
 
                       {/* Ordenação Local com Prioridade de Tempo de Espera */}
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                          Ordenar Conversas
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <ArrowUpDown size={12} />
+                          <span>Ordenar Conversas</span>
                         </label>
                         <select
                           value={localSortBy}
                           onChange={(e) => handleUpdateSortBy(e.target.value)}
-                          className="adm-input"
-                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            fontSize: '0.78rem',
+                            borderRadius: '9px',
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
+                            padding: '0 10px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
                         >
-                          <option value="waiting_time">⏱️ Tempo de Espera (Prioridade)</option>
-                          <option value="recent">🕒 Mensagens Recentes</option>
-                          <option value="oldest">⏳ Mensagens Antigas</option>
-                          <option value="name_asc">🔤 Nome (A - Z)</option>
-                          <option value="temperature">🔥 Temperatura do Lead</option>
+                          <option value="waiting_time">Tempo de Espera (Prioridade SLA)</option>
+                          <option value="recent">Mensagens Mais Recentes</option>
+                          <option value="oldest">Mensagens Mais Antigas</option>
+                          <option value="name_asc">Nome do Lead (A - Z)</option>
+                          <option value="temperature">Temperatura do Lead</option>
                         </select>
                       </div>
 
                       {/* Filter: Venue */}
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                          Casa de Festa
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <Building2 size={12} />
+                          <span>Casa de Festa</span>
                         </label>
                         <select
                           value={filterVenueId}
                           onChange={(e) => setFilterVenueId(e.target.value)}
-                          className="adm-input"
-                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            fontSize: '0.78rem',
+                            borderRadius: '9px',
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
+                            padding: '0 10px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
                         >
-                          <option value="all">Todas as Casas</option>
+                          <option value="all">Todas as Casas de Festa</option>
                           {venues.map(v => (
                             <option key={v.id} value={v.id}>{v.name}</option>
                           ))}
@@ -3547,32 +3647,54 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                       {/* Filter: Collaborator */}
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                          Responsável Comercial
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <UserCheck size={12} />
+                          <span>Atendente / Responsável</span>
                         </label>
                         <select
                           value={filterCollaboratorId}
                           onChange={(e) => setFilterCollaboratorId(e.target.value)}
-                          className="adm-input"
-                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            fontSize: '0.78rem',
+                            borderRadius: '9px',
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
+                            padding: '0 10px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
                         >
                           <option value="all">Todos os Atendentes</option>
                           {collaborators.map(c => (
-                            <option key={c.id} value={c.id}>{c.name} ({c.role.toUpperCase()})</option>
+                            <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
                       </div>
 
                       {/* Filter: Temperature */}
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#9E988D', marginBottom: '4px' }}>
-                          Temperatura do Lead
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <Flame size={12} />
+                          <span>Temperatura do Lead</span>
                         </label>
                         <select
                           value={filterTemperature}
                           onChange={(e) => setFilterTemperature(e.target.value)}
-                          className="adm-input"
-                          style={{ width: '100%', height: '34px', fontSize: '0.76rem', borderRadius: '8px' }}
+                          style={{
+                            width: '100%',
+                            height: '36px',
+                            fontSize: '0.78rem',
+                            borderRadius: '9px',
+                            background: 'var(--adm-bg-input)',
+                            border: '1px solid var(--adm-border)',
+                            color: 'var(--adm-text-title)',
+                            padding: '0 10px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
                         >
                           <option value="all">Todas as Temperaturas</option>
                           <option value="hot">Quente (Alta Probabilidade)</option>
@@ -4578,6 +4700,40 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   </button>
                 )}
 
+                {/* Botão de Fechar Conversa / Desmarcar Chat (Audio 1) */}
+                <button
+                  type="button"
+                  onClick={handleCloseActiveChat}
+                  title="Fechar conversa e voltar à visualização geral"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '7px 11px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#EF4444';
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--adm-text-muted)';
+                    e.currentTarget.style.borderColor = 'var(--adm-border)';
+                    e.currentTarget.style.background = 'var(--adm-bg-input)';
+                  }}
+                >
+                  <X size={14} />
+                  <span>Fechar</span>
+                </button>
+
                 {onClose && (
                   <button
                     type="button"
@@ -4592,7 +4748,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       display: 'flex',
                       alignItems: 'center',
                     }}
-                    title="Fechar Visualização"
+                    title="Fechar Painel"
                   >
                     <X size={15} />
                   </button>

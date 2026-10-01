@@ -841,7 +841,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 if (onToggleCollapse) onToggleCollapse();
                 onSelectTab('venues');
               }}
-              title={activeVenue?.name || 'Todas as Casas (Rede Geral) - Clique para abrir configurações'}
+              title={activeVenue?.name || (userRole === 'master' ? 'Todas as Casas (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`)}
               style={{
                 width: '38px',
                 height: '38px',
@@ -899,7 +899,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}>
-                    {activeVenue?.name || 'Rede Geral'}
+                    {activeVenue?.name || (userRole === 'master' ? 'Rede Geral' : `Visão Geral (${allowedVenues.length})`)}
                   </div>
                 </div>
               </div>
@@ -934,7 +934,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               flexDirection: 'column',
               gap: '4px',
             }}>
-              {userRole === 'master' && (
+              {(userRole === 'master' || allowedVenues.length > 1) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -958,7 +958,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   }}
                 >
                   {renderVenueIconBadge(null, 24)}
-                  <span>Todas as Casas (Rede Geral)</span>
+                  <span>{userRole === 'master' ? 'Todas as Casas (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`}</span>
                 </button>
               )}
 

@@ -119,6 +119,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     } catch {}
     return null;
   });
+  const [activeWhatsAppSearchQuery, setActiveWhatsAppSearchQuery] = useState<string>('');
   const [crmOpenLeadId, setCrmOpenLeadId] = useState<string | undefined>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -281,7 +282,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   };
 
   const handleOpenLeadInWhatsApp = (leadId: string) => {
+    const targetLead = leads.find(l => l.id === leadId);
+    const searchName = targetLead?.name?.trim() || '';
     setActiveWhatsAppLeadId(leadId);
+    setActiveWhatsAppSearchQuery(searchName);
     setActiveTab('whatsapp');
     try {
       localStorage.setItem('bonomo_admin_active_tab', 'whatsapp');
@@ -553,8 +557,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return (
           <AdminWhatsAppWorkspaceView
             initialLeadId={activeWhatsAppLeadId || undefined}
+            searchQuery={activeWhatsAppSearchQuery}
             onClose={() => {
               setActiveWhatsAppLeadId(null);
+              setActiveWhatsAppSearchQuery('');
               try {
                 localStorage.removeItem('f5_wa_active_lead_id');
                 if (currentUser?.id) {

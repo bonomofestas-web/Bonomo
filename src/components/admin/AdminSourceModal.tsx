@@ -201,8 +201,8 @@ export const AdminSourceModal: React.FC<AdminSourceModalProps> = ({
       // Inicia a conexão
       const connectRes = await uazapiService.connectInstance(token, {
         phone: cleanPhone || undefined,
-        browser: 'auto',
-        systemName: name || 'F5 System',
+        browser: ['F5 System', 'Desktop', '1.0.0'],
+        systemName: 'F5 System',
       });
 
       if (connectRes.status === 'connected' || connectRes.loggedIn) {
