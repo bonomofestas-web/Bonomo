@@ -266,30 +266,27 @@ export const agendaAvailabilityService = {
     const defaultRule = type === 'visit' ? DEFAULT_VISITS_RULE : DEFAULT_TASTINGS_RULE;
     const rule = (type === 'visit' ? config?.visitsRule : config?.tastingsRule) || defaultRule;
 
-    // ── 1. PRECEDÊNCIA MÁXIMA: Override específico da data (Dia Pontual) ─────────
-    const override = config?.dateOverrides?.find(o => o.date === dateStr);
-    if (override && override.isBlocked) {
-      const msg = override.reason || 'Data bloqueada pela administração.';
-      return {
-        isBlocked: true,
-        isDayAvailable: false,
-        blockReason: msg,
-        reason: msg,
-        appliedMode: 'override',
-        slots: [],
-      };
-    }
-
     const [year, month, day] = dateStr.split('-').map(Number);
     const dateObj = new Date(year, month - 1, day);
     const dayOfWeek = dateObj.getDay(); // 0=Dom, 1=Seg, ..., 6=Sab
 
-    // ── 2. PRECEDÊNCIA INTERMEDIÁRIA: Bloco por Período (Range de Datas) ────────
+    // ── 1 & 2. PRECEDÊNCIA TEMPORAL DINÂMICA: Bloco vs Data Pontual (Override) ──
+    const override = config?.dateOverrides?.find(o => o.date === dateStr);
     const targetBlockType = type === 'visit' ? 'visits' : 'tastings';
     const activeBlock = (config?.blockRules || []).find(b => {
       const matchesType = b.type === 'both' || b.type === targetBlockType;
       return matchesType && b.startDate <= dateStr && dateStr <= b.endDate;
     });
+
+    // Timestamps de criação/edição para desempate temporal
+    const overrideTime = override?.updatedAt || override?.createdAt ? new Date(override.updatedAt || override.createdAt!).getTime() : 0;
+    const blockTime = activeBlock?.updatedAt || activeBlock?.createdAt ? new Date(activeBlock.updatedAt || activeBlock.createdAt!).getTime() : 0;
+
+    // Critério de Precedência:
+    // Se ambos existem, a ação mais recente (maior timestamp) prevalece.
+    // Se apenas um existe, ele prevalece sobre a recorrência semanal.
+    const useOverride = Boolean(override && (!activeBlock || overrideTime >= blockTime));
+    const useBlock = Boolean(activeBlock && (!override || blockTime > overrideTime));
 
     let effectiveSlots: string[] = [];
     let effectiveDuration = rule.durationMinutes || 60;
@@ -297,12 +294,26 @@ export const agendaAvailabilityService = {
     let effectiveMaxPax = rule.maxPaxPerSlot;
     let appliedMode: 'override' | 'block' | 'recurring' = 'recurring';
 
-    if (override?.customSlots && override.customSlots.length > 0) {
-      // Override com horários customizados
-      effectiveSlots = override.customSlots;
-      effectiveMaxPax = override.maxPaxPerSlot ?? effectiveMaxPax;
+    if (useOverride && override) {
       appliedMode = 'override';
-    } else if (activeBlock) {
+      if (override.isBlocked) {
+        const msg = override.reason || 'Data bloqueada pela administração.';
+        return {
+          isBlocked: true,
+          isDayAvailable: false,
+          blockReason: msg,
+          reason: msg,
+          appliedMode: 'override',
+          slots: [],
+        };
+      }
+      if (override.customSlots && override.customSlots.length > 0) {
+        effectiveSlots = override.customSlots;
+        effectiveMaxPax = override.maxPaxPerSlot ?? effectiveMaxPax;
+      } else {
+        effectiveSlots = rule.timeSlots;
+      }
+    } else if (useBlock && activeBlock) {
       appliedMode = 'block';
       effectiveDuration = activeBlock.durationMinutes || effectiveDuration;
       effectiveMaxBookings = activeBlock.maxConcurrentPerSlot || effectiveMaxBookings;
@@ -449,5 +460,13 @@ export const agendaAvailabilityService = {
     if (!config || !dateStr) return false;
     const res = this.getAvailableSlots(config, dateStr, type, []);
     return !res.isBlocked && res.slots.length > 0;
+  },
+
+  /**
+   * Filtra blocos ativos (oculta blocos passados onde endDate < todayStr)
+   */
+  filterActiveBlocks(blocks: import('../types/admin').AgendaBlockRule[] = [], todayStr?: string): import('../types/admin').AgendaBlockRule[] {
+    const today = todayStr || new Date().toISOString().split('T')[0];
+    return blocks.filter(b => !b.endDate || b.endDate >= today);
   }
 };

@@ -193,15 +193,15 @@ export const AdminAppointmentsView: React.FC = () => {
   const getCategoryBadgeStyle = (category: string) => {
     switch (category) {
       case 'Buffet & Degustação':
-        return { bg: 'rgba(236, 72, 153, 0.15)', color: '#F472B6', border: '1px solid rgba(236, 72, 153, 0.3)', icon: '🍽️' };
+        return { bg: 'rgba(236, 72, 153, 0.15)', color: '#F472B6', border: '1px solid rgba(236, 72, 153, 0.3)', icon: <UtensilsCrossed size={12} style={{ display: 'inline', marginRight: 3 }} /> };
       case 'Vestido de Gala':
-        return { bg: 'rgba(168, 85, 247, 0.15)', color: '#C084FC', border: '1px solid rgba(168, 85, 247, 0.3)', icon: '👗' };
+        return { bg: 'rgba(168, 85, 247, 0.15)', color: '#C084FC', border: '1px solid rgba(168, 85, 247, 0.3)', icon: <Sparkles size={12} style={{ display: 'inline', marginRight: 3 }} /> };
       case 'Cerimonial':
-        return { bg: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', icon: '📋' };
+        return { bg: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA', border: '1px solid rgba(59, 130, 246, 0.3)', icon: <FileText size={12} style={{ display: 'inline', marginRight: 3 }} /> };
       case 'Ensaio Fotográfico':
-        return { bg: 'rgba(245, 158, 11, 0.15)', color: '#FBBF24', border: '1px solid rgba(245, 158, 11, 0.3)', icon: '📸' };
+        return { bg: 'rgba(245, 158, 11, 0.15)', color: '#FBBF24', border: '1px solid rgba(245, 158, 11, 0.3)', icon: <Camera size={12} style={{ display: 'inline', marginRight: 3 }} /> };
       default:
-        return { bg: 'rgba(16, 185, 129, 0.15)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.3)', icon: '✨' };
+        return { bg: 'rgba(16, 185, 129, 0.15)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.3)', icon: <Sparkles size={12} style={{ display: 'inline', marginRight: 3 }} /> };
     }
   };
 
@@ -596,52 +596,107 @@ export const AdminAppointmentsView: React.FC = () => {
                   </div>
 
                   {/* Day Items List (Appointments + Tasks) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', maxHeight: '105px' }}>
-                    {/* Appointments */}
-                    {dayAppointments.slice(0, 3).map(app => {
-                      const badge = getCategoryBadgeStyle(app.category);
-                      return (
-                        <div
-                          key={app.id}
-                          onClick={() => handleOpenEdit(app.debutanteId, app)}
-                          title={`${app.title} — ${app.debutanteName} (${app.time})`}
-                          style={{
-                            background: badge.bg,
-                            border: badge.border,
-                            color: badge.color,
-                            borderRadius: '6px',
-                            padding: '3px 6px',
-                            fontSize: '0.66rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '1px',
-                            transition: 'all 0.12s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translateY(-1px)';
-                            e.currentTarget.style.filter = 'brightness(1.15)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'translateY(0)';
-                            e.currentTarget.style.filter = 'none';
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px' }}>
-                              {badge.icon} {app.title}
-                            </span>
-                            <span style={{ fontSize: '0.62rem', opacity: 0.85, flexShrink: 0 }}>
-                              {app.time}
-                            </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', maxHeight: '105px', flex: 1 }}>
+                    {/* Modo Todas as Casas: Logos das unidades operantes + Contador */}
+                    {(!filterState.venueId || filterState.venueId === 'all') && (!activeVenueId || activeVenueId === 'all') ? (
+                      totalItems > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            {Array.from(new Set(dayAppointments.map(a => a.venueId).filter(Boolean)))
+                              .map(vid => venues.find(v => v.id === vid))
+                              .filter(Boolean)
+                              .map(v => (
+                                <div
+                                  key={v!.id}
+                                  title={`Unidade: ${v!.name}`}
+                                  style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '50%',
+                                    overflow: 'hidden',
+                                    border: '1.5px solid var(--adm-accent)',
+                                    background: 'var(--adm-bg-card)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {v!.logoUrl ? (
+                                    <img src={v!.logoUrl} alt={v!.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 900, color: 'var(--adm-accent)' }}>
+                                      {v!.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
                           </div>
-                          <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {app.debutanteName}
+                          <div style={{
+                            padding: '3px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(212, 175, 55, 0.1)',
+                            border: '1px solid rgba(212, 175, 55, 0.3)',
+                            color: 'var(--adm-accent)',
+                            fontSize: '0.64rem',
+                            fontWeight: 800,
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}>
+                            {totalItems} {totalItems === 1 ? 'compromisso' : 'compromissos'}
                           </div>
                         </div>
-                      );
-                    })}
+                      ) : null
+                    ) : (
+                      /* Modo Casa Específica: Cards detalhados */
+                      dayAppointments.slice(0, 3).map(app => {
+                        const badge = getCategoryBadgeStyle(app.category);
+                        return (
+                          <div
+                            key={app.id}
+                            onClick={() => handleOpenEdit(app.debutanteId, app)}
+                            title={`${app.title} — ${app.debutanteName} (${app.time})`}
+                            style={{
+                              background: badge.bg,
+                              border: badge.border,
+                              color: badge.color,
+                              borderRadius: '6px',
+                              padding: '3px 6px',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '1px',
+                              transition: 'all 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-1px)';
+                              e.currentTarget.style.filter = 'brightness(1.15)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.filter = 'none';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px', display: 'flex', alignItems: 'center' }}>
+                                {badge.icon} {app.title}
+                              </span>
+                              <span style={{ fontSize: '0.62rem', opacity: 0.85, flexShrink: 0 }}>
+                                {app.time}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {app.debutanteName}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
 
                     {/* Tasks with Due Date (Audio 2: automatically appear on agenda) */}
                     {dayTasks.map(t => (

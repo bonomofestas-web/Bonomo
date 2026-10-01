@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, Calendar, Trash2, ShieldAlert,
   Check, Copy, ChevronLeft, ChevronRight,
@@ -63,14 +63,25 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     updateTask
   } = useAdminState();
 
-  const selectedVenueId = venueId || (activeVenueId !== 'all' && activeVenueId ? activeVenueId : venues[0]?.id || 'all');
+  // Mini-App Etapas: 1: Selecionar Casa -> 2: Selecionar Tipo -> 3: Painel de Configurações
+  const [planningStep, setPlanningStep] = useState<1 | 2 | 3>(() => {
+    if (venueId && initialType) return 3;
+    if (venueId) return 2;
+    return 1;
+  });
+
+  const [selectedVenueId, setSelectedVenueId] = useState<string>(() => {
+    return venueId || (activeVenueId !== 'all' && activeVenueId ? activeVenueId : venues[0]?.id || 'all');
+  });
+
+  const [activeType, setActiveType] = useState<CommercialCommitmentType>(() => {
+    return initialType || 'visit';
+  });
+
   const existingConfig = venueAgendaConfigs.find(c => c.venueId === selectedVenueId) 
     || agendaAvailabilityService.getDefaultConfig(selectedVenueId);
 
-  // Tipo ativo fixado pela escolha prévia do usuário: Visita vs Degustação
-  const activeType = initialType;
-
-  // Modo ativo: 'hub' (Pré-tela / Visão Geral), 'recurring' (Grade Semanal), 'block' (Por Bloco), 'override' (Por Data)
+  // Modo ativo dentro da Etapa 3: 'hub' (Pré-tela / Visão Geral), 'recurring' (Grade Semanal), 'block' (Por Bloco), 'override' (Por Data)
   const [activeMode, setActiveMode] = useState<'hub' | 'recurring' | 'block' | 'override'>('hub');
 
   // Regras de Visitas e Degustações
@@ -93,6 +104,32 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     maxPaxPerSlot: existingConfig.tastingsRule?.maxPaxPerSlot || DEFAULT_TASTINGS_RULE.maxPaxPerSlot,
     daySchedules: existingConfig.tastingsRule?.daySchedules || DEFAULT_TASTINGS_RULE.daySchedules,
   }));
+
+  // Sincroniza regras quando seleciona outra casa no fluxo
+  useEffect(() => {
+    const fresh = venueAgendaConfigs.find(c => c.venueId === selectedVenueId) 
+      || agendaAvailabilityService.getDefaultConfig(selectedVenueId);
+    setVisitsRule({
+      enabled: fresh.visitsRule?.enabled ?? true,
+      enabledDays: fresh.visitsRule?.enabledDays || DEFAULT_VISITS_RULE.enabledDays,
+      timeSlots: fresh.visitsRule?.timeSlots || DEFAULT_VISITS_RULE.timeSlots,
+      durationMinutes: fresh.visitsRule?.durationMinutes || DEFAULT_VISITS_RULE.durationMinutes,
+      maxConcurrentPerSlot: fresh.visitsRule?.maxConcurrentPerSlot || DEFAULT_VISITS_RULE.maxConcurrentPerSlot,
+      maxPaxPerSlot: fresh.visitsRule?.maxPaxPerSlot || DEFAULT_VISITS_RULE.maxPaxPerSlot,
+      daySchedules: fresh.visitsRule?.daySchedules || DEFAULT_VISITS_RULE.daySchedules,
+    });
+    setTastingsRule({
+      enabled: fresh.tastingsRule?.enabled ?? true,
+      enabledDays: fresh.tastingsRule?.enabledDays || DEFAULT_TASTINGS_RULE.enabledDays,
+      timeSlots: fresh.tastingsRule?.timeSlots || DEFAULT_TASTINGS_RULE.timeSlots,
+      durationMinutes: fresh.tastingsRule?.durationMinutes || DEFAULT_TASTINGS_RULE.durationMinutes,
+      maxConcurrentPerSlot: fresh.tastingsRule?.maxConcurrentPerSlot || DEFAULT_TASTINGS_RULE.maxConcurrentPerSlot,
+      maxPaxPerSlot: fresh.tastingsRule?.maxPaxPerSlot || DEFAULT_TASTINGS_RULE.maxPaxPerSlot,
+      daySchedules: fresh.tastingsRule?.daySchedules || DEFAULT_TASTINGS_RULE.daySchedules,
+    });
+    setBlockRules(fresh.blockRules || []);
+    setDateOverrides(fresh.dateOverrides || []);
+  }, [selectedVenueId, venueAgendaConfigs]);
 
   // Blocos por Período
   const [blockRules, setBlockRules] = useState<AgendaBlockRule[]>(() => existingConfig.blockRules || []);
@@ -440,6 +477,339 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
   const venueName = venues.find(v => v.id === selectedVenueId)?.name || 'Todas as Unidades';
 
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ETAPA 1: SELEÇÃO DA UNIDADE (CASAS DE FESTA)
+  // ═════════════════════════════════════════════════════════════════════════════
+  if (planningStep === 1) {
+    return (
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 60,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--adm-bg-app, #F8FAFC)',
+        color: 'var(--adm-text-title, #0F172A)',
+        padding: '32px',
+        overflowY: 'auto',
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}>
+        {/* Header da Etapa 1 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', marginBottom: '6px' }}>
+              <Calendar size={18} />
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Etapa 1 de 3 • Planejamento de Calendário
+              </span>
+            </div>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
+              Selecione a Casa de Festas
+            </h1>
+            <p style={{ fontSize: '0.85rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
+              Escolha a unidade física para gerenciar e planejar as agendas de Visitas e Degustações.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              color: 'var(--adm-text-muted)',
+              borderRadius: '10px',
+              padding: '8px',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Grid de Casas de Festa */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: '20px',
+        }}>
+          {venues.map(v => (
+            <div
+              key={v.id}
+              onClick={() => {
+                setSelectedVenueId(v.id);
+                setPlanningStep(2);
+              }}
+              style={{
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-3px)';
+                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = 'var(--adm-border)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.06)';
+              }}
+            >
+              <div style={{ height: '140px', background: 'var(--adm-bg-surface)', position: 'relative', overflow: 'hidden' }}>
+                {v.ballroomImageUrl || v.logoUrl ? (
+                  <img src={v.ballroomImageUrl || v.logoUrl} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-text-muted)' }}>
+                    <Building2 size={40} />
+                  </div>
+                )}
+                {v.logoUrl && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '10px',
+                    left: '14px',
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                    border: '2px solid #FFFFFF',
+                    background: '#FFFFFF',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  }}>
+                    <img src={v.logoUrl} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  </div>
+                )}
+              </div>
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  {v.name}
+                </h3>
+                {v.address && (
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
+                    {v.address}
+                  </p>
+                )}
+                <div style={{
+                  marginTop: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: '10px',
+                  borderTop: '1px solid var(--adm-border)',
+                }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-accent)', fontWeight: 800 }}>
+                    Planejar Horários
+                  </span>
+                  <ArrowRight size={14} color="var(--adm-accent)" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ETAPA 2: SELEÇÃO DO TIPO DE AGENDA (VISITAS VS DEGUSTAÇÕES)
+  // ═════════════════════════════════════════════════════════════════════════════
+  if (planningStep === 2) {
+    const activeVenueObj = venues.find(v => v.id === selectedVenueId);
+    return (
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 60,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--adm-bg-app, #F8FAFC)',
+        color: 'var(--adm-text-title, #0F172A)',
+        padding: '32px',
+        overflowY: 'auto',
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+          <div>
+            <button
+              type="button"
+              onClick={() => setPlanningStep(1)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-accent)',
+                fontSize: '0.80rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                marginBottom: '12px',
+                padding: 0,
+              }}
+            >
+              <ArrowLeft size={16} />
+              Voltar às Casas
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--adm-accent)', marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Etapa 2 de 3 • {activeVenueObj?.name || 'Casa Selecionada'}
+              </span>
+            </div>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--adm-text-title)', margin: 0 }}>
+              Qual Agenda Você Deseja Planejar?
+            </h1>
+            <p style={{ fontSize: '0.85rem', color: 'var(--adm-text-muted)', margin: '4px 0 0 0' }}>
+              Selecione o tipo de compromisso para configurar a grade semanal, blocos e datas pontuais.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              color: 'var(--adm-text-muted)',
+              borderRadius: '10px',
+              padding: '8px',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* 2 Cards de Tipo */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '24px',
+          maxWidth: '850px',
+        }}>
+          {/* Card Visitas */}
+          <div
+            onClick={() => {
+              setActiveType('visit');
+              setPlanningStep(3);
+            }}
+            style={{
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '18px',
+              padding: '28px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-3px)';
+              e.currentTarget.style.borderColor = '#10B981';
+              e.currentTarget.style.boxShadow = '0 12px 28px rgba(16,185,129,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'var(--adm-border)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '14px',
+              background: 'rgba(16,185,129,0.12)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#10B981',
+            }}>
+              <Building2 size={26} />
+            </div>
+            <div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                Visitas Comerciais
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted)', lineHeight: '1.4' }}>
+                Apresentação dos salões, reuniões com noivos e debutantes, agendamento de reuniões presenciais para fechamento de contratos.
+              </p>
+            </div>
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#10B981', fontWeight: 800, fontSize: '0.80rem' }}>
+              <span>Configurar Agenda de Visitas</span>
+              <ArrowRight size={14} />
+            </div>
+          </div>
+
+          {/* Card Degustação */}
+          <div
+            onClick={() => {
+              setActiveType('tasting');
+              setPlanningStep(3);
+            }}
+            style={{
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '18px',
+              padding: '28px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-3px)';
+              e.currentTarget.style.borderColor = '#D97706';
+              e.currentTarget.style.boxShadow = '0 12px 28px rgba(217,119,6,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'var(--adm-border)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '14px',
+              background: 'rgba(217,119,6,0.12)',
+              border: '1px solid rgba(217,119,6,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#D97706',
+            }}>
+              <UtensilsCrossed size={26} />
+            </div>
+            <div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                Degustação Gastronômica
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted)', lineHeight: '1.4' }}>
+                Experiência de menu completo, prova de pratos, definição de limites rigorosos de PAX (número de pessoas) e horários de buffet.
+              </p>
+            </div>
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#D97706', fontWeight: 800, fontSize: '0.80rem' }}>
+              <span>Configurar Agenda de Degustações</span>
+              <ArrowRight size={14} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ETAPA 3: PAINEL DE CONFIGURAÇÕES COM HEADER FIXO E BOTÃO VOLTAR
+  // ═════════════════════════════════════════════════════════════════════════════
   return (
     <div style={{
       position: 'absolute',
@@ -463,7 +833,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         flexDirection: 'column',
         overflow: 'hidden',
       }}>
-        {/* HEADER SUPERIOR LIMPO E ELEGANTE */}
+        {/* HEADER SUPERIOR FIXO COM BOTÃO VOLTAR */}
         <div style={{
           padding: '16px 24px',
           borderBottom: '1px solid var(--adm-border, #E2E8F0)',
@@ -474,6 +844,28 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* Botão Voltar para Etapa 2 */}
+            <button
+              type="button"
+              onClick={() => setPlanningStep(2)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                color: 'var(--adm-text-title)',
+                borderRadius: '8px',
+                padding: '7px 12px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <ArrowLeft size={14} />
+              <span>Voltar</span>
+            </button>
+
             <div style={{
               width: '42px',
               height: '42px',

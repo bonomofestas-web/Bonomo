@@ -56,7 +56,17 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return leads.find(l => l.id === selectedLeadId) || initialLead || null;
   }, [leads, selectedLeadId, initialLead]);
 
-  const targetVenueId = currentLead?.venueId || venues[0]?.id || 'all';
+  const [customVenueId, setCustomVenueId] = useState<string>(() => {
+    return initialLead?.venueId || '';
+  });
+
+  useEffect(() => {
+    if (currentLead?.venueId) {
+      setCustomVenueId(currentLead.venueId);
+    }
+  }, [currentLead?.id, currentLead?.venueId]);
+
+  const targetVenueId = customVenueId || currentLead?.venueId || venues[0]?.id || 'all';
   const targetVenue = venues.find(v => v.id === targetVenueId);
   const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
 
@@ -826,8 +836,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           onClick={() => {
                             setSelectedLeadId(l.id);
                             setIsLeadSearchOpen(false);
+                            if (l.venueId) setCustomVenueId(l.venueId);
                             if (l.estimatedGuests) setPax(Math.min(l.estimatedGuests, 4));
                             if (l.closerId || l.sdrId) setResponsibleId(l.closerId || l.sdrId || '');
+                            setSelectedTime('');
                           }}
                           style={{
                             padding: '10px 14px',
@@ -858,6 +870,41 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               </div>
             )}
           </div>
+
+          {/* SELETOR DE UNIDADE DA CASA DE FESTA COM RECÁLCULO INSTANTÂNEO */}
+          {currentLead && (
+            <div style={{ marginTop: '-8px' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
+                UNIDADE DA CASA DE FESTA (LOCAL DO ATENDIMENTO)
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <select
+                  value={targetVenueId}
+                  onChange={(e) => {
+                    setCustomVenueId(e.target.value);
+                    setSelectedTime('');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-card, #1E293B)',
+                    color: 'var(--adm-text-title, #FFFFFF)',
+                    border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
+                    fontSize: '0.84rem',
+                    outline: 'none',
+                    fontWeight: 700,
+                  }}
+                >
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} {v.address ? `• ${v.address}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* GRID CALENDÁRIO VISUAL E HORÁRIOS */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px' }}>

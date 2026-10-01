@@ -608,6 +608,8 @@ export interface AgendaBlockRule {
   durationMinutes?: number;
   maxConcurrentPerSlot?: number;
   maxPaxPerSlot?: number;
+  createdAt?: string;           // ISO 8601
+  updatedAt?: string;           // ISO 8601
 }
 
 export interface AgendaRecurringRule {
@@ -626,6 +628,8 @@ export interface AgendaDateOverride {
   reason?: string;              // 'Feriado', 'Manutenção', 'Evento Privado'
   customSlots?: string[];       // Horários específicos que substituem a regra naquele dia
   maxPaxPerSlot?: number;
+  createdAt?: string;           // ISO 8601
+  updatedAt?: string;           // ISO 8601
 }
 
 export interface VenueAgendaConfig {
