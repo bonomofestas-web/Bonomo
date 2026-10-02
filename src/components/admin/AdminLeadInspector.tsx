@@ -44,6 +44,8 @@ interface AdminLeadInspectorProps {
   selectedRecipientPhone?: string;
   onSelectRecipientPhone?: (phone: string) => void;
   highlightMissingFields?: boolean;
+  onClose?: () => void;
+  isModal?: boolean;
 }
 
 const maskCpfInput = (value: string): string => {
@@ -97,6 +99,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   selectedRecipientPhone,
   onSelectRecipientPhone,
   highlightMissingFields = false,
+  onClose,
+  isModal = false,
 }) => {
   const { 
     currentUser, 
@@ -1140,49 +1144,106 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {!readOnly && (
+            {isModal || onClose ? (
+              <button
+                type="button"
+                onClick={onClose || onToggleCollapse}
+                title="Fechar ficha"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#FFFFFF',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                  e.currentTarget.style.borderColor = '#EF4444';
+                  e.currentTarget.style.color = '#EF4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  e.currentTarget.style.color = '#FFFFFF';
+                }}
+              >
+                <X size={15} />
+              </button>
+            ) : (
               <>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (lead.isArchived) {
-                      if (confirm(`Deseja desarquivar o lead "${lead.name}"?`)) {
-                        await unarchiveLead(lead.id);
-                      }
-                    } else {
-                      if (confirm(`Deseja arquivar o lead "${lead.name}"? Ele será desanexado dos funis ativos sem disparar alertas.`)) {
-                        await archiveLead(lead.id);
-                      }
-                    }
-                  }}
-                  title={lead.isArchived ? "Desarquivar este Lead" : "Arquivar este Lead"}
-                  style={{
-                    background: lead.isArchived ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.12)',
-                    border: '1px solid rgba(139, 92, 246, 0.35)',
-                    color: '#A78BFA',
-                    borderRadius: '6px',
-                    padding: '4px 6px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <Archive size={13} />
-                </button>
+                {!readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (lead.isArchived) {
+                          if (confirm(`Deseja desarquivar o lead "${lead.name}"?`)) {
+                            await unarchiveLead(lead.id);
+                          }
+                        } else {
+                          if (confirm(`Deseja arquivar o lead "${lead.name}"? Ele será desanexado dos funis ativos sem disparar alertas.`)) {
+                            await archiveLead(lead.id);
+                          }
+                        }
+                      }}
+                      title={lead.isArchived ? "Desarquivar este Lead" : "Arquivar este Lead"}
+                      style={{
+                        background: lead.isArchived ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.12)',
+                        border: '1px solid rgba(139, 92, 246, 0.35)',
+                        color: '#A78BFA',
+                        borderRadius: '6px',
+                        padding: '4px 6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Archive size={13} />
+                    </button>
 
-                {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
-                  lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
-                ) && (
+                    {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
+                      lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirmModal(true)}
+                        title="Excluir este Lead"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          color: '#EF4444',
+                          borderRadius: '6px',
+                          padding: '4px 6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {onToggleCollapse && (
                   <button
                     type="button"
-                    onClick={() => setShowDeleteConfirmModal(true)}
-                    title="Excluir este Lead"
+                    onClick={onToggleCollapse}
+                    title={isCollapsed ? "Expandir ficha do lead" : "Recolher ficha do lead"}
                     style={{
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#EF4444',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(20, 169, 215, 0.3)',
+                      color: '#14A9D7',
                       borderRadius: '6px',
                       padding: '4px 6px',
                       cursor: 'pointer',
@@ -1192,32 +1253,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    <Trash2 size={13} />
+                    {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                   </button>
                 )}
               </>
-            )}
-
-            {onToggleCollapse && (
-              <button
-                type="button"
-                onClick={onToggleCollapse}
-                title={isCollapsed ? "Expandir ficha do lead" : "Recolher ficha do lead"}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(20, 169, 215, 0.3)',
-                  color: '#14A9D7',
-                  borderRadius: '6px',
-                  padding: '4px 6px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-              </button>
             )}
           </div>
         </div>
@@ -2350,8 +2389,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
             <div style={cardStyle}>
               {/* 1. SDR (Responsável Pré-Vendas) */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>SDR</span>
+              <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('sdrId'), position: 'relative' }}>
+                <span style={cardLabelStyle}>
+                  SDR {isFieldMissing('sdrId') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={cardValueStyle}>
                   <div
                     onClick={() => {
@@ -2536,8 +2577,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
               {/* 2. Closer (Responsável Fechamento) */}
               {!isPostSale && (
-                <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                  <span style={cardLabelStyle}>Closer</span>
+                <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('closerId'), position: 'relative' }}>
+                  <span style={cardLabelStyle}>
+                    Closer {isFieldMissing('closerId') && <span style={{ color: '#EF4444' }}>*</span>}
+                  </span>
                   <div style={cardValueStyle}>
                     <div
                       onClick={() => {
@@ -2836,8 +2879,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 5. Entrada R$ */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Entrada</span>
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('downPayment') }}>
+                <span style={cardLabelStyle}>
+                  Entrada {isFieldMissing('downPayment') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-muted)', flexShrink: 0 }}>R$</span>
                   <input
@@ -2856,8 +2901,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 6. Parcelas */}
-              <div style={cardRowStyle}>
-                <span style={cardLabelStyle}>Parcelas</span>
+              <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('installments') }}>
+                <span style={cardLabelStyle}>
+                  Parcelas {isFieldMissing('installments') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={cardValueStyle}>
                   <input
                     type="number"
@@ -2875,8 +2922,10 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 7. Cartão de Crédito */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                <span style={cardLabelStyle}>Cartão Crédito</span>
+              <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('hasCreditCard'), position: 'relative' }}>
+                <span style={cardLabelStyle}>
+                  Cartão Crédito {isFieldMissing('hasCreditCard') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
                 <div style={cardValueStyle}>
                   <div
                     onClick={() => {
@@ -3602,10 +3651,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   </>
                 )}
 
-                {/* Dados Contratuais Opcionais */}
-                {(draftCpf || showCpfField) && (
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>CPF</span>
+                {/* Dados Contratuais: CPF, E-mail, Bairro e Endereço */}
+                {(draftCpf || showCpfField || isFieldMissing('cpf')) && (
+                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('cpf') }}>
+                    <span style={cardLabelStyle}>
+                      CPF {isFieldMissing('cpf') && <span style={{ color: '#EF4444' }}>*</span>}
+                    </span>
                     <div style={cardValueStyle}>
                       <input
                         type="text"
@@ -3627,9 +3678,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   </div>
                 )}
 
-                {(draftEmail || showEmailField) && (
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>E-mail</span>
+                {(draftEmail || showEmailField || isFieldMissing('email')) && (
+                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('email') }}>
+                    <span style={cardLabelStyle}>
+                      E-mail {isFieldMissing('email') && <span style={{ color: '#EF4444' }}>*</span>}
+                    </span>
                     <div style={cardValueStyle}>
                       <input
                         type="email"
@@ -3651,9 +3704,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   </div>
                 )}
 
-                {(draftNeighborhood || showNeighborhoodField) && (
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>Bairro</span>
+                {(draftNeighborhood || showNeighborhoodField || isFieldMissing('neighborhood')) && (
+                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('neighborhood') }}>
+                    <span style={cardLabelStyle}>
+                      Bairro {isFieldMissing('neighborhood') && <span style={{ color: '#EF4444' }}>*</span>}
+                    </span>
                     <div style={cardValueStyle}>
                       <input
                         type="text"
@@ -3675,9 +3730,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   </div>
                 )}
 
-                {(draftAddress || showAddressField) && (
-                  <div style={cardRowStyle}>
-                    <span style={cardLabelStyle}>Endereço</span>
+                {(draftAddress || showAddressField || isFieldMissing('address')) && (
+                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('address') }}>
+                    <span style={cardLabelStyle}>
+                      Endereço {isFieldMissing('address') && <span style={{ color: '#EF4444' }}>*</span>}
+                    </span>
                     <div style={cardValueStyle}>
                       <input
                         type="text"
@@ -3701,14 +3758,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
                 {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Contato Principal */}
                 {!effectiveReadOnly && (
-                  (!draftEmail && !showEmailField) ||
-                  (!draftCpf && !showCpfField) ||
-                  (!draftNeighborhood && !showNeighborhoodField) ||
-                  (!draftAddress && !showAddressField)
+                  (!draftEmail && !showEmailField && !isFieldMissing('email')) ||
+                  (!draftCpf && !showCpfField && !isFieldMissing('cpf')) ||
+                  (!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood')) ||
+                  (!draftAddress && !showAddressField && !isFieldMissing('address'))
                 ) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
                     <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Dado adicional:</span>
-                    {!draftEmail && !showEmailField && (
+                    {!draftEmail && !showEmailField && !isFieldMissing('email') && (
                       <button
                         type="button"
                         onClick={() => setShowEmailField(true)}
@@ -3728,7 +3785,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         <Plus size={10} /> E-mail
                       </button>
                     )}
-                    {!draftCpf && !showCpfField && (
+                    {!draftCpf && !showCpfField && !isFieldMissing('cpf') && (
                       <button
                         type="button"
                         onClick={() => setShowCpfField(true)}
@@ -3748,7 +3805,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         <Plus size={10} /> CPF
                       </button>
                     )}
-                    {!draftNeighborhood && !showNeighborhoodField && (
+                    {!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood') && (
                       <button
                         type="button"
                         onClick={() => setShowNeighborhoodField(true)}
@@ -3768,7 +3825,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                         <Plus size={10} /> Bairro
                       </button>
                     )}
-                    {!draftAddress && !showAddressField && (
+                    {!draftAddress && !showAddressField && !isFieldMissing('address') && (
                       <button
                         type="button"
                         onClick={() => setShowAddressField(true)}

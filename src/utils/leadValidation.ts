@@ -60,6 +60,56 @@ export function validateLeadForWon(lead: Lead): string[] {
     missing.push('Formato de Pagamento');
   }
 
+  // 10. SDR Responsável
+  if (!lead.sdrId?.trim() && !lead.assignedTo?.trim()) {
+    missing.push('SDR Responsável');
+  }
+
+  // 11. Closer Responsável
+  if (!lead.closerId?.trim()) {
+    missing.push('Closer Responsável');
+  }
+
+  // 12. Valor de Entrada
+  if (lead.downPayment === undefined || lead.downPayment === null) {
+    missing.push('Valor de Entrada (R$)');
+  }
+
+  // 13. Parcelas
+  const hasInstallments = Boolean((lead.installments && lead.installments > 0) || (lead.installmentValue && lead.installmentValue > 0));
+  if (!hasInstallments) {
+    missing.push('Número de Parcelas');
+  }
+
+  // 14. Cartão de Crédito (Sim ou Não)
+  if (lead.hasCreditCard === undefined || lead.hasCreditCard === null) {
+    missing.push('Cartão de Crédito (Sim ou Não)');
+  }
+
+  // 15. E-mail do Contato
+  const hasEmail = Boolean(lead.email?.trim() || lead.contacts?.some(c => c.email?.trim()));
+  if (!hasEmail) {
+    missing.push('E-mail do Contato');
+  }
+
+  // 16. CPF
+  const hasCpf = Boolean(lead.cpf?.trim() || lead.contacts?.some(c => c.cpf?.trim()));
+  if (!hasCpf) {
+    missing.push('CPF do Contratante / Responsável');
+  }
+
+  // 17. Bairro
+  const hasNeighborhood = Boolean(lead.neighborhood?.trim() || lead.contacts?.some(c => c.neighborhood?.trim()));
+  if (!hasNeighborhood) {
+    missing.push('Bairro');
+  }
+
+  // 18. Endereço
+  const hasAddress = Boolean(lead.address?.trim() || lead.contacts?.some(c => c.address?.trim()));
+  if (!hasAddress) {
+    missing.push('Endereço Completo');
+  }
+
   // NOTA CRÍTICA: Data do Evento / Festa NÃO É OBRIGATÓRIA (definida posteriormente com o pós-venda)
 
   return missing;
@@ -125,6 +175,56 @@ export function getMissingLeadFieldKeys(lead: Lead): Set<string> {
   // 9. Forma de Pagamento
   if (!lead.paymentMethod?.trim()) {
     missing.add('paymentMethod');
+  }
+
+  // 10. SDR
+  if (!lead.sdrId?.trim() && !lead.assignedTo?.trim()) {
+    missing.add('sdrId');
+  }
+
+  // 11. Closer
+  if (!lead.closerId?.trim()) {
+    missing.add('closerId');
+  }
+
+  // 12. Entrada
+  if (lead.downPayment === undefined || lead.downPayment === null) {
+    missing.add('downPayment');
+  }
+
+  // 13. Parcelas
+  const hasInstallments = Boolean((lead.installments && lead.installments > 0) || (lead.installmentValue && lead.installmentValue > 0));
+  if (!hasInstallments) {
+    missing.add('installments');
+  }
+
+  // 14. Cartão de Crédito
+  if (lead.hasCreditCard === undefined || lead.hasCreditCard === null) {
+    missing.add('hasCreditCard');
+  }
+
+  // 15. E-mail
+  const hasEmail = Boolean(lead.email?.trim() || lead.contacts?.some(c => c.email?.trim()));
+  if (!hasEmail) {
+    missing.add('email');
+  }
+
+  // 16. CPF
+  const hasCpf = Boolean(lead.cpf?.trim() || lead.contacts?.some(c => c.cpf?.trim()));
+  if (!hasCpf) {
+    missing.add('cpf');
+  }
+
+  // 17. Bairro
+  const hasNeighborhood = Boolean(lead.neighborhood?.trim() || lead.contacts?.some(c => c.neighborhood?.trim()));
+  if (!hasNeighborhood) {
+    missing.add('neighborhood');
+  }
+
+  // 18. Endereço
+  const hasAddress = Boolean(lead.address?.trim() || lead.contacts?.some(c => c.address?.trim()));
+  if (!hasAddress) {
+    missing.add('address');
   }
 
   return missing;
