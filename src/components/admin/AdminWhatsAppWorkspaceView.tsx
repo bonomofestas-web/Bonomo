@@ -1055,22 +1055,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     // For Post-Sale: only filter by global activeVenueId or filterVenueId, never by a commercial funnel's venueId
     const globalVenueFilter = (activeVenueId !== 'all' && activeVenueId !== 'multi') ? activeVenueId : null;
 
-    // Conjunto de unidades autorizadas para o funil ativo (incluindo compartilhamento multi-unidades, ex: ERL / Rose)
-    const funnelAllowedVenues = (() => {
-      if (!currentFunnel || isPostSaleFunnel) return null;
-      const s = new Set<string>();
-      if (currentFunnel.venueId && currentFunnel.venueId !== 'all') {
-        s.add(currentFunnel.venueId);
-      }
-      if (Array.isArray(currentFunnel.sharedVenueIds)) {
-        currentFunnel.sharedVenueIds.forEach(id => s.add(id));
-      }
-      if (Array.isArray((currentFunnel as any).shared_venue_ids)) {
-        (currentFunnel as any).shared_venue_ids.forEach((id: string) => s.add(id));
-      }
-      return s.size > 0 ? s : null;
-    })();
-
     const targetVenueId = isPostSaleFunnel
       ? (filterVenueId !== 'all' ? filterVenueId : globalVenueFilter)
       : (filterVenueId !== 'all' ? filterVenueId : globalVenueFilter);
@@ -1128,22 +1112,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
 
       // Se o usuário filtrou explicitamente por uma casa específica no dropdown de filtro:
-      if (filterVenueId !== 'all' && lead.venueId && lead.venueId !== filterVenueId) {
-        if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
-      } else if (!isPostSaleFunnel && currentFunnel) {
-        // Aceita qualquer lead pertencente à casa principal OU às casas compartilhadas deste funil comercial (ex: ERL / Rose)
-        if (funnelAllowedVenues && lead.venueId && !funnelAllowedVenues.has(lead.venueId)) {
+      if (filterVenueId !== 'all') {
+        if (lead.venueId && lead.venueId !== filterVenueId) {
           if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
-      } else if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
-        // Se o lead pertence a um funil compartilhado que inclui targetVenueId, ele deve ser aceito
-        const leadFunnel = funnels.find(f => f.id === lead.funnelId);
-        const isSharedWithTarget = leadFunnel && (
-          leadFunnel.venueId === targetVenueId ||
-          (Array.isArray(leadFunnel.sharedVenueIds) && leadFunnel.sharedVenueIds.includes(targetVenueId)) ||
-          (Array.isArray((leadFunnel as any).shared_venue_ids) && (leadFunnel as any).shared_venue_ids.includes(targetVenueId))
-        );
-        if (!isSharedWithTarget && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+      } else if (!currentFunnel && !isPostSaleFunnel) {
+        // Se NÃO há funil específico selecionado (ex: "Todos os Funis Comerciais") e há filtro de unidade:
+        if (targetVenueId && lead.venueId && lead.venueId !== targetVenueId) {
+          // Se o lead pertence a um funil compartilhado que inclui targetVenueId, ele deve ser aceito
+          const leadFunnel = funnels.find(f => f.id === lead.funnelId);
+          const isSharedWithTarget = leadFunnel && (
+            leadFunnel.venueId === targetVenueId ||
+            (Array.isArray(leadFunnel.sharedVenueIds) && leadFunnel.sharedVenueIds.includes(targetVenueId)) ||
+            (Array.isArray((leadFunnel as any).shared_venue_ids) && (leadFunnel as any).shared_venue_ids.includes(targetVenueId))
+          );
+          if (!isSharedWithTarget && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
+        }
       }
 
       // 2. Ownership / Quick Filter Tabs
