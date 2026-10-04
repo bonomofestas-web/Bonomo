@@ -31,6 +31,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   // Standard Login State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +41,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   // First Access Flow State
   const [activationEmail, setActivationEmail] = useState('');
   const [matchedCollab, setMatchedCollab] = useState<any>(null);
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '', '', '']);
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
   const [countdown, setCountdown] = useState<number>(60);
   const [isResending, setIsResending] = useState<boolean>(false);
@@ -218,7 +219,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       const success = await login(cleanEmail, cleanPassword);
 
       if (!success) {
-        throw new Error('E-mail ou senha incorretos.');
+        throw new Error('E-mail ou senha incorreta.');
       }
 
       if (onSuccessLogin) {
@@ -227,7 +228,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         window.location.href = window.location.origin + '/?admin=true';
       }
     } catch (err: any) {
-      setError(err?.message || 'Credenciais inválidas. Verifique seu e-mail e senha.');
+      setError(err?.message || 'E-mail ou senha incorreta.');
     } finally {
       setLoading(false);
     }
@@ -248,24 +249,56 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
     setLoading(true);
 
     try {
-      // Find collaborator in system
-      const found = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+      // 1. Procura o colaborador em memória
+      let found = collaborators.find(c => c.email.toLowerCase() === cleanEmail);
+
+      // 2. Se não estiver em memória, consulta diretamente no Supabase em tempo real
+      if (!found && isSupabaseConfigured) {
+        try {
+          const { data: dbRow } = await supabase
+            .from('collaborators')
+            .select('*')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+
+          if (dbRow) {
+            found = {
+              id: dbRow.id,
+              name: dbRow.name,
+              email: dbRow.email,
+              role: dbRow.role || 'sdr',
+              venueId: dbRow.venue_id || 'all',
+              venueIds: dbRow.venue_ids || [],
+              avatarUrl: dbRow.avatar_url,
+              phone: dbRow.phone,
+              active: dbRow.active ?? true,
+              isFirstAccess: dbRow.is_first_access ?? false,
+              password: dbRow.password,
+              masterId: dbRow.master_id || undefined,
+              theme: dbRow.theme || 'light',
+              createdAt: dbRow.created_at || new Date().toISOString(),
+            };
+          }
+        } catch (dbErr) {
+          console.warn('Erro ao consultar colaborador no Supabase:', dbErr);
+        }
+      }
 
       if (!found) {
-        setError('Esse e-mail não está cadastrado. Revise o seu e-mail ou converse com o administrador.');
+        setError('Esse e-mail não está cadastrado no sistema. Verifique a digitação ou converse com o administrador.');
         setLoading(false);
         return;
       }
 
       setMatchedCollab(found);
 
-      // Generate OTP
-      const otp = Math.floor(10000000 + Math.random() * 90000000).toString();
+      // Gera código OTP de 6 dígitos
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
       setGeneratedOtp(otp);
       setCountdown(60);
-      setOtpDigits(['', '', '', '', '', '', '', '']);
+      setOtpDigits(['', '', '', '', '', '']);
 
-      // Record in Supabase password_reset_codes
+      // Grava na tabela password_reset_codes do Supabase como garantia de validação
       if (isSupabaseConfigured) {
         await supabase.from('password_reset_codes').insert({
           email: cleanEmail,
@@ -274,33 +307,18 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           used: false,
         });
 
-        // Dispara envio de e-mail pelo Supabase Auth
+        // Dispara o e-mail oficial de recuperação de senha pelo Supabase Auth (apenas com o código)
         try {
-          const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          fetch('/api/invite-collaborator', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: cleanEmail,
-              name: found.name,
-              role: found.role,
-              invitedByName: 'Administração F5 System',
-              redirectTo: `${origin}/?admin=true&type=recovery`,
-            })
-          }).catch(err => console.warn('Erro ao chamar /api/invite-collaborator:', err));
-
-          const { error: mailErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-            redirectTo: `${window.location.origin}/?admin=true&activate=${encodeURIComponent(cleanEmail)}`
-          });
+          const { error: mailErr } = await supabase.auth.resetPasswordForEmail(cleanEmail);
           if (mailErr) {
-            console.warn('[Supabase Auth resetPasswordForEmail]', mailErr.message);
+            console.warn('[Supabase Auth resetPasswordForEmail]:', mailErr.message);
           }
         } catch (supabaseMailErr) {
-          console.warn('[Supabase Auth] resetPasswordForEmail erro ou limite de quota:', supabaseMailErr);
+          console.warn('[Supabase Auth] resetPasswordForEmail exceção:', supabaseMailErr);
         }
       }
 
-      // Transition to code & password setup
+      // Transiciona para o passo de preenchimento do código de 6 dígitos
       setAuthMode('first_access_code');
       setTimeout(() => {
         inputRefs.current[0]?.focus();
@@ -332,15 +350,15 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8);
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (!pasted) return;
 
-    const updated = Array(8).fill('');
+    const updated = Array(6).fill('');
     for (let i = 0; i < Math.min(pasted.length, 8); i++) {
       updated[i] = pasted[i] || '';
     }
     setOtpDigits(updated);
-    const nextIdx = Math.min(pasted.length, 7);
+    const nextIdx = Math.min(pasted.length, 5);
     inputRefs.current[nextIdx]?.focus();
   };
 
@@ -383,8 +401,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
 
     if (!isLinkVerified) {
       const fullCode = otpDigits.join('');
-      if (fullCode.length !== 6 && fullCode.length !== 8) {
-        setError('Por favor, preencha o código completo de verificação recebido no seu e-mail (6 ou 8 dígitos).');
+      if (fullCode.length !== 6) {
+        setError('Por favor, preencha o código de 6 dígitos recebido no seu e-mail.');
         return;
       }
 
@@ -538,7 +556,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               gap: '8px',
             }}>
               <AlertCircle size={15} color="#F87171" style={{ flexShrink: 0 }} />
-              <span>{error}</span>
+              <span style={{ lineHeight: 1.45 }}>{error}</span>
             </div>
           )}
 
@@ -601,9 +619,9 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               </div>
 
               <div style={{ position: 'relative' }}>
-                <Lock size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
+                <Lock size={16} color="#14A9D7" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
                 <input
-                  type="password"
+                  type={showLoginPassword ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
                   value={password}
@@ -613,7 +631,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     background: '#0F1724',
                     border: '1px solid rgba(20, 169, 215, 0.3)',
                     borderRadius: '10px',
-                    padding: '12px 14px 12px 42px',
+                    padding: '12px 42px 12px 42px',
                     color: '#FFFFFF',
                     fontSize: '0.88rem',
                     outline: 'none',
@@ -621,6 +639,27 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                     fontFamily: "'Poppins', sans-serif",
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={showLoginPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 
@@ -649,33 +688,41 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               <ArrowRight size={16} />
             </button>
 
-            <div style={{ textAlign: 'center', marginTop: '12px' }}>
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
               <button
                 type="button"
                 onClick={() => {
                   setError(null);
                   setActivationEmail(email);
+                  setIsResetMode(true);
                   setAuthMode('first_access_email');
                 }}
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#14A9D7',
+                  color: '#8096A8',
                   fontSize: '0.78rem',
-                  fontWeight: 650,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 12px',
                   borderRadius: '8px',
-                  transition: 'background 0.15s ease',
+                  transition: 'all 0.15s ease',
+                  fontFamily: "'Poppins', sans-serif",
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(20, 169, 215, 0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#14A9D7';
+                  e.currentTarget.style.background = 'rgba(20, 169, 215, 0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = '#8096A8';
+                  e.currentTarget.style.background = 'transparent';
+                }}
               >
-                <Sparkles size={13} />
-                <span>Primeiro acesso? Ative sua conta aqui</span>
+                <KeyRound size={13} />
+                <span>Esqueceu a senha? Redefina aqui</span>
                 <ArrowRight size={13} />
               </button>
             </div>
@@ -916,11 +963,11 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
           )}
 
           <form onSubmit={handleInitiateAccess} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* OTP boxes (6 ou 8 dígitos, apenas se não veio pré-validado por link) */}
+            {/* OTP boxes (6 dígitos) */}
             {!isDirectRecoverySession && !isTokenFromUrl && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.7rem', color: '#14A9D7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', textAlign: 'center' }}>
-                  Digite o Código de Verificação (6 ou 8 Dígitos) *
+                  Digite o Código de Verificação (6 Dígitos) *
                 </label>
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -936,8 +983,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                       onKeyDown={(e) => handleKeyDown(index, e)}
                       onPaste={handlePaste}
                       style={{
-                        width: '36px',
-                        height: '44px',
+                        width: '44px',
+                        height: '48px',
                         textAlign: 'center',
                         fontSize: '1.2rem',
                         fontWeight: 800,
@@ -1091,7 +1138,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
             {/* Initiate Access Button */}
             <button
               type="submit"
-              disabled={loading || (!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword}
+              disabled={loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword}
               style={{
                 background: 'linear-gradient(135deg, #14A9D7 0%, #4AB7C2 100%)',
                 color: '#080C14',
@@ -1100,8 +1147,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
                 padding: '13px',
                 fontSize: '0.88rem',
                 fontWeight: 800,
-                cursor: (loading || (!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
-                opacity: ((!isDirectRecoverySession && !isTokenFromUrl && (otpDigits.join('').length !== 6 && otpDigits.join('').length !== 8)) || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
+                cursor: (loading || (!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 'not-allowed' : 'pointer',
+                opacity: ((!isDirectRecoverySession && !isTokenFromUrl && otpDigits.join('').length !== 6) || strengthScore < 50 || newPassword !== confirmPassword) ? 0.5 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

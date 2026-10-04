@@ -35,11 +35,13 @@ const InstagramIcon: React.FC<{ size?: number; className?: string; color?: strin
 import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
 import { uazapiSseService } from '../../services/uazapiSseService';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities } from '../../services/leadService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
-import { isSupabaseConfigured } from '../../lib/supabase';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
+import { AdminNewLeadModal } from './AdminNewLeadModal';
+import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
@@ -361,6 +363,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
+  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+  const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(() => {
     if (initialLeadId) return initialLeadId;
     try {
@@ -436,9 +440,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         window.history.replaceState({}, '', url.toString());
       }
     } catch {}
-    if (onClose) {
-      onClose();
-    }
+    // NÃO chamamos onClose() aqui: fechar a conversa ativa apenas desseleciona o lead e exibe o painel de conversas do WhatsApp
   };
 
   // Ordenação Local com Persistência
@@ -1010,7 +1012,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         source: 'f5_system' as any,
         sourceName: 'F5 System',
         subSource: 'Sucesso do Cliente',
-        temperature: 'hot' as const,
+        temperature: undefined,
         isValidated: true,
         pointsGranted: 1,
         participants: [],
@@ -1147,6 +1149,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       // 2. Ownership / Quick Filter Tabs
       const effectiveOwnership = (isEmbeddedInFunnel && leadOwnershipFilter) ? leadOwnershipFilter : quickFilter;
       if (effectiveOwnership === 'open') {
+        // Estritamente leads SEM RESPONSÁVEL comercial atribuído
+        const hasAssignee = Boolean(
+          lead.assignedTo || 
+          lead.sdrId || 
+          lead.closerId || 
+          (lead.sdrName && lead.sdrName.trim()) || 
+          (lead.closerName && lead.closerName.trim())
+        );
+        if (hasAssignee && lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+          return false;
+        }
+
         const s = lead.stage as string;
         if (isPostSaleFunnel) {
           if (s === 'completed' || s === 'festa_realizada' || s === 'lost' || s === 'cancelado' || s === 'archived') {
@@ -1164,14 +1178,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
         if (isPostSaleFunnel) {
           const isMyClient =
-            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id)) ||
-            Boolean(currentUser?.name && (lead.assignedTo?.toLowerCase() === currentUser.name.toLowerCase() || lead.sdrName?.toLowerCase() === currentUser.name.toLowerCase()));
+            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id || lead.assignedTo === currentUser.id)) ||
+            Boolean(currentUser?.name && (
+              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+              (lead.sdrName && lead.sdrName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+            ));
           if (!isMyClient && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         } else {
+          // Estritamente leads atribuídos ao usuário logado (NUNCA trazer leads de terceiros)
           const isMyLead =
-            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id)) ||
-            Boolean(currentUser?.name && (lead.sdrName === currentUser.name || lead.closerName === currentUser.name || lead.assignedTo === currentUser.name)) ||
-            Boolean(currentUser?.id && (lead.participants || []).some(p => p.collaboratorId === currentUser.id));
+            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id || lead.assignedTo === currentUser.id)) ||
+            Boolean(currentUser?.name && (
+              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+              (lead.sdrName && lead.sdrName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
+              (lead.closerName && lead.closerName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+            ));
           if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
       }
@@ -3252,8 +3273,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   </button>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.74rem', color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-text-muted)', fontWeight: 800 }}>
-                  {filteredLeads.length} {isPostSaleFunnel ? (filteredLeads.length === 1 ? 'cliente' : 'clientes') : (filteredLeads.length === 1 ? 'lead' : 'leads')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ fontSize: '0.74rem', color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-text-muted)', fontWeight: 800 }}>
+                    {filteredLeads.length} {isPostSaleFunnel ? (filteredLeads.length === 1 ? 'cliente' : 'clientes') : (filteredLeads.length === 1 ? 'lead' : 'leads')}
+                  </div>
+                  {onClose && !isEmbeddedInFunnel && (
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      title="Fechar WhatsApp"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -4742,22 +4784,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                   </button>
                 )}
 
-                {/* Botão de Fechar Conversa / Desmarcar Chat (Audio 1) */}
+                {/* Botão Único de Fechar Conversa (Estilo WhatsApp Web - Não fecha a tela geral) */}
                 <button
                   type="button"
                   onClick={handleCloseActiveChat}
                   title="Fechar conversa e voltar à visualização geral"
                   style={{
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    padding: '7px 11px',
+                    justifyContent: 'center',
+                    width: '32px',
+                    height: '32px',
                     borderRadius: '8px',
                     background: 'var(--adm-bg-input)',
                     border: '1px solid var(--adm-border)',
                     color: 'var(--adm-text-muted)',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
@@ -4772,29 +4813,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     e.currentTarget.style.background = 'var(--adm-bg-input)';
                   }}
                 >
-                  <X size={14} />
-                  <span>Fechar</span>
+                  <X size={16} />
                 </button>
-
-                {onClose && (
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid var(--adm-border)',
-                      color: 'var(--adm-text-muted)',
-                      borderRadius: '8px',
-                      padding: '7px 10px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                    title="Fechar Painel"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
               </div>
             </div>
 
@@ -10054,13 +10074,95 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             )}
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-text-muted)', gap: '12px' }}>
-            <MessageSquare size={48} style={{ opacity: 0.2 }} />
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-              Selecione uma conversa ao lado
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: isDarkMode ? '#111b21' : '#f0f2f5',
+            padding: '32px 20px',
+            textAlign: 'center',
+            userSelect: 'none',
+            borderLeft: isDarkMode ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid rgba(0, 0, 0, 0.06)',
+          }}>
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '24px',
+              background: isDarkMode ? 'rgba(37, 211, 102, 0.12)' : 'rgba(37, 211, 102, 0.1)',
+              border: isDarkMode ? '1px solid rgba(37, 211, 102, 0.25)' : '1px solid rgba(37, 211, 102, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              boxShadow: '0 8px 24px rgba(37, 211, 102, 0.15)',
+            }}>
+              <WhatsAppBrandIcon size={42} />
             </div>
-            <div style={{ fontSize: '0.8rem', maxWidth: '320px', textAlign: 'center' }}>
-              Inicie atendimentos, responda dúvidas e gerencie o histórico de WhatsApp dos seus leads.
+
+            <h3 style={{
+              fontSize: '1.25rem',
+              fontWeight: 800,
+              color: isDarkMode ? '#e9edef' : '#111b21',
+              margin: '0 0 8px 0',
+              letterSpacing: '-0.3px',
+            }}>
+              F5 System • Conversas
+            </h3>
+
+            <p style={{
+              fontSize: '0.86rem',
+              color: isDarkMode ? '#8696a0' : '#667781',
+              maxWidth: '420px',
+              lineHeight: 1.55,
+              margin: '0 0 24px 0',
+            }}>
+              Envie e receba mensagens com seus leads e clientes em tempo real com histórico unificado, controle de SLA e isolamento absoluto de dados.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsNewLeadModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 22px',
+                borderRadius: '12px',
+                background: 'var(--adm-accent, #14A9D7)',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(20, 169, 215, 0.35)',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(20, 169, 215, 0.45)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(20, 169, 215, 0.35)';
+              }}
+            >
+              <UserPlus size={18} />
+              <span>Cadastrar Lead</span>
+            </button>
+
+            <div style={{
+              marginTop: '40px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.72rem',
+              color: isDarkMode ? '#8696a0' : '#8696a0',
+              opacity: 0.8,
+            }}>
+              <Lock size={12} />
+              <span>Criptografia de ponta a ponta e isolamento seguro de dados</span>
             </div>
           </div>
         )}
@@ -11073,6 +11175,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           onClose={() => setSelectedTaskForDetail(null)}
           task={selectedTaskForDetail}
           workspaceContext="followup"
+        />
+      )}
+
+      {/* ── MODAL: CADASTRO RÁPIDO DE NOVO LEAD ── */}
+      <AdminNewLeadModal
+        isOpen={isNewLeadModalOpen}
+        onClose={() => setIsNewLeadModalOpen(false)}
+        defaultFunnelId={activeFunnel?.id}
+        defaultVenueId={activeFunnel?.venueId !== 'all' ? activeFunnel?.venueId : undefined}
+        currentFunnelName={activeFunnel?.name}
+        onLeadCreated={(newLeadId) => {
+          setSelectedLeadId(newLeadId);
+          setIsNewLeadModalOpen(false);
+        }}
+      />
+
+      {/* ── MODAL: TRANSFERÊNCIA DE UNIDADE DO LEAD (GERÊNCIA E MASTER) ── */}
+      {selectedLead && (
+        <AdminTransferLeadVenueModal
+          isOpen={isTransferVenueModalOpen}
+          onClose={() => setIsTransferVenueModalOpen(false)}
+          lead={selectedLead}
         />
       )}
 

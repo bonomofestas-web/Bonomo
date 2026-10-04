@@ -59,11 +59,13 @@ interface AdminSidebarProps {
 const ROLE_LABELS: Record<string, string> = {
   dev: 'Desenvolvedor',
   master: 'Master',
-  admin: 'Gerente',
-  crm: 'Comercial',
-  sdr: 'SDR',
-  closer: 'Closer',
+  admin: 'Gerência',
+  gerencia: 'Gerência',
   pos_venda: 'Pós-Venda',
+  comercial: 'Comercial',
+  crm: 'Comercial',
+  sdr: 'Comercial',
+  closer: 'Comercial',
 };
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({

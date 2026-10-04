@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { decodeCollabInviteToken } from '../../utils/collabInvite';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface AdminCollabInviteViewProps {
   token?: string;
@@ -13,7 +12,7 @@ interface AdminCollabInviteViewProps {
 }
 
 export const AdminCollabInviteView: React.FC<AdminCollabInviteViewProps> = ({ token, onSuccessLogin }) => {
-  const { collaborators, updateCollaborator, login } = useAdminState();
+  const { collaborators, activateCollabFirstAccess } = useAdminState();
 
   const [tokenData, setTokenData] = useState<{ id: string; email: string; name?: string } | null>(null);
   const [step, setStep] = useState<'verify_email' | 'set_password' | 'success'>('verify_email');
@@ -86,43 +85,16 @@ export const AdminCollabInviteView: React.FC<AdminCollabInviteViewProps> = ({ to
     setIsLoading(true);
 
     try {
-      const collabId = targetCollab?.id || tokenData?.id;
+      const collabId = targetCollab?.id || tokenData?.id || registeredEmail;
       if (!collabId) {
         throw new Error('Identificador do colaborador não encontrado.');
       }
 
-      // 1. Atualiza a senha e marca que concluiu o primeiro acesso
-      updateCollaborator(collabId, {
-        password: password.trim(),
-        isFirstAccess: false,
-        active: true,
-      });
-
-      // 2. Se o Supabase Auth estiver ativo, tenta sincronizar/cadastrar a senha
-      if (isSupabaseConfigured) {
-        try {
-          // Tenta signup caso o usuário ainda não exista no auth do Supabase
-          const { error: signUpErr } = await supabase.auth.signUp({
-            email: registeredEmail,
-            password: password.trim(),
-            options: {
-              data: {
-                name: displayName,
-                role: targetCollab?.role || 'sdr',
-              }
-            }
-          });
-          if (signUpErr) {
-            // Se já existe, tenta updatePassword
-            await supabase.auth.updateUser({ password: password.trim() });
-          }
-        } catch (authErr) {
-          console.warn('[CollabInvite] Aviso no Supabase Auth (ignorado, login local garantido):', authErr);
-        }
+      // Ativa o primeiro acesso com a senha, grava no Supabase e autentica automaticamente
+      const activationResult = await activateCollabFirstAccess(collabId, password.trim());
+      if (!activationResult.success) {
+        throw new Error(activationResult.message || 'Erro ao registrar sua senha de acesso.');
       }
-
-      // 3. Efetua o login automático no F5 System
-      login(registeredEmail, password.trim());
 
       setStep('success');
 
@@ -130,13 +102,15 @@ export const AdminCollabInviteView: React.FC<AdminCollabInviteViewProps> = ({ to
       if (typeof window !== 'undefined') {
         const cleanUrl = new URL(window.location.href);
         cleanUrl.searchParams.delete('collab_invite');
-        window.history.replaceState({}, '', cleanUrl.pathname);
+        cleanUrl.searchParams.delete('invite_collab');
+        window.history.replaceState({}, '', cleanUrl.pathname + '?admin=true');
       }
 
+      // Redireciona diretamente para o app já autenticado
       if (onSuccessLogin) {
         setTimeout(() => {
           onSuccessLogin();
-        }, 1200);
+        }, 1000);
       }
     } catch (err: any) {
       console.error('[CollabInvite] Erro ao ativar conta:', err);

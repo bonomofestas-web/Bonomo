@@ -10,6 +10,8 @@ import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
+import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
+import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { AdminTasksKanbanView } from './tasks/AdminTasksKanbanView';
 import { AdminTasksTableView } from './tasks/AdminTasksTableView';
 import { AdminCalendarDayView } from './tasks/AdminCalendarDayView';
@@ -22,17 +24,21 @@ export type TaskWorkspaceContext = 'all' | 'followup' | 'visits_tastings' | 'app
 interface AdminTasksWorkspaceViewProps {
   onOpenLead: (leadId: string) => void;
   workspaceContext?: TaskWorkspaceContext;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export type TaskWorkspaceViewMode = 'kanban' | 'table' | 'day' | 'week' | 'month';
 
-export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = ({ 
+export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = ({
   onOpenLead,
   workspaceContext = 'all',
+  onNavigateTab,
 }) => {
-  const { 
+  const {
     currentUser,
-    activeVenueId, 
+    venues,
+    activeVenueId,
+    setActiveVenueId, 
     tasks: contextTasks, 
     collaborators, 
     toggleTaskStatus,
@@ -41,6 +47,20 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   } = useAdminState();
 
   // Active View Mode: 'table' como padrão para Visitas & Degustações; 'kanban' para os demais
+  
+  const allowedVenues = useMemo(() => {
+    if (currentUser?.role === 'master') return venues || [];
+    const targetVenueIds = currentUser?.venueIds;
+    if (!targetVenueIds || targetVenueIds.length === 0) {
+      const singleVenueId = (currentUser as any)?.venueId;
+      if (singleVenueId && singleVenueId !== 'all') {
+        return (venues || []).filter(v => v.id === singleVenueId);
+      }
+      return venues || [];
+    }
+    return (venues || []).filter(v => targetVenueIds.includes(v.id));
+  }, [venues, currentUser]);
+
   const [viewMode, setViewMode] = useState<TaskWorkspaceViewMode>(() => 
     workspaceContext === 'visits_tastings' ? 'table' : 'kanban'
   );
@@ -120,6 +140,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [modalWorkspaceContext, setModalWorkspaceContext] = useState<TaskWorkspaceContext>(workspaceContext);
   const [modalDatabaseId, setModalDatabaseId] = useState<string | undefined>(undefined);
   const [selectedTask, setSelectedTask] = useState<AdminTask | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<AppointmentReceiptData | null>(null);
   const [prefilledDueDate, setPrefilledDueDate] = useState<string | undefined>(undefined);
   const [prefilledDueTime, setPrefilledDueTime] = useState<string | undefined>(undefined);
   const [prefilledCustomType, setPrefilledCustomType] = useState<string | undefined>(undefined);
@@ -309,6 +330,43 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     } else if (resolvedDbId === 'db_appointments' || Boolean(task.debutanteId && !task.leadId)) {
       resolvedContext = 'appointments';
       resolvedDbId = 'db_appointments';
+    }
+
+    // Se for um agendamento de Visitas ou Degustações, abre o Cartão Oficial de Comprovante (#AGV / #AGD)
+    if (resolvedContext === 'visits_tastings' || workspaceContext === 'visits_tastings') {
+      const typeStr = (task.customType || task.type || '').toLowerCase();
+      const titleStr = (task.title || '').toLowerCase();
+      const isVisit = typeStr.includes('visita') || titleStr.includes('visita');
+      const isTasting = typeStr.includes('degust') || typeStr.includes('jantar') || titleStr.includes('degust');
+      
+      const vObj = venues.find(v => v.id === task.venueId);
+      const assignedId = (task as any).assignedTo || task.assignedToIds?.[0];
+      const cObj = collaborators.find(c => c.id === assignedId || (task.assignedToIds || []).includes(c.id));
+      const closerRoleTitle = (cObj as any)?.roleTitle || cObj?.role || 'Anfitrião';
+      const cleanLeadName = task.customProperties?.leadName || task.leadName || task.title.replace(/^(Visita Comercial|Degustação Gastronômica|Visita|Degustação):\s*/i, '').replace(/\s*\(.*\)$/, '');
+      const prefix = isVisit ? 'AGV' : 'AGD';
+      const fallbackCode = `#${prefix}-${task.id.slice(0, 5).toUpperCase()}`;
+
+      setSelectedReceipt({
+        type: isTasting ? 'tasting' : 'visit',
+        code: task.customProperties?.receiptCode || fallbackCode,
+        leadName: cleanLeadName || 'Cliente',
+        leadPhone: task.customProperties?.leadPhone,
+        leadEmail: task.customProperties?.leadEmail,
+        venueName: vObj?.name || task.customProperties?.venueName || 'Unidade F5 System',
+        venueAddress: vObj?.address || task.customProperties?.venueAddress,
+        venueLogoUrl: vObj?.logoUrl,
+        dateStr: task.dueDate || new Date().toISOString().split('T')[0],
+        timeStr: task.dueTime || '14:00',
+        pax: task.customProperties?.pax || 2,
+        closerName: cObj?.name || task.createdByName || 'Equipe',
+        closerRoleTitle,
+        closerPhotoUrl: (cObj as any)?.photoUrl || cObj?.avatarUrl,
+        createdByName: task.createdByName || 'F5 System',
+        createdAtStr: task.createdAt ? new Date(task.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
+        notes: task.description,
+      });
+      return;
     }
 
     setModalWorkspaceContext(resolvedContext);
@@ -810,10 +868,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           </span>
 
           {/* Grade & Disponibilidade Semanal (Visitas & Degustações - Exclusivo Gerência / Admin) */}
-          {workspaceContext === 'visits_tastings' && (currentUser?.role === 'master' || currentUser?.role === 'admin') && (
+          {workspaceContext === 'visits_tastings' && (currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager') && (
             <button
               type="button"
-              onClick={() => setIsAgendaTypeSelectorOpen(true)}
+              onClick={() => onNavigateTab ? onNavigateTab('venues') : setIsAgendaTypeSelectorOpen(true)}
               style={{
                 padding: '6px 14px',
                 borderRadius: '8px',
@@ -831,7 +889,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               title="Planejamento de calendário e regras de disponibilidade da agenda"
             >
               <CalendarIcon size={14} />
-              <span>Planejamento de Calendário</span>
+              <span>Planejamento</span>
             </button>
           )}
 
@@ -859,7 +917,134 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             <span>{newButtonText}</span>
           </button>
         </div>
+
       </div>
+
+      {/* ── BARRA DE SELEÇÃO POR UNIDADE (EXCLUSIVA PARA AGENDAMENTOS) ── */}
+      {workspaceContext === 'visits_tastings' && (
+        <div style={{
+          padding: '8px 24px',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
+          borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          overflowX: 'auto',
+          flexShrink: 0,
+        }} className="custom-scrollbar">
+          <span style={{
+            fontSize: '0.70rem',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            color: 'var(--adm-text-muted, #64748B)',
+            marginRight: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            flexShrink: 0,
+            letterSpacing: '0.5px',
+          }}>
+            <Building2 size={13} color="var(--adm-accent, #0284C7)" />
+            Filtrar Unidade:
+          </span>
+
+          {/* Opção TODAS AS UNIDADES */}
+          <button
+            type="button"
+            onClick={() => setActiveVenueId('all')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '8px',
+              background: (activeVenueId === 'all' || !activeVenueId) ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.12))' : 'var(--adm-bg-card, #FFFFFF)',
+              border: (activeVenueId === 'all' || !activeVenueId) ? '1.5px solid var(--adm-accent, #0284C7)' : '1px solid var(--adm-border, #E2E8F0)',
+              color: (activeVenueId === 'all' || !activeVenueId) ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title, #1E293B)',
+              fontSize: '0.76rem',
+              fontWeight: (activeVenueId === 'all' || !activeVenueId) ? 800 : 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+              boxShadow: (activeVenueId === 'all' || !activeVenueId) ? '0 2px 6px rgba(2, 132, 199, 0.15)' : 'none',
+            }}
+          >
+            <span>Todas as Unidades</span>
+            <span style={{
+              background: (activeVenueId === 'all' || !activeVenueId) ? 'var(--adm-accent, #0284C7)' : 'var(--adm-bg-input, #F1F5F9)',
+              color: (activeVenueId === 'all' || !activeVenueId) ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.64rem',
+              padding: '1px 6px',
+              borderRadius: '10px',
+              fontWeight: 800,
+            }}>
+              {allowedVenues.length}
+            </span>
+          </button>
+
+          {/* Cada Unidade que o Colaborador tem acesso */}
+          {allowedVenues.map(venue => {
+            const isSelected = activeVenueId === venue.id;
+            return (
+              <button
+                key={venue.id}
+                type="button"
+                onClick={() => setActiveVenueId(venue.id)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '4px 14px 4px 6px',
+                  borderRadius: '8px',
+                  background: isSelected ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.12))' : 'var(--adm-bg-card, #FFFFFF)',
+                  border: isSelected ? '1.5px solid var(--adm-accent, #0284C7)' : '1px solid var(--adm-border, #E2E8F0)',
+                  color: isSelected ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title, #1E293B)',
+                  fontSize: '0.76rem',
+                  fontWeight: isSelected ? 800 : 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0,
+                  boxShadow: isSelected ? '0 2px 6px rgba(2, 132, 199, 0.15)' : 'none',
+                }}
+              >
+                {venue.logoUrl ? (
+                  <img
+                    src={venue.logoUrl}
+                    alt={venue.name}
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '6px',
+                      objectFit: 'contain',
+                      background: '#FFFFFF',
+                      padding: '2px',
+                      border: '1px solid rgba(0,0,0,0.06)',
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '6px',
+                    background: 'rgba(2, 132, 199, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.64rem',
+                    fontWeight: 800,
+                    color: '#0284C7',
+                    flexShrink: 0,
+                  }}>
+                    {venue.name.charAt(0)}
+                  </div>
+                )}
+                <span>{venue.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── MAIN WORKSPACE CONTENT AREA (Rendered View) ── */}
       <div style={{
@@ -1482,6 +1667,14 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL DE COMPROVANTE OFICIAL DE AGENDAMENTO (VISITAS & DEGUSTAÇÕES) ── */}
+      {selectedReceipt && (
+        <AdminAppointmentReceiptModal
+          receipt={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+        />
       )}
 
       {/* ── CENTRAL DE CONFIGURAÇÃO DE GRADE & DISPONIBILIDADE DA AGENDA (GERÊNCIA) ── */}

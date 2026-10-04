@@ -27,6 +27,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     tasks,
     sendCollaboratorInvite,
     updateLeadData,
+    showSystemAlert,
   } = useAdminState();
 
   const isCurrentUserManager = currentUser?.role === 'admin' || currentUser?.role === 'gerencia';
@@ -43,7 +44,6 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formCustomJobTitle, setFormCustomJobTitle] = useState('');
-  const [formPassword, setFormPassword] = useState('123456');
   const [formSectors, setFormSectors] = useState<('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]>(['comercial']);
   const [formSelectedVenueIds, setFormSelectedVenueIds] = useState<string[]>([]);
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
@@ -121,7 +121,10 @@ export const AdminCollaboratorsView: React.FC = () => {
 
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master') return false;
+    if (c.isFirstAccess === false) return false;
     if (c.activatedAt || c.lastLoginAt) return false;
+    // Se já possui uma senha válida/real configurada no banco, o primeiro acesso já foi concluído
+    if (c.password && c.password.trim().length >= 6 && !c.password.includes('••')) return false;
     return Boolean(c.isFirstAccess);
   };
 
@@ -150,7 +153,6 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail('');
     setFormPhone('');
     setFormCustomJobTitle('');
-    setFormPassword('');
     setFormSectors(['comercial']);
     setFormSelectedVenueIds(venues.map(v => v.id));
     setFormAvatarUrl('');
@@ -164,7 +166,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
     const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
     if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
-      alert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de gerência ou superior.');
+      showSystemAlert('Acesso restrito: gerentes não podem editar o próprio perfil nem colaboradores com função de gerência ou superior.', 'Acesso Negado');
       return;
     }
 
@@ -173,7 +175,6 @@ export const AdminCollaboratorsView: React.FC = () => {
     setFormEmail(collab.email || '');
     setFormPhone(collab.phone ? formatPhone(collab.phone) : '');
     setFormCustomJobTitle(collab.customJobTitle || '');
-    setFormPassword('');
     const existingSectors: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] = collab.sectors && collab.sectors.length > 0
       ? collab.sectors
       : collab.role === 'pos_venda' ? ['pos_venda', 'comercial']
@@ -190,13 +191,13 @@ export const AdminCollaboratorsView: React.FC = () => {
   const handleSaveCollaborator = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formName.trim() || !formEmail.trim()) {
-      alert('Preencha ao menos o nome e e-mail do colaborador.');
+      showSystemAlert('Preencha ao menos o nome e e-mail do colaborador.', 'Campos Obrigatórios', 'warning');
       return;
     }
 
     const isTargetManagerOrAbove = collaboratorToEdit?.role === 'admin' || collaboratorToEdit?.role === 'master' || collaboratorToEdit?.role === 'gerencia';
     if (isCurrentUserManager && (formSectors.includes('gerencia') || isTargetManagerOrAbove)) {
-      alert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de gerência nem alterar perfis superiores.');
+      showSystemAlert('Acesso restrito: gerentes não possuem permissão para criar ou atribuir funções de gerência nem alterar perfis superiores.', 'Acesso Negado');
       return;
     }
 
@@ -227,17 +228,20 @@ export const AdminCollaboratorsView: React.FC = () => {
     };
 
     if (collaboratorToEdit) {
+      // Gestor não define senha de cadastro; preserva a senha e o status do colaborador
       updateCollaborator(collaboratorToEdit.id, {
         ...payload,
-        password: formPassword !== '••••••••' ? formPassword : collaboratorToEdit.password,
+        password: collaboratorToEdit.password,
+        isFirstAccess: collaboratorToEdit.isFirstAccess,
       });
     } else {
+      // Novo colaborador inicia com primeiro acesso pendente; ele próprio definirá a senha via Link Oficial
       const newId = addCollaborator({
         ...payload,
-        password: formPassword,
+        password: '',
         isFirstAccess: true,
       });
-      // Abre o modal do Link de Entrada para o Master copiar ou enviar no WhatsApp na hora!
+      // Abre o modal do Link de Entrada para o Master copiar ou enviar no WhatsApp na hora
       setCollabForInviteModal({
         ...payload,
         id: newId,
@@ -253,7 +257,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
     const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
     if (isCurrentUserManager && (isSelf || isTargetManagerOrAbove)) {
-      alert('Acesso restrito: gerentes não podem excluir o próprio perfil nem colaboradores com função de gerência ou superior.');
+      showSystemAlert('Acesso restrito: gerentes não podem excluir o próprio perfil nem colaboradores com função de gerência ou superior.', 'Acesso Negado');
       return;
     }
 
@@ -337,7 +341,7 @@ export const AdminCollaboratorsView: React.FC = () => {
     if (!collabForManagement || selectedLeadIdsForTransfer.length === 0) return;
     const targetCollab = collaborators.find(c => c.id === transferTargetCollabId);
     if (!targetCollab) {
-      alert('Selecione o colaborador de destino para transferir os leads.');
+      showSystemAlert('Selecione o colaborador de destino para transferir os leads.', 'Atenção', 'warning');
       return;
     }
 
@@ -389,7 +393,7 @@ export const AdminCollaboratorsView: React.FC = () => {
       setTimeout(() => setTransferSuccessMessage(null), 4000);
     } catch (e) {
       console.warn('Erro ao transferir leads:', e);
-      alert('Erro ao remanejar leads.');
+      showSystemAlert('Erro ao remanejar leads. Tente novamente.', 'Erro ao Excluir');
     } finally {
       setIsTransferringLeads(false);
     }
@@ -408,7 +412,7 @@ export const AdminCollaboratorsView: React.FC = () => {
   const handleSaveMasterProfile = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!masterFormName.trim() || !masterFormEmail.trim()) {
-      alert('Preencha seu nome e e-mail.');
+      showSystemAlert('Preencha seu nome e e-mail.', 'Campos Obrigatórios', 'warning');
       return;
     }
     setIsSavingMasterProfile(true);
@@ -430,7 +434,7 @@ export const AdminCollaboratorsView: React.FC = () => {
       setIsMasterProfileOpen(false);
     } catch (err: any) {
       console.warn('Erro ao atualizar perfil do Master:', err);
-      alert('Não foi possível salvar as alterações.');
+      showSystemAlert('Não foi possível salvar as alterações.', 'Erro ao Salvar');
     } finally {
       setIsSavingMasterProfile(false);
     }

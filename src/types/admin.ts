@@ -615,6 +615,7 @@ export interface AgendaBlockRule {
 
 export interface AgendaRecurringRule {
   enabled?: boolean;            // Se false, a regra recorrente semanal está desativada
+  isFreeMode?: boolean;         // Modo Livre: libera agendamento em qualquer horário e desativa a regra semanal fixa            // Se false, a regra recorrente semanal está desativada
   enabledDays: number[];        // 0=Domingo, 1=Segunda, ..., 6=Sábado
   timeSlots: string[];          // ['10:00', '14:00', '16:00', '18:00']
   durationMinutes: number;      // Duração de cada compromisso (ex: 45 min)
@@ -636,6 +637,7 @@ export interface AgendaDateOverride {
 export interface VenueAgendaConfig {
   id?: string;
   venueId: string;              // ID da Casa de Festa ou 'all'
+  isFreeMode?: boolean;         // Modo Livre geral para a unidade              // ID da Casa de Festa ou 'all'
   visitsRule: AgendaRecurringRule;
   tastingsRule: AgendaRecurringRule;
   blockRules?: AgendaBlockRule[]; // Configurações por período com precedência
@@ -694,6 +696,7 @@ export type ClientStage =
   | 'final_alignment'  // Alinhamento Final (Reta Final)
   | 'party_day'        // Semana da Festa / Dia do Evento
   | 'completed'        // Pós-Festa Realizada
+  | 'lost'             // Contrato Cancelado / Perdido
   | 'archived';        // Arquivado
 
 export interface Client {

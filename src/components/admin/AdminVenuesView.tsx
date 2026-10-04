@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Building2, Plus, MapPin, 
+import {
+  Building2, Calendar, Plus, MapPin, 
   Trash2, Video, ArrowLeft,
   Users, Target, Play, X, Eye, Phone, Mail, ChevronRight, Film, Loader2,
   Navigation, Image as ImageIcon, Camera, Pencil, Upload, Check, Power
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminVenueModal } from './AdminVenueModal';
+import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminDeleteVenueModal } from './AdminDeleteVenueModal';
 import { resolveMediaUrl } from '../../utils/mediaStorage';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -191,6 +192,7 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
   const [venueToDelete, setVenueToDelete] = useState<Venue | null>(null);
   const [isPlayingVideoModal, setIsPlayingVideoModal] = useState(false);
+  const [planningVenueId, setPlanningVenueId] = useState<string | null>(null);
 
   // Modal apenas para CRIAÇÃO de nova casa
   const [isVenueModalOpen, setIsVenueModalOpen] = useState(false);
@@ -2504,6 +2506,45 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
                     </div>
                   )}
 
+                  {/* Botão de Planejamento de Calendário (Exclusivo Gerência / Admin / Master) */}
+                  {(currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.role === 'manager') && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPlanningVenueId(venue.id);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(212, 175, 55, 0.12)',
+                        border: '1px solid rgba(212, 175, 55, 0.35)',
+                        color: 'var(--adm-accent, #D4AF37)',
+                        fontSize: '0.74rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        marginTop: '6px',
+                        width: 'fit-content',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.22)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.6)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(212, 175, 55, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(212, 175, 55, 0.35)';
+                      }}
+                      title="Configurar horários de visitas e degustações desta unidade"
+                    >
+                      <Calendar size={13} />
+                      <span>Planejar Calendário</span>
+                    </button>
+                  )}
+
                   <div style={{
                     fontSize: '0.74rem',
                     color: 'var(--adm-accent)',
@@ -2551,6 +2592,15 @@ export const AdminVenuesView: React.FC<AdminVenuesViewProps> = ({ onNavigateToFu
         onClose={() => setIsVenueModalOpen(false)}
         venueToEdit={venueToEditModal}
       />
-    </div>
+
+      {/* Modal de Planejamento e Disponibilidade da Casa de Festa */}
+      {planningVenueId && (
+        <AdminAgendaAvailabilityModal
+          venueId={planningVenueId}
+          onClose={() => setPlanningVenueId(null)}
+        />
+      )}
+
+</div>
   );
 };

@@ -1,3 +1,4 @@
+import { ShieldAlert } from 'lucide-react';
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import type { 
   AdminUser, 
@@ -261,6 +262,8 @@ export interface AdminContextType {
   addCollaborator: (data: Omit<Collaborator, 'id' | 'createdAt'>) => string;
   updateCollaborator: (id: string, data: Partial<Collaborator>) => void;
   deleteCollaborator: (id: string, reassignToId?: string | null) => void;
+  activateCollabFirstAccess: (collabIdOrEmail: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  showSystemAlert: (message: string, title?: string, type?: 'error' | 'warning' | 'info' | 'success') => void;
 
   // Venue Management
   setActiveVenueId: (id: string | null) => void;
@@ -464,6 +467,7 @@ export interface AdminContextType {
   addAppointment: (appData: Omit<Appointment, 'id'>) => Promise<Appointment | null>;
   updateAppointment: (appId: string, appData: Partial<Appointment>) => Promise<boolean>;
   deleteAppointment: (appId: string) => Promise<boolean>;
+  refreshAppointments: () => Promise<Appointment[]>;
 
   // Motor de Disponibilidade de Agenda & Compromissos Comerciais (Visitas e Degustações)
   venueAgendaConfigs: VenueAgendaConfig[];
@@ -1867,12 +1871,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     if (!foundCollab) {
-      return false;
+      throw new Error('Esse e-mail não está cadastrado no nosso sistema. Entre em contato com seu gestor.');
     }
 
     // 2. Verificação estrita de suspensão/desativação da conta
     if (!foundCollab.active) {
       throw new Error('Acesso desativado. Entre em contato com o administrador da sua conta.');
+    }
+
+    // 3. Verificação de primeiro acesso (e-mail que ainda não acessou o sistema)
+    const hasNeverAccessed = Boolean(
+      foundCollab.isFirstAccess ||
+      (!foundCollab.activatedAt && !foundCollab.lastLoginAt && (!foundCollab.password || foundCollab.password.includes('••') || foundCollab.password === '123456' || foundCollab.password === 'Bonomo#2026'))
+    );
+
+    if (hasNeverAccessed && foundCollab.role !== 'master') {
+      throw new Error('Esse e-mail ainda não acessou o sistema. Para conseguir acessar, recupere a sua senha ou solicite o link de primeiro acesso para o seu gestor.');
     }
 
     // 3. Validação de senha via hash pgcrypto RPC
@@ -1899,7 +1913,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     if (!isPasswordValid) {
-      return false;
+      throw new Error('E-mail ou senha incorreta.');
     }
 
     // 4. Criação do AdminUser estritamente com o role cadastrado no banco
@@ -2630,6 +2644,122 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     return id;
+  };
+
+  const [systemAlert, setSystemAlert] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'error' | 'warning' | 'info' | 'success';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'error',
+  });
+
+  const showSystemAlert = (message: string, title?: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
+    setSystemAlert({
+      isOpen: true,
+      title: title || (type === 'error' ? 'Atenção' : (type === 'warning' ? 'Aviso' : (type === 'success' ? 'Sucesso' : 'Informação'))),
+      message,
+      type,
+    });
+  };
+
+  const activateCollabFirstAccess = async (collabIdOrEmail: string, newPassword: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const cleanTarget = (collabIdOrEmail || '').trim().toLowerCase();
+      if (!cleanTarget) {
+        return { success: false, message: 'Identificador do colaborador não fornecido.' };
+      }
+
+      let target = collaborators.find(c => c.id === collabIdOrEmail || c.email.toLowerCase().trim() === cleanTarget);
+
+      if (!target && isSupabaseConfigured) {
+        const freshList = await collaboratorService.getAll();
+        target = freshList.find(c => c.id === collabIdOrEmail || c.email.toLowerCase().trim() === cleanTarget);
+      }
+
+      if (!target) {
+        return { success: false, message: 'Colaborador não encontrado na base de dados.' };
+      }
+
+      if (target.active === false) {
+        return { success: false, message: 'Esta conta de colaborador foi suspensa ou desativada pela gerência.' };
+      }
+
+      const updatedPayload: Partial<Collaborator> = {
+        password: newPassword.trim(),
+        isFirstAccess: false,
+        active: true,
+        activatedAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      };
+
+      if (isSupabaseConfigured) {
+        await collaboratorService.upsert({
+          id: target.id,
+          email: target.email,
+          ...updatedPayload,
+        });
+
+        try {
+          const { error: signUpErr } = await supabase.auth.signUp({
+            email: target.email.toLowerCase().trim(),
+            password: newPassword.trim(),
+            options: {
+              data: {
+                name: target.name,
+                role: target.role,
+                master_id: target.masterId,
+              }
+            }
+          });
+          if (signUpErr) {
+            await supabase.auth.updateUser({ password: newPassword.trim() });
+          }
+        } catch (authErr) {
+          console.warn('[FirstAccess] Aviso na sincronização do Supabase Auth:', authErr);
+        }
+      }
+
+      const fullUpdatedCollab: Collaborator = {
+        ...target,
+        ...updatedPayload,
+      };
+
+      setCollaborators(prev => {
+        const next = prev.map(c => c.id === target!.id ? fullUpdatedCollab : c);
+        safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(next));
+        return next;
+      });
+
+      const userPayload: AdminUser = {
+        id: fullUpdatedCollab.id,
+        name: fullUpdatedCollab.name,
+        email: fullUpdatedCollab.email,
+        role: fullUpdatedCollab.role,
+        venueIds: fullUpdatedCollab.venueIds || (fullUpdatedCollab.venueId && fullUpdatedCollab.venueId !== 'all' ? [fullUpdatedCollab.venueId] : []),
+        avatarUrl: fullUpdatedCollab.avatarUrl,
+        isDev: fullUpdatedCollab.isDev,
+        masterId: fullUpdatedCollab.masterId,
+        theme: fullUpdatedCollab.theme || 'light',
+      };
+
+      setCurrentUser(userPayload);
+      safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(userPayload));
+      safeLocalStorageSet('f5_current_user', JSON.stringify(userPayload));
+      safeLocalStorageSet('f5_active_role', userPayload.role);
+      if (userPayload.masterId) {
+        safeLocalStorageSet('f5_scoped_master_id', userPayload.masterId);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[FirstAccess] Erro ao ativar primeiro acesso:', err);
+      return { success: false, message: err.message || 'Erro ao registrar a senha de acesso.' };
+    }
   };
 
   const updateCollaborator = (id: string, data: Partial<Collaborator>) => {
@@ -4059,6 +4189,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             party_day: 'Semana do Evento',
             completed: 'Festa Realizada',
             archived: 'Arquivado',
+            lost: 'Cancelado / Perdido',
           };
           const newActivity: ClientActivity = {
             id: generateUuid(),
@@ -7600,6 +7731,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const refreshAppointments = async (): Promise<Appointment[]> => {
+    try {
+      const fresh = await appointmentService.getAll();
+      if (Array.isArray(fresh)) {
+        setAppointments(fresh);
+        safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(fresh));
+        return fresh;
+      }
+    } catch (err) {
+      console.error('Falha ao sincronizar appointments em tempo real:', err);
+    }
+    return appointments;
+  };
+
   const updateVenueAgendaConfig = async (config: VenueAgendaConfig): Promise<boolean> => {
     setVenueAgendaConfigs(prev => {
       const idx = prev.findIndex(c => c.venueId === config.venueId);
@@ -8443,6 +8588,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addAppointment,
       updateAppointment,
       deleteAppointment,
+      refreshAppointments,
       venueAgendaConfigs,
       updateVenueAgendaConfig,
       scheduleCommercialCommitment,
@@ -8485,6 +8631,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       toggleMasterAccountStatus,
       isInitialSyncComplete,
       sendCollaboratorInvite,
+      activateCollabFirstAccess,
+      showSystemAlert,
       userPinnedFunnelIds,
       togglePinFunnel,
       reorderPinnedFunnels,
@@ -8495,6 +8643,81 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     }}>
       {children}
+
+      {/* Global System Alert Modal (Substitui popups nativos de alert) */}
+      {systemAlert && systemAlert.isOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card, #0F172A)',
+            border: `1.5px solid ${systemAlert.type === 'error' ? '#EF4444' : (systemAlert.type === 'warning' ? '#F59E0B' : (systemAlert.type === 'success' ? '#10B981' : '#14A9D7'))}`,
+            borderRadius: '16px',
+            maxWidth: '440px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: systemAlert.type === 'error' ? 'rgba(239, 68, 68, 0.12)' : (systemAlert.type === 'warning' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)'),
+                color: systemAlert.type === 'error' ? '#EF4444' : (systemAlert.type === 'warning' ? '#D97706' : '#10B981'),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <ShieldAlert size={24} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)' }}>
+                  {systemAlert.title}
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--adm-text-muted, #94A3B8)', lineHeight: 1.45 }}>
+                  {systemAlert.message}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setSystemAlert(prev => ({ ...prev, isOpen: false }))}
+                style={{
+                  background: systemAlert.type === 'error' ? '#EF4444' : (systemAlert.type === 'warning' ? '#F59E0B' : '#10B981'),
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px 22px',
+                  fontSize: '0.84rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  transition: 'opacity 0.15s ease',
+                }}
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminStateContext.Provider>
   );
 };

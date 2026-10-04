@@ -588,7 +588,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'post-sale-appointments':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="appointments" />;
       case 'post-sale-visits-tastings':
-        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="visits_tastings" />;
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="visits_tastings" onNavigateTab={(tab) => handleSelectTab(tab as any)} />;
       case 'team':
         return <AdminTeamView />;
       case 'sources':

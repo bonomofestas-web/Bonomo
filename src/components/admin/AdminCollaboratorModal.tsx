@@ -22,7 +22,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<AdminRole>('crm');
+  const [role, setRole] = useState<AdminRole>('comercial');
   const [customJobTitle, setCustomJobTitle] = useState('');
   const [department, setDepartment] = useState<'diretoria' | 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro' | ''>('');
   const [primarySector, setPrimarySector] = useState<'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' | ''>('');
@@ -36,7 +36,12 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName(collaboratorToEdit.name);
       setEmail(collaboratorToEdit.email);
       setPhone(collaboratorToEdit.phone ? formatPhone(collaboratorToEdit.phone) : '');
-      setRole(collaboratorToEdit.role);
+      const rawRole = collaboratorToEdit.role;
+      const normalizedRole: AdminRole = 
+        (rawRole === 'sdr' || rawRole === 'closer' || rawRole === 'crm') 
+          ? 'comercial' 
+          : (rawRole === 'gerencia' ? 'admin' : (rawRole as AdminRole));
+      setRole(normalizedRole);
       setCustomJobTitle(collaboratorToEdit.customJobTitle || '');
       setDepartment(collaboratorToEdit.department || '');
       setPrimarySector(collaboratorToEdit.primarySector || (collaboratorToEdit.department === 'pos_venda' ? 'pos_venda' : ''));
@@ -48,7 +53,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       setName('');
       setEmail('');
       setPhone('');
-      setRole('crm');
+      setRole('comercial');
       setCustomJobTitle('');
       setDepartment('');
       setPrimarySector('');
@@ -68,12 +73,20 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
 
     const finalDepartment = department ? department : undefined;
 
+    const calculatedSectors: ('gerencia' | 'comercial' | 'pos_venda' | 'financeiro')[] = 
+      role === 'master' || role === 'admin' 
+        ? ['gerencia', 'comercial', 'pos_venda']
+        : role === 'pos_venda'
+        ? ['pos_venda', 'comercial']
+        : ['comercial'];
+
     if (collaboratorToEdit) {
       updateCollaborator(collaboratorToEdit.id, {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
         role,
+        sectors: calculatedSectors,
         customJobTitle: customJobTitle.trim() || undefined,
         department: finalDepartment,
         primarySector: (primarySector || undefined) as any,
@@ -89,6 +102,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         email: email.trim(),
         phone: phone.trim() || undefined,
         role,
+        sectors: calculatedSectors,
         customJobTitle: customJobTitle.trim() || undefined,
         department: finalDepartment,
         primarySector: (primarySector || undefined) as any,
@@ -358,12 +372,10 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
               {[
-                { id: 'master', label: 'Master', desc: 'Acesso total à rede' },
-                { id: 'admin', label: 'Gerente', desc: 'Gestão da casa' },
-                { id: 'pos_venda', label: 'Pós-Venda', desc: 'Anfitriãs & Funil Pós-Venda' },
-                { id: 'sdr', label: 'SDR', desc: 'Pré-venda & Qualificação' },
-                { id: 'closer', label: 'Closer', desc: 'Vendas & Fechamento' },
-                { id: 'crm', label: 'CRM Geral', desc: 'Operação de Leads' },
+                { id: 'master', label: 'Master', desc: 'Diretoria Geral • Acesso a todas as casas' },
+                { id: 'admin', label: 'Gerência', desc: 'Gestão da unidade, metas, funis e equipe' },
+                { id: 'pos_venda', label: 'Pós-Venda', desc: 'Sucesso do cliente, aniversariantes e anfitriãs' },
+                { id: 'comercial', label: 'Comercial', desc: 'Atendimento comercial, WhatsApp e vendas' },
               ].map(opt => (
                 <div
                   key={opt.id}

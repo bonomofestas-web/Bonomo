@@ -73,8 +73,12 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.installmentValue !== undefined) payload.installment_value = lead.installmentValue;
   if (lead.hasCreditCard !== undefined) payload.has_credit_card = lead.hasCreditCard;
   if (lead.profession !== undefined) payload.profession = lead.profession;
-  if (lead.decisionMakers !== undefined) payload.decision_makers = lead.decisionMakers;
-  if (lead.temperature !== undefined) payload.temperature = lead.temperature;
+  if (lead.temperature !== undefined) {
+    payload.temperature = lead.temperature || null;
+  } else if (lead.name !== undefined || lead.phone !== undefined) {
+    // Na criação ou sincronização de lead, garante que temperatura permaneça nula/em branco
+    payload.temperature = null;
+  }
   if (lead.tags !== undefined) payload.tags = lead.tags;
   if (lead.visitCommitment !== undefined) payload.visit_commitment = lead.visitCommitment;
   if (lead.tastingCommitment !== undefined) payload.tasting_commitment = lead.tastingCommitment;

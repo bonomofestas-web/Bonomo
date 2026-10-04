@@ -42,6 +42,162 @@ export const appointmentService = {
     }
   },
 
+  /**
+   * Checagem atômica em tempo real de disponibilidade de horário diretamente no Supabase.
+   * Evita concorrência e agendamento duplo (race condition / double booking).
+   */
+  async checkSlotAvailabilityRealtime(params: {
+    venueId?: string;
+    date: string;
+    time: string;
+    type?: 'visit' | 'tasting' | string;
+    pax?: number;
+    maxConcurrent?: number;
+    maxPax?: number;
+    excludeAppointmentId?: string;
+  }): Promise<{
+    available: boolean;
+    reason?: string;
+    currentBookings: number;
+    maxBookings: number;
+    currentPax: number;
+    maxPax?: number;
+    freshAppointments: (Appointment & { debutanteId?: string; leadId?: string; venueId?: string })[];
+  }> {
+    if (!isSupabaseConfigured) {
+      return {
+        available: true,
+        currentBookings: 0,
+        maxBookings: params.maxConcurrent || 3,
+        currentPax: 0,
+        maxPax: params.maxPax || 20,
+        freshAppointments: [],
+      };
+    }
+
+    try {
+      // 1. Busca todos os agendamentos da data no Supabase (não cancelados)
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('date', params.date)
+        .neq('status', 'cancelled');
+
+      if (error) {
+        console.error('Erro ao verificar disponibilidade em tempo real:', error);
+        return {
+          available: true,
+          currentBookings: 0,
+          maxBookings: params.maxConcurrent || 3,
+          currentPax: 0,
+          freshAppointments: [],
+        };
+      }
+
+      const freshAppointments: (Appointment & { debutanteId?: string; leadId?: string; venueId?: string })[] = (data || []).map(a => ({
+        id: a.id,
+        debutanteId: a.debutante_id || undefined,
+        leadId: a.lead_id || undefined,
+        venueId: a.venue_id || undefined,
+        title: a.title,
+        category: a.category,
+        date: a.date,
+        time: a.time,
+        location: a.location || '',
+        address: a.address || undefined,
+        status: a.status || 'scheduled',
+        notes: a.notes || undefined,
+        responsibleCollaboratorId: a.responsible_collaborator_id || undefined,
+        responsibleName: a.responsible_name || undefined,
+        responsibleRole: a.responsible_role || undefined,
+        responsiblePhone: a.responsible_phone || undefined,
+        targetType: a.target_type || (a.lead_id ? 'lead' : a.debutante_id ? 'client' : 'team'),
+        pax: a.pax !== undefined && a.pax !== null ? Number(a.pax) : undefined,
+        guestsCount: a.pax !== undefined && a.pax !== null ? Number(a.pax) : undefined,
+      }));
+
+      // 2. Filtra por casa/unidade
+      const targetVenueId = params.venueId;
+      const relevantAppointments = freshAppointments.filter(a => {
+        if (params.excludeAppointmentId && a.id === params.excludeAppointmentId) return false;
+        if (!targetVenueId || targetVenueId === 'all') return true;
+        return !a.venueId || a.venueId === targetVenueId;
+      });
+
+      // 3. Filtra pelo horário e categoria
+      const isVisit = params.type === 'visit';
+      const isTasting = params.type === 'tasting';
+
+      const slotAppointments = relevantAppointments.filter(a => {
+        if (a.time !== params.time) return false;
+        if (isVisit) {
+          const cat = (a.category || '').toLowerCase();
+          const title = (a.title || '').toLowerCase();
+          return cat.includes('visita') || cat.includes('apresentação') || title.includes('visita');
+        }
+        if (isTasting) {
+          const cat = (a.category || '').toLowerCase();
+          const title = (a.title || '').toLowerCase();
+          return cat.includes('degust') || cat.includes('buffet') || title.includes('degust');
+        }
+        return true;
+      });
+
+      const currentBookings = slotAppointments.length;
+      const currentPax = slotAppointments.reduce((acc, a) => {
+        return acc + Number(a.pax ?? a.guestsCount ?? (isTasting ? 4 : 2));
+      }, 0);
+
+      const maxBookings = params.maxConcurrent ?? (isVisit ? 3 : isTasting ? 4 : 2);
+      const maxPax = params.maxPax ?? (isTasting ? 20 : 15);
+      const newPax = Number(params.pax || (isTasting ? 4 : 2));
+
+      // Checagem de limite de vagas
+      if (currentBookings >= maxBookings) {
+        return {
+          available: false,
+          reason: `O horário das ${params.time} acabou de ser preenchido por outro atendimento no sistema (${currentBookings}/${maxBookings} vagas ocupadas).`,
+          currentBookings,
+          maxBookings,
+          currentPax,
+          maxPax,
+          freshAppointments,
+        };
+      }
+
+      // Checagem de limite de PAX para degustações
+      if (isTasting && (currentPax + newPax > maxPax)) {
+        return {
+          available: false,
+          reason: `A capacidade máxima de degustação para o horário das ${params.time} foi atingida (${currentPax}/${maxPax} PAX ocupados).`,
+          currentBookings,
+          maxBookings,
+          currentPax,
+          maxPax,
+          freshAppointments,
+        };
+      }
+
+      return {
+        available: true,
+        currentBookings,
+        maxBookings,
+        currentPax,
+        maxPax,
+        freshAppointments,
+      };
+    } catch (err: any) {
+      console.error('Falha em checkSlotAvailabilityRealtime:', err);
+      return {
+        available: true,
+        currentBookings: 0,
+        maxBookings: params.maxConcurrent || 3,
+        currentPax: 0,
+        freshAppointments: [],
+      };
+    }
+  },
+
   async create(data: {
     debutanteId?: string;
     leadId?: string;

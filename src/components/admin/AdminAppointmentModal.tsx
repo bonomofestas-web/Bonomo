@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Calendar, Clock, MapPin, FileText, UserCheck, AlertCircle, 
   UtensilsCrossed, Sparkles, Camera, Music, Flower2, Heart,
-  CheckCircle2, Crown, Building2
+  CheckCircle2, Crown, Building2, AlertTriangle, Loader2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { appointmentService } from '../../services/appointmentService';
 import type { Appointment, AppointmentCategory, AppointmentStatus } from '../../types';
 
 interface AdminAppointmentModalProps {
@@ -52,6 +53,8 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
   const [status, setStatus] = useState<AppointmentStatus>('confirmed');
   const [notes, setNotes] = useState('');
   const [responsibleCollaboratorId, setResponsibleCollaboratorId] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   // Find currently selected debutante and venue
   const selectedDebutante = useMemo(() => {
@@ -99,52 +102,80 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !debutanteId) return;
+    if (!title.trim() || !debutanteId || isSubmitting) return;
 
-    const selectedCollab = collaborators.find(c => c.id === responsibleCollaboratorId);
-    const responsibleName = selectedCollab?.name;
-    const responsibleRole = selectedCollab?.role === 'master' 
-      ? 'Gerente Geral / Master' 
-      : selectedCollab?.role === 'pos_venda' 
-      ? 'Especialista Pós-Venda' 
-      : 'Responsável do Evento';
-    const responsiblePhone = selectedCollab?.phone;
+    setIsSubmitting(true);
+    setConflictError(null);
 
-    if (appointmentToEdit) {
-      updateAppointmentForDebutante(debutanteId, appointmentToEdit.appointment.id, {
-        title: title.trim(),
-        category,
-        date,
-        time,
-        location: location.trim(),
-        status,
-        notes: notes.trim() || undefined,
-        responsibleCollaboratorId: responsibleCollaboratorId || undefined,
-        responsibleName,
-        responsibleRole,
-        responsiblePhone,
-        venueId: selectedDebutante?.venueId,
-      });
-    } else {
-      addAppointmentForDebutante(debutanteId, {
-        title: title.trim(),
-        category,
-        date,
-        time,
-        location: location.trim(),
-        status,
-        notes: notes.trim() || undefined,
-        responsibleCollaboratorId: responsibleCollaboratorId || undefined,
-        responsibleName,
-        responsibleRole,
-        responsiblePhone,
-        venueId: selectedDebutante?.venueId,
-      });
+    try {
+      // Checagem em tempo real para degustações ou visitas
+      const isTastingOrVisit = category === 'Buffet & Degustação' || title.toLowerCase().includes('visita') || title.toLowerCase().includes('degust');
+      if (isTastingOrVisit) {
+        const check = await appointmentService.checkSlotAvailabilityRealtime({
+          venueId: selectedDebutante?.venueId,
+          date,
+          time,
+          type: category === 'Buffet & Degustação' ? 'tasting' : 'visit',
+          excludeAppointmentId: appointmentToEdit?.appointment.id,
+        });
+
+        if (!check.available) {
+          setConflictError(check.reason || `O horário das ${time} na data selecionada acabou de ser preenchido por outro atendimento no sistema. Por favor, escolha outro horário.`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      const selectedCollab = collaborators.find(c => c.id === responsibleCollaboratorId);
+      const responsibleName = selectedCollab?.name;
+      const responsibleRole = selectedCollab?.role === 'master' 
+        ? 'Gerente Geral / Master' 
+        : selectedCollab?.role === 'pos_venda' 
+        ? 'Especialista Pós-Venda' 
+        : 'Responsável do Evento';
+      const responsiblePhone = selectedCollab?.phone;
+
+      if (appointmentToEdit) {
+        updateAppointmentForDebutante(debutanteId, appointmentToEdit.appointment.id, {
+          title: title.trim(),
+          category,
+          date,
+          time,
+          location: location.trim(),
+          status,
+          notes: notes.trim() || undefined,
+          responsibleCollaboratorId: responsibleCollaboratorId || undefined,
+          responsibleName,
+          responsibleRole,
+          responsiblePhone,
+          venueId: selectedDebutante?.venueId,
+        });
+      } else {
+        addAppointmentForDebutante(debutanteId, {
+          title: title.trim(),
+          category,
+          date,
+          time,
+          location: location.trim(),
+          status,
+          notes: notes.trim() || undefined,
+          responsibleCollaboratorId: responsibleCollaboratorId || undefined,
+          responsibleName,
+          responsibleRole,
+          responsiblePhone,
+          venueId: selectedDebutante?.venueId,
+        });
+      }
+
+      onClose();
+    } catch (err: any) {
+      console.error('Erro ao salvar compromisso:', err);
+      setConflictError(err.message || 'Erro ao comunicar com o servidor.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onClose();
   };
 
   const inputStyle: React.CSSProperties = {
@@ -270,6 +301,24 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+            {/* Alerta de Concorrência de Horário */}
+            {conflictError && (
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1.5px solid #EF4444',
+                color: '#EF4444',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+              }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ lineHeight: 1.45 }}>{conflictError}</div>
+              </div>
+            )}
             
             {/* 1. Card Personalizado da Debutante com Avatar & Detalhes */}
             <div>
@@ -583,6 +632,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="adm-btn-primary"
                 style={{
                   flex: 2,
@@ -590,9 +640,22 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                   borderRadius: '12px',
                   fontWeight: 800,
                   fontSize: '0.86rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  opacity: isSubmitting ? 0.7 : 1,
+                  cursor: isSubmitting ? 'wait' : 'pointer',
                 }}
               >
-                {appointmentToEdit ? 'Salvar Alterações' : 'Salvar Compromisso'}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Validando disponibilidade...
+                  </>
+                ) : (
+                  appointmentToEdit ? 'Salvar Alterações' : 'Salvar Compromisso'
+                )}
               </button>
             </div>
           </form>

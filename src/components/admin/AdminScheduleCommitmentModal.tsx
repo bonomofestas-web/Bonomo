@@ -1,12 +1,17 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  X, AlertTriangle, Check, ChevronLeft, ChevronRight,
-  Search, Bell, Building2, RotateCcw, AlertCircle,
-  UtensilsCrossed, Crown
+  X, Check, ChevronLeft, ChevronRight,
+  Search, Building2, AlertCircle,
+  UtensilsCrossed, User, Sparkles, Clock,
+  ArrowRight, ArrowLeft, MapPin,
+  RotateCw, Loader2, AlertTriangle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead, CommercialCommitmentType } from '../../types/admin';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
+import { appointmentService } from '../../services/appointmentService';
+import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
+import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 
 interface AdminScheduleCommitmentModalProps {
   lead?: Lead | null;
@@ -32,20 +37,33 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     currentUser, 
     venueAgendaConfigs, 
     appointments, 
+    refreshAppointments,
     addTask,
     scheduleCommercialCommitment 
   } = useAdminState();
 
+  const [isCheckingRealtime, setIsCheckingRealtime] = useState<boolean>(false);
+  const [isSyncingSlots, setIsSyncingSlots] = useState<boolean>(false);
+  const [realtimeBookingConflict, setRealtimeBookingConflict] = useState<string | null>(null);
+
   // Tipo ativo: Visita Comercial ou Degustação Gastronômica
   const [type, setType] = useState<CommercialCommitmentType>(initialType);
+
+  // Fluxo em 3 Etapas (Estilo Typeform):
+  // Etapa 1: Quem é o Lead/Cliente? (Até selecionar, o símbolo da casa NÃO aparece)
+  // Etapa 2: Acompanhantes (PAX) e Dados da Casa Vinculada
+  // Etapa 3: Calendário, Horários e Responsável (Cargo entre parênteses)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(() => {
+    return initialLead ? 2 : 1;
+  });
 
   // Seleção de Lead (se não veio via props)
   const [selectedLeadId, setSelectedLeadId] = useState<string>(initialLead?.id || '');
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [isLeadSearchOpen, setIsLeadSearchOpen] = useState(false);
-  const leadSearchRef = useRef<HTMLDivElement>(null);
 
-  // Modo Lead vs Cliente (Visível apenas para Pós-Venda / Master / Admin)
+
+  // Modo Lead vs Cliente (Visível para usuários com acesso misto)
   const isPostSaleUser = currentUser?.role === 'master' || 
     currentUser?.role === 'admin' || 
     (currentUser as any)?.role === 'pos_venda' || 
@@ -56,21 +74,12 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return leads.find(l => l.id === selectedLeadId) || initialLead || null;
   }, [leads, selectedLeadId, initialLead]);
 
-  const [customVenueId, setCustomVenueId] = useState<string>(() => {
-    return initialLead?.venueId || '';
-  });
-
-  useEffect(() => {
-    if (currentLead?.venueId) {
-      setCustomVenueId(currentLead.venueId);
-    }
-  }, [currentLead?.id, currentLead?.venueId]);
-
-  const targetVenueId = customVenueId || currentLead?.venueId || venues[0]?.id || 'all';
+  // A casa é detectada automaticamente do lead
+  const targetVenueId = currentLead?.venueId || venues[0]?.id || 'all';
   const targetVenue = venues.find(v => v.id === targetVenueId);
   const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
 
-  // Calendário de Navegação
+  // Calendário de Navegação (Etapa 3)
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
     const d = new Date();
     d.setDate(1);
@@ -93,44 +102,28 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   });
   const [notes, setNotes] = useState<string>('');
 
-  // Automação de Lembretes para o SDR
-  const [enableDayReminder, setEnableDayReminder] = useState<boolean>(true);
-  const [reminderDaysBefore, setReminderDaysBefore] = useState<number>(2); // 2 dias antes
-  const [enableHourReminder, setEnableHourReminder] = useState<boolean>(true);
-  const [reminderHoursBefore, setReminderHoursBefore] = useState<number>(24); // 24 horas antes
-
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Verificar se o lead já possui compromisso deste tipo
-  const existingCommitment = type === 'visit' ? currentLead?.visitCommitment : currentLead?.tastingCommitment;
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  
-  // Status de compromisso anterior
-  const isFutureCommitment = Boolean(
-    existingCommitment && 
-    existingCommitment.date && 
-    existingCommitment.status === 'scheduled' && 
-    existingCommitment.date >= todayStr
-  );
+  // Comprovante Oficial após conclusão
+  const [completedReceipt, setCompletedReceipt] = useState<AppointmentReceiptData | null>(null);
 
-  const isPastOverdueCommitment = Boolean(
-    existingCommitment && 
-    existingCommitment.date && 
-    existingCommitment.status === 'scheduled' && 
-    existingCommitment.date < todayStr
-  );
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // Filtragem de Leads para Autocomplete
   const filteredLeadOptions = useMemo(() => {
-    if (!leadSearchQuery.trim()) return leads.slice(0, 15);
+    let pool = leads;
+    if (targetCategoryMode === 'client') {
+      pool = leads.filter(l => (l as any).status === 'won' || (l as any).pipelineStage === 'won' || (l as any).isClient || (l as any).won);
+    }
+    if (!leadSearchQuery.trim()) return pool.slice(0, 15);
     const q = leadSearchQuery.toLowerCase();
-    return leads.filter(l => 
+    return pool.filter(l => 
       l.name.toLowerCase().includes(q) || 
       l.phone.includes(q) || 
       (l.code && l.code.toLowerCase().includes(q))
     ).slice(0, 20);
-  }, [leads, leadSearchQuery]);
+  }, [leads, leadSearchQuery, targetCategoryMode]);
 
   // Navegação no calendário
   const handlePrevMonth = () => {
@@ -178,33 +171,24 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       days.push({
         dateStr,
         dayNum: day,
+        dayOfWeek: new Date(year, month, day).getDay(),
         isPast,
         isAvailable,
-        reason,
         spotsCount,
+        reason,
+        isCurrentMonth: true,
       });
     }
 
-    return { firstDayIndex, days };
-  }, [calendarMonth, type, targetVenueId, appointments, venueConfig, todayStr]);
-
-  // Capacidade máxima recomendada pela casa
-  const recommendedMaxPax = useMemo(() => {
-    const rule = type === 'visit' ? venueConfig?.visitsRule : venueConfig?.tastingsRule;
-    return rule?.maxPaxPerSlot || 5;
-  }, [type, venueConfig]);
-
-  const [isPaxWarningModalOpen, setIsPaxWarningModalOpen] = useState(false);
-
-  // Estados de Personalização de Lembretes
-  const [isCustomDays, setIsCustomDays] = useState(false);
-  const [isCustomHours, setIsCustomHours] = useState(false);
+    return {
+      firstDayIndex,
+      days,
+    };
+  }, [calendarMonth, todayStr, type, targetVenueId, appointments, venueConfig]);
 
   // Slots do dia selecionado
-  const dayAvailability = useMemo(() => {
-    if (!selectedDate) {
-      return { isDayAvailable: false, reason: 'Selecione uma data.', slots: [] };
-    }
+  const selectedDayAvailability = useMemo(() => {
+    if (!selectedDate) return { isDayAvailable: false, slots: [], isFreeMode: false };
     return agendaAvailabilityService.getAvailableSlots(
       selectedDate,
       type,
@@ -214,232 +198,172 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     );
   }, [selectedDate, type, targetVenueId, appointments, venueConfig]);
 
-  // Horários do dia selecionado com trava contra horários passados no dia de hoje
-  const availableSlots = useMemo(() => {
-    const slots = dayAvailability.slots;
-    if (selectedDate === todayStr) {
-      const now = new Date();
-      const curHour = now.getHours();
-      const curMin = now.getMinutes();
-      const curTimeStr = `${String(curHour).padStart(2, '0')}:${String(curMin).padStart(2, '0')}`;
-      return slots.map(s => {
-        if (s.time <= curTimeStr) {
-          return {
-            ...s,
-            isAvailable: false,
-            reason: 'Horário já passou',
-          };
-        }
-        return s;
-      });
-    }
-    return slots;
-  }, [dayAvailability.slots, selectedDate, todayStr]);
-
-  // Manipulador de clique no dia do calendário com reset explícito de horário
-  const handleSelectDate = (dateStr: string) => {
-    setSelectedDate(dateStr);
-    setSelectedTime(''); // Reset explícito conforme solicitado pelo usuário
-  };
-
-  // Verificações de validade temporal dos lembretes do SDR
-  const isScheduleToday = selectedDate === todayStr;
-
-  const isDaysReminderInPast = useMemo(() => {
-    if (!enableDayReminder || !selectedDate) return false;
-    if (isScheduleToday) return true;
-    const targetDateObj = new Date(`${selectedDate}T09:00:00`);
-    const reminderDateObj = new Date(targetDateObj);
-    reminderDateObj.setDate(reminderDateObj.getDate() - reminderDaysBefore);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return reminderDateObj < now;
-  }, [enableDayReminder, selectedDate, isScheduleToday, reminderDaysBefore]);
-
-  const isHoursReminderInPast = useMemo(() => {
-    if (!enableHourReminder || !selectedDate || !selectedTime) return false;
-    const targetDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
-    const reminderDateTime = new Date(targetDateTime.getTime() - reminderHoursBefore * 60 * 60 * 1000);
-    return reminderDateTime <= new Date();
-  }, [enableHourReminder, selectedDate, selectedTime, reminderHoursBefore]);
-
-  // Sincroniza mês se data padrão for de outro mês
-  useEffect(() => {
-    if (selectedDate) {
-      const [y, m] = selectedDate.split('-').map(Number);
-      if (y && m) {
-        setCalendarMonth(new Date(y, m - 1, 1));
-      }
-    }
-  }, []);
-
-  // Fechar dropdown de busca ao clicar fora
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (leadSearchRef.current && !leadSearchRef.current.contains(e.target as Node)) {
-        setIsLeadSearchOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Submissão do agendamento
-  const handleSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-
+  // Submissão do agendamento com validação atômica em tempo real (Anti-Race Condition)
+  const handleConfirmSchedule = async () => {
     if (!currentLead) {
-      setErrorMessage('Por favor, selecione um lead para realizar o agendamento.');
+      setErrorMessage('Selecione o lead ou cliente para continuar.');
+      setCurrentStep(1);
       return;
     }
-
     if (!selectedDate) {
-      setErrorMessage('Por favor, selecione uma data no calendário.');
+      setErrorMessage('Selecione uma data para o agendamento.');
       return;
     }
-
     if (!selectedTime) {
-      setErrorMessage('Por favor, escolha um horário disponível na grade.');
+      setErrorMessage('Selecione um horário disponível.');
       return;
     }
-
-    if (!pax || pax < 1) {
-      setErrorMessage('A contagem de PAX (pessoas) deve ser de pelo menos 1.');
-      return;
-    }
-
-    const chosenSlot = dayAvailability.slots.find(s => s.time === selectedTime);
-    if (!chosenSlot || !chosenSlot.isAvailable) {
-      setErrorMessage('O horário selecionado não está mais disponível.');
-      return;
-    }
-
-    if (pax > chosenSlot.remainingPax) {
-      setErrorMessage(`Capacidade excedida: este horário comporta no máximo mais ${chosenSlot.remainingPax} PAX.`);
+    if (!targetVenueId || targetVenueId === 'all') {
+      setErrorMessage('A casa de festas do lead precisa ser selecionada.');
       return;
     }
 
     setIsSubmitting(true);
-    const assignedCollab = collaborators.find(c => c.id === responsibleId);
-    const sdrName = assignedCollab?.name || currentUser?.name || 'Equipe Comercial';
+    setIsCheckingRealtime(true);
+    setErrorMessage('');
+    setRealtimeBookingConflict(null);
 
-    // 1. Cria compromisso comercial central
-    const success = await scheduleCommercialCommitment(currentLead.id, type, {
-      date: selectedDate,
-      time: selectedTime,
-      durationMinutes: chosenSlot.durationMinutes,
-      pax,
-      responsibleCollaboratorId: responsibleId || undefined,
-      responsibleName: sdrName,
-      notes: notes.trim() || undefined,
-      venueId: targetVenueId,
-    });
+    try {
+      // 1. CHECAGEM ATÔMICA EM TEMPO REAL DIRETAMENTE NO SUPABASE
+      // Previne que dois consultores salvem o mesmo horário simultaneamente
+      const activeRule = venueConfig ? (type === 'visit' ? venueConfig.visitsRule : venueConfig.tastingsRule) : undefined;
+      const realtimeCheck = await appointmentService.checkSlotAvailabilityRealtime({
+        venueId: targetVenueId,
+        date: selectedDate,
+        time: selectedTime,
+        type,
+        pax,
+        maxConcurrent: activeRule?.maxConcurrentPerSlot,
+        maxPax: activeRule?.maxPaxPerSlot,
+      });
 
-    if (success) {
-      // 2. Cria a tarefa principal no módulo de Visitas & Degustações (databaseId: 'db_visits_tastings')
-      const targetSubtype = type === 'visit' ? 'Visita Comercial' : 'Degustação';
-      let mainTaskId = '';
-      if (addTask) {
-        mainTaskId = addTask({
-          leadId: currentLead.id,
-          leadName: currentLead.name,
-          title: `${type === 'visit' ? '🏛️ Visita' : '🍽️ Degustação'}: ${currentLead.name}`,
-          description: `Agendado para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${pax} PAX). ${notes ? `Obs: "${notes}"` : ''}`,
-          type: 'meeting',
-          customType: targetSubtype,
-          databaseId: 'db_visits_tastings',
-          dueDate: selectedDate,
-          dueTime: selectedTime,
-          priority: 'high',
-          status: 'todo',
-          createdById: currentUser?.id || 'admin',
-          createdByName: currentUser?.name || 'Sistema',
-          assignedToIds: responsibleId ? [responsibleId] : (currentUser?.id ? [currentUser.id] : []),
+      if (!realtimeCheck.available) {
+        // Concorrência detectada: o horário acabou de ser ocupado por outro usuário!
+        setIsSubmitting(false);
+        setIsCheckingRealtime(false);
+
+        // Atualiza imediatamente a lista de agendamentos no contexto
+        await refreshAppointments();
+
+        // Alerta o usuário e reseta o horário selecionado para nova escolha na grade atualizada
+        setRealtimeBookingConflict(
+          realtimeCheck.reason || 
+          `O horário das ${selectedTime} acabou de ser preenchido por outro agendamento no sistema. Atualizamos a grade de horários abaixo com os horários disponíveis em tempo real. Por favor, selecione outro horário.`
+        );
+        setSelectedTime('');
+        return;
+      }
+
+      // 2. Horário livre e verificado: prossegue com a criação no banco
+      setIsCheckingRealtime(false);
+      const prefix = type === 'visit' ? 'AGV' : 'AGD';
+      const randomCode = Math.floor(10000 + Math.random() * 90000);
+      const receiptCode = `#${prefix}-${randomCode}`;
+
+      const assignedUser = collaborators.find(c => c.id === responsibleId);
+      // Agenda no Lead / Supabase
+      if (scheduleCommercialCommitment) {
+        await scheduleCommercialCommitment(currentLead.id, type, {
+          date: selectedDate,
+          time: selectedTime,
+          pax,
+          responsibleCollaboratorId: responsibleId || undefined,
+          responsibleName: assignedUser?.name,
+          notes: notes || undefined,
           venueId: targetVenueId,
-          customProperties: {
-            pax,
-            isCommercialCommitment: true,
-            commitmentType: type,
-          }
         });
       }
 
-      // 3. Automação de Tarefas de Follow-up do SDR
-      const scheduleDateObj = new Date(`${selectedDate}T${selectedTime}:00`);
+      // Cria a tarefa no mural de agendamentos
+      const titlePrefix = type === 'visit' ? 'Visita Comercial' : 'Degustação Gastronômica';
+      const taskTitle = `${titlePrefix}: ${currentLead.name} (${targetVenue?.name || 'Unidade'})`;
 
-      // Lembrete em Dias
-      if (enableDayReminder && reminderDaysBefore > 0) {
-        const dayReminderDate = new Date(scheduleDateObj);
-        dayReminderDate.setDate(dayReminderDate.getDate() - reminderDaysBefore);
-        const dayDateStr = dayReminderDate.toISOString().split('T')[0];
+      await addTask({
+        title: taskTitle,
+        description: `Agendamento confirmado (${receiptCode})\nLocal: ${targetVenue?.name}\nHorário: ${selectedTime}\nAcompanhantes: Até ${pax} pessoas\nResponsável: ${assignedUser?.name || 'Equipe'}\nObs: ${notes || 'Sem observações.'}`,
+        dueDate: selectedDate,
+        dueTime: selectedTime,
+        venueId: targetVenueId,
+        assignedToIds: responsibleId ? [responsibleId] : (currentUser?.id ? [currentUser.id] : []),
+        databaseId: 'db_visits_tastings',
+        leadId: currentLead.id,
+        leadName: currentLead.name,
+        createdById: currentUser?.id || 'admin',
+        createdByName: currentUser?.name || 'Administrador',
+        type: 'meeting', customType: type === 'visit' ? 'Visita' : 'Degustação',
+        status: 'todo',
+        priority: 'high',
+        
+        customProperties: {
+          leadId: currentLead.id,
+          leadName: currentLead.name,
+          leadPhone: currentLead.phone,
+          leadEmail: currentLead.email,
+          commitmentType: type,
+          scheduledTime: selectedTime,
+          pax,
+          receiptCode,
+          venueName: targetVenue?.name,
+          venueAddress: targetVenue?.address,
+        },
+      });
 
-        if (dayDateStr >= todayStr && addTask) {
-          addTask({
-            leadId: currentLead.id,
-            leadName: currentLead.name,
-            title: `Confirmação de ${type === 'visit' ? 'Visita' : 'Degustação'} (${reminderDaysBefore} dias antes) - ${currentLead.name}`,
-            description: `Entrar em contato com o lead para pré-confirmar presença na ${type === 'visit' ? 'visita' : 'degustação'} agendada para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime}.`,
-            type: 'followup',
-            customType: 'Follow-up Confirmação',
-            databaseId: 'db_followup',
-            dueDate: dayDateStr,
-            dueTime: '10:00',
-            priority: 'medium',
-            status: 'todo',
-            isFollowUp: true,
-            createdById: currentUser?.id || 'admin',
-            createdByName: 'F5 Automação',
-            assignedToIds: responsibleId ? [responsibleId] : (currentUser?.id ? [currentUser.id] : []),
-            venueId: targetVenueId,
-            customProperties: {
-              parentTaskId: mainTaskId,
-              autoGenerated: true,
-            }
-          });
-        }
-      }
+      // Sincroniza cache de appointments para refletir a nova vaga ocupada
+      await refreshAppointments();
 
-      // Lembrete em Horas
-      if (enableHourReminder && reminderHoursBefore > 0) {
-        const hourReminderDate = new Date(scheduleDateObj.getTime() - reminderHoursBefore * 60 * 60 * 1000);
-        const hourDateStr = hourReminderDate.toISOString().split('T')[0];
-        const hourTimeStr = `${String(hourReminderDate.getHours()).padStart(2, '0')}:${String(hourReminderDate.getMinutes()).padStart(2, '0')}`;
+      // Monta o comprovante oficial para exibição imediata
+      const closerObj = collaborators.find(c => c.id === responsibleId);
+      const closerRoleTitle = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
 
-        if (hourDateStr >= todayStr && addTask) {
-          addTask({
-            leadId: currentLead.id,
-            leadName: currentLead.name,
-            title: `Lembrete Final de ${type === 'visit' ? 'Visita' : 'Degustação'} (${reminderHoursBefore}h antes) - ${currentLead.name}`,
-            description: `Enviar lembrete e localização no WhatsApp para o lead confirmando a ${type === 'visit' ? 'visita' : 'degustação'} hoje às ${selectedTime}.`,
-            type: 'followup',
-            customType: 'Lembrete Horas',
-            databaseId: 'db_followup',
-            dueDate: hourDateStr,
-            dueTime: hourTimeStr || '09:00',
-            priority: 'high',
-            status: 'todo',
-            isFollowUp: true,
-            createdById: currentUser?.id || 'admin',
-            createdByName: 'F5 Automação',
-            assignedToIds: responsibleId ? [responsibleId] : (currentUser?.id ? [currentUser.id] : []),
-            venueId: targetVenueId,
-            customProperties: {
-              parentTaskId: mainTaskId,
-              autoGenerated: true,
-            }
-          });
-        }
-      }
+      setCompletedReceipt({
+        type,
+        code: receiptCode,
+        leadName: currentLead.name,
+        leadPhone: currentLead.phone,
+        leadEmail: currentLead.email,
+        venueName: targetVenue?.name || 'Unidade F5 System',
+        venueAddress: targetVenue?.address || '',
+        venueLogoUrl: targetVenue?.logoUrl,
+        dateStr: selectedDate,
+        timeStr: selectedTime,
+        pax,
+        closerName: closerObj?.name || currentUser?.name || 'Equipe',
+        closerRoleTitle,
+        closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl,
+        createdByName: currentUser?.name || 'Administrador',
+        createdAtStr: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+        notes,
+      });
 
-      setIsSubmitting(false);
       if (onScheduled) onScheduled();
-      onClose();
-    } else {
+    } catch (err: any) {
+      console.error('Erro ao agendar compromisso:', err);
+      setErrorMessage(err.message || 'Erro ao salvar o agendamento.');
+    } finally {
       setIsSubmitting(false);
-      setErrorMessage('Erro ao persistir o agendamento no sistema. Tente novamente.');
+      setIsCheckingRealtime(false);
     }
   };
+
+  const handleManualSyncSlots = async () => {
+    setIsSyncingSlots(true);
+    setRealtimeBookingConflict(null);
+    try {
+      await refreshAppointments();
+    } finally {
+      setIsSyncingSlots(false);
+    }
+  };
+
+  // Se o comprovante está aberto, renderiza o modal de comprovante oficial
+  if (completedReceipt) {
+    return (
+      <AdminAppointmentReceiptModal
+        receipt={completedReceipt}
+        onClose={onClose}
+      />
+    );
+  }
 
   const themeColor = type === 'visit' ? '#10B981' : '#D97706';
 
@@ -447,992 +371,840 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(0, 0, 0, 0.82)',
-      backdropFilter: 'blur(8px)',
+      background: 'rgba(15,23,42,0.7)',
+      backdropFilter: 'blur(4px)',
+      zIndex: 1200,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1100,
       padding: '20px',
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
       <div style={{
-        background: 'var(--adm-bg-card, #131b26)',
+        background: '#FFFFFF',
+        borderRadius: '20px',
+        maxWidth: '720px',
         width: '100%',
-        maxWidth: '1060px',
-        maxHeight: '94vh',
-        borderRadius: '16px',
-        border: '1px solid var(--adm-border, rgba(255,255,255,0.1))',
+        maxHeight: '92vh',
+        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
         overflow: 'hidden',
+        border: '1px solid rgba(226,232,240,0.8)',
       }}>
-        {/* HEADER LIMPO COM LOGO DA CASA E TÍTULO DIRETO */}
+        {/* Barra de Progresso no Topo com 3 Etapas */}
         <div style={{
-          padding: '18px 24px',
-          borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
+          padding: '16px 24px',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
+          borderBottom: '1px solid #E2E8F0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'var(--adm-bg-subtle, rgba(255,255,255,0.02))',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            {targetVenue?.logoUrl ? (
-              <img
-                src={targetVenue.logoUrl}
-                alt={targetVenue.name}
-                style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '10px',
-                  objectFit: 'contain',
-                  background: '#FFFFFF',
-                  padding: '3px',
-                  border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                }}
-              />
-            ) : (
-              <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '10px',
-                background: `linear-gradient(135deg, ${themeColor}33, ${themeColor}11)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: `1px solid ${themeColor}44`,
-              }}>
-                {type === 'visit' ? <Building2 size={20} color={themeColor} /> : <UtensilsCrossed size={20} color={themeColor} />}
-              </div>
-            )}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                  {type === 'visit' ? 'Agendamento de Visita' : 'Agendamento de Degustação'}
-                </h2>
-                <span style={{
-                  fontSize: '0.70rem',
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  background: `${themeColor}22`,
-                  color: themeColor,
-                  border: `1px solid ${themeColor}44`,
-                }}>
-                  {type === 'visit' ? 'VISITA COMERCIAL' : 'DEGUSTAÇÃO'}
-                </span>
-              </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.80rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
-                {targetVenue?.name ? targetVenue.name : 'Selecione data, horário e responsável'}
-              </p>
-            </div>
+          <div>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Etapa {currentStep} de 3 • Novo Agendamento
+            </span>
+            <h2 style={{ margin: '2px 0 0', fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
+              {currentStep === 1 && 'Quem é o Lead ou Cliente?'}
+              {currentStep === 2 && 'Número de Acompanhantes e Unidade'}
+              {currentStep === 3 && 'Escolha da Data, Horário e Anfitrião'}
+            </h2>
           </div>
 
           <button
             type="button"
             onClick={onClose}
             style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--adm-text-muted, #94A3B8)',
-              cursor: 'pointer',
+              background: '#FFFFFF',
+              border: '1px solid #CBD5E1',
+              borderRadius: '8px',
               padding: '6px',
-              borderRadius: '6px',
+              cursor: 'pointer',
+              color: '#64748B',
             }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        {/* BARRA DE TIPO: EXIBIDA SOMENTE SE NÃO HOUVER LEAD PRÉ-DEFINIDO */}
-        {!initialLead && (
-          <div style={{
-            padding: '10px 24px',
-            borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.06))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(0,0,0,0.12)',
-          }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setType('visit')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.80rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  background: type === 'visit' ? '#10B981' : 'transparent',
-                  color: type === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
-                  border: type === 'visit' ? '1px solid #10B981' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
-                }}
-              >
-                <Building2 size={14} />
-                Visita Comercial
-              </button>
+        {/* Indicador Visual dos Passos */}
+        <div style={{ display: 'flex', height: '4px', background: '#E2E8F0' }}>
+          <div style={{ flex: 1, background: currentStep >= 1 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
+          <div style={{ flex: 1, background: currentStep >= 2 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
+          <div style={{ flex: 1, background: currentStep >= 3 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
+        </div>
 
-              <button
-                type="button"
-                onClick={() => setType('tasting')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.80rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  background: type === 'tasting' ? '#D97706' : 'transparent',
-                  color: type === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #94A3B8)',
-                  border: type === 'tasting' ? '1px solid #D97706' : '1px solid var(--adm-border, rgba(255,255,255,0.1))',
-                }}
-              >
-                <UtensilsCrossed size={14} />
-                Degustação Gastronômica
-              </button>
-            </div>
+        {/* Tipo de Agendamento (Visita vs Degustação) */}
+        <div style={{
+          padding: '12px 24px',
+          background: '#FFFFFF',
+          borderBottom: '1px solid #E2E8F0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+        }}>
+          <button
+            type="button"
+            onClick={() => setType('visit')}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid',
+              borderColor: type === 'visit' ? '#10B981' : '#E2E8F0',
+              background: type === 'visit' ? 'rgba(16,185,129,0.1)' : '#FFFFFF',
+              color: type === 'visit' ? '#10B981' : '#64748B',
+              fontSize: '0.80rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Building2 size={16} />
+            Visita Comercial
+          </button>
 
-            {/* Toggle Lead vs Cliente (Exclusivo para Pós-Venda) */}
-            {isPostSaleUser && (
-              <div style={{
-                display: 'flex',
-                background: 'rgba(0,0,0,0.25)',
-                padding: '2px',
-                borderRadius: '8px',
-                border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-              }}>
-                <button
-                  type="button"
-                  onClick={() => setTargetCategoryMode('lead')}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: targetCategoryMode === 'lead' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
-                    color: targetCategoryMode === 'lead' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
-                  }}
-                >
-                  Lead Comercial
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTargetCategoryMode('client')}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '6px',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    border: 'none',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: targetCategoryMode === 'client' ? 'var(--adm-bg-card, #1E293B)' : 'transparent',
-                    color: targetCategoryMode === 'client' ? 'var(--adm-text-title, #FFFFFF)' : 'var(--adm-text-muted, #94A3B8)',
-                  }}
-                >
-                  <Crown size={13} />
-                  Cliente (Pós-Venda)
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={() => setType('tasting')}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid',
+              borderColor: type === 'tasting' ? '#D97706' : '#E2E8F0',
+              background: type === 'tasting' ? 'rgba(217,119,6,0.1)' : '#FFFFFF',
+              color: type === 'tasting' ? '#D97706' : '#64748B',
+              fontSize: '0.80rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <UtensilsCrossed size={16} />
+            Degustação Gastronômica
+          </button>
+        </div>
 
         {/* CORPO DO FORMULÁRIO */}
-        <form onSubmit={handleSchedule} style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '18px',
+        }}>
           {errorMessage && (
             <div style={{
               padding: '12px 16px',
-              borderRadius: '10px',
-              background: 'rgba(239,68,68,0.15)',
-              border: '1px solid #EF4444',
-              color: '#F87171',
-              fontSize: '0.85rem',
-              fontWeight: 600,
+              borderRadius: '8px',
+              background: '#FEF2F2',
+              border: '1px solid #FECACA',
+              color: '#DC2626',
+              fontSize: '0.80rem',
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-            }}>
-              <AlertTriangle size={18} />
-              {errorMessage}
-            </div>
-          )}
-
-          {/* AVISO DE COMPROMISSO EXISTENTE (REMARCAÇÃO OU ATRASADO) */}
-          {isFutureCommitment && (
-            <div style={{
-              padding: '12px 16px',
-              borderRadius: '10px',
-              background: 'rgba(245,158,11,0.12)',
-              border: '1px solid rgba(245,158,11,0.3)',
-              color: '#FBBF24',
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}>
-              <RotateCcw size={16} />
-              <span>
-                Este lead já possui uma {type === 'visit' ? 'visita' : 'degustação'} agendada para <strong>{existingCommitment?.date ? existingCommitment.date.split('-').reverse().join('/') : ''} às {existingCommitment?.time}</strong>.
-                Ao prosseguir, você estará <strong>reagendando</strong> este compromisso.
-              </span>
-            </div>
-          )}
-
-          {isPastOverdueCommitment && (
-            <div style={{
-              padding: '12px 16px',
-              borderRadius: '10px',
-              background: 'rgba(239,68,68,0.12)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              color: '#F87171',
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
+              gap: '8px',
             }}>
               <AlertCircle size={16} />
-              <span>
-                Este lead possuía um agendamento atrasado ({existingCommitment?.date ? existingCommitment.date.split('-').reverse().join('/') : ''}). O sistema registrará uma <strong>Remarcação de No-Show</strong> preservando o histórico.
-              </span>
+              <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* SELEÇÃO DO LEAD / CLIENTE */}
-          <div ref={leadSearchRef} style={{ position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '6px' }}>
-              LEAD / CONTATO VINCULADO *
-            </label>
-
-            {currentLead ? (
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                background: 'var(--adm-bg-card, #1E293B)',
-                border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {currentLead.avatarUrl || (currentLead as any).photoUrl ? (
-                    <img
-                      src={currentLead.avatarUrl || (currentLead as any).photoUrl}
-                      alt={currentLead.name}
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        objectFit: 'cover',
-                        border: `1px solid ${themeColor}66`,
-                      }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      background: `${themeColor}22`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 800,
-                      color: themeColor,
-                      fontSize: '0.8rem',
-                    }}>
-                      {currentLead.name.substring(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--adm-text-title, #FFFFFF)' }}>
-                      {currentLead.name}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--adm-text-muted, #94A3B8)', marginLeft: '8px' }}>
-                      • {currentLead.phone}
-                    </span>
-                  </div>
-                </div>
-
-                {!initialLead && (
+          {/* ═════════════════════════════════════════════════════════════════
+              ETAPA 1: SELEÇÃO DO LEAD / CLIENTE
+              (Símbolo da casa de festa NÃO aparece até selecionar o lead!)
+              ═════════════════════════════════════════════════════════════════ */}
+          {currentStep === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {isPostSaleUser && (
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     type="button"
                     onClick={() => {
+                      setTargetCategoryMode('lead');
                       setSelectedLeadId('');
-                      setIsLeadSearchOpen(true);
                     }}
                     style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#94A3B8',
-                      fontSize: '0.75rem',
+                      flex: 1,
+                      padding: '10px',
+                      borderRadius: '10px',
+                      border: '1px solid',
+                      borderColor: targetCategoryMode === 'lead' ? themeColor : '#CBD5E1',
+                      background: targetCategoryMode === 'lead' ? `${themeColor}12` : '#FFFFFF',
+                      color: targetCategoryMode === 'lead' ? themeColor : '#64748B',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
                       cursor: 'pointer',
-                      fontWeight: 600,
                     }}
                   >
-                    Trocar
+                    Buscar em Leads Comerciais
                   </button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    placeholder="Buscar lead por nome, telefone ou código..."
-                    value={leadSearchQuery}
-                    onChange={e => {
-                      setLeadSearchQuery(e.target.value);
-                      setIsLeadSearchOpen(true);
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetCategoryMode('client');
+                      setSelectedLeadId('');
                     }}
-                    onFocus={() => setIsLeadSearchOpen(true)}
                     style={{
-                      width: '100%',
-                      padding: '10px 14px 10px 38px',
-                      borderRadius: '8px',
-                      background: 'var(--adm-bg-card, #1E293B)',
-                      color: 'var(--adm-text-title, #FFFFFF)',
-                      border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                      fontSize: '0.85rem',
+                      flex: 1,
+                      padding: '10px',
+                      borderRadius: '10px',
+                      border: '1px solid',
+                      borderColor: targetCategoryMode === 'client' ? themeColor : '#CBD5E1',
+                      background: targetCategoryMode === 'client' ? `${themeColor}12` : '#FFFFFF',
+                      color: targetCategoryMode === 'client' ? themeColor : '#64748B',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
                     }}
-                  />
-                  <Search size={16} color="#94A3B8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                </div>
-
-                {isLeadSearchOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: '4px',
-                    borderRadius: '8px',
-                    background: 'var(--adm-bg-card, #1E293B)',
-                    border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                    maxHeight: '220px',
-                    overflowY: 'auto',
-                    zIndex: 100,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-                  }}>
-                    {filteredLeadOptions.length === 0 ? (
-                      <div style={{ padding: '12px', fontSize: '0.8rem', color: '#94A3B8', textAlign: 'center' }}>
-                        Nenhum lead encontrado com esse termo.
-                      </div>
-                    ) : (
-                      filteredLeadOptions.map(l => (
-                        <div
-                          key={l.id}
-                          onClick={() => {
-                            setSelectedLeadId(l.id);
-                            setIsLeadSearchOpen(false);
-                            if (l.venueId) setCustomVenueId(l.venueId);
-                            if (l.estimatedGuests) setPax(Math.min(l.estimatedGuests, 4));
-                            if (l.closerId || l.sdrId) setResponsibleId(l.closerId || l.sdrId || '');
-                            setSelectedTime('');
-                          }}
-                          style={{
-                            padding: '10px 14px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            borderBottom: '1px solid rgba(255,255,255,0.04)',
-                            transition: 'background 0.12s ease',
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                              {l.name}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--adm-text-muted, #94A3B8)', marginLeft: '8px' }}>
-                              {l.phone}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 600 }}>
-                            Selecionar
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* SELETOR DE UNIDADE DA CASA DE FESTA COM RECÁLCULO INSTANTÂNEO */}
-          {currentLead && (
-            <div style={{ marginTop: '-8px' }}>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
-                UNIDADE DA CASA DE FESTA (LOCAL DO ATENDIMENTO)
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  value={targetVenueId}
-                  onChange={(e) => {
-                    setCustomVenueId(e.target.value);
-                    setSelectedTime('');
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    background: 'var(--adm-bg-card, #1E293B)',
-                    color: 'var(--adm-text-title, #FFFFFF)',
-                    border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                    fontSize: '0.84rem',
-                    outline: 'none',
-                    fontWeight: 700,
-                  }}
-                >
-                  {venues.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} {v.address ? `• ${v.address}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* GRID CALENDÁRIO VISUAL E HORÁRIOS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px' }}>
-            {/* Coluna Esquerda: Mini Calendário com status de dias */}
-            <div style={{
-              background: 'var(--adm-bg-subtle, rgba(255,255,255,0.02))',
-              borderRadius: '12px',
-              border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-              padding: '16px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <button
-                  type="button"
-                  onClick={handlePrevMonth}
-                  style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                  {formattedMonthTitle}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleNextMonth}
-                  style={{ background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-
-              {/* Dias da Semana */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '6px' }}>
-                {WEEKDAYS.map(w => (
-                  <span key={w} style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted, #64748B)' }}>{w}</span>
-                ))}
-              </div>
-
-              {/* Grid de Dias */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                {Array.from({ length: monthDaysGrid.firstDayIndex }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ height: '42px' }} />
-                ))}
-
-                {monthDaysGrid.days.map(d => {
-                  const isSelected = selectedDate === d.dateStr;
-                  const isClickable = !d.isPast && d.isAvailable;
-
-                  return (
-                    <div
-                      key={d.dateStr}
-                      onClick={() => {
-                        if (isClickable) handleSelectDate(d.dateStr);
-                      }}
-                      title={d.reason}
-                      style={{
-                        height: '42px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: isClickable ? 'pointer' : 'not-allowed',
-                        opacity: d.isPast ? 0.35 : 1,
-                        background: isSelected 
-                          ? themeColor 
-                          : d.isAvailable 
-                            ? 'rgba(16,185,129,0.12)' 
-                            : 'rgba(255,255,255,0.03)',
-                        border: isSelected 
-                          ? `1px solid ${themeColor}` 
-                          : d.isAvailable 
-                            ? '1px solid rgba(16,185,129,0.3)' 
-                            : '1px solid rgba(255,255,255,0.04)',
-                        color: isSelected 
-                          ? '#FFFFFF' 
-                          : d.isAvailable 
-                            ? '#34D399' 
-                            : 'var(--adm-text-muted, #64748B)',
-                        transition: 'all 0.12s ease',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.8rem', fontWeight: isSelected || d.isAvailable ? 800 : 500 }}>
-                        {d.dayNum}
-                      </span>
-                      {d.isAvailable && !isSelected && (
-                        <span style={{ fontSize: '0.55rem', fontWeight: 700 }}>
-                          {d.spotsCount} v
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Coluna Direita: Horários Disponíveis */}
-            <div style={{
-              background: 'var(--adm-bg-subtle, rgba(255,255,255,0.02))',
-              borderRadius: '12px',
-              border: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-              padding: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-            }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)', marginBottom: '8px', textTransform: 'uppercase' }}>
-                Horários Livres ({selectedDate ? selectedDate.split('-').reverse().join('/') : 'Selecione data'})
-              </span>
-
-              {availableSlots.length === 0 ? (
-                <div style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  color: 'var(--adm-text-muted, #64748B)',
-                  fontSize: '0.8rem',
-                  padding: '20px',
-                }}>
-                  {dayAvailability.reason || 'Nenhum horário liberado para esta data.'}
-                </div>
-              ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: '8px',
-                  maxHeight: '260px',
-                  paddingBottom: '8px',
-                  overflowY: 'auto',
-                }}>
-                  {availableSlots.map(s => {
-                    const isSelected = selectedTime === s.time;
-                    return (
-                      <button
-                        key={s.time}
-                        type="button"
-                        disabled={!s.isAvailable}
-                        onClick={() => setSelectedTime(s.time)}
-                        style={{
-                          padding: '10px 8px',
-                          borderRadius: '8px',
-                          border: isSelected 
-                            ? `2px solid ${themeColor}` 
-                            : s.isAvailable 
-                              ? '1px solid var(--adm-border, rgba(255,255,255,0.12))' 
-                              : '1px dashed rgba(255,255,255,0.08)',
-                          background: isSelected 
-                            ? `${themeColor}22` 
-                            : s.isAvailable 
-                              ? 'var(--adm-bg-card, #1E293B)' 
-                              : 'rgba(0,0,0,0.1)',
-                          color: isSelected 
-                            ? themeColor 
-                            : s.isAvailable 
-                              ? 'var(--adm-text-title, #FFFFFF)' 
-                              : 'var(--adm-text-muted, #64748B)',
-                          cursor: s.isAvailable ? 'pointer' : 'not-allowed',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '2px',
-                          opacity: s.isAvailable ? 1 : 0.45,
-                        }}
-                      >
-                        <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>{s.time}</span>
-                        <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>
-                          {s.isAvailable ? `${s.remainingSpots} vaga(s)` : ((s as any).reason || 'Indisponível')}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  >
+                    Buscar em Clientes (Pós-Venda)
+                  </button>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* PAX, RESPONSÁVEL E NOTAS */}
-          <div style={{ display: 'grid', gridTemplateColumns: '140px 1.5fr', gap: '14px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
-                {type === 'tasting' ? 'PAX (PESSOAS) *' : 'PAX (PESSOAS)'}
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={25}
-                value={pax}
-                onChange={e => setPax(Number(e.target.value) || 1)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '8px',
-                  background: pax > recommendedMaxPax ? '#FFFBEB' : 'var(--adm-bg-card, #1E293B)',
-                  color: pax > recommendedMaxPax ? '#92400E' : 'var(--adm-text-title, #FFFFFF)',
-                  border: pax > recommendedMaxPax ? '2px solid #F59E0B' : '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                  fontSize: '0.85rem',
-                  fontWeight: 800,
-                  boxSizing: 'border-box',
-                }}
-              />
-              {pax > recommendedMaxPax && (
-                <span style={{ display: 'block', marginTop: '4px', fontSize: '0.68rem', color: '#F59E0B', fontWeight: 700 }}>
-                  Recomendado da casa: até {recommendedMaxPax} PAX.
-                </span>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
-                SDR / RESPONSÁVEL PELO ATENDIMENTO
-              </label>
-              <div style={{ position: 'relative' }}>
-                <select
-                  value={responsibleId}
-                  onChange={e => setResponsibleId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    borderRadius: '8px',
-                    background: 'var(--adm-bg-card, #1E293B)',
-                    color: 'var(--adm-text-title, #FFFFFF)',
-                    border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <option value="">Selecione um responsável comercial...</option>
-                  {collaborators.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.role === 'admin' ? 'Gerência' : c.role === 'master' ? 'Master' : 'Comercial/SDR'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* AUTOMAÇÃO DE LEMBRETES PARA O SDR (CLEAN, NÍTIDO E SEM DEGRADÊS ESCUROS) */}
-          <div style={{
-            padding: '16px',
-            borderRadius: '10px',
-            background: 'var(--adm-bg-surface, #F8FAFC)',
-            border: '1px solid var(--adm-border, #E2E8F0)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Bell size={16} color="#10B981" />
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', textTransform: 'uppercase' }}>
-                Automação de Lembretes do SDR (Follow-up)
-              </span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              {/* Lembrete em Dias */}
+              {/* Campo de Busca Rápida */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <input
-                    type="checkbox"
-                    id="enableDayReminderCheckbox"
-                    disabled={isScheduleToday}
-                    checked={enableDayReminder && !isScheduleToday}
-                    onChange={e => setEnableDayReminder(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: isScheduleToday ? 'not-allowed' : 'pointer', accentColor: '#10B981' }}
-                  />
-                  <label htmlFor="enableDayReminderCheckbox" style={{ fontSize: '0.82rem', fontWeight: 700, color: isScheduleToday ? '#94A3B8' : '#334155', cursor: isScheduleToday ? 'not-allowed' : 'pointer' }}>
-                    Lembrete em Dias
-                  </label>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                  DIGITE O NOME, WHATSAPP OU CÓDIGO DO {targetCategoryMode === 'client' ? 'CLIENTE' : 'LEAD'} *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    background: '#FFFFFF',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                  }}>
+                    <Search size={18} color="#94A3B8" />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar por nome ou telefone..."
+                      value={leadSearchQuery}
+                      onChange={e => {
+                        setLeadSearchQuery(e.target.value);
+                        setIsLeadSearchOpen(true);
+                      }}
+                      onFocus={() => setIsLeadSearchOpen(true)}
+                      style={{
+                        width: '100%',
+                        border: 'none',
+                        outline: 'none',
+                        fontSize: '0.88rem',
+                        fontWeight: 600,
+                        color: '#0F172A',
+                      }}
+                    />
+                  </div>
 
-                  {isScheduleToday ? (
-                    <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontStyle: 'italic' }}>
-                      (Indisponível: agendamento para hoje)
-                    </span>
-                  ) : (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <select
-                        disabled={!enableDayReminder}
-                        value={isCustomDays ? 'custom' : reminderDaysBefore}
-                        onChange={e => {
-                          if (e.target.value === 'custom') {
-                            setIsCustomDays(true);
-                          } else {
-                            setIsCustomDays(false);
-                            setReminderDaysBefore(Number(e.target.value));
-                          }
-                        }}
-                        style={{
-                          padding: '5px 8px',
-                          borderRadius: '6px',
-                          background: '#FFFFFF',
-                          color: '#0F172A',
-                          border: '1px solid #CBD5E1',
-                          fontSize: '0.78rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <option value={1}>1 dia antes</option>
-                        <option value={2}>2 dias antes</option>
-                        <option value={3}>3 dias antes</option>
-                        <option value={5}>5 dias antes</option>
-                        <option value="custom">Personalizado...</option>
-                      </select>
-
-                      {isCustomDays && (
-                        <input
-                          type="number"
-                          min={1}
-                          max={30}
-                          value={reminderDaysBefore}
-                          onChange={e => setReminderDaysBefore(Number(e.target.value) || 1)}
-                          style={{
-                            width: '54px',
-                            padding: '4px 6px',
-                            borderRadius: '6px',
-                            background: '#FFFFFF',
-                            color: '#0F172A',
-                            border: isDaysReminderInPast ? '1px solid #EF4444' : '1px solid #CBD5E1',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                          }}
-                        />
+                  {/* Dropdown de Resultados */}
+                  {isLeadSearchOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '6px',
+                      background: '#FFFFFF',
+                      borderRadius: '12px',
+                      border: '1px solid #CBD5E1',
+                      boxShadow: '0 12px 28px rgba(0,0,0,0.12)',
+                      maxHeight: '260px',
+                      overflowY: 'auto',
+                      zIndex: 30,
+                    }}>
+                      {filteredLeadOptions.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.80rem', color: '#94A3B8' }}>
+                          Nenhum registro encontrado com estes termos.
+                        </div>
+                      ) : (
+                        filteredLeadOptions.map(l => {
+                          const vName = venues.find(v => v.id === l.venueId)?.name || 'Sem casa vinculada';
+                          return (
+                            <div
+                              key={l.id}
+                              onClick={() => {
+                                setSelectedLeadId(l.id);
+                                setIsLeadSearchOpen(false);
+                                setLeadSearchQuery('');
+                              }}
+                              style={{
+                                padding: '12px 16px',
+                                borderBottom: '1px solid #F1F5F9',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'all 0.12s ease',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = '#FFFFFF'}
+                            >
+                              <div>
+                                <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0F172A' }}>{l.name}</span>
+                                <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                                  {l.phone} • Unidade: <strong>{vName}</strong>
+                                </div>
+                              </div>
+                              <span style={{ fontSize: '0.70rem', color: themeColor, fontWeight: 700 }}>
+                                Selecionar
+                              </span>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   )}
                 </div>
-
-                {enableDayReminder && !isScheduleToday && isDaysReminderInPast && (
-                  <span style={{ display: 'block', marginTop: '4px', fontSize: '0.70rem', color: '#EF4444', fontWeight: 700 }}>
-                    Não é possível criar este lembrete pois a data calculada já passou.
-                  </span>
-                )}
               </div>
 
-              {/* Lembrete em Horas */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <input
-                    type="checkbox"
-                    id="enableHourReminderCheckbox"
-                    checked={enableHourReminder}
-                    onChange={e => setEnableHourReminder(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#10B981' }}
-                  />
-                  <label htmlFor="enableHourReminderCheckbox" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
-                    Lembrete em Horas
-                  </label>
-
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <select
-                      disabled={!enableHourReminder}
-                      value={isCustomHours ? 'custom' : reminderHoursBefore}
-                      onChange={e => {
-                        if (e.target.value === 'custom') {
-                          setIsCustomHours(true);
-                        } else {
-                          setIsCustomHours(false);
-                          setReminderHoursBefore(Number(e.target.value));
-                        }
-                      }}
-                      style={{
-                        padding: '5px 8px',
-                        borderRadius: '6px',
-                        background: '#FFFFFF',
-                        color: '#0F172A',
-                        border: '1px solid #CBD5E1',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      <option value={1}>1 hora antes</option>
-                      <option value={2}>2 horas antes</option>
-                      <option value={4}>4 horas antes</option>
-                      <option value={6}>6 horas antes</option>
-                      <option value={12}>12 horas antes</option>
-                      <option value={24}>24 horas antes</option>
-                      <option value="custom">Personalizado...</option>
-                    </select>
-
-                    {isCustomHours && (
-                      <input
-                        type="number"
-                        min={1}
-                        max={72}
-                        value={reminderHoursBefore}
-                        onChange={e => setReminderHoursBefore(Number(e.target.value) || 1)}
-                        style={{
-                          width: '54px',
-                          padding: '4px 6px',
-                          borderRadius: '6px',
-                          background: '#FFFFFF',
-                          color: '#0F172A',
-                          border: isHoursReminderInPast ? '1px solid #EF4444' : '1px solid #CBD5E1',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                        }}
-                      />
-                    )}
+              {/* Lead Selecionado com Confirmação */}
+              {currentLead && (
+                <div style={{
+                  padding: '16px 20px',
+                  borderRadius: '14px',
+                  background: 'var(--adm-bg-surface, #F8FAFC)',
+                  border: '1px solid #E2E8F0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '50%',
+                      background: `${themeColor}15`,
+                      color: themeColor,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 900,
+                      fontSize: '1rem',
+                      border: `2px solid ${themeColor}33`,
+                    }}>
+                      {currentLead.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0F172A' }}>{currentLead.name}</span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B' }}>
+                          {currentLead.code || 'LEAD'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '2px' }}>
+                        {currentLead.phone} • {currentLead.email || 'Sem e-mail'}
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                {enableHourReminder && isHoursReminderInPast && (
-                  <span style={{ display: 'block', marginTop: '4px', fontSize: '0.70rem', color: '#EF4444', fontWeight: 700 }}>
-                    Não é possível criar este lembrete pois o horário calculado já passou.
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* MODAL DE CONFIRMAÇÃO DE PAX ACIMA DO RECOMENDADO */}
-          {isPaxWarningModalOpen && (
-            <div style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-              zIndex: 1200,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '20px',
-            }}>
-              <div style={{
-                background: 'var(--adm-bg-card, #FFFFFF)',
-                borderRadius: '12px',
-                border: '1px solid #F59E0B',
-                maxWidth: '460px',
-                width: '100%',
-                padding: '20px',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                  <AlertTriangle size={24} color="#D97706" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                    Alerta de Capacidade por Família
-                  </h3>
-                </div>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: '#475569', lineHeight: 1.5 }}>
-                  Você está agendando para <strong>{pax} pessoas</strong>. A capacidade recomendada cadastrada para esta unidade é de até <strong>{recommendedMaxPax} pessoas por família</strong>.
-                  <br /><br />
-                  Deseja prosseguir mesmo assim?
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                   <button
                     type="button"
-                    onClick={() => setIsPaxWarningModalOpen(false)}
+                    onClick={() => setSelectedLeadId('')}
                     style={{
-                      padding: '8px 14px',
-                      borderRadius: '6px',
                       background: 'transparent',
-                      border: '1px solid #CBD5E1',
-                      color: '#475569',
-                      fontSize: '0.80rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Voltar e Ajustar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      setIsPaxWarningModalOpen(false);
-                      // Submete ignorando o bloqueio de aviso
-                      handleSchedule(e);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      background: '#D97706',
                       border: 'none',
-                      color: '#FFFFFF',
-                      fontSize: '0.80rem',
+                      color: '#EF4444',
+                      fontSize: '0.76rem',
                       fontWeight: 700,
                       cursor: 'pointer',
                     }}
                   >
-                    Sim, Confirmar com {pax} Pessoas
+                    Trocar
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════
+              ETAPA 2: ACOMPANHANTES (PAX) E DADOS DA CASA VINCULADA
+              ═════════════════════════════════════════════════════════════════ */}
+          {currentStep === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Card da Casa de Festas Detectada */}
+              <div style={{
+                padding: '16px 20px',
+                borderRadius: '14px',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '10px',
+                  background: '#F1F5F9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  border: '1px solid #E2E8F0',
+                }}>
+                  {targetVenue?.logoUrl ? (
+                    <img src={targetVenue.logoUrl} alt={targetVenue.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  ) : (
+                    <Building2 size={24} color="#64748B" />
+                  )}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.70rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase' }}>
+                    Unidade Detectada do Lead
+                  </div>
+                  <h4 style={{ margin: '2px 0 0', fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                    {targetVenue?.name || 'Unidade não identificada'}
+                  </h4>
+                  {targetVenue?.address && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                      <MapPin size={12} />
+                      <span>{targetVenue.address}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Seletor de PAX / Acompanhantes */}
+              <div style={{
+                padding: '20px',
+                borderRadius: '14px',
+                background: 'var(--adm-bg-surface, #F8FAFC)',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                  Quantas pessoas participarão (PAX / Acompanhantes)?
+                </label>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748B' }}>
+                  Defina o número de pessoas para preparo da recepção e limites da sessão de {type === 'visit' ? 'visita' : 'degustação'}.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+                  {[1, 2, 3, 4, 5, 6].map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setPax(num)}
+                      style={{
+                        width: '46px',
+                        height: '46px',
+                        borderRadius: '10px',
+                        border: '1px solid',
+                        borderColor: pax === num ? themeColor : '#CBD5E1',
+                        background: pax === num ? themeColor : '#FFFFFF',
+                        color: pax === num ? '#FFFFFF' : '#0F172A',
+                        fontSize: '0.95rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px' }}>
+                    <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 700 }}>Outro:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={pax}
+                      onChange={e => setPax(Number(e.target.value) || 1)}
+                      style={{
+                        width: '70px',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        textAlign: 'center',
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* NOTAS E OBSERVAÇÕES */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', marginBottom: '4px' }}>
-              OBSERVAÇÕES INTERNAS
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Ex: Debutante vem com os pais e a tia. Gostariam de ver iluminação cenográfica..."
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                background: 'var(--adm-bg-card, #1E293B)',
-                color: 'var(--adm-text-title, #FFFFFF)',
-                border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                fontSize: '0.82rem',
-                resize: 'none',
-              }}
-            />
-          </div>
+          {/* ═════════════════════════════════════════════════════════════════
+              ETAPA 3: CALENDÁRIO, HORÁRIOS E RESPONSÁVEL (CARGO ENTRE PARÊNTESES)
+              ═════════════════════════════════════════════════════════════════ */}
+          {currentStep === 3 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Calendário e Seleção de Horários */}
+              <div style={{
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                background: '#FFFFFF',
+                padding: '18px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A' }}>
+                    {formattedMonthTitle}
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button type="button" onClick={handlePrevMonth} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer' }}>
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button type="button" onClick={handleNextMonth} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer' }}>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
 
-          {/* FOOTER */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: '12px',
-            marginTop: '8px',
-            paddingTop: '16px',
-            borderTop: '1px solid var(--adm-border, rgba(255,255,255,0.08))',
-          }}>
+                {/* Grid do Mês */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center' }}>
+                  {WEEKDAYS.map(w => (
+                    <span key={w} style={{ fontSize: '0.70rem', fontWeight: 800, color: '#94A3B8', padding: '4px 0' }}>
+                      {w}
+                    </span>
+                  ))}
+
+                  {Array.from({ length: monthDaysGrid.firstDayIndex }).map((_, i) => (
+                    <div key={`empty-${i}`} />
+                  ))}
+
+                  {monthDaysGrid.days.map(d => {
+                    const isSelected = selectedDate === d.dateStr;
+                    return (
+                      <button
+                        key={d.dateStr}
+                        type="button"
+                        disabled={d.isPast || !d.isAvailable}
+                        onClick={() => {
+                          setSelectedDate(d.dateStr);
+                          setSelectedTime('');
+                        }}
+                        style={{
+                          height: '38px',
+                          borderRadius: '8px',
+                          border: isSelected ? `2px solid ${themeColor}` : '1px solid transparent',
+                          background: isSelected ? `${themeColor}15` : (d.isAvailable ? '#F0FDF4' : '#F8FAFC'),
+                          color: isSelected ? themeColor : (d.isAvailable ? '#15803D' : '#CBD5E1'),
+                          fontSize: '0.80rem',
+                          fontWeight: isSelected ? 900 : 700,
+                          cursor: d.isAvailable ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: d.isPast ? 0.35 : 1,
+                        }}
+                      >
+                        {d.dayNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Slots Disponíveis */}
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid #E2E8F0' }}>
+                  {/* Banner de Concorrência Detectada */}
+                  {realtimeBookingConflict && (
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      background: '#FEF2F2',
+                      border: '1.5px solid #EF4444',
+                      color: '#991B1B',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      marginBottom: '14px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.15)',
+                    }}>
+                      <AlertTriangle size={18} color="#EF4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div style={{ fontWeight: 800, marginBottom: '2px', color: '#B91C1C' }}>
+                          Horário Já Preenchido no Banco de Dados
+                        </div>
+                        <div style={{ lineHeight: 1.45 }}>{realtimeBookingConflict}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                      HORÁRIOS DISPONÍVEIS NA DATA ({selectedDate.split('-').reverse().join('/')})
+                    </label>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={handleManualSyncSlots}
+                        disabled={isSyncingSlots}
+                        title="Sincronizar horários em tempo real com o banco de dados"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: '#F1F5F9',
+                          border: '1px solid #CBD5E1',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          cursor: isSyncingSlots ? 'wait' : 'pointer',
+                        }}
+                      >
+                        <RotateCw size={11} className={isSyncingSlots ? 'animate-spin' : ''} />
+                        <span>{isSyncingSlots ? 'Sincronizando...' : 'Atualizar Vagas'}</span>
+                      </button>
+
+                      {selectedDayAvailability.isFreeMode && (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          color: '#059669',
+                          background: 'rgba(16,185,129,0.12)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                        }}>
+                          <Sparkles size={11} />
+                          Modo Livre
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {selectedDayAvailability.isFreeMode && (
+                    <div style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(16,185,129,0.08)',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      marginBottom: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      color: '#059669',
+                    }}>
+                      <Sparkles size={14} />
+                      <span>Modo Livre ativo: Escolha um horário sugerido ou digite qualquer horário desejado abaixo.</span>
+                    </div>
+                  )}
+
+                  {selectedDayAvailability.slots.length === 0 ? (
+                    <div style={{ fontSize: '0.78rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                      Nenhum horário disponível para esta data.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {selectedDayAvailability.slots.map(s => {
+                        const isSelected = selectedTime === s.time;
+                        return (
+                          <button
+                            key={s.time}
+                            type="button"
+                            disabled={!s.isAvailable}
+                            onClick={() => {
+                              setSelectedTime(s.time);
+                              if (realtimeBookingConflict) setRealtimeBookingConflict(null);
+                            }}
+                            title={s.isAvailable ? `${s.remainingSpots} vaga(s) disponível(is)` : 'Horário esgotado'}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              border: '1px solid',
+                              borderColor: isSelected ? themeColor : (s.isAvailable ? '#CBD5E1' : '#E2E8F0'),
+                              background: isSelected ? themeColor : (s.isAvailable ? '#FFFFFF' : '#F8FAFC'),
+                              color: isSelected ? '#FFFFFF' : (s.isAvailable ? '#0F172A' : '#94A3B8'),
+                              fontSize: '0.80rem',
+                              fontWeight: 800,
+                              cursor: s.isAvailable ? 'pointer' : 'not-allowed',
+                              opacity: s.isAvailable ? 1 : 0.55,
+                              textDecoration: s.isAvailable ? 'none' : 'line-through',
+                            }}
+                          >
+                            {s.time} {!s.isAvailable && '(Lotado)'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Campo de Horário Livre / Customizado */}
+                  <div style={{
+                    marginTop: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                  }}>
+                    <Clock size={16} color="#64748B" />
+                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>
+                      {selectedDayAvailability.isFreeMode ? 'Definir Qualquer Horário Livre:' : 'Outro Horário:'}
+                    </span>
+                    <input
+                      type="time"
+                      value={selectedTime}
+                      onChange={e => setSelectedTime(e.target.value)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.80rem',
+                        fontWeight: 800,
+                        color: '#0F172A',
+                        colorScheme: 'light',
+                        background: '#FFFFFF',
+                      }}
+                    />
+                    {selectedTime && (
+                      <span style={{ fontSize: '0.74rem', color: themeColor, fontWeight: 800 }}>
+                        Horário Selecionado: {selectedTime}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Responsável / Anfitrião com CARGO ENTRE PARÊNTESES */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                  ANFITRIÃO / RESPONSÁVEL DA RECEPÇÃO *
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                  {collaborators.map(c => {
+                    const isSelected = responsibleId === c.id;
+                    const roleTitle = (c as any)?.roleTitle || c.role || 'Anfitrião';
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => setResponsibleId(c.id)}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '10px',
+                          border: '1px solid',
+                          borderColor: isSelected ? themeColor : '#CBD5E1',
+                          background: isSelected ? `${themeColor}0D` : '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          boxShadow: isSelected ? `0 2px 8px ${themeColor}22` : 'none',
+                        }}
+                      >
+                        <div style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          background: '#E2E8F0',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {(c as any).photoUrl || c.avatarUrl ? (
+                            <img src={(c as any).photoUrl || c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <User size={18} color="#64748B" />
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                            {c.name}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: themeColor }}>
+                            ({roleTitle})
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
+                  OBSERVAÇÕES DO AGENDAMENTO (OPCIONAL)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Noivos com preferência por mesa próxima ao jardim, debutante com interesse no pacote de pista..."
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    fontSize: '0.80rem',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* BARRA DE NAVEGAÇÃO INFERIOR */}
+        <div style={{
+          padding: '16px 24px',
+          background: 'var(--adm-bg-surface, #F8FAFC)',
+          borderTop: '1px solid #E2E8F0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          {currentStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => setCurrentStep((currentStep - 1) as any)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 16px',
+                borderRadius: '8px',
+                background: '#FFFFFF',
+                border: '1px solid #CBD5E1',
+                color: '#475569',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <ArrowLeft size={16} />
+              <span>Voltar</span>
+            </button>
+          ) : (
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: '9px 18px',
+                padding: '9px 16px',
                 borderRadius: '8px',
                 background: 'transparent',
-                border: '1px solid var(--adm-border, rgba(255,255,255,0.15))',
-                color: 'var(--adm-text-muted, #94A3B8)',
+                border: '1px solid #CBD5E1',
+                color: '#64748B',
                 fontSize: '0.82rem',
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -1440,30 +1212,70 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
             >
               Cancelar
             </button>
+          )}
 
+          {currentStep < 3 ? (
             <button
-              type="submit"
-              disabled={isSubmitting}
+              type="button"
+              disabled={currentStep === 1 && !currentLead}
+              onClick={() => setCurrentStep((currentStep + 1) as any)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '9px 24px',
+                padding: '10px 22px',
                 borderRadius: '8px',
-                background: themeColor,
+                background: (currentStep === 1 && !currentLead) ? '#CBD5E1' : themeColor,
                 color: '#FFFFFF',
                 border: 'none',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: `0 4px 14px ${themeColor}44`,
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: (currentStep === 1 && !currentLead) ? 'not-allowed' : 'pointer',
+                boxShadow: (currentStep === 1 && !currentLead) ? 'none' : `0 4px 14px ${themeColor}33`,
               }}
             >
-              <Check size={16} />
-              {isSubmitting ? 'Agendando...' : (isFutureCommitment ? 'Confirmar Remarcação' : 'Confirmar Agendamento')}
+              <span>Avançar</span>
+              <ArrowRight size={16} />
             </button>
-          </div>
-        </form>
+          ) : (
+            <button
+              type="button"
+              disabled={isSubmitting || isCheckingRealtime || !selectedDate || !selectedTime}
+              onClick={handleConfirmSchedule}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 24px',
+                borderRadius: '8px',
+                background: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? '#CBD5E1' : themeColor,
+                color: '#FFFFFF',
+                border: 'none',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? 'not-allowed' : 'pointer',
+                boxShadow: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? 'none' : `0 4px 14px ${themeColor}33`,
+              }}
+            >
+              {isCheckingRealtime ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Validando disponibilidade no banco...</span>
+                </>
+              ) : isSubmitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Confirmando agendamento...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={18} />
+                  <span>Confirmar Agendamento</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

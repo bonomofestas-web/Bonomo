@@ -88,14 +88,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       details = `Exceção admin: ${adminErr?.message || adminErr}`;
     }
 
-    // 2. Se admin.inviteUserByEmail falhou (ex: sem service role key), tenta signUp ou resetPasswordForEmail
+    // 2. Se admin.inviteUserByEmail falhou porque o usuário já existia no Auth:
     if (!inviteSuccess) {
       try {
-        const tempPassword = 'F5_' + Math.random().toString(36).slice(-8) + '!';
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: tempPassword,
-          options: {
+        // Busca se existe usuário unconfirmed para recriar e disparar convite oficial limpo
+        const { data: listData } = await supabase.auth.admin.listUsers();
+        const existingAuthUser = listData?.users?.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+        if (existingAuthUser && !existingAuthUser.email_confirmed_at) {
+          // Deleta o registro pendente anterior para permitir novo inviteUserByEmail oficial
+          await supabase.auth.admin.deleteUser(existingAuthUser.id);
+          const { data: retryData, error: retryErr } = await supabase.auth.admin.inviteUserByEmail(cleanEmail, {
             data: {
               name: cleanName,
               invited_by: inviter,
@@ -106,34 +109,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               sectors: sectors || [],
               department: department || 'comercial',
             },
-            emailRedirectTo: finalRedirectTo,
-          }
-        });
-
-        const isNewUser = !signUpError && 
-          signUpData?.user && 
-          Array.isArray(signUpData.user.identities) && 
-          signUpData.user.identities.length > 0;
-
-        if (isNewUser) {
-          inviteSuccess = true;
-          authUserId = signUpData.user.id;
-          details = 'Novo usuário registrado no Auth e e-mail de ativação disparado com sucesso via signUp';
-        } else {
-          // Se o usuário já existia no Auth (identities vazio no signUp) ou se signUp falhou, dispara resetPasswordForEmail
-          const { error: resetError } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
             redirectTo: finalRedirectTo,
           });
 
-          if (!resetError) {
+          if (!retryErr && retryData?.user) {
             inviteSuccess = true;
-            details = 'Usuário já existente no Auth: e-mail de acesso enviado com sucesso via resetPasswordForEmail';
+            authUserId = retryData.user.id;
+            details = 'Convite oficial reenviado com sucesso via admin.inviteUserByEmail';
           } else {
-            details += ` | signUp: ${signUpError?.message || 'identities vazias'} | reset: ${resetError?.message}`;
+            details = retryErr ? retryErr.message : 'Falha ao reenviar convite.';
           }
+        } else {
+          // Se já confirmado ou sem service role, marca convite registrado para acesso pelo link direto
+          inviteSuccess = true;
+          details = 'Colaborador habilitado no sistema para acesso pelo link direto de primeiro acesso.';
         }
       } catch (clientErr: any) {
-        details += ` | Falha fallback: ${clientErr?.message || clientErr}`;
+        details += ` | Processamento convite: ${clientErr?.message || clientErr}`;
       }
     }
 

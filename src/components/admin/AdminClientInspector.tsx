@@ -58,6 +58,12 @@ const STAGE_CONFIG: Record<ClientStage, { label: string; color: string; bg: stri
     bg: 'rgba(16, 185, 129, 0.12)', 
     border: '#10B981' 
   },
+  lost: {
+    label: 'Contrato Cancelado',
+    color: '#EF4444',
+    bg: 'rgba(239, 68, 68, 0.12)',
+    border: '#EF4444'
+  },
   archived: { 
     label: 'Arquivado', 
     color: '#6B7280', 

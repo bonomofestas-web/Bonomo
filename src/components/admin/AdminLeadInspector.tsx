@@ -15,6 +15,8 @@ import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
+import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
+import { canChangeLeadVenue } from '../../utils/accessPermissions';
 import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -143,6 +145,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     return getMissingLeadFieldKeys(lead);
   }, [shouldHighlightMissing, lead]);
   const [isFunnelPickerOpen, setIsFunnelPickerOpen] = useState(false);
+  const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -1778,25 +1781,42 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           position: 'relative',
         }}>
           {/* Tag de Casa de Festas Fixa (Não removível) */}
-          <span
+          {/* Tag da Unidade (Interativa para Gerência e Master, Somente Leitura para Comercial e Pós-Venda) */}
+          <button
+            type="button"
+            disabled={!canChangeLeadVenue(currentUser)}
+            onClick={() => {
+              if (canChangeLeadVenue(currentUser)) {
+                setIsTransferVenueModalOpen(true);
+              }
+            }}
             style={{
               fontSize: '0.68rem',
               fontWeight: 800,
               background: 'rgba(20, 169, 215, 0.14)',
               color: '#14A9D7',
               border: '1px solid rgba(20, 169, 215, 0.4)',
-              padding: '2px 8px',
+              padding: '3px 8px',
               borderRadius: '6px',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '5px',
               flexShrink: 0,
+              cursor: canChangeLeadVenue(currentUser) ? 'pointer' : 'default',
+              transition: 'all 0.15s ease',
             }}
-            title="Unidade / Casa de Festas vinculada (fixa)"
+            title={
+              canChangeLeadVenue(currentUser)
+                ? 'Clique para transferir o lead para outra casa de festas'
+                : 'Unidade vinculada (alteração restrita à Gerência e Master)'
+            }
           >
-            <Building2 size={10} color="#14A9D7" />
-            <span>{leadVenue?.name || lead.venueName || 'Bonomo Festas'}</span>
-          </span>
+            <Building2 size={11} color="#14A9D7" />
+            <span>{leadVenue?.name || lead.venueName || 'Unidade Física'}</span>
+            {canChangeLeadVenue(currentUser) && (
+              <ArrowRightLeft size={10} color="#14A9D7" style={{ opacity: 0.7 }} />
+            )}
+          </button>
 
           {/* Tag de Origem Fixa (Sempre a 2ª Tag, Não Removível, Sem # e Sem Ícone) */}
           <span
@@ -4852,9 +4872,34 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Casa Vinculada:</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
-                    {leadVenue?.name || lead.venueName || 'F5 System'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
+                      {leadVenue?.name || lead.venueName || 'F5 System'}
+                    </span>
+                    {canChangeLeadVenue(currentUser) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsTransferVenueModalOpen(true)}
+                        style={{
+                          background: 'rgba(20, 169, 215, 0.12)',
+                          border: '1px solid rgba(20, 169, 215, 0.3)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          color: 'var(--adm-accent, #14A9D7)',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        title="Transferir lead para outra casa de festas"
+                      >
+                        <ArrowRightLeft size={10} />
+                        Transferir Unidade
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Funil de Destino:</span>
@@ -6075,6 +6120,13 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
           setIsMissingFieldsModalOpen(false);
           setLocalHighlightMissing(true);
         }}
+      />
+
+      {/* Modal Inteligente de Transferência de Unidade (Restrito a Gerência e Master) */}
+      <AdminTransferLeadVenueModal
+        isOpen={isTransferVenueModalOpen}
+        onClose={() => setIsTransferVenueModalOpen(false)}
+        lead={lead}
       />
 
     </div>

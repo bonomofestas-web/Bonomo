@@ -73,6 +73,13 @@ const STAGE_COLUMNS: StageColumn[] = [
     bgColor: 'rgba(16, 185, 129, 0.08)', 
     borderColor: 'rgba(16, 185, 129, 0.3)' 
   },
+  { 
+    id: 'lost', 
+    title: 'CONTRATO CANCELADO', 
+    color: '#EF4444', 
+    bgColor: 'rgba(239, 68, 68, 0.08)', 
+    borderColor: 'rgba(239, 68, 68, 0.3)' 
+  },
 ];
 
 interface AdminFilterDropdownProps {
@@ -261,6 +268,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
   const boardRef = useRef<HTMLDivElement>(null);
+  const isPointerDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+  const [isDraggingBoard, setIsDraggingBoard] = useState(false);
 
   // Estados de Ações e Interatividades dos Cards
   const [activeClientMenuId, setActiveClientMenuId] = useState<string | null>(null);
@@ -520,7 +531,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   // Overall metrics
   const metrics = useMemo(() => {
-    const totalActive = filteredClients.filter(c => c.stage !== 'completed' && c.stage !== 'archived').length;
+    const totalActive = filteredClients.filter(c => c.stage !== 'completed' && c.stage !== 'lost' && c.stage !== 'archived').length;
+    const totalCompleted = filteredClients.filter(c => c.stage === 'completed').length;
+    const totalLost = filteredClients.filter(c => c.stage === 'lost').length;
     const totalRevenue = filteredClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
     const partiesNext60Days = filteredClients.filter(c => {
       const pStr = c.partyDate || c.eventDate;
@@ -531,8 +544,54 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       return diffDays >= 0 && diffDays <= 60;
     }).length;
 
-    return { totalActive, totalRevenue, partiesNext60Days };
+    return { totalActive, totalCompleted, totalLost, totalRevenue, partiesNext60Days };
   }, [filteredClients]);
+
+  // Handlers para Drag-to-Scroll horizontal do Kanban (arraste livre com a mãozinha)
+  const handleBoardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('select') ||
+      target.closest('a') ||
+      target.closest('[draggable="true"]') ||
+      target.closest('[data-no-board-drag]')
+    ) {
+      return;
+    }
+    if (!boardRef.current) return;
+    isPointerDownRef.current = true;
+    startXRef.current = e.pageX - boardRef.current.offsetLeft;
+    scrollLeftRef.current = boardRef.current.scrollLeft;
+
+    const handleGlobalMouseUp = () => {
+      if (isPointerDownRef.current) {
+        isPointerDownRef.current = false;
+        setTimeout(() => setIsDraggingBoard(false), 50);
+      }
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+  };
+
+  const handleBoardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPointerDownRef.current || !boardRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - boardRef.current.offsetLeft;
+    const walk = (x - startXRef.current) * 1.25;
+    if (Math.abs(walk) > 4 && !isDraggingBoard) {
+      setIsDraggingBoard(true);
+    }
+    boardRef.current.scrollLeft = scrollLeftRef.current - walk;
+  };
+
+  const handleBoardMouseUpOrLeave = () => {
+    if (isPointerDownRef.current) {
+      isPointerDownRef.current = false;
+      setTimeout(() => setIsDraggingBoard(false), 50);
+    }
+  };
 
   // Drag & Drop Handlers
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -1131,6 +1190,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           Em Andamento: <strong style={{ color: '#06B6D4' }}>{metrics.totalActive}</strong>
         </div>
         <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+          Realizadas: <strong style={{ color: '#10B981' }}>{metrics.totalCompleted}</strong>
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+          Cancelados: <strong style={{ color: '#EF4444' }}>{metrics.totalLost}</strong>
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
           Carteira Total: <strong style={{ color: 'var(--adm-accent)' }}>
             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metrics.totalRevenue)}
           </strong>
@@ -1156,6 +1221,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           /* Kanban Board */
           <div 
             ref={boardRef}
+            onMouseDown={handleBoardMouseDown}
+            onMouseMove={handleBoardMouseMove}
+            onMouseUp={handleBoardMouseUpOrLeave}
+            onMouseLeave={handleBoardMouseUpOrLeave}
             style={{
               display: 'flex',
               flexDirection: 'row',
@@ -1172,6 +1241,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               paddingTop: '0px',
               paddingBottom: '40px',
               boxSizing: 'border-box',
+              cursor: isDraggingBoard ? 'grabbing' : 'grab',
+              userSelect: isDraggingBoard ? 'none' : 'auto',
             }}
             className="custom-scrollbar"
           >
@@ -1281,6 +1352,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     display: 'flex',
                     flexDirection: 'column',
                     alignSelf: 'stretch',
+                    minHeight: '100%',
+                    height: '100%',
                     gap: '6px',
                     boxShadow: 'none',
                     position: 'relative',
@@ -1378,14 +1451,17 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     </span>
                   </div>
 
-                  {/* Cards Container - Sem scroll interno, tudo desce junto */}
+                  {/* Cards Container - Sem scroll interno, altura completa até o chão para drop total */}
                   <div 
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, column.id)}
                     style={{
-                      padding: '4px 0 24px 0',
+                      padding: '4px 0 60px 0',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '6px',
                       flex: 1,
+                      minHeight: 'calc(100vh - 200px)',
                       opacity: isSlim ? 0 : 1,
                       transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
                       transition: 'opacity 0.20s ease, transform 0.20s ease',
@@ -2363,18 +2439,39 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       );
                     })}
 
-                    {stageClients.length === 0 && (
-                      <div style={{
-                        padding: '16px 6px',
-                        textAlign: 'center',
-                        color: 'var(--adm-text-muted)',
-                        fontSize: '0.65rem',
-                        border: '1.5px dashed var(--adm-border)',
-                        borderRadius: '8px',
-                        background: 'transparent',
-                      }}>
-                        Nenhum cliente nesta etapa
+                    {stageClients.length === 0 ? (
+                      <div 
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, column.id)}
+                        style={{
+                          flex: 1,
+                          minHeight: '160px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1.5px dashed var(--adm-border)',
+                          borderRadius: '8px',
+                          color: 'var(--adm-text-muted)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          textAlign: 'center',
+                          padding: '16px 10px',
+                          margin: '6px 0',
+                        }}
+                      >
+                        Arraste um cliente para cá
                       </div>
+                    ) : (
+                      /* Drop target elástico na parte inferior da coluna */
+                      <div 
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, column.id)}
+                        style={{
+                          flex: 1,
+                          minHeight: '80px',
+                          width: '100%',
+                        }}
+                      />
                     )}
                   </div>
                 </div>

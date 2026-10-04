@@ -96,7 +96,8 @@ export interface AvailabilityResult {
   isDayAvailable: boolean;
   blockReason?: string;
   reason?: string;
-  appliedMode?: 'override' | 'block' | 'recurring';
+  appliedMode?: 'override' | 'block' | 'recurring' | 'free';
+  isFreeMode?: boolean;
   slots: CalculatedSlot[];
 }
 
@@ -292,7 +293,7 @@ export const agendaAvailabilityService = {
     let effectiveDuration = rule.durationMinutes || 60;
     let effectiveMaxBookings = rule.maxConcurrentPerSlot || 3;
     let effectiveMaxPax = rule.maxPaxPerSlot;
-    let appliedMode: 'override' | 'block' | 'recurring' = 'recurring';
+    let appliedMode: 'override' | 'block' | 'recurring' | 'free' = 'recurring';
 
     if (useOverride && override) {
       appliedMode = 'override';
@@ -349,41 +350,51 @@ export const agendaAvailabilityService = {
         effectiveSlots = rule.timeSlots;
       }
     } else {
-      // ── 3. PRECEDÊNCIA BASE: Regra Recorrente Semanal ────────────────────────
-      if (rule.enabled === false) {
-        return {
-          isBlocked: true,
-          isDayAvailable: false,
-          blockReason: 'Recorrência semanal desativada para este compromisso.',
-          reason: 'Recorrência semanal desativada.',
-          appliedMode: 'recurring',
-          slots: [],
-        };
-      }
+      // ── 3. PRECEDÊNCIA BASE: Modo Livre vs Regra Recorrente Semanal ──────────
+      const isFreeModeActive = Boolean(rule.isFreeMode || config?.isFreeMode);
 
-      const daySchedule = rule.daySchedules?.[dayOfWeek];
-      const isDayEnabled = daySchedule ? daySchedule.enabled : rule.enabledDays.includes(dayOfWeek);
-
-      if (!isDayEnabled) {
-        return {
-          isBlocked: true,
-          isDayAvailable: false,
-          blockReason: 'Não há atendimento para este compromisso neste dia da semana.',
-          reason: 'Não há atendimento para este compromisso neste dia da semana.',
-          appliedMode: 'recurring',
-          slots: [],
-        };
-      }
-
-      if (daySchedule && daySchedule.enabled) {
-        effectiveSlots = daySchedule.timeSlots && daySchedule.timeSlots.length > 0
-          ? daySchedule.timeSlots
-          : generateSlotsFromRange(daySchedule.startTime, daySchedule.endTime, daySchedule.slotDurationMinutes || effectiveDuration);
-        effectiveDuration = daySchedule.slotDurationMinutes || effectiveDuration;
-        effectiveMaxBookings = daySchedule.maxConcurrentPerSlot || effectiveMaxBookings;
-        effectiveMaxPax = daySchedule.maxPaxPerSlot ?? effectiveMaxPax;
+      if (isFreeModeActive) {
+        appliedMode = 'free';
+        effectiveDuration = rule.durationMinutes || 60;
+        effectiveMaxBookings = rule.maxConcurrentPerSlot || 10;
+        effectiveMaxPax = rule.maxPaxPerSlot || 50;
+        effectiveSlots = generateSlotsFromRange('08:00', '22:00', effectiveDuration);
       } else {
-        effectiveSlots = rule.timeSlots;
+        if (rule.enabled === false) {
+          return {
+            isBlocked: true,
+            isDayAvailable: false,
+            blockReason: 'Recorrência semanal desativada para este compromisso.',
+            reason: 'Recorrência semanal desativada.',
+            appliedMode: 'recurring',
+            slots: [],
+          };
+        }
+
+        const daySchedule = rule.daySchedules?.[dayOfWeek];
+        const isDayEnabled = daySchedule ? daySchedule.enabled : rule.enabledDays.includes(dayOfWeek);
+
+        if (!isDayEnabled) {
+          return {
+            isBlocked: true,
+            isDayAvailable: false,
+            blockReason: 'Não há atendimento para este compromisso neste dia da semana.',
+            reason: 'Não há atendimento para este compromisso neste dia da semana.',
+            appliedMode: 'recurring',
+            slots: [],
+          };
+        }
+
+        if (daySchedule && daySchedule.enabled) {
+          effectiveSlots = daySchedule.timeSlots && daySchedule.timeSlots.length > 0
+            ? daySchedule.timeSlots
+            : generateSlotsFromRange(daySchedule.startTime, daySchedule.endTime, daySchedule.slotDurationMinutes || effectiveDuration);
+          effectiveDuration = daySchedule.slotDurationMinutes || effectiveDuration;
+          effectiveMaxBookings = daySchedule.maxConcurrentPerSlot || effectiveMaxBookings;
+          effectiveMaxPax = daySchedule.maxPaxPerSlot ?? effectiveMaxPax;
+        } else {
+          effectiveSlots = rule.timeSlots;
+        }
       }
     }
 
