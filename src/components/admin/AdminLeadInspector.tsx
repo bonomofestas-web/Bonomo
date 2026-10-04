@@ -8,12 +8,14 @@ import {
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
-  ArrowRightLeft, GitBranch, UserX, AlertCircle
+  ArrowRightLeft, GitBranch, UserX, AlertCircle, Repeat
 } from 'lucide-react';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
+import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
+import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
@@ -168,6 +170,35 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   }, [lead.id, lead.funnelId, lead.stage]);
 
   const [scheduleCommitmentType, setScheduleCommitmentType] = useState<CommercialCommitmentType | null>(null);
+  const [activeReceiptModal, setActiveReceiptModal] = useState<AppointmentReceiptData | null>(null);
+
+  const handleOpenReceipt = useCallback((type: 'visit' | 'tasting') => {
+    const commitment = type === 'visit' ? lead.visitCommitment : lead.tastingCommitment;
+    if (!commitment) return;
+    const venue = venues.find(v => v.id === (commitment.venueId || lead.venueId));
+    const closerObj = collaborators.find(c => c.id === (commitment.responsibleCollaboratorId || lead.closerId));
+    const closerRole = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
+
+    setActiveReceiptModal({
+      type,
+      code: commitment.id ? `#AG${type === 'visit' ? 'V' : 'D'}-${commitment.id.slice(0, 5).toUpperCase()}` : '#AGV-10294',
+      leadName: lead.name,
+      leadPhone: lead.phone,
+      leadEmail: lead.email,
+      venueName: venue?.name || 'Casa de Festas',
+      venueAddress: venue?.address || '',
+      venueLogoUrl: venue?.logoUrl,
+      dateStr: commitment.date || '',
+      timeStr: commitment.time || '',
+      pax: commitment.pax || 2,
+      closerName: commitment.responsibleName || closerObj?.name || 'Equipe',
+      closerRoleTitle: closerRole,
+      closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl,
+      createdByName: currentUser?.name || 'Administrador',
+      createdAtStr: commitment.createdAt ? new Date(commitment.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
+      notes: commitment.notes,
+    });
+  }, [lead, venues, collaborators, currentUser]);
 
   // Verificação de disponibilidade de agenda para a casa do lead
   const leadVenueConfig = useMemo(() => {
@@ -4604,50 +4635,55 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     </div>
 
                     {!effectiveReadOnly && lead.visitCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
                         <button
                           type="button"
-                          onClick={() => setCompletingCommitmentType('visit')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: '#10B981',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenReceipt('visit');
                           }}
-                        >
-                          <CheckCircle2 size={12} />
-                          <span>Concluir</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCancellingCommitmentType('visit')}
                           style={{
-                            flex: 1,
                             padding: '5px 10px',
                             borderRadius: '6px',
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            color: '#EF4444',
+                            background: 'rgba(2, 132, 199, 0.08)',
+                            border: '1px solid rgba(2, 132, 199, 0.25)',
+                            color: 'var(--adm-accent, #0284C7)',
                             fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
                             gap: '4px',
                           }}
+                          title="Visualizar comprovante oficial deste agendamento"
                         >
-                          <X size={12} />
-                          <span>Não Compareceu</span>
+                          <FileText size={11} />
+                          <span>Ver Comprovante</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setScheduleCommitmentType('visit');
+                          }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38BDF8',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title="Remarcar esta visita para outra data ou horário"
+                        >
+                          <Repeat size={11} />
+                          <span>Remarcar Visita</span>
                         </button>
                       </div>
                     )}
@@ -4814,50 +4850,55 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     </div>
 
                     {!effectiveReadOnly && lead.tastingCommitment.status === 'scheduled' && (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
                         <button
                           type="button"
-                          onClick={() => setCompletingCommitmentType('tasting')}
-                          style={{
-                            flex: 1,
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            background: '#10B981',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenReceipt('tasting');
                           }}
-                        >
-                          <CheckCircle2 size={12} />
-                          <span>Concluir</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCancellingCommitmentType('tasting')}
                           style={{
-                            flex: 1,
                             padding: '5px 10px',
                             borderRadius: '6px',
-                            background: 'rgba(239, 68, 68, 0.12)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            color: '#EF4444',
+                            background: 'rgba(217, 119, 6, 0.08)',
+                            border: '1px solid rgba(217, 119, 6, 0.25)',
+                            color: '#D97706',
                             fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
                             gap: '4px',
                           }}
+                          title="Visualizar comprovante oficial desta degustação"
                         >
-                          <X size={12} />
-                          <span>Não Compareceu</span>
+                          <FileText size={11} />
+                          <span>Ver Comprovante</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setScheduleCommitmentType('tasting');
+                          }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(217, 119, 6, 0.12)',
+                            border: '1px solid rgba(217, 119, 6, 0.4)',
+                            color: '#D97706',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title="Remarcar esta degustação para outra data ou horário"
+                        >
+                          <Repeat size={11} />
+                          <span>Remarcar Degustação</span>
                         </button>
                       </div>
                     )}
@@ -6388,6 +6429,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         onClose={() => setIsTransferVenueModalOpen(false)}
         lead={lead}
       />
+
+      {/* Modal de Comprovante Oficial de Agendamento */}
+      {activeReceiptModal && (
+        <AdminAppointmentReceiptModal
+          receipt={activeReceiptModal}
+          onClose={() => setActiveReceiptModal(null)}
+        />
+      )}
 
     </div>
   );

@@ -834,9 +834,44 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       )}
 
       {/* Luxury Custom Venue Switcher Popover with Logos & Globo */}
-      {!currentUser?.isFirstAccess && (userRole === 'master' || allowedVenues.length > 1) && (
+      {!currentUser?.isFirstAccess && allowedVenues.length > 0 && (
         <div ref={venueDropdownRef} style={{ position: 'relative', marginBottom: '10px' }}>
-          {isCollapsed && !isMobileOverlay ? (
+          {/* Se o colaborador possui apenas 1 casa, exibe a logo e nome da unidade com orgulho, SEM dropdown e sem seta */}
+          {(userRole !== 'master' && allowedVenues.length === 1) ? (
+            <div
+              title={`Sua Unidade Oficial: ${allowedVenues[0].name}`}
+              style={{
+                width: '100%',
+                background: '#141118',
+                border: '1px solid rgba(212, 175, 55, 0.25)',
+                borderRadius: '10px',
+                padding: '6px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                textAlign: 'left',
+              }}
+            >
+              {renderVenueIconBadge(allowedVenues[0], 26)}
+              {!isCollapsed && (
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '0.52rem', textTransform: 'uppercase', color: '#D4AF37', fontWeight: 800, letterSpacing: '0.5px' }}>
+                    Sua Unidade
+                  </div>
+                  <div style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    color: '#FFFFFF',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    {allowedVenues[0].name}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : isCollapsed && !isMobileOverlay ? (
             <button
               type="button"
               onClick={() => {
@@ -918,7 +953,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           )}
 
           {/* Venue Switcher Popover Menu */}
-          {isVenueDropdownOpen && (
+          {isVenueDropdownOpen && (userRole === 'master' || allowedVenues.length > 1) && (
             <div style={{
               position: 'absolute',
               top: '100%',

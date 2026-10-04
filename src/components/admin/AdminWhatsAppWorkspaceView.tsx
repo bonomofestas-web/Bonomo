@@ -418,6 +418,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     addLeadActivity,
     markLeadAsRead,
     loadOlderLeadActivities,
+    loadLeadConversationDays,
     syncWhatsAppHistoryGap,
   } = useAdminState();
 
@@ -3281,14 +3282,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     loadOlderMessagesRef.current = loadOlderMessages;
   }, [loadOlderMessages]);
 
-  // Se o lead selecionado não tem nenhuma mensagem carregada nos últimos 3 dias,
-  // busca o primeiro lote histórico automaticamente para não exibir a conversa vazia
+  // Carrega a janela de mensagens dos últimos 3 dias de conversa (ancorada na data da última mensagem do lead)
   useEffect(() => {
     if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) return;
-    if (timelineActivities.length === 0 && !reachedBeginningMap[selectedLeadId] && !isFetchingOlderRef.current) {
-      loadOlderMessages();
-    }
-  }, [selectedLeadId, composerTab, timelineActivities.length, reachedBeginningMap, loadOlderMessages]);
+    loadLeadConversationDays(selectedLeadId, 3);
+  }, [selectedLeadId, composerTab, loadLeadConversationDays]);
 
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente e sem marcadores de caixa de mensagem)
   const historyActivities = useMemo(() => {
@@ -6370,8 +6368,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       act.title?.toLowerCase().includes('reagendado')
                     );
 
-                    const linkedTaskId = (act as any).customProperties?.taskId || (act as any).taskId;
-
                     // Identifica se é ação automática do sistema/auditoria
                     const isAutomaticNote = !isTaskOrFollowUpNote && (
                       act.type !== 'note' ||
@@ -6655,28 +6651,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const foundTask = tasks.find(t => t.id === linkedTaskId || (t.leadId === selectedLead?.id && t.isFollowUp));
-                                      if (foundTask) {
-                                        setSelectedTaskForDetail(foundTask);
-                                      } else {
-                                        // Fallback gracioso
-                                        setSelectedTaskForDetail({
-                                          id: linkedTaskId || act.id,
-                                          title: act.title || 'Follow-up do Lead',
-                                          type: 'follow_up',
-                                          status: 'completed',
-                                          priority: 'medium',
-                                          leadId: selectedLead?.id,
-                                          assignedToId: act.authorId,
-                                          assignedToName: act.authorName,
-                                          dueDate: act.timestamp?.split('T')[0] || new Date().toISOString().split('T')[0],
-                                          dueTime: '12:00',
-                                          resolution: act.text,
-                                          isFollowUp: true,
-                                        } as any);
+                                      if (selectedLead) {
+                                        setIsInspectorOpen(true);
                                       }
                                     }}
-                                    title="Visualizar detalhes desta tarefa / follow-up"
+                                    title="Abrir Ficha do Cliente no CRM"
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
@@ -7027,14 +7006,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   </div>
                                 </div>
 
-                                {/* Ação: Botão Ver para abrir modal completo com bloco inteligente */}
+                                {/* Ação: Botão Ver para abrir a Ficha do Cliente no CRM */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setEditingTask(task);
-                                    setIsTaskModalOpen(true);
+                                    if (selectedLead) {
+                                      setIsInspectorOpen(true);
+                                    }
                                   }}
-                                  title="Ver detalhes completos e notas inteligentes"
+                                  title="Ver Ficha do Cliente no CRM"
                                   style={{
                                     background: 'var(--adm-bg-input)',
                                     border: '1px solid var(--adm-border)',

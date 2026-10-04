@@ -347,36 +347,58 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
             )}
           </div>
 
-          {/* 2. CASA DE FESTAS BUTTON (MULTI-SELECT) */}
-          <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => setOpenDropdown(openDropdown === 'venue' ? null : 'venue')}
+          {/* 2. CASA DE FESTAS BUTTON (MULTI-SELECT OU UNIDADE FIXA) */}
+          {userAllowedVenues.length === 1 && currentUser?.role !== 'master' ? (
+            <div
+              title={`Sua Unidade Oficial: ${userAllowedVenues[0].name}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                background: selectedVenueIds.length > 0 ? 'rgba(99, 102, 241, 0.15)' : 'var(--adm-bg-input)',
-                border: `1px solid ${selectedVenueIds.length > 0 ? '#818cf8' : 'var(--adm-border)'}`,
-                color: selectedVenueIds.length > 0 ? '#818cf8' : 'var(--adm-text-title)',
+                background: 'rgba(99, 102, 241, 0.1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                color: 'var(--adm-text-title)',
                 borderRadius: '10px',
-                padding: '7px 12px',
+                padding: '6px 12px',
                 fontSize: '0.78rem',
                 fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
               }}
             >
-              <Building2 size={14} color="#818cf8" />
-              <span>
-                {selectedVenueIds.length === 0 
-                  ? `Todas as Casas (${userAllowedVenues.length})` 
-                  : selectedVenueIds.length === 1 
-                    ? userAllowedVenues.find(v => v.id === selectedVenueIds[0])?.name || venues.find(v => v.id === selectedVenueIds[0])?.name
-                    : `Casas (${selectedVenueIds.length})`}
-              </span>
-              <ChevronDown size={13} style={{ transform: openDropdown === 'venue' ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-            </button>
+              <div style={{ width: '22px', height: '22px', borderRadius: '6px', background: '#000000', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <VenueLogoImage src={userAllowedVenues[0].logoUrl} alt={userAllowedVenues[0].name} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+              </div>
+              <span>{userAllowedVenues[0].name}</span>
+            </div>
+          ) : (
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setOpenDropdown(openDropdown === 'venue' ? null : 'venue')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: selectedVenueIds.length > 0 ? 'rgba(99, 102, 241, 0.15)' : 'var(--adm-bg-input)',
+                  border: `1px solid ${selectedVenueIds.length > 0 ? '#818cf8' : 'var(--adm-border)'}`,
+                  color: selectedVenueIds.length > 0 ? '#818cf8' : 'var(--adm-text-title)',
+                  borderRadius: '10px',
+                  padding: '7px 12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Building2 size={14} color="#818cf8" />
+                <span>
+                  {selectedVenueIds.length === 0 
+                    ? `Todas as Casas (${userAllowedVenues.length})` 
+                    : selectedVenueIds.length === 1 
+                      ? userAllowedVenues.find(v => v.id === selectedVenueIds[0])?.name || venues.find(v => v.id === selectedVenueIds[0])?.name
+                      : `Casas (${selectedVenueIds.length})`}
+                </span>
+                <ChevronDown size={13} style={{ transform: openDropdown === 'venue' ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+              </button>
 
             {/* Venue Popover Dropdown */}
             {openDropdown === 'venue' && (
@@ -473,6 +495,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
               </div>
             )}
           </div>
+        )}
 
           {/* 3. COLABORADOR BUTTON (MULTI-SELECT) */}
           {showCollaboratorFilter && (

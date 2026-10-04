@@ -51,7 +51,19 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
   // Filter tasks for the selected date
   const dayFollowUps = useMemo(() => {
     return tasks.filter(task => {
-      const isFollowUp = task.type === 'followup' || task.type === 'call' || Boolean(task.leadId);
+      // Visitas Comerciais e Degustações são compromissos de agenda e NUNCA devem aparecer na esteira de follow-ups
+      const isCommercialCommitment = 
+        task.databaseId === 'db_visits_tastings' ||
+        task.type === 'meeting' ||
+        task.customType === 'Visita' ||
+        task.customType === 'Degustação' ||
+        task.title?.toLowerCase().includes('visita comercial') ||
+        task.title?.toLowerCase().includes('degustação gastronômica') ||
+        Boolean((task.customProperties as any)?.commitmentType);
+
+      if (isCommercialCommitment) return false;
+
+      const isFollowUp = task.type === 'followup' || task.type === 'call' || (Boolean(task.leadId) && task.type !== 'meeting');
       if (!isFollowUp) return false;
 
       // Date match

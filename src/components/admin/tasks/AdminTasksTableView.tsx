@@ -31,7 +31,12 @@ interface DateGroup {
   isOverdue: boolean;
   isToday: boolean;
   tasks: AdminTask[];
-  availableTypes?: { visit: boolean; tasting: boolean };
+  availableTypes?: {
+    visit: boolean;
+    tasting: boolean;
+    isVisitConfigured?: boolean;
+    isTastingConfigured?: boolean;
+  };
   availableVenues?: Array<{ id: string; name: string; logoUrl?: string; hasVisit: boolean; hasTasting: boolean }>;
 }
 
@@ -289,15 +294,20 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         const hasOpenBlockOrOverride = configsToInspect.some(cfg => {
           if (!isDateCoveredByBlockOrOpenOverride(cfg, dateStr, visitsSubFilter)) return false;
 
-          // Valida se está com disponibilidade aberta
+          // Valida se está com disponibilidade aberta E tipo configurado
           if (visitsSubFilter === 'visit') {
-            return agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'visit');
+            return agendaAvailabilityService.isCommitmentTypeConfigured(cfg, 'visit') &&
+                   agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'visit');
           }
           if (visitsSubFilter === 'tasting') {
-            return agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'tasting');
+            return agendaAvailabilityService.isCommitmentTypeConfigured(cfg, 'tasting') &&
+                   agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'tasting');
           }
-          return agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'visit') ||
-                 agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'tasting');
+          const hasV = agendaAvailabilityService.isCommitmentTypeConfigured(cfg, 'visit') &&
+                       agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'visit');
+          const hasT = agendaAvailabilityService.isCommitmentTypeConfigured(cfg, 'tasting') &&
+                       agendaAvailabilityService.checkDayAvailability(cfg, dateStr, 'tasting');
+          return hasV || hasT;
         });
 
         if (hasOpenBlockOrOverride) {
@@ -334,30 +344,41 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       const isToday = key === todayStr;
       const isTomorrow = key === tomorrowStr;
 
-      let availableTypes: { visit: boolean; tasting: boolean } | undefined = undefined;
-      let availableVenues: Array<{ id: string; name: string; logoUrl?: string; hasVisit: boolean; hasTasting: boolean }> | undefined = undefined;
+      let availableTypes: DateGroup['availableTypes'] = undefined;
+      let availableVenues: DateGroup['availableVenues'] = undefined;
 
       if (isVisitsContext) {
         if (activeVenueId && activeVenueId !== 'all') {
           if (venueConfig) {
+            const isVisitConfigured = agendaAvailabilityService.isCommitmentTypeConfigured(venueConfig, 'visit');
+            const isTastingConfigured = agendaAvailabilityService.isCommitmentTypeConfigured(venueConfig, 'tasting');
             availableTypes = {
-              visit: agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'visit'),
-              tasting: agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'tasting'),
+              visit: isVisitConfigured && agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'visit'),
+              tasting: isTastingConfigured && agendaAvailabilityService.checkDayAvailability(venueConfig, key, 'tasting'),
+              isVisitConfigured,
+              isTastingConfigured,
             };
           }
         } else {
-          availableVenues = (adminState?.venues || []).map(v => {
-            const vConfig = venueAgendaConfigs.find(c => c.venueId === v.id) || agendaAvailabilityService.getDefaultConfig(v.id);
-            const hasVisit = agendaAvailabilityService.checkDayAvailability(vConfig, key, 'visit');
-            const hasTasting = agendaAvailabilityService.checkDayAvailability(vConfig, key, 'tasting');
-            return {
-              id: v.id,
-              name: v.name,
-              logoUrl: v.logoUrl,
-              hasVisit,
-              hasTasting,
-            };
-          }).filter(v => v.hasVisit || v.hasTasting);
+          const venuesWithAvailability: NonNullable<DateGroup['availableVenues']> = [];
+          for (const v of (adminState?.venues || [])) {
+            const vConfig = venueAgendaConfigs.find(c => c.venueId === v.id);
+            if (!vConfig) continue;
+            const isVisitConfigured = agendaAvailabilityService.isCommitmentTypeConfigured(vConfig, 'visit');
+            const isTastingConfigured = agendaAvailabilityService.isCommitmentTypeConfigured(vConfig, 'tasting');
+            const hasVisit = isVisitConfigured && agendaAvailabilityService.checkDayAvailability(vConfig, key, 'visit');
+            const hasTasting = isTastingConfigured && agendaAvailabilityService.checkDayAvailability(vConfig, key, 'tasting');
+            if (hasVisit || hasTasting) {
+              venuesWithAvailability.push({
+                id: v.id,
+                name: v.name,
+                logoUrl: v.logoUrl,
+                hasVisit,
+                hasTasting,
+              });
+            }
+          }
+          availableVenues = venuesWithAvailability;
         }
       }
 
@@ -897,7 +918,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                             height: '16px',
                                             borderRadius: '4px',
                                             objectFit: 'contain',
-                                            background: '#ffffff',
+                                            background: '#000000',
                                             padding: '1px',
                                           }}
                                         />
@@ -916,7 +937,23 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             {group.availableTypes && (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 {visitsSubFilter === 'visit' && (
-                                  group.availableTypes.visit ? (
+                                  group.availableTypes.isVisitConfigured === false ? (
+                                    <span style={{
+                                      fontSize: '0.66rem',
+                                      fontWeight: 700,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(239, 68, 68, 0.08)',
+                                      color: '#DC2626',
+                                      border: '1px solid rgba(239, 68, 68, 0.20)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      <Building2 size={11} />
+                                      Visitas Desativadas
+                                    </span>
+                                  ) : group.availableTypes.visit ? (
                                     <span style={{
                                       fontSize: '0.66rem',
                                       fontWeight: 600,
@@ -950,7 +987,23 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                 )}
 
                                 {visitsSubFilter === 'tasting' && (
-                                  group.availableTypes.tasting ? (
+                                  group.availableTypes.isTastingConfigured === false ? (
+                                    <span style={{
+                                      fontSize: '0.66rem',
+                                      fontWeight: 700,
+                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(239, 68, 68, 0.08)',
+                                      color: '#DC2626',
+                                      border: '1px solid rgba(239, 68, 68, 0.20)',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}>
+                                      <UtensilsCrossed size={11} />
+                                      Degustação Desativada
+                                    </span>
+                                  ) : group.availableTypes.tasting ? (
                                     <span style={{
                                       fontSize: '0.66rem',
                                       fontWeight: 600,
@@ -985,51 +1038,70 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
                                 {visitsSubFilter === 'all' && (
                                   <>
-                                    {group.availableTypes.visit && (
+                                    {group.availableTypes.isVisitConfigured === false && group.availableTypes.isTastingConfigured === false ? (
                                       <span style={{
                                         fontSize: '0.66rem',
-                                        fontWeight: 600,
+                                        fontWeight: 700,
                                         padding: '2px 7px',
                                         borderRadius: '4px',
-                                        background: 'rgba(16, 185, 129, 0.08)',
-                                        color: '#059669',
-                                        border: '1px solid rgba(16, 185, 129, 0.15)',
+                                        background: 'rgba(239, 68, 68, 0.08)',
+                                        color: '#DC2626',
+                                        border: '1px solid rgba(239, 68, 68, 0.20)',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px',
                                       }}>
-                                        <Building2 size={11} />
-                                        Visita
+                                        Agenda Desativada
                                       </span>
-                                    )}
-                                    {group.availableTypes.tasting && (
-                                      <span style={{
-                                        fontSize: '0.66rem',
-                                        fontWeight: 600,
-                                        padding: '2px 7px',
-                                        borderRadius: '4px',
-                                        background: 'rgba(217, 119, 6, 0.08)',
-                                        color: '#B45309',
-                                        border: '1px solid rgba(217, 119, 6, 0.15)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                      }}>
-                                        <UtensilsCrossed size={11} />
-                                        Degustação
-                                      </span>
-                                    )}
-                                    {!group.availableTypes.visit && !group.availableTypes.tasting && (
-                                      <span style={{
-                                        fontSize: '0.66rem',
-                                        fontWeight: 600,
-                                        padding: '2px 7px',
-                                        borderRadius: '4px',
-                                        background: 'rgba(148, 163, 184, 0.10)',
-                                        color: '#94A3B8',
-                                      }}>
-                                        Sem atendimento
-                                      </span>
+                                    ) : (
+                                      <>
+                                        {group.availableTypes.visit && (
+                                          <span style={{
+                                            fontSize: '0.66rem',
+                                            fontWeight: 600,
+                                            padding: '2px 7px',
+                                            borderRadius: '4px',
+                                            background: 'rgba(16, 185, 129, 0.08)',
+                                            color: '#059669',
+                                            border: '1px solid rgba(16, 185, 129, 0.15)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                          }}>
+                                            <Building2 size={11} />
+                                            Visita
+                                          </span>
+                                        )}
+                                        {group.availableTypes.tasting && (
+                                          <span style={{
+                                            fontSize: '0.66rem',
+                                            fontWeight: 600,
+                                            padding: '2px 7px',
+                                            borderRadius: '4px',
+                                            background: 'rgba(217, 119, 6, 0.08)',
+                                            color: '#B45309',
+                                            border: '1px solid rgba(217, 119, 6, 0.15)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                          }}>
+                                            <UtensilsCrossed size={11} />
+                                            Degustação
+                                          </span>
+                                        )}
+                                        {!group.availableTypes.visit && !group.availableTypes.tasting && (
+                                          <span style={{
+                                            fontSize: '0.66rem',
+                                            fontWeight: 600,
+                                            padding: '2px 7px',
+                                            borderRadius: '4px',
+                                            background: 'rgba(148, 163, 184, 0.10)',
+                                            color: '#94A3B8',
+                                          }}>
+                                            Sem atendimento
+                                          </span>
+                                        )}
+                                      </>
                                     )}
                                   </>
                                 )}

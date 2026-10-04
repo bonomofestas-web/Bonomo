@@ -717,6 +717,76 @@ export const leadService = {
     }
   },
 
+  /**
+   * Busca as mensagens dos últimos 3 dias em que o lead conversou
+   * (o parâmetro referencial é a data da última mensagem do próprio lead)
+   */
+  async getLeadConversationDays(
+    leadId: string, 
+    days: number = 3
+  ): Promise<{ activities: LeadActivity[]; hasOlder: boolean; oldestTimestamp?: string }> {
+    if (!isSupabaseConfigured || !leadId) return { activities: [], hasOlder: false };
+    try {
+      let finalLeadId = leadId;
+      if (!isUuid(leadId)) {
+        const { data } = await supabase.from('leads').select('id').eq('code', leadId).maybeSingle();
+        if (data?.id) finalLeadId = data.id;
+      }
+      if (!isUuid(finalLeadId)) return { activities: [], hasOlder: false };
+
+      // 1. Localiza a data da última mensagem/atividade do lead
+      const { data: latestRows, error: latestErr } = await supabase
+        .from('lead_activities')
+        .select('timestamp')
+        .eq('lead_id', finalLeadId)
+        .order('timestamp', { ascending: false })
+        .limit(1);
+
+      if (latestErr || !latestRows || latestRows.length === 0) {
+        return { activities: [], hasOlder: false };
+      }
+
+      const latestTime = latestRows[0].timestamp || new Date().toISOString();
+      const latestDate = new Date(latestTime);
+
+      // Janela dos últimos 'days' dias de conversa do lead:
+      // Se última mensagem foi dia D às 16h, abrange D-2, D-1 e D (iniciando em D-2 00:00:00)
+      const cutoffDate = new Date(latestDate);
+      cutoffDate.setDate(cutoffDate.getDate() - (days - 1));
+      cutoffDate.setHours(0, 0, 0, 0);
+      const cutoffIso = cutoffDate.toISOString();
+
+      // 2. Busca todas as mensagens e atividades desse lead no intervalo dos 3 dias
+      const { data: acts, error: actsErr } = await supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('lead_id', finalLeadId)
+        .gte('timestamp', cutoffIso)
+        .order('timestamp', { ascending: true });
+
+      if (actsErr || !acts) {
+        return { activities: [], hasOlder: false };
+      }
+
+      // 3. Verifica se existem mensagens anteriores ao cutoff
+      const { count: olderCount } = await supabase
+        .from('lead_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('lead_id', finalLeadId)
+        .lt('timestamp', cutoffIso);
+
+      const formatted = acts.map(a => formatActivityFromDb(a));
+      return {
+        activities: formatted,
+        hasOlder: (olderCount || 0) > 0,
+        oldestTimestamp: formatted.length > 0 ? formatted[0].timestamp : undefined,
+      };
+    } catch (err) {
+      console.error('Falha em getLeadConversationDays:', err);
+      return { activities: [], hasOlder: false };
+    }
+  },
+
   async addParticipant(leadId: string, participant: Omit<LeadParticipant, 'id'>): Promise<boolean> {
     if (!isSupabaseConfigured) return false;
     try {

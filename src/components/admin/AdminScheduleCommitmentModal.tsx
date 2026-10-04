@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   X, Check, ChevronLeft, ChevronRight,
   Search, Building2, AlertCircle,
@@ -117,9 +117,27 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   });
 
   const [responsibleId, setResponsibleId] = useState<string>(() => {
-    return currentLead?.closerId || currentLead?.sdrId || currentUser?.id || '';
+    return currentLead?.closerId || currentUser?.id || '';
   });
+  const [sdrId, setSdrId] = useState<string>(() => {
+    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || '';
+  });
+  const [reminder1, setReminder1] = useState<string>('24h');
+  const [reminder2, setReminder2] = useState<string>('2h');
   const [notes, setNotes] = useState<string>('');
+
+  useEffect(() => {
+    if (currentLead?.sdrId) {
+      setSdrId(currentLead.sdrId);
+    }
+  }, [currentLead?.sdrId]);
+
+  const isReminderOptionRetroactive = useCallback((hoursBefore: number) => {
+    if (!selectedDate || !selectedTime || hoursBefore === 0) return false;
+    const aptTime = new Date(`${selectedDate}T${selectedTime}:00`).getTime();
+    if (isNaN(aptTime)) return false;
+    return aptTime - (hoursBefore * 3600 * 1000) < Date.now();
+  }, [selectedDate, selectedTime]);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -280,6 +298,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const receiptCode = `#${prefix}-${randomCode}`;
 
       const assignedUser = collaborators.find(c => c.id === responsibleId);
+      const sdrUser = collaborators.find(c => c.id === sdrId);
+
       // Agenda no Lead / Supabase
       if (scheduleCommercialCommitment) {
         await scheduleCommercialCommitment(currentLead.id, type, {
@@ -290,7 +310,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           responsibleName: assignedUser?.name,
           notes: notes || undefined,
           venueId: targetVenueId,
-        });
+          sdrId: sdrId || undefined,
+          sdrName: sdrUser?.name || undefined,
+          reminder1: reminder1 || undefined,
+          reminder2: reminder2 || undefined,
+        } as any);
       }
 
       // Cria a tarefa no mural de agendamentos
@@ -775,21 +799,23 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
               }}>
                 <div style={{
-                  width: '46px',
-                  height: '46px',
+                  width: '48px',
+                  height: '48px',
                   borderRadius: '10px',
-                  background: '#F1F5F9',
+                  background: '#000000',
+                  padding: '5px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   overflow: 'hidden',
                   flexShrink: 0,
-                  border: '1px solid #E2E8F0',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
                 }}>
                   {targetVenue?.logoUrl ? (
                     <img src={targetVenue.logoUrl} alt={targetVenue.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   ) : (
-                    <Building2 size={24} color="#64748B" />
+                    <Building2 size={24} color="#D4AF37" />
                   )}
                 </div>
                 <div style={{ flex: 1 }}>
@@ -1194,6 +1220,158 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* SDR Vinculado */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                  SDR RESPONSÁVEL DO ATENDIMENTO
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                  {collaborators.map(c => {
+                    const isSelected = sdrId === c.id;
+                    const isSdrRole = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => setSdrId(c.id)}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid',
+                          borderColor: isSelected ? '#3B82F6' : '#E2E8F0',
+                          background: isSelected ? 'rgba(59, 130, 246, 0.08)' : '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{
+                          width: '30px',
+                          height: '30px',
+                          borderRadius: '50%',
+                          background: '#E2E8F0',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {(c as any).photoUrl || c.avatarUrl ? (
+                            <img src={(c as any).photoUrl || c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <User size={15} color="#64748B" />
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.name}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: isSdrRole ? '#3B82F6' : '#64748B' }}>
+                            {isSdrRole ? '(SDR)' : `(${(c as any)?.roleTitle || c.role || 'Equipe'})`}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Lembretes / Notificações Automáticas */}
+              <div style={{
+                padding: '14px 16px',
+                borderRadius: '10px',
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={16} color={themeColor} />
+                  <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A' }}>
+                    NOTIFICAÇÕES E LEMBRETES AUTOMÁTICOS
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {/* Notificação 1 */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
+                      NOTIFICAÇÃO 1 (ANTECEDÊNCIA)
+                    </label>
+                    <select
+                      value={reminder1}
+                      onChange={e => setReminder1(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: '#FFFFFF',
+                        color: '#0F172A',
+                      }}
+                    >
+                      <option value="none">Não notificar</option>
+                      <option value="1h" disabled={isReminderOptionRetroactive(1)}>
+                        1 hora antes {isReminderOptionRetroactive(1) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="2h" disabled={isReminderOptionRetroactive(2)}>
+                        2 horas antes {isReminderOptionRetroactive(2) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="4h" disabled={isReminderOptionRetroactive(4)}>
+                        4 horas antes {isReminderOptionRetroactive(4) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="12h" disabled={isReminderOptionRetroactive(12)}>
+                        12 horas antes {isReminderOptionRetroactive(12) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="24h" disabled={isReminderOptionRetroactive(24)}>
+                        24 horas antes (1 dia antes) {isReminderOptionRetroactive(24) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                    </select>
+                  </div>
+
+                  {/* Notificação 2 */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
+                      NOTIFICAÇÃO 2 (REFORÇO)
+                    </label>
+                    <select
+                      value={reminder2}
+                      onChange={e => setReminder2(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        background: '#FFFFFF',
+                        color: '#0F172A',
+                      }}
+                    >
+                      <option value="none">Não notificar</option>
+                      <option value="1h" disabled={isReminderOptionRetroactive(1)}>
+                        1 hora antes {isReminderOptionRetroactive(1) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="2h" disabled={isReminderOptionRetroactive(2)}>
+                        2 horas antes {isReminderOptionRetroactive(2) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="4h" disabled={isReminderOptionRetroactive(4)}>
+                        4 horas antes {isReminderOptionRetroactive(4) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="12h" disabled={isReminderOptionRetroactive(12)}>
+                        12 horas antes {isReminderOptionRetroactive(12) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                      <option value="24h" disabled={isReminderOptionRetroactive(24)}>
+                        24 horas antes (1 dia antes) {isReminderOptionRetroactive(24) ? '(Horário já ultrapassado)' : ''}
+                      </option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

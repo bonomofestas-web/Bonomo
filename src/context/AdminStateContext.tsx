@@ -323,6 +323,7 @@ export interface AdminContextType {
   reorderFunnels: (orderedFunnels: CommercialFunnel[]) => Promise<void>;
   markLeadAsRead: (leadId: string) => void;
   loadOlderLeadActivities: (leadId: string, beforeTimestamp: string, limit?: number) => Promise<number>;
+  loadLeadConversationDays: (leadId: string, days?: number) => Promise<boolean>;
 
   // CRM Leads — Stage & Assignment
   unindexedLeadsCount: number;
@@ -2037,6 +2038,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return fresh ? { ...viewingAsCollaborator, ...fresh } : viewingAsCollaborator;
   }, [viewingAsCollaborator, collaborators]);
 
+  // Usuário efetivo: prioriza o colaborador simulado no modo "Olhar com Olhos", senão o usuário autenticado
+  const effectiveUser = useMemo(() => {
+    return effectiveViewingAsCollaborator || currentUser;
+  }, [effectiveViewingAsCollaborator, currentUser]);
+
   // Proteção / Autocorreção: se houver resquício de impersonação antiga no localStorage, limpa e restaura
   const [impersonatingMaster, setImpersonatingMaster] = useState<AdminUser | null>(() => {
     const saved = localStorage.getItem('bonomo_impersonating_master');
@@ -2160,27 +2166,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return currentUser.masterId || currentUser.id;
   }, [currentUser]);
 
-  // Casas de Festa do Tenant Ativo (Estritamente isoladas por masterId)
+  // Casas de Festa do Tenant Ativo (Estritamente isoladas por masterId e respeitando a role do usuário efetivo)
   const scopedVenues = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return [];
+    if (!effectiveUser || !scopedMasterId) return [];
     
-    // Filtra as casas pertencentes ao tenant
+    // Filtra as casas pertencentes ao tenant do master ativo
     const masterVenues = venues.filter(v => v.masterId === scopedMasterId);
     
-    // Se for o próprio master (ou master dev), vê todas as casas do seu tenant
-    if (currentUser.role === 'master' || !currentUser.masterId) {
+    // Se for o próprio master nativo (e NÃO estiver no modo de olhar com olhos de colaborador), vê todas as casas do seu tenant
+    const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
+    if (isMasterNative || (!effectiveUser.masterId && !effectiveViewingAsCollaborator)) {
       return masterVenues;
     }
 
-    // Colaborador subordinado vê as casas atribuídas a ele dentro do tenant do seu master
-    if (!currentUser.venueIds || currentUser.venueIds.length === 0) return masterVenues;
-    const assigned = masterVenues.filter(v => currentUser.venueIds?.includes(v.id));
+    // Colaborador subordinado (ou Master no modo "Olhar com Olhos"):
+    // Vê estritamente as casas atribuídas a ele dentro do tenant
+    const userVids = Array.isArray(effectiveUser.venueIds) && effectiveUser.venueIds.length > 0
+      ? effectiveUser.venueIds
+      : ((effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? [(effectiveUser as any).venueId] : []);
+
+    if (userVids.length === 0) return masterVenues;
+    const assigned = masterVenues.filter(v => userVids.includes(v.id));
     return assigned.length > 0 ? assigned : masterVenues;
-  }, [venues, scopedMasterId, currentUser]);
+  }, [venues, scopedMasterId, effectiveUser, effectiveViewingAsCollaborator]);
 
   // Auto-ajuste de activeVenueId para o tenant atual (evita vazamento de seleção entre contas)
   useEffect(() => {
-    if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+    if (scopedVenues.length === 0) return;
+    const isMasterNative = effectiveUser?.role === 'master' && !effectiveViewingAsCollaborator;
+    if (!isMasterNative) {
+      // Colaborador de unidade única ou restrita: garante que activeVenueId está dentro de suas casas
+      if (!activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi' || !scopedVenues.some(v => v.id === activeVenueId)) {
+        const fallback = scopedVenues[0]?.id || null;
+        setActiveVenueIdState(fallback);
+        if (fallback) safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, fallback);
+      }
+    } else if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
       const existsInScoped = scopedVenues.some(v => v.id === activeVenueId);
       if (!existsInScoped) {
         const fallback = scopedVenues.length > 0 ? scopedVenues[0].id : null;
@@ -2192,7 +2213,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
     }
-  }, [scopedVenues, activeVenueId]);
+  }, [scopedVenues, activeVenueId, effectiveUser, effectiveViewingAsCollaborator]);
 
   // Auto-cura de integridade de tenant: purga do cache local e da memória qualquer lead que pertença a outro master
   useEffect(() => {
@@ -2232,8 +2253,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return [];
+    if (!effectiveUser || !scopedMasterId) return [];
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+
+    // Permissões do usuário efetivo (se for colaborador não-master ou master no modo olhar com olhos)
+    const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
+    const userAllowedVenueIds = !isMasterNative && Array.isArray(effectiveUser.venueIds) && effectiveUser.venueIds.length > 0
+      ? new Set(effectiveUser.venueIds)
+      : (!isMasterNative && (effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? new Set([(effectiveUser as any).venueId]) : null);
 
     return leads.filter(l => {
       // REGRA SUPREMA E INEGOCIÁVEL: ISOLAMENTO TOTAL ENTRE MASTERS (VAZAMENTO ZERO)
@@ -2247,31 +2274,38 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return false;
       }
 
-      // 3. Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant
+      // 3. REGRA CRÍTICA DE ISOLAMENTO DE COLABORADOR (MESMO EM FUNIS COMPARTILHADOS):
+      // Colaborador restrito à Casa A NUNCA pode ver lead da Casa B!
+      if (userAllowedVenueIds && l.venueId && !userAllowedVenueIds.has(l.venueId)) {
+        return false;
+      }
+
+      // 4. Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant e às casas permitidas
       if (!l.venueId && l.sourceId) {
         const src = sources.find(s => s.id === l.sourceId);
-        if (src && src.venueId && !masterVenueIds.has(src.venueId)) {
-          return false; // Origem pertence a outro master/casa -> isola 100%!
+        if (src && src.venueId && (!masterVenueIds.has(src.venueId) || (userAllowedVenueIds && !userAllowedVenueIds.has(src.venueId)))) {
+          return false;
         }
       }
 
-      // 4. Se o lead não possui casa nem masterId, descarta
+      // 5. Se o lead não possui casa nem masterId, descarta
       if (!l.venueId && !l.masterId) {
         return false;
       }
 
-      // 5. Se o lead não possui casa vinculada, deve pertencer ao masterId
+      // 6. Se o lead não possui casa vinculada, deve pertencer ao masterId
       if (!l.venueId) {
         if (l.masterId !== scopedMasterId) return false;
       }
 
-      // 6. Filtro por unidade ativa (activeVenueId)
+      // 7. Filtro por unidade ativa (activeVenueId)
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        // A casa ativa DEVE pertencer ao Master atual
         if (!masterVenueIds.has(activeVenueId)) return false;
 
         if (l.venueId === activeVenueId) return true;
-        // Se o lead pertence a um funil compartilhado com a unidade ativa, ele deve permanecer visível no funil
+
+        // Se o lead pertence a um funil compartilhado com a unidade ativa:
+        // Apenas é visível se a unidade do lead pertencer à unidade ativa (ou sem unidade e do master)
         if (l.funnelId) {
           const funnel = funnels.find(f => f.id === l.funnelId);
           if (funnel) {
@@ -2280,7 +2314,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               ...(funnel.sharedVenueIds || []),
               ...((funnel as any).shared_venue_ids || []),
             ]);
-            if (linkedVenueIds.has(activeVenueId)) return true;
+            if (linkedVenueIds.has(activeVenueId)) {
+              return l.venueId === activeVenueId;
+            }
           }
         }
         return false;
@@ -2288,31 +2324,57 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       return l.venueId ? masterVenueIds.has(l.venueId) : l.masterId === scopedMasterId;
     });
-  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, currentUser, funnels]);
+  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, effectiveUser, effectiveViewingAsCollaborator, funnels]);
 
-  // Mapa de casas conectadas dinamicamente a cada funil através das origens ativas
+  // Mapa de casas conectadas dinamicamente a cada funil através das origens ativas E leads existentes E casas compartilhadas
   const funnelConnectedVenueIds = useMemo(() => {
     const map = new Map<string, Set<string>>();
+
+    // 1. Origens ativas conectadas ao funil
     sources.forEach(s => {
       if (s.funnelId && s.venueId) {
         if (!map.has(s.funnelId)) map.set(s.funnelId, new Set());
         map.get(s.funnelId)!.add(s.venueId);
       }
     });
+
+    // 2. Leads existentes no funil (se uma casa tem leads neste funil, o funil atende a essa casa)
+    leads.forEach(l => {
+      if (l.funnelId && l.venueId) {
+        if (!map.has(l.funnelId)) map.set(l.funnelId, new Set());
+        map.get(l.funnelId)!.add(l.venueId);
+      }
+    });
+
+    // 3. Casas configuradas no funil (venueId e sharedVenueIds)
+    funnels.forEach(f => {
+      if (!map.has(f.id)) map.set(f.id, new Set());
+      if (f.venueId) map.get(f.id)!.add(f.venueId);
+      if (Array.isArray(f.sharedVenueIds)) {
+        f.sharedVenueIds.forEach(vid => map.get(f.id)!.add(vid));
+      }
+      if (Array.isArray((f as any).shared_venue_ids)) {
+        (f as any).shared_venue_ids.forEach((vid: string) => map.get(f.id)!.add(vid));
+      }
+    });
+
     return map;
-  }, [sources]);
+  }, [sources, leads, funnels]);
 
   // Funis do Tenant Ativo (Estritamente isolados por masterId e casas do Master)
   const scopedFunnels = useMemo(() => {
-    if (!currentUser || !scopedMasterId) return [];
+    if (!effectiveUser || !scopedMasterId) return [];
 
     const masterVenueIds = new Set(scopedVenues.map(v => v.id));
-    const isMasterOrDev = currentUser.role === 'master' || currentUser.isDev;
-    const userVenueIds = new Set(currentUser.venueIds || []);
+    const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
+    const userVenueIds = new Set(
+      Array.isArray(effectiveUser.venueIds) && effectiveUser.venueIds.length > 0
+        ? effectiveUser.venueIds
+        : ((effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? [(effectiveUser as any).venueId] : [])
+    );
 
     return funnels.filter(f => {
       // 1. ISOLAMENTO ESTRITO DE TENANT:
-      // Se o funil possui masterId explícito e não é o master ativo, descarta sumariamente!
       if (f.masterId && f.masterId !== scopedMasterId) {
         return false;
       }
@@ -2320,7 +2382,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Se o funil não tem masterId explícito, ele só pode ser do tenant se sua venueId direta ou compartilhada pertencer às casas do master
       if (!f.masterId) {
         const belongsToMasterVenues = (f.venueId && masterVenueIds.has(f.venueId)) ||
-          (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => masterVenueIds.has(vid)));
+          (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => masterVenueIds.has(vid))) ||
+          (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.some((vid: string) => masterVenueIds.has(vid)));
         if (!belongsToMasterVenues) {
           return false;
         }
@@ -2328,11 +2391,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const connectedVenues = funnelConnectedVenueIds.get(f.id) || new Set<string>();
 
-      // Se for colaborador (não-master), só enxerga funis com origens nas casas dele
-      if (!isMasterOrDev) {
+      // Se for colaborador subordinado (ou master no modo olhar com olhos),
+      // o funil deve estar conectado a pelo menos uma das casas do colaborador
+      if (!isMasterNative && userVenueIds.size > 0) {
         const matchesUserVenues = Array.from(connectedVenues).some(vid => userVenueIds.has(vid))
           || (f.venueId && userVenueIds.has(f.venueId))
-          || (f.sharedVenueIds && f.sharedVenueIds.some(vid => userVenueIds.has(vid)));
+          || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => userVenueIds.has(vid)))
+          || (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.some((vid: string) => userVenueIds.has(vid)));
         if (!matchesUserVenues) return false;
       }
 
@@ -2340,23 +2405,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
         if (!masterVenueIds.has(activeVenueId)) return false;
 
-        // Se o funil possui origens conectadas no tenant atual:
-        const tenantConnectedVenues = new Set(
-          Array.from(connectedVenues).filter(vid => masterVenueIds.has(vid))
-        );
-        if (tenantConnectedVenues.size > 0) {
-          return tenantConnectedVenues.has(activeVenueId);
-        }
+        const isLinkedToActive = connectedVenues.has(activeVenueId)
+          || (f.venueId === activeVenueId)
+          || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(activeVenueId))
+          || (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.includes(activeVenueId));
 
-        // Se ainda não possui origens conectadas (funil novo ou compartilhado):
-        const isLinkedToActive = (f.venueId === activeVenueId) || 
-          (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(activeVenueId));
         return isLinkedToActive;
       }
 
       return true;
     });
-  }, [funnels, funnelConnectedVenueIds, scopedMasterId, scopedVenues, activeVenueId, currentUser]);
+  }, [funnels, funnelConnectedVenueIds, scopedMasterId, scopedVenues, activeVenueId, effectiveUser, effectiveViewingAsCollaborator]);
 
   // Debutantes do Tenant Ativo
   const scopedDebutantes = useMemo(() => {
@@ -3845,6 +3904,34 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch (err) {
       console.error('Erro em loadOlderLeadActivities:', err);
       return 0;
+    }
+  }, []);
+
+  const loadLeadConversationDays = useCallback(async (leadId: string, days: number = 3): Promise<boolean> => {
+    if (!leadId) return false;
+    try {
+      const res = await leadService.getLeadConversationDays(leadId, days);
+      if (!res || !res.activities || res.activities.length === 0) return false;
+
+      setLeads(prev => prev.map(lead => {
+        if (lead.id !== leadId) return lead;
+        const currentActs = lead.activities || [];
+        const existingIds = new Set(currentActs.map(a => a.id));
+        const newActs = res.activities.filter(a => !existingIds.has(a.id));
+        if (newActs.length === 0) return lead;
+
+        const merged = [...currentActs, ...newActs].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        return {
+          ...lead,
+          activities: merged,
+        };
+      }));
+      return true;
+    } catch (err) {
+      console.error('Erro em loadLeadConversationDays:', err);
+      return false;
     }
   }, []);
 
@@ -7945,16 +8032,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: new Date().toISOString(),
     };
 
-    const isReschedule = type === 'visit' ? Boolean(targetLead.visitCommitment) : Boolean(targetLead.tastingCommitment);
+    const isReschedule = Boolean((commitmentData as any).isReschedule) || 
+      (type === 'visit' ? Boolean(targetLead.visitCommitment && targetLead.visitCommitment.status !== 'completed') : Boolean(targetLead.tastingCommitment && targetLead.tastingCommitment.status !== 'completed'));
     const author = currentUser?.name || 'Administrador';
     const authorId = currentUser?.id;
     const authorAvatar = currentUser?.avatarUrl;
 
-    const dateFormatted = new Date(commitmentData.date + 'T12:00:00').toLocaleDateString('pt-BR');
-    const actTitle = type === 'visit' 
-      ? (isReschedule ? 'Visita Reagendada' : 'Visita Comercial Agendada')
-      : (isReschedule ? 'Degustação Reagendada' : 'Degustação Gastronômica Agendada');
-    const actText = `${type === 'visit' ? 'Visita' : 'Degustação'} ${isReschedule ? 'reagendada' : 'agendada'} para ${dateFormatted} às ${commitmentData.time} (${commitmentData.pax || 2} PAX)${commitmentData.responsibleName ? ` com ${commitmentData.responsibleName}` : ''}.${commitmentData.notes ? ` Observações: "${commitmentData.notes}".` : ''} Registrado por ${author}.`;
+    const [y, m, d] = commitmentData.date.split('-').map(Number);
+    const dateFormatted = new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+    const typeLabel = type === 'visit' ? 'visita' : 'degustação';
+    const typeLabelCap = type === 'visit' ? 'Visita' : 'Degustação';
+
+    let actTitle = `${author} (Agendamento)`;
+    let actText = '';
+
+    if (isReschedule) {
+      const prevDate = (commitmentData as any).previousDate || (type === 'visit' ? targetLead.visitCommitment?.date : targetLead.tastingCommitment?.date);
+      const prevTime = (commitmentData as any).previousTime || (type === 'visit' ? targetLead.visitCommitment?.time : targetLead.tastingCommitment?.time);
+      const prevFormatted = prevDate ? new Date(prevDate + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+      actTitle = `${author} (Remarcação de ${typeLabelCap})`;
+      actText = `A ${typeLabel} marcada para ${prevFormatted || 'a data anterior'}${prevTime ? ` às ${prevTime}` : ''} foi remarcada no sistema e a nova data está prevista para o dia ${dateFormatted} às ${commitmentData.time}, com ${commitmentData.pax || 2} convidados e o anfitrião vai ser o ${commitmentData.responsibleName || 'Responsável'}.${commitmentData.notes ? ` Observações: "${commitmentData.notes}".` : ''}`;
+    } else {
+      actTitle = `${author} (Agendamento)`;
+      actText = `Foi agendado uma ${typeLabel} na data ${dateFormatted}, às ${commitmentData.time}, com ${commitmentData.pax || 2} convidados, e o responsável por receber o cliente vai ser o ${commitmentData.responsibleName || 'Responsável'}.${commitmentData.notes ? ` Observações: "${commitmentData.notes}".` : ''}`;
+    }
 
     const scheduleActivity: LeadActivity = {
       id: generateUuid(),
@@ -7968,16 +8069,25 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       authorAvatarUrl: authorAvatar,
     };
 
-    // Atualização otimista no Lead
+    // Atualização otimista no Lead (atualizando também Closer e SDR se informados)
     setLeads(prev => {
       const next = prev.map(l => {
         if (l.id === leadId) {
           const currentActs = l.activities || [];
-          if (type === 'visit') {
-            return { ...l, visitCommitment: newCommitment, activities: [...currentActs, scheduleActivity] };
-          } else {
-            return { ...l, tastingCommitment: newCommitment, activities: [...currentActs, scheduleActivity] };
-          }
+          const updatedLead: Lead = {
+            ...l,
+            ...(commitmentData.responsibleCollaboratorId ? {
+              closerId: commitmentData.responsibleCollaboratorId,
+              closerName: commitmentData.responsibleName,
+            } : {}),
+            ...((commitmentData as any).sdrId ? {
+              sdrId: (commitmentData as any).sdrId,
+              sdrName: (commitmentData as any).sdrName,
+            } : {}),
+            ...(type === 'visit' ? { visitCommitment: newCommitment } : { tastingCommitment: newCommitment }),
+            activities: [...currentActs, scheduleActivity],
+          };
+          return updatedLead;
         }
         return l;
       });
@@ -8006,9 +8116,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Persistência no Lead no Supabase
     try {
-      const updatePayload = type === 'visit'
+      const updatePayload: any = type === 'visit'
         ? { visitCommitment: newCommitment }
         : { tastingCommitment: newCommitment };
+
+      if (commitmentData.responsibleCollaboratorId) {
+        updatePayload.closerId = commitmentData.responsibleCollaboratorId;
+        updatePayload.closerName = commitmentData.responsibleName;
+      }
+      if ((commitmentData as any).sdrId) {
+        updatePayload.sdrId = (commitmentData as any).sdrId;
+        updatePayload.sdrName = (commitmentData as any).sdrName;
+      }
+
       await leadService.update(leadId, updatePayload as any);
       leadService.addActivity(leadId, scheduleActivity).catch(err => console.error('Erro ao salvar nota de agendamento:', err));
       return true;
@@ -8662,6 +8782,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       reorderFunnels,
       markLeadAsRead,
       loadOlderLeadActivities,
+      loadLeadConversationDays,
       unindexedLeadsCount,
       reassignLeadFunnel,
       reassignMultipleLeadsFunnel,

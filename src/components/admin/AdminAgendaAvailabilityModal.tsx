@@ -4,7 +4,7 @@ import {
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft,
-  Edit3, CheckCircle2, AlertCircle
+  Edit3, CheckCircle2, AlertCircle, MapPin
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -74,6 +74,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const [selectedVenueId, setSelectedVenueId] = useState<string>(() => {
     return venueId || (activeVenueId !== 'all' && activeVenueId ? activeVenueId : venues[0]?.id || 'all');
   });
+
+  const selectedVenue = venues.find(v => v.id === selectedVenueId);
 
   const [activeType, setActiveType] = useState<CommercialCommitmentType>(() => {
     return initialType || 'visit';
@@ -192,10 +194,37 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const themeColor = activeType === 'visit' ? '#10B981' : '#D97706';
 
   const handleToggleFreeMode = () => {
-    setCurrentRule(prev => ({
-      ...prev,
-      isFreeMode: !prev.isFreeMode,
-    }));
+    setCurrentRule(prev => {
+      const willBeFree = !prev.isFreeMode;
+      return {
+        ...prev,
+        isFreeMode: willBeFree,
+        // Exclusão mútua: ativar Modo Livre desativa a recorrência semanal
+        enabled: willBeFree ? false : prev.enabled,
+      };
+    });
+  };
+
+  const handleToggleRecurringFromHub = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentRule(prev => {
+      const isCurrentlyActive = prev.enabled !== false && !prev.isFreeMode;
+      if (isCurrentlyActive) {
+        // Desativa a recorrência semanal (e mantém modo livre desligado)
+        return {
+          ...prev,
+          enabled: false,
+          isFreeMode: false,
+        };
+      } else {
+        // Ativa a recorrência semanal e desativa o modo livre (exclusão mútua)
+        return {
+          ...prev,
+          enabled: true,
+          isFreeMode: false,
+        };
+      }
+    });
   };
 
   const handleToggleRecurringEnabled = () => {
@@ -1147,15 +1176,17 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     }}>
       {/* HEADER SUPERIOR UNIVERSAL ÚNICO */}
       <div style={{
-        padding: '16px 24px',
+        padding: '14px 24px',
         borderBottom: '1px solid var(--adm-border, #E2E8F0)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'var(--adm-bg-surface, #F8FAFC)',
         flexShrink: 0,
+        gap: '16px',
+        flexWrap: 'wrap',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
           {/* Botão Universal Voltar */}
           <button
             type="button"
@@ -1172,51 +1203,110 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               fontSize: '0.78rem',
               fontWeight: 700,
               cursor: 'pointer',
+              flexShrink: 0,
             }}
           >
             <ArrowLeft size={14} />
             <span>{activeMode === 'hub' ? 'Voltar' : 'Voltar ao Menu'}</span>
           </button>
 
+          {/* Logo da Casa com Fundo Preto de Destaque */}
           <div style={{
-            width: '40px',
-            height: '40px',
+            width: '44px',
+            height: '44px',
             borderRadius: '10px',
-            background: activeType === 'visit' ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
+            background: '#000000',
+            padding: '4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: `1px solid ${activeType === 'visit' ? 'rgba(16,185,129,0.25)' : 'rgba(217,119,6,0.25)'}`,
+            overflow: 'hidden',
+            flexShrink: 0,
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
           }}>
-            {activeType === 'visit' ? <Building2 size={20} color="#10B981" /> : <UtensilsCrossed size={20} color="#D97706" />}
+            {selectedVenue?.logoUrl ? (
+              <img src={selectedVenue.logoUrl} alt={venueName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            ) : (
+              <Building2 size={22} color="#D4AF37" />
+            )}
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                {activeMode === 'hub' && (activeType === 'visit' ? 'Disponibilidade de Visitas Comerciais' : 'Disponibilidade de Degustações')}
-                {activeMode === 'recurring' && 'Recorrência Semanal Padrão'}
-                {activeMode === 'block' && 'Configuração por Bloco de Datas'}
-                {activeMode === 'override' && 'Configuração por Data'}
-              </h2>
-              <span style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                padding: '2px 8px',
-                borderRadius: '6px',
-                background: activeType === 'visit' ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
-                color: activeType === 'visit' ? '#10B981' : '#D97706',
-                border: `1px solid ${activeType === 'visit' ? 'rgba(16,185,129,0.25)' : 'rgba(217,119,6,0.25)'}`,
-              }}>
-                {activeType === 'visit' ? 'VISITAS' : 'DEGUSTAÇÃO'}
-              </span>
-            </div>
-            <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted, #64748B)' }}>
-              Unidade: <strong>{venueName}</strong>
-            </p>
+
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {venueName}
+            </h2>
+            {selectedVenue?.address ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '2px' }}>
+                <MapPin size={11} color="#94A3B8" />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedVenue.address}</span>
+              </div>
+            ) : (
+              <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                Configuração de Agenda e Disponibilidade
+              </p>
+            )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Seletor Central Elegante: Visita Comercial vs Degustação Gastronômica */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: 'var(--adm-bg-input, #E2E8F0)',
+          padding: '4px',
+          borderRadius: '10px',
+          border: '1px solid var(--adm-border, #CBD5E1)',
+        }}>
+          <button
+            type="button"
+            onClick={() => setActiveType('visit')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '7px',
+              border: 'none',
+              background: activeType === 'visit' ? '#10B981' : 'transparent',
+              color: activeType === 'visit' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              boxShadow: activeType === 'visit' ? '0 2px 6px rgba(16,185,129,0.3)' : 'none',
+            }}
+          >
+            <Building2 size={13} />
+            <span>Visita Comercial</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveType('tasting')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '7px',
+              border: 'none',
+              background: activeType === 'tasting' ? '#D97706' : 'transparent',
+              color: activeType === 'tasting' ? '#FFFFFF' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              boxShadow: activeType === 'tasting' ? '0 2px 6px rgba(217,119,6,0.3)' : 'none',
+            }}
+          >
+            <UtensilsCrossed size={13} />
+            <span>Degustação Gastronômica</span>
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
           <button
             type="button"
             onClick={handleSave}
@@ -1276,7 +1366,33 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
             ═══════════════════════════════════════════════════════════════════ */}
         {activeMode === 'hub' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
-                        {/* Card 0: Modo Livre (Qualquer Horário) */}
+            
+            {/* Banner Chamativo quando Ambos estão Desativados */}
+            {!currentRule.isFreeMode && currentRule.enabled === false && (
+              <div style={{
+                background: '#FEF2F2',
+                border: '1.5px solid #F87171',
+                borderRadius: '12px',
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                color: '#991B1B',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.1)',
+              }}>
+                <AlertCircle size={22} color="#DC2626" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>
+                    Agenda de {activeType === 'visit' ? 'Visitas Comerciais' : 'Degustações Gastronômicas'} Desativada para esta Unidade
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: '#B91C1C', marginTop: '2px', lineHeight: 1.4 }}>
+                    Nenhum horário ou dia semanal está ativo para agendamento na casa <strong>{venueName}</strong>. A opção de agendar ficará automaticamente indisponível na ficha do lead até que você ative a Recorrência Semanal ou o Modo Livre abaixo.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Card 0: Modo Livre (Qualquer Horário) */}
             <div style={{
               background: currentRule.isFreeMode ? 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(2,132,199,0.06) 100%)' : '#FFFFFF',
               borderRadius: '14px',
@@ -1331,9 +1447,9 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 style={{
                   padding: '9px 18px',
                   borderRadius: '8px',
-                  background: currentRule.isFreeMode ? themeColor : 'var(--adm-bg-surface, #F1F5F9)',
-                  border: `1px solid ${currentRule.isFreeMode ? themeColor : 'var(--adm-border, #CBD5E1)'}`,
-                  color: currentRule.isFreeMode ? '#FFFFFF' : '#0F172A',
+                  background: currentRule.isFreeMode ? 'rgba(239, 68, 68, 0.1)' : themeColor,
+                  border: `1px solid ${currentRule.isFreeMode ? '#EF4444' : themeColor}`,
+                  color: currentRule.isFreeMode ? '#EF4444' : '#FFFFFF',
                   fontSize: '0.80rem',
                   fontWeight: 800,
                   cursor: 'pointer',
@@ -1344,8 +1460,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   transition: 'all 0.15s ease',
                 }}
               >
-                {currentRule.isFreeMode ? <Check size={16} /> : null}
-                <span>{currentRule.isFreeMode ? 'Modo Livre Ativo' : 'Ativar Modo Livre'}</span>
+                <span>{currentRule.isFreeMode ? 'Desativar Modo Livre' : 'Ativar Modo Livre'}</span>
               </button>
             </div>
 
@@ -1398,8 +1513,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', lineHeight: 1.45 }}>
-                    {currentRule.enabled !== false ? (
+                    {currentRule.enabled !== false && !currentRule.isFreeMode ? (
                       <>Ativo em <strong>{currentRule.enabledDays.length} dias da semana</strong> com slots de <strong>{currentRule.durationMinutes} minutos</strong>. Capacidade de <strong>{currentRule.maxConcurrentPerSlot} vaga(s) simultânea(s)</strong> • Até <strong>{currentRule.maxPaxPerSlot || 5} PAX</strong>.</>
+                    ) : currentRule.isFreeMode ? (
+                      <span style={{ color: '#D97706', fontWeight: 600 }}>Suspensa enquanto o Modo Livre estiver ativo acima.</span>
                     ) : (
                       <span style={{ color: '#EF4444', fontWeight: 600 }}>Recorrência desativada. Nenhum dia semanal padrão estará aberto para agendamento.</span>
                     )}
@@ -1407,9 +1524,29 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: themeColor, fontWeight: 700, fontSize: '0.82rem' }}>
-                <span>Abrir Recorrência</span>
-                <ChevronRight size={18} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleToggleRecurringFromHub}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: (currentRule.enabled !== false && !currentRule.isFreeMode) ? 'rgba(239, 68, 68, 0.1)' : themeColor,
+                    border: `1px solid ${(currentRule.enabled !== false && !currentRule.isFreeMode) ? '#EF4444' : themeColor}`,
+                    color: (currentRule.enabled !== false && !currentRule.isFreeMode) ? '#EF4444' : '#FFFFFF',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {(currentRule.enabled !== false && !currentRule.isFreeMode) ? 'Desativar Recorrência' : 'Ativar Recorrência'}
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: themeColor, fontWeight: 700, fontSize: '0.82rem' }}>
+                  <span>Abrir</span>
+                  <ChevronRight size={18} />
+                </div>
               </div>
             </div>
 
@@ -2414,7 +2551,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           {/* TELA DIVIDIDA (SPLIT-VIEW): Calendário Mensal à Esquerda e Configuração do Dia à Direita */}
                           <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'minmax(0, 1.4fr) minmax(320px, 1fr)',
+                            gridTemplateColumns: 'minmax(0, 1.8fr) minmax(260px, 0.85fr)',
                             gap: '24px',
                             alignItems: 'start',
                           }}>
@@ -2709,25 +2846,54 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                         <div style={{ gridColumn: 'span 2' }}>
                                           <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                                            DURAÇÃO DO HORÁRIO
+                                            DURAÇÃO DO HORÁRIO (MINUTOS)
                                           </label>
-                                          <select
-                                            value={selectedCfg.durationMinutes}
-                                            onChange={e => handleUpdateSelectedBlockDay({ durationMinutes: Number(e.target.value) })}
-                                            style={{
-                                              width: '100%',
-                                              padding: '7px 10px',
-                                              borderRadius: '6px',
-                                              border: '1px solid #CBD5E1',
-                                              fontSize: '0.80rem',
-                                              fontWeight: 700,
-                                              background: '#FFFFFF',
-                                            }}
-                                          >
-                                            {DURATION_OPTIONS.map(opt => (
-                                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                            ))}
-                                          </select>
+                                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <select
+                                              value={selectedCfg.durationMinutes}
+                                              onChange={e => handleUpdateSelectedBlockDay({ durationMinutes: Number(e.target.value) })}
+                                              style={{
+                                                flex: 1,
+                                                padding: '7px 10px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #CBD5E1',
+                                                fontSize: '0.80rem',
+                                                fontWeight: 700,
+                                                background: '#FFFFFF',
+                                                color: '#0F172A',
+                                              }}
+                                            >
+                                              {DURATION_OPTIONS.map(opt => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                              ))}
+                                              {!DURATION_OPTIONS.some(opt => opt.value === selectedCfg.durationMinutes) && (
+                                                <option value={selectedCfg.durationMinutes}>{selectedCfg.durationMinutes} minutos (Personalizado)</option>
+                                              )}
+                                            </select>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <input
+                                                type="number"
+                                                min={5}
+                                                max={480}
+                                                step={5}
+                                                value={selectedCfg.durationMinutes}
+                                                onChange={e => handleUpdateSelectedBlockDay({ durationMinutes: Math.max(5, Number(e.target.value)) })}
+                                                style={{
+                                                  width: '72px',
+                                                  padding: '7px 8px',
+                                                  borderRadius: '6px',
+                                                  border: '1px solid #CBD5E1',
+                                                  fontSize: '0.82rem',
+                                                  fontWeight: 800,
+                                                  background: '#FFFFFF',
+                                                  color: '#0F172A',
+                                                  textAlign: 'center',
+                                                }}
+                                                title="Digitar duração personalizada em minutos"
+                                              />
+                                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>min</span>
+                                            </div>
+                                          </div>
                                         </div>
 
                                         <div>
@@ -2747,6 +2913,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                               border: '1px solid #CBD5E1',
                                               fontSize: '0.82rem',
                                               fontWeight: 800,
+                                              background: '#FFFFFF',
+                                              color: '#0F172A',
                                             }}
                                           />
                                         </div>
@@ -2768,6 +2936,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                               border: '1px solid #CBD5E1',
                                               fontSize: '0.82rem',
                                               fontWeight: 800,
+                                              background: '#FFFFFF',
+                                              color: '#0F172A',
                                             }}
                                           />
                                         </div>
@@ -2781,8 +2951,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                         <div style={{
                                           maxHeight: '180px',
                                           overflowY: 'auto',
-                                          display: 'flex',
-                                          flexDirection: 'column',
+                                          display: 'grid',
+                                          gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
                                           gap: '6px',
                                           paddingRight: '4px',
                                         }}>
@@ -2790,7 +2960,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                             <div
                                               key={slot}
                                               style={{
-                                                padding: '7px 12px',
+                                                padding: '7px 8px',
                                                 borderRadius: '8px',
                                                 background: '#F0FDF4',
                                                 border: '1px solid #BBF7D0',

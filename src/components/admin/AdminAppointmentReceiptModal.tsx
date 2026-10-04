@@ -351,26 +351,29 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
               justifyContent: 'space-between',
               gap: '12px',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: 'rgba(2,132,199,0.1)',
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  background: '#000000',
+                  padding: '4px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#0284C7',
                   overflow: 'hidden',
+                  flexShrink: 0,
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
                 }}>
                   {receipt.venueLogoUrl ? (
                     <img src={receipt.venueLogoUrl} alt={receipt.venueName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   ) : (
-                    <Building2 size={20} />
+                    <Building2 size={22} color="#D4AF37" />
                   )}
                 </div>
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
                     {receipt.venueName}
                   </h4>
                   {receipt.venueAddress && (
@@ -518,7 +521,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
           </div>
         </div>
 
-        {/* Barra de Ações Inferior */}
+        {/* Barra de Ações Inferior em Linha Única */}
         <div style={{
           padding: '16px 24px',
           background: '#F8FAFC',
@@ -532,7 +535,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             type="button"
             onClick={onClose}
             style={{
-              padding: '10px 18px',
+              padding: '10px 16px',
               borderRadius: '10px',
               background: '#FFFFFF',
               border: '1px solid #CBD5E1',
@@ -545,7 +548,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             Fechar
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end' }}>
             {/* Botão Baixar Imagem PNG */}
             <button
               type="button"
@@ -554,6 +557,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
                 padding: '10px 18px',
                 borderRadius: '10px',
@@ -565,19 +569,20 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
               }}
-              title="Baixar comprovante em imagem PNG de alta resolução"
+              title="Baixar comprovante oficial em imagem PNG idêntica"
             >
               <Download size={16} />
-              <span>{isDownloading ? 'Gerando...' : 'Baixar Imagem (PNG)'}</span>
+              <span>{isDownloading ? 'Gerando...' : 'Baixar (PNG)'}</span>
             </button>
 
-            {/* Botão Compartilhar WhatsApp */}
+            {/* Botão Compartilhar */}
             <button
               type="button"
               onClick={handleShareWhatsApp}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
                 padding: '10px 20px',
                 borderRadius: '10px',
@@ -593,7 +598,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
               title="Enviar mensagem oficial de confirmação no WhatsApp"
             >
               <Share2 size={16} />
-              <span>Compartilhar no WhatsApp</span>
+              <span>Compartilhar</span>
             </button>
           </div>
         </div>
