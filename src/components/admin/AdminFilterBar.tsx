@@ -4,6 +4,7 @@ import {
   ChevronDown, X, Check, ArrowUpDown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { VenueLogoImage } from '../common/VenueLogoImage';
 
 export type PeriodFilterType = '7d' | 'today' | 'yesterday' | '30d' | 'this_month' | '6m' | 'all' | 'custom';
 
@@ -449,7 +450,7 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                             style={{ accentColor: '#818cf8', cursor: 'pointer' }}
                           />
                           {v.logoUrl ? (
-                            <img src={v.logoUrl} alt={v.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                            <VenueLogoImage src={v.logoUrl} alt={v.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
                           ) : (
                             <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <Building2 size={12} color="#818cf8" />

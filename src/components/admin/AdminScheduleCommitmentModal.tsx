@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, Check, ChevronLeft, ChevronRight,
   Search, Building2, AlertCircle,
@@ -78,6 +78,25 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   const targetVenueId = currentLead?.venueId || venues[0]?.id || 'all';
   const targetVenue = venues.find(v => v.id === targetVenueId);
   const venueConfig = venueAgendaConfigs.find(c => c.venueId === targetVenueId);
+
+  const isVisitConfigured = useMemo(() => {
+    return agendaAvailabilityService.isCommitmentTypeConfigured(venueConfig, 'visit');
+  }, [venueConfig]);
+
+  const isTastingConfigured = useMemo(() => {
+    return agendaAvailabilityService.isCommitmentTypeConfigured(venueConfig, 'tasting');
+  }, [venueConfig]);
+
+  const isCurrentTypeConfigured = type === 'visit' ? isVisitConfigured : isTastingConfigured;
+
+  // Auto-ajusta o tipo selecionado caso o tipo inicial esteja desabilitado mas o outro esteja habilitado
+  useEffect(() => {
+    if (type === 'visit' && !isVisitConfigured && isTastingConfigured) {
+      setType('tasting');
+    } else if (type === 'tasting' && !isTastingConfigured && isVisitConfigured) {
+      setType('visit');
+    }
+  }, [type, isVisitConfigured, isTastingConfigured]);
 
   // Calendário de Navegação (Etapa 3)
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
@@ -446,7 +465,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         }}>
           <button
             type="button"
-            onClick={() => setType('visit')}
+            disabled={!isVisitConfigured}
+            onClick={() => isVisitConfigured && setType('visit')}
+            title={!isVisitConfigured ? `Visita comercial não configurada para a unidade "${targetVenue?.name || ''}"` : undefined}
             style={{
               padding: '7px 14px',
               borderRadius: '8px',
@@ -456,19 +477,25 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               color: type === 'visit' ? '#10B981' : '#64748B',
               fontSize: '0.80rem',
               fontWeight: 800,
-              cursor: 'pointer',
+              cursor: isVisitConfigured ? 'pointer' : 'not-allowed',
+              opacity: isVisitConfigured ? 1 : 0.45,
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
             }}
           >
             <Building2 size={16} />
-            Visita Comercial
+            <span>Visita Comercial</span>
+            {!isVisitConfigured && (
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.85 }}>(Indisponível)</span>
+            )}
           </button>
 
           <button
             type="button"
-            onClick={() => setType('tasting')}
+            disabled={!isTastingConfigured}
+            onClick={() => isTastingConfigured && setType('tasting')}
+            title={!isTastingConfigured ? `Degustação não configurada para a unidade "${targetVenue?.name || ''}"` : undefined}
             style={{
               padding: '7px 14px',
               borderRadius: '8px',
@@ -478,14 +505,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               color: type === 'tasting' ? '#D97706' : '#64748B',
               fontSize: '0.80rem',
               fontWeight: 800,
-              cursor: 'pointer',
+              cursor: isTastingConfigured ? 'pointer' : 'not-allowed',
+              opacity: isTastingConfigured ? 1 : 0.45,
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
             }}
           >
             <UtensilsCrossed size={16} />
-            Degustação Gastronômica
+            <span>Degustação Gastronômica</span>
+            {!isTastingConfigured && (
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.85 }}>(Indisponível)</span>
+            )}
           </button>
         </div>
 
@@ -846,13 +877,38 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               ═════════════════════════════════════════════════════════════════ */}
           {currentStep === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Calendário e Seleção de Horários */}
-              <div style={{
-                borderRadius: '14px',
-                border: '1px solid #E2E8F0',
-                background: '#FFFFFF',
-                padding: '18px',
-              }}>
+              {!isCurrentTypeConfigured ? (
+                <div style={{
+                  padding: '36px 24px',
+                  borderRadius: '14px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  gap: '12px',
+                }}>
+                  <AlertCircle size={38} color="#EF4444" />
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: '#991B1B' }}>
+                    {type === 'visit' ? 'Visitas Comerciais' : 'Degustações'} Não Configuradas
+                  </div>
+                  <div style={{ fontSize: '0.84rem', color: '#B91C1C', maxWidth: '480px', lineHeight: 1.5 }}>
+                    A unidade <strong>"{targetVenue?.name || 'Casa selecionada'}"</strong> não possui horários e dias de {type === 'visit' ? 'visita comercial' : 'degustação'} configurados em sua agenda. Por este motivo, o agendamento está indisponível.
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '4px' }}>
+                    Acesse o menu de <strong>Disponibilidade da Agenda</strong> desta casa para cadastrar a grade de atendimento.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Calendário e Seleção de Horários */}
+                  <div style={{
+                    borderRadius: '14px',
+                    border: '1px solid #E2E8F0',
+                    background: '#FFFFFF',
+                    padding: '18px',
+                  }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
                   <span style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A' }}>
                     {formattedMonthTitle}
@@ -1161,6 +1217,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   }}
                 />
               </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1217,7 +1275,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           {currentStep < 3 ? (
             <button
               type="button"
-              disabled={currentStep === 1 && !currentLead}
+              disabled={(currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)}
               onClick={() => setCurrentStep((currentStep + 1) as any)}
               style={{
                 display: 'inline-flex',
@@ -1225,13 +1283,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 gap: '8px',
                 padding: '10px 22px',
                 borderRadius: '8px',
-                background: (currentStep === 1 && !currentLead) ? '#CBD5E1' : themeColor,
+                background: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? '#CBD5E1' : themeColor,
                 color: '#FFFFFF',
                 border: 'none',
                 fontSize: '0.84rem',
                 fontWeight: 800,
-                cursor: (currentStep === 1 && !currentLead) ? 'not-allowed' : 'pointer',
-                boxShadow: (currentStep === 1 && !currentLead) ? 'none' : `0 4px 14px ${themeColor}33`,
+                cursor: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? 'not-allowed' : 'pointer',
+                boxShadow: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? 'none' : `0 4px 14px ${themeColor}33`,
               }}
             >
               <span>Avançar</span>
@@ -1240,7 +1298,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           ) : (
             <button
               type="button"
-              disabled={isSubmitting || isCheckingRealtime || !selectedDate || !selectedTime}
+              disabled={isSubmitting || isCheckingRealtime || !selectedDate || !selectedTime || !isCurrentTypeConfigured}
               onClick={handleConfirmSchedule}
               style={{
                 display: 'inline-flex',
@@ -1248,13 +1306,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 gap: '8px',
                 padding: '10px 24px',
                 borderRadius: '8px',
-                background: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? '#CBD5E1' : themeColor,
+                background: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime || !isCurrentTypeConfigured) ? '#CBD5E1' : themeColor,
                 color: '#FFFFFF',
                 border: 'none',
                 fontSize: '0.84rem',
                 fontWeight: 800,
-                cursor: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? 'not-allowed' : 'pointer',
-                boxShadow: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime) ? 'none' : `0 4px 14px ${themeColor}33`,
+                cursor: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime || !isCurrentTypeConfigured) ? 'not-allowed' : 'pointer',
+                boxShadow: (!selectedDate || !selectedTime || isSubmitting || isCheckingRealtime || !isCurrentTypeConfigured) ? 'none' : `0 4px 14px ${themeColor}33`,
               }}
             >
               {isCheckingRealtime ? (

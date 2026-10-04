@@ -239,6 +239,134 @@ function renderFormattedTextWithLinks(text?: string, isDarkMode = false): React.
   });
 }
 
+interface WhatsAppMessageInputBoxProps {
+  leadId: string;
+  isDarkMode: boolean;
+  disabled?: boolean;
+  onSendMessageText: (text: string) => void;
+  onTriggerComposing: () => void;
+  onStartAudioRecording: () => void;
+  isSpectator?: boolean;
+}
+
+const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.memo(({
+  leadId,
+  isDarkMode,
+  disabled,
+  onSendMessageText,
+  onTriggerComposing,
+  onStartAudioRecording,
+  isSpectator,
+}) => {
+  const [localText, setLocalText] = useState('');
+  const lastComposingCallRef = useRef<number>(0);
+
+  // Limpa o texto local ao trocar de lead
+  useEffect(() => {
+    setLocalText('');
+  }, [leadId]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalText(val);
+
+    // Throttled presence trigger (evita spam de eventos de digitação)
+    const now = Date.now();
+    if (now - lastComposingCallRef.current > 3000) {
+      lastComposingCallRef.current = now;
+      onTriggerComposing();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (localText.trim() && !disabled && !isSpectator) {
+        const text = localText.trim();
+        setLocalText('');
+        onSendMessageText(text);
+      }
+    }
+  };
+
+  const handleSendClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (localText.trim() && !disabled && !isSpectator) {
+      const text = localText.trim();
+      setLocalText('');
+      onSendMessageText(text);
+    }
+  };
+
+  return (
+    <>
+      <input
+        type="text"
+        value={localText}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        placeholder={isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem"}
+        disabled={disabled || isSpectator}
+        style={{
+          flex: 1,
+          height: '36px',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          color: isDarkMode ? '#e9edef' : '#111b21',
+          fontSize: '0.86rem',
+          padding: '0 4px',
+        }}
+      />
+
+      {localText.trim().length > 0 ? (
+        <button
+          type="button"
+          onClick={handleSendClick}
+          title="Enviar mensagem (Enter)"
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            backgroundColor: '#00a884',
+            border: 'none',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0, 168, 132, 0.3)',
+            flexShrink: 0,
+          }}
+        >
+          <Send size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onStartAudioRecording}
+          title="Gravar mensagem de voz"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: isDarkMode ? '#8696a0' : '#54656f',
+            cursor: 'pointer',
+            padding: '6px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'color 0.15s ease',
+            flexShrink: 0,
+          }}
+        >
+          <Mic size={20} />
+        </button>
+      )}
+    </>
+  );
+});
+
 export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProps> = ({
   initialLeadId,
   onLeadOpened,
@@ -289,6 +417,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     updateSource,
     addLeadActivity,
     markLeadAsRead,
+    loadOlderLeadActivities,
     syncWhatsAppHistoryGap,
   } = useAdminState();
 
@@ -478,6 +607,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Side Drawer: Lead Inspector (Ficha do Lead)
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(isEmbeddedInFunnel);
+  const [highlightMissingFields, setHighlightMissingFields] = useState<boolean>(false);
+
 
   // Detailed Filters State
   const [filterVenueId, setFilterVenueId] = useState<string>('all');
@@ -493,6 +624,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       setComposerTab(initialComposerTab);
     }
   }, [initialComposerTab]);
+
+  // Carregamento incremental sob demanda de mensagens do passado (reverse infinite scroll)
+  const [isLoadingOlder, setIsLoadingOlder] = useState<boolean>(false);
+  const [reachedBeginningMap, setReachedBeginningMap] = useState<Record<string, boolean>>({});
+  const isFetchingOlderRef = useRef<boolean>(false);
+  const loadOlderMessagesRef = useRef<() => void>(() => {});
 
   // Modais de Vendas & Upsell / Documentos / Detalhe de Tarefa
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<AdminTask | null>(null);
@@ -1318,6 +1455,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
 
+  useEffect(() => {
+    try {
+      const openSection = localStorage.getItem('f5_wa_open_section');
+      if (openSection) {
+        localStorage.removeItem('f5_wa_open_section');
+        if (openSection === 'followup' || openSection === 'tasks') {
+          setIsInspectorOpen(true);
+          setComposerTab('tasks');
+        } else if (openSection === 'won_missing') {
+          setIsInspectorOpen(true);
+          setHighlightMissingFields(true);
+        }
+      }
+    } catch {}
+  }, [selectedLead?.id]);
+
   // Download manual sob demanda de mídia recuperada (Economia de Storage)
   const [downloadingMediaIds, setDownloadingMediaIds] = useState<Set<string>>(new Set());
 
@@ -1972,7 +2125,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     // Se o usuário rolou mais de 70px do fundo, marcamos como scrolled up para NÃO puxar para baixo
     isUserScrolledUpRef.current = distanceFromBottom > 70;
-  }, []);
+
+    // Se o usuário rolou até o topo (menos de 80px do topo) e existem mensagens anteriores no banco
+    if (el.scrollTop < 80 && !isFetchingOlderRef.current && selectedLeadId && !reachedBeginningMap[selectedLeadId]) {
+      loadOlderMessagesRef.current();
+    }
+  }, [selectedLeadId, reachedBeginningMap]);
 
   // Auto-scroll inteligente: só força scroll para o fim se trocou de lead/aba, ou se o usuário NÃO subiu a rolagem
   useEffect(() => {
@@ -1992,8 +2150,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return () => clearTimeout(timer);
     }
 
-    // Se o usuário rolou para cima para ler mensagens antigas, NUNCA força scroll para o fim!
-    if (isUserScrolledUpRef.current) {
+    // Se o usuário rolou para cima para ler mensagens antigas ou busca histórica em andamento, NUNCA força scroll para o fim!
+    if (isUserScrolledUpRef.current || isFetchingOlderRef.current) {
       return;
     }
 
@@ -2104,12 +2262,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar]);
 
   // Handle Send Message / Note
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
     if (e) e.preventDefault();
-    if (!selectedLead || !messageText.trim() || isLeadSpectator) return;
+    const textToUse = directText !== undefined ? directText : messageText;
+    if (!selectedLead || !textToUse.trim() || isLeadSpectator) return;
 
     if (presenceTimerRef.current) clearTimeout(presenceTimerRef.current);
-    const textToSend = messageText.trim();
+    const textToSend = textToUse.trim();
     const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
     setMessageText('');
 
@@ -3075,6 +3234,61 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     return deduped;
   }, [selectedLead?.activities]);
+
+  // Função para carregar lote anterior de mensagens do histórico (rolagem para o passado)
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedLeadId || isFetchingOlderRef.current || reachedBeginningMap[selectedLeadId]) {
+      return;
+    }
+
+    isFetchingOlderRef.current = true;
+    setIsLoadingOlder(true);
+
+    const container = timelineContainerRef.current;
+    const prevScrollHeight = container ? container.scrollHeight : 0;
+    const prevScrollTop = container ? container.scrollTop : 0;
+
+    try {
+      // Pega o timestamp da mensagem mais antiga atualmente visível no chat
+      const oldestAct = timelineActivities[0];
+      const beforeTimestamp = oldestAct?.timestamp || new Date().toISOString();
+
+      const count = await loadOlderLeadActivities(selectedLeadId, beforeTimestamp, 40);
+
+      if (count < 40) {
+        setReachedBeginningMap(prev => ({ ...prev, [selectedLeadId]: true }));
+      }
+
+      // Restaura com precisão de pixel a posição da rolagem para que a visualização não dê salto
+      if (count > 0 && container) {
+        requestAnimationFrame(() => {
+          if (timelineContainerRef.current) {
+            const newScrollHeight = timelineContainerRef.current.scrollHeight;
+            timelineContainerRef.current.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao carregar mensagens anteriores:', err);
+    } finally {
+      setIsLoadingOlder(false);
+      isFetchingOlderRef.current = false;
+    }
+  }, [selectedLeadId, timelineActivities, reachedBeginningMap, loadOlderLeadActivities]);
+
+  // Mantém a ref sincronizada para acionamento durante a rolagem rápida
+  useEffect(() => {
+    loadOlderMessagesRef.current = loadOlderMessages;
+  }, [loadOlderMessages]);
+
+  // Se o lead selecionado não tem nenhuma mensagem carregada nos últimos 3 dias,
+  // busca o primeiro lote histórico automaticamente para não exibir a conversa vazia
+  useEffect(() => {
+    if (!selectedLeadId || (composerTab !== 'whatsapp' && composerTab !== 'notes')) return;
+    if (timelineActivities.length === 0 && !reachedBeginningMap[selectedLeadId] && !isFetchingOlderRef.current) {
+      loadOlderMessages();
+    }
+  }, [selectedLeadId, composerTab, timelineActivities.length, reachedBeginningMap, loadOlderMessages]);
 
   // Histórico de Ações e Anotações Internas (Aba Histórico - Sem mensagens de chat do cliente e sem marcadores de caixa de mensagem)
   const historyActivities = useMemo(() => {
@@ -4602,10 +4816,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             <AdminLeadInspector
               lead={selectedLead}
               isPostSale={false}
+              highlightMissingFields={highlightMissingFields}
               onStageChange={(newStage: CrmStage) => {
                 updateLeadStage(selectedLead.id, newStage);
               }}
-              onToggleCollapse={() => setIsInspectorOpen(false)}
+              onToggleCollapse={() => {
+                setIsInspectorOpen(false);
+                setHighlightMissingFields(false);
+              }}
               readOnly={isReadOnlyForPosVenda || isLeadSpectator}
               selectedRecipientPhone={selectedRecipientPhone || selectedLead?.phone}
               onSelectRecipientPhone={(phone) => setSelectedRecipientPhone(phone)}
@@ -4839,12 +5057,78 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               {/* 1. ABA WHATSAPP: Exibe histórico de mensagens com layout bilateral */}
               {composerTab === 'whatsapp' && (
                 <>
-                  {timelineActivities.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 20px', color: isDarkMode ? '#8696a0' : '#667781' }}>
-                      <MessageSquare size={36} style={{ opacity: 0.3, marginBottom: '8px' }} />
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Nenhuma mensagem trocada ainda</div>
-                      <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Digite uma mensagem abaixo para iniciar o atendimento via WhatsApp.</div>
+                  {/* Top status indicator for older messages loading */}
+                  {isLoadingOlder ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '8px 16px',
+                      margin: '4px auto 10px auto',
+                      borderRadius: '20px',
+                      background: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.74rem',
+                      width: 'fit-content',
+                    }}>
+                      <Loader2 size={13} className="animate-spin" color="var(--adm-accent)" />
+                      <span>Carregando mensagens anteriores...</span>
                     </div>
+                  ) : !reachedBeginningMap[selectedLeadId || ''] && timelineActivities.length > 0 ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 10px 0' }}>
+                      <button
+                        type="button"
+                        onClick={loadOlderMessages}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '5px 14px',
+                          borderRadius: '16px',
+                          border: '1px solid var(--adm-border)',
+                          background: isDarkMode ? '#1e293b' : '#ffffff',
+                          color: 'var(--adm-text-title)',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--adm-accent-bg)'; e.currentTarget.style.color = 'var(--adm-accent)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = isDarkMode ? '#1e293b' : '#ffffff'; e.currentTarget.style.color = 'var(--adm-text-title)'; }}
+                      >
+                        <Clock size={12} />
+                        <span>Carregar mensagens anteriores</span>
+                      </button>
+                    </div>
+                  ) : reachedBeginningMap[selectedLeadId || ''] && timelineActivities.length > 0 ? (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '6px 12px',
+                      margin: '4px auto 8px auto',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.70rem',
+                      fontWeight: 500,
+                      opacity: 0.7,
+                    }}>
+                      Início do histórico de mensagens
+                    </div>
+                  ) : null}
+
+                  {timelineActivities.length === 0 ? (
+                    isLoadingOlder ? (
+                      <div style={{ textAlign: 'center', padding: '60px 20px', color: isDarkMode ? '#8696a0' : '#667781' }}>
+                        <Loader2 size={28} className="animate-spin" style={{ margin: '0 auto 12px auto', color: 'var(--adm-accent)' }} />
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>Buscando mensagens do histórico...</div>
+                      </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '60px 20px', color: isDarkMode ? '#8696a0' : '#667781' }}>
+                        <MessageSquare size={36} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Nenhuma mensagem trocada ainda</div>
+                        <div style={{ fontSize: '0.74rem', marginTop: '4px' }}>Digite uma mensagem abaixo para iniciar o atendimento via WhatsApp.</div>
+                      </div>
+                    )
                   ) : (
                     timelineActivities.map((act, idx) => {
                       const isIncoming = act.authorId === 'lead' ||
@@ -9976,80 +10260,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <Smile size={20} />
                         </button>
 
-                        {/* Campo de Texto (Enter para Enviar) */}
-                        <input
-                          type="text"
-                          value={messageText}
-                          onChange={(e) => {
-                            setMessageText(e.target.value);
-                            if (composerTab === 'whatsapp') {
-                              triggerComposingPresence();
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSendMessage(e);
-                            }
-                          }}
-                          placeholder="Digite uma mensagem"
-                          style={{
-                            flex: 1,
-                            height: '36px',
-                            background: 'transparent',
-                            border: 'none',
-                            outline: 'none',
-                            color: isDarkMode ? '#e9edef' : '#111b21',
-                            fontSize: '0.86rem',
-                            padding: '0 4px',
-                          }}
+                        {/* Campo de Texto & Botões Isolados (Zero Lentidão ao Digitar) */}
+                        <WhatsAppMessageInputBox
+                          leadId={selectedLead.id}
+                          isDarkMode={isDarkMode}
+                          disabled={!activeSenderToken || isSenderDisconnected}
+                          isSpectator={isLeadSpectator}
+                          onSendMessageText={(text) => handleSendMessage(undefined, text)}
+                          onTriggerComposing={triggerComposingPresence}
+                          onStartAudioRecording={startAudioRecording}
                         />
-
-                        {/* Botão Dinâmico: Se tiver texto -> Enviar (#00a884); Se vazio -> Microfone */}
-                        {messageText.trim().length > 0 ? (
-                          <button
-                            type="submit"
-                            title="Enviar mensagem (Enter)"
-                            style={{
-                              width: '36px',
-                              height: '36px',
-                              borderRadius: '50%',
-                              backgroundColor: '#00a884',
-                              border: 'none',
-                              color: '#fff',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 8px rgba(0, 168, 132, 0.3)',
-                              flexShrink: 0,
-                            }}
-                          >
-                            <Send size={16} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={startAudioRecording}
-                            title="Gravar mensagem de voz"
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: isDarkMode ? '#8696a0' : '#54656f',
-                              cursor: 'pointer',
-                              padding: '6px',
-                              borderRadius: '50%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = '#00a884'}
-                            onMouseLeave={(e) => e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f'}
-                          >
-                            <Mic size={20} />
-                          </button>
-                        )}
                       </form>
                     </div>
                   )

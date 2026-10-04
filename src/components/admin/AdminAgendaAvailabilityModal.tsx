@@ -4,7 +4,7 @@ import {
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft,
-  Edit3, CheckCircle2
+  Edit3, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -13,6 +13,7 @@ import type {
   AgendaRecurringRule, 
   AgendaDaySchedule,
   AgendaBlockRule,
+  AgendaBlockDayConfig,
   AgendaDateOverride,
   CommercialCommitmentType
 } from '../../types/admin';
@@ -98,13 +99,23 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const [newBlockDefaultStartTime, setNewBlockDefaultStartTime] = useState('09:00');
   const [newBlockDefaultEndTime, setNewBlockDefaultEndTime] = useState('18:00');
   const [newBlockDuration, setNewBlockDuration] = useState(60);
-  // Mapa de configuração individual por data dentro do bloco: { 'YYYY-MM-DD': { enabled: boolean, startTime: string, endTime: string } }
-  const [blockDaysConfig, setBlockDaysConfig] = useState<Record<string, { enabled: boolean; startTime: string; endTime: string }>>({});
+  // Mapa de configuração individual por data dentro do bloco
+  const [blockDaysConfig, setBlockDaysConfig] = useState<Record<string, AgendaBlockDayConfig>>({});
+  const [selectedBlockDate, setSelectedBlockDate] = useState<string>('');
+  const [blockCalendarMonth, setBlockCalendarMonth] = useState<Date>(() => new Date());
 
-  // Sub-estados para Data Específica / Overrides
+  // Toast de sucesso para salvar alterações
+  const [saveSuccessToast, setSaveSuccessToast] = useState(false);
+
+  // Sub-estados para Data Específica / Overrides com duração, vagas e pax por data
   const [overrideDateInput, setOverrideDateInput] = useState('');
   const [overrideIsBlocked, setOverrideIsBlocked] = useState(true);
   const [overrideReason, setOverrideReason] = useState('');
+  const [overrideStartTime, setOverrideStartTime] = useState('09:00');
+  const [overrideEndTime, setOverrideEndTime] = useState('18:00');
+  const [overrideDuration, setOverrideDuration] = useState(60);
+  const [overrideMaxConcurrent, setOverrideMaxConcurrent] = useState(3);
+  const [overrideMaxPax, setOverrideMaxPax] = useState(15);
   const [showOverrideForm, setShowOverrideForm] = useState(false);
 
   // Regras de Visitas e Degustações
@@ -317,6 +328,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     setNewBlockDefaultEndTime(activeType === 'visit' ? '18:00' : '22:00');
     setNewBlockDuration(currentRule.durationMinutes || 60);
     setBlockDaysConfig({});
+    setSelectedBlockDate('');
     setBlockCreationStep(1);
     setBlockViewMode('editor');
   };
@@ -329,7 +341,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     setNewBlockDuration(block.durationMinutes || currentRule.durationMinutes || 60);
     
     // Constrói configuração dos dias a partir dos dados do bloco
-    const initialDaysConfig: Record<string, { enabled: boolean; startTime: string; endTime: string }> = {};
+    const initialDaysConfig: Record<string, AgendaBlockDayConfig> = {};
     const [y1, m1, d1] = block.startDate.split('-').map(Number);
     const [y2, m2, d2] = block.endDate.split('-').map(Number);
     const start = new Date(y1, m1 - 1, d1);
@@ -337,21 +349,39 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const dayOfWeek = d.getDay();
-      const isEnabled = block.enabledDays?.includes(dayOfWeek) ?? true;
-      initialDaysConfig[dateStr] = {
-        enabled: isEnabled,
-        startTime: block.timeSlots?.[0] || '09:00',
-        endTime: block.timeSlots?.[block.timeSlots.length - 1] || '18:00',
-      };
+      const savedDateCfg = block.dateSchedules?.[dateStr];
+      if (savedDateCfg) {
+        initialDaysConfig[dateStr] = {
+          ...savedDateCfg,
+          isConfigured: true,
+        };
+      } else {
+        const dayOfWeek = d.getDay();
+        const isEnabled = block.enabledDays?.includes(dayOfWeek) ?? true;
+        const sTime = block.timeSlots?.[0] || (activeType === 'visit' ? '09:00' : '19:00');
+        const eTime = block.timeSlots?.[block.timeSlots.length - 1] || (activeType === 'visit' ? '18:00' : '22:00');
+        const dur = block.durationMinutes || currentRule.durationMinutes || 60;
+        initialDaysConfig[dateStr] = {
+          enabled: isEnabled,
+          isConfigured: true,
+          startTime: sTime,
+          endTime: eTime,
+          durationMinutes: dur,
+          maxConcurrentPerSlot: block.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 3,
+          maxPaxPerSlot: block.maxPaxPerSlot || currentRule.maxPaxPerSlot || 15,
+          timeSlots: generateSlotsFromRange(sTime, eTime, dur),
+        };
+      }
     }
 
     setBlockDaysConfig(initialDaysConfig);
+    setSelectedBlockDate(block.startDate);
+    setBlockCalendarMonth(new Date(y1, m1 - 1, 1));
     setBlockCreationStep(2);
     setBlockViewMode('editor');
   };
 
-  // Avançar para o Passo 2 da Criação do Bloco (Minicalendário do Período)
+  // Avançar para o Passo 2 da Criação do Bloco (Calendário Split-View do Período)
   const handleAdvanceBlockStep = () => {
     if (!newBlockStart || !newBlockEnd) {
       alert('Selecione data de início e término para o bloco.');
@@ -362,8 +392,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       return;
     }
 
-    // Inicializa os dias com a configuração padrão
-    const initialConfig: Record<string, { enabled: boolean; startTime: string; endTime: string }> = {};
+    // Inicializa os dias com isConfigured = false (BRANCOS por padrão)
+    const initialConfig: Record<string, AgendaBlockDayConfig> = {};
     const [y1, m1, d1] = newBlockStart.split('-').map(Number);
     const [y2, m2, d2] = newBlockEnd.split('-').map(Number);
     const start = new Date(y1, m1 - 1, d1);
@@ -371,65 +401,92 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const dayOfWeek = d.getDay();
-      // Não marca domingo por padrão, segunda a sábado ativos
-      const isDefaultActive = dayOfWeek !== 0;
+      const dur = newBlockDuration || 60;
       initialConfig[dateStr] = {
-        enabled: isDefaultActive,
+        enabled: true,
+        isConfigured: false, // Inicia branco (não configurado)
         startTime: newBlockDefaultStartTime,
         endTime: newBlockDefaultEndTime,
+        durationMinutes: dur,
+        maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 3,
+        maxPaxPerSlot: currentRule.maxPaxPerSlot || 15,
+        timeSlots: generateSlotsFromRange(newBlockDefaultStartTime, newBlockDefaultEndTime, dur),
       };
     }
 
     setBlockDaysConfig(initialConfig);
+    setSelectedBlockDate(newBlockStart);
+    setBlockCalendarMonth(new Date(y1, m1 - 1, 1));
     setBlockCreationStep(2);
   };
 
-  // Alterna um dia específico dentro do minicalendário do bloco
-  const handleToggleBlockDay = (dateStr: string) => {
+  // Atualiza um campo de configuração do dia selecionado no bloco
+  const handleUpdateSelectedBlockDay = (updates: Partial<AgendaBlockDayConfig>) => {
+    if (!selectedBlockDate) return;
     setBlockDaysConfig(prev => {
-      const current = prev[dateStr] || { enabled: true, startTime: newBlockDefaultStartTime, endTime: newBlockDefaultEndTime };
+      const current = prev[selectedBlockDate] || {
+        enabled: true,
+        isConfigured: false,
+        startTime: newBlockDefaultStartTime,
+        endTime: newBlockDefaultEndTime,
+        durationMinutes: newBlockDuration,
+        maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 3,
+        maxPaxPerSlot: currentRule.maxPaxPerSlot || 15,
+        timeSlots: [],
+      };
+
+      const merged = { ...current, ...updates, isConfigured: true };
+      const dur = merged.durationMinutes || 60;
+      merged.timeSlots = generateSlotsFromRange(merged.startTime, merged.endTime, dur);
+
       return {
         ...prev,
-        [dateStr]: {
-          ...current,
-          enabled: !current.enabled,
-        },
+        [selectedBlockDate]: merged,
       };
     });
   };
 
-  // Salvar novo bloco por período
-  const handleSaveBlockRule = () => {
-    const activeDates = Object.entries(blockDaysConfig).filter(([_, cfg]) => cfg.enabled);
-    const enabledDaysOfWeek = Array.from(new Set(activeDates.map(([dateStr]) => {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      return new Date(y, m - 1, d).getDay();
-    })));
 
-    const calculatedSlots = generateSlotsFromRange(newBlockDefaultStartTime, newBlockDefaultEndTime, newBlockDuration);
 
-    const blockToSave: AgendaBlockRule = {
-      id: editingBlockId || generateUuid(),
-      startDate: newBlockStart,
-      endDate: newBlockEnd,
-      title: newBlockTitle.trim() || `Período Especial (${newBlockStart.slice(5)} a ${newBlockEnd.slice(5)})`,
-      type: activeType === 'visit' ? 'visits' : 'tastings',
-      durationMinutes: newBlockDuration,
-      enabledDays: enabledDaysOfWeek,
-      timeSlots: calculatedSlots,
-      maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot,
-      maxPaxPerSlot: currentRule.maxPaxPerSlot,
-    };
+  // Copia a configuração do dia selecionado para todas as outras datas do bloco
+  const handleApplySelectedBlockDayToAll = () => {
+    if (!selectedBlockDate) return;
+    const sourceCfg = blockDaysConfig[selectedBlockDate];
+    if (!sourceCfg) return;
 
-    setBlockRules(prev => {
-      if (editingBlockId) {
-        return prev.map(b => b.id === editingBlockId ? blockToSave : b);
-      }
-      return [...prev, blockToSave];
+    setBlockDaysConfig(prev => {
+      const updated: Record<string, AgendaBlockDayConfig> = { ...prev };
+      blockPeriodDays.forEach(d => {
+        updated[d] = {
+          ...sourceCfg,
+          isConfigured: true,
+        };
+      });
+      return updated;
     });
+  };
 
-    setBlockViewMode('list');
+  // Configura todas as datas restantes que ainda estão brancas (pendentes) com o padrão
+  const handleConfigureAllRemaining = () => {
+    setBlockDaysConfig(prev => {
+      const updated: Record<string, AgendaBlockDayConfig> = { ...prev };
+      blockPeriodDays.forEach(d => {
+        if (!updated[d] || !updated[d].isConfigured) {
+          const dur = newBlockDuration || 60;
+          updated[d] = {
+            enabled: true,
+            isConfigured: true,
+            startTime: newBlockDefaultStartTime,
+            endTime: newBlockDefaultEndTime,
+            durationMinutes: dur,
+            maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 3,
+            maxPaxPerSlot: currentRule.maxPaxPerSlot || 15,
+            timeSlots: generateSlotsFromRange(newBlockDefaultStartTime, newBlockDefaultEndTime, dur),
+          };
+        }
+      });
+      return updated;
+    });
   };
 
   // Remover bloco
@@ -472,6 +529,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 date: overrideDateInput,
                 isBlocked: true,
                 reason: overrideReason || 'Data bloqueada pela administração com cancelamento de agendamentos.',
+                updatedAt: new Date().toISOString(),
               }
             ]);
             setConflictModalData(null);
@@ -484,12 +542,23 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       }
     }
 
+    const calculatedSlots = !overrideIsBlocked 
+      ? generateSlotsFromRange(overrideStartTime, overrideEndTime, overrideDuration)
+      : undefined;
+
     setDateOverrides(prev => [
       ...prev.filter(o => o.date !== overrideDateInput),
       {
         date: overrideDateInput,
         isBlocked: overrideIsBlocked,
         reason: overrideReason || (overrideIsBlocked ? 'Bloqueio Pontual' : 'Horário Personalizado'),
+        startTime: !overrideIsBlocked ? overrideStartTime : undefined,
+        endTime: !overrideIsBlocked ? overrideEndTime : undefined,
+        durationMinutes: !overrideIsBlocked ? overrideDuration : undefined,
+        maxConcurrentPerSlot: !overrideIsBlocked ? overrideMaxConcurrent : undefined,
+        maxPaxPerSlot: !overrideIsBlocked ? overrideMaxPax : undefined,
+        customSlots: calculatedSlots,
+        updatedAt: new Date().toISOString(),
       }
     ]);
 
@@ -511,36 +580,104 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     });
   };
 
-  // Clique em uma data no calendário mensal
+  // Clique em uma data no calendário mensal de exceções
   const handleCalendarDayClick = (dateStr: string) => {
     const existingOverride = dateOverrides.find(o => o.date === dateStr);
-    const isCurrentlyBlocked = existingOverride?.isBlocked;
 
-    if (isCurrentlyBlocked) {
-      setDateOverrides(prev => prev.filter(o => o.date !== dateStr));
+    if (existingOverride) {
+      if (existingOverride.isBlocked) {
+        setDateOverrides(prev => prev.filter(o => o.date !== dateStr));
+      } else {
+        setOverrideDateInput(dateStr);
+        setOverrideIsBlocked(false);
+        setOverrideReason(existingOverride.reason || '');
+        setOverrideStartTime(existingOverride.startTime || '09:00');
+        setOverrideEndTime(existingOverride.endTime || '18:00');
+        setOverrideDuration(existingOverride.durationMinutes || currentRule.durationMinutes || 60);
+        setOverrideMaxConcurrent(existingOverride.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 3);
+        setOverrideMaxPax(existingOverride.maxPaxPerSlot || currentRule.maxPaxPerSlot || 15);
+        setShowOverrideForm(true);
+      }
     } else {
       setOverrideDateInput(dateStr);
       setOverrideIsBlocked(true);
+      setOverrideReason('');
+      setOverrideStartTime('09:00');
+      setOverrideEndTime('18:00');
+      setOverrideDuration(currentRule.durationMinutes || 60);
+      setOverrideMaxConcurrent(currentRule.maxConcurrentPerSlot || 3);
+      setOverrideMaxPax(currentRule.maxPaxPerSlot || 15);
       setShowOverrideForm(true);
     }
   };
 
-  // Salvar alterações gerais no Supabase e fechar
+  // Salvar alterações gerais no Supabase e voltar para a tela de modos (Hub)
   const handleSave = async () => {
+    let nextBlockRules = [...blockRules];
+
+    // Se estiver no editor de bloco no Passo 2, valida se todas as datas foram configuradas
+    if (activeMode === 'block' && blockViewMode === 'editor' && blockCreationStep === 2) {
+      const unconfigured = blockPeriodDays.filter(d => !blockDaysConfig[d]?.isConfigured);
+      if (unconfigured.length > 0) {
+        alert(`Atenção: Existem ${unconfigured.length} data(s) ainda não configuradas no período (destacadas em branco no calendário).\n\nTodas as datas precisam ser configuradas (ativas ou desativadas) antes de salvar o bloco. Você também pode clicar no botão "Configurar Restantes com Padrão" para aprovar as datas pendentes.`);
+        return;
+      }
+
+      const activeDates = Object.entries(blockDaysConfig).filter(([_, cfg]) => cfg.enabled);
+      const enabledDaysOfWeek = Array.from(new Set(activeDates.map(([dateStr]) => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        return new Date(y, m - 1, d).getDay();
+      })));
+
+      const firstActiveCfg = activeDates[0]?.[1];
+      const defaultDuration = firstActiveCfg?.durationMinutes || newBlockDuration || 60;
+      const defaultStartTime = firstActiveCfg?.startTime || newBlockDefaultStartTime;
+      const defaultEndTime = firstActiveCfg?.endTime || newBlockDefaultEndTime;
+
+      const blockToSave: AgendaBlockRule = {
+        id: editingBlockId || generateUuid(),
+        startDate: newBlockStart,
+        endDate: newBlockEnd,
+        title: newBlockTitle.trim() || `Período Especial (${newBlockStart.split('-').reverse().join('/')} a ${newBlockEnd.split('-').reverse().join('/')})`,
+        type: activeType === 'visit' ? 'visits' : 'tastings',
+        durationMinutes: defaultDuration,
+        enabledDays: enabledDaysOfWeek,
+        timeSlots: generateSlotsFromRange(defaultStartTime, defaultEndTime, defaultDuration),
+        maxConcurrentPerSlot: firstActiveCfg?.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 3,
+        maxPaxPerSlot: firstActiveCfg?.maxPaxPerSlot || currentRule.maxPaxPerSlot || 15,
+        dateSchedules: blockDaysConfig,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (editingBlockId) {
+        nextBlockRules = nextBlockRules.map(b => b.id === editingBlockId ? blockToSave : b);
+      } else {
+        nextBlockRules = [...nextBlockRules, blockToSave];
+      }
+      setBlockRules(nextBlockRules);
+    }
+
     setIsSaving(true);
     const updatedConfig: VenueAgendaConfig = {
       id: existingConfig.id,
       venueId: selectedVenueId,
       visitsRule,
       tastingsRule,
-      blockRules,
+      blockRules: nextBlockRules,
       dateOverrides,
     };
 
     try {
       await updateVenueAgendaConfig(updatedConfig);
       if (onSaved) onSaved();
-      onClose();
+      // Exibe toast de sucesso
+      setSaveSuccessToast(true);
+      setTimeout(() => setSaveSuccessToast(false), 3500);
+      // Volta para a tela de modos (Hub) sem fechar o modal
+      setActiveMode('hub');
+      setBlockViewMode('list');
+      setIsEditingRecurring(false);
+      setShowOverrideForm(false);
     } catch (err) {
       console.error('Erro ao salvar disponibilidade:', err);
       alert('Erro ao salvar as configurações no servidor.');
@@ -576,6 +713,22 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     return blockRules.filter(b => b.type === targetType);
   }, [blockRules, activeType]);
 
+  // Helpers de formatação de data
+  const formatDateLong = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    return dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const formatWeekdayLong = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const raw = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  };
+
   // Lista dos dias do período para o Passo 2 de Bloco
   const blockPeriodDays = useMemo(() => {
     if (!newBlockStart || !newBlockEnd || newBlockStart > newBlockEnd) return [];
@@ -593,6 +746,53 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     }
     return days;
   }, [newBlockStart, newBlockEnd]);
+
+  // Grade mensal do Calendário do Bloco (Segunda a Domingo)
+  const blockCalendarDays = useMemo(() => {
+    const year = blockCalendarMonth.getFullYear();
+    const month = blockCalendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    // Segunda = coluna 0 ... Domingo = coluna 6
+    const leadingBlanks = (firstDay.getDay() + 6) % 7;
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    const cells: Array<{
+      dateStr: string;
+      dayNumber: number | null;
+      isInBlock: boolean;
+      isLeadingBlank?: boolean;
+    }> = [];
+
+    for (let i = 0; i < leadingBlanks; i++) {
+      cells.push({
+        dateStr: `blank-lead-${i}`,
+        dayNumber: null,
+        isInBlock: false,
+        isLeadingBlank: true,
+      });
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isInBlock = dateStr >= newBlockStart && dateStr <= newBlockEnd;
+      cells.push({
+        dateStr,
+        dayNumber: d,
+        isInBlock,
+      });
+    }
+
+    const trailingBlanks = (7 - (cells.length % 7)) % 7;
+    for (let i = 0; i < trailingBlanks; i++) {
+      cells.push({
+        dateStr: `blank-trail-${i}`,
+        dayNumber: null,
+        isInBlock: false,
+      });
+    }
+
+    return cells;
+  }, [blockCalendarMonth, newBlockStart, newBlockEnd]);
 
   // Dias do calendário mensal para o Modo 3
   const calendarGrid = useMemo(() => {
@@ -2063,127 +2263,648 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   </>
                 ) : (
                   <>
-                    {/* Passo 2: Minicalendário do Período com Configuração INDIVIDUAL de cada dia */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                          type="button"
-                          onClick={() => setBlockCreationStep(1)}
-                          style={{ background: 'transparent', border: 'none', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <ArrowLeft size={16} />
-                          <span style={{ fontSize: '0.78rem' }}>Voltar ao Período</span>
-                        </button>
-                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                          Configuração Individual dos Dias ({newBlockStart.split('-').reverse().join('/')} a {newBlockEnd.split('-').reverse().join('/')})
-                        </h3>
-                      </div>
+                    {/* Passo 2: Calendário Split-View do Bloco */}
+                    {(() => {
+                      const totalDaysCount = blockPeriodDays.length;
+                      const configuredDaysCount = blockPeriodDays.filter(d => blockDaysConfig[d]?.isConfigured).length;
+                      const unconfiguredDaysCount = totalDaysCount - configuredDaysCount;
+                      const activeDaysCount = blockPeriodDays.filter(d => blockDaysConfig[d]?.isConfigured && blockDaysConfig[d]?.enabled).length;
+                      const deactivatedDaysCount = blockPeriodDays.filter(d => blockDaysConfig[d]?.isConfigured && !blockDaysConfig[d]?.enabled).length;
 
-                      <button
-                        type="button"
-                        onClick={handleSaveBlockRule}
-                        style={{
-                          padding: '8px 18px',
-                          borderRadius: '8px',
-                          background: '#10B981',
-                          color: '#FFFFFF',
-                          border: 'none',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <Check size={16} />
-                        Salvar e Concluir Bloco
-                      </button>
-                    </div>
+                      const selectedCfg = selectedBlockDate ? (blockDaysConfig[selectedBlockDate] || {
+                        enabled: true,
+                        isConfigured: false,
+                        startTime: newBlockDefaultStartTime,
+                        endTime: newBlockDefaultEndTime,
+                        durationMinutes: newBlockDuration || 60,
+                        maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 3,
+                        maxPaxPerSlot: currentRule.maxPaxPerSlot || 15,
+                        timeSlots: generateSlotsFromRange(newBlockDefaultStartTime, newBlockDefaultEndTime, newBlockDuration || 60),
+                      }) : null;
 
-                    <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B' }}>
-                      Cada dia do período abaixo é configurável individualmente. Clique no dia para ativar/desativar ou definir seu horário próprio.
-                    </p>
+                      const selectedDaySlots = selectedCfg?.enabled 
+                        ? (selectedCfg.timeSlots && selectedCfg.timeSlots.length > 0
+                            ? selectedCfg.timeSlots 
+                            : generateSlotsFromRange(selectedCfg.startTime, selectedCfg.endTime, selectedCfg.durationMinutes || 60))
+                        : [];
 
-                    {/* Minicalendário com Configuração Individual por Dia */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                      gap: '12px',
-                      maxHeight: '420px',
-                      overflowY: 'auto',
-                      padding: '4px',
-                    }}>
-                      {blockPeriodDays.map(dateStr => {
-                        const [y, m, d] = dateStr.split('-').map(Number);
-                        const dateObj = new Date(y, m - 1, d);
-                        const weekdayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' });
-                        const dayMonth = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
-                        const dayCfg = blockDaysConfig[dateStr] || { enabled: false, startTime: newBlockDefaultStartTime, endTime: newBlockDefaultEndTime };
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                          {/* Cabeçalho do Bloco e Status */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '14px',
+                            paddingBottom: '16px',
+                            borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                          }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '280px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setBlockCreationStep(1)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: '1px solid #CBD5E1',
+                                    borderRadius: '6px',
+                                    padding: '4px 8px',
+                                    color: '#64748B',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <ArrowLeft size={14} />
+                                  <span>Alterar Período</span>
+                                </button>
+                                <span style={{ fontSize: '0.80rem', fontWeight: 700, color: '#64748B' }}>
+                                  Período: <strong>{newBlockStart.split('-').reverse().join('/')}</strong> até <strong>{newBlockEnd.split('-').reverse().join('/')}</strong> ({totalDaysCount} dias)
+                                </span>
+                              </div>
 
-                        return (
-                          <div
-                            key={dateStr}
-                            style={{
-                              padding: '12px',
-                              borderRadius: '10px',
-                              background: dayCfg.enabled ? '#FFFFFF' : 'var(--adm-bg-surface, #F8FAFC)',
-                              border: dayCfg.enabled ? '1px solid #0284C7' : '1px dashed #CBD5E1',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '8px',
-                              boxShadow: dayCfg.enabled ? '0 2px 6px rgba(2,132,199,0.08)' : 'none',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: dayCfg.enabled ? '#0284C7' : '#94A3B8' }}>
-                                {weekdayName.toUpperCase()} • {dayMonth}
-                              </span>
                               <input
-                                type="checkbox"
-                                checked={dayCfg.enabled}
-                                onChange={() => handleToggleBlockDay(dateStr)}
-                                style={{ accentColor: '#0284C7', cursor: 'pointer', width: '15px', height: '15px' }}
+                                type="text"
+                                placeholder="TÍTULO DO BLOCO (Ex: FÉRIAS DE OUTUBRO, RECESSO...)"
+                                value={newBlockTitle}
+                                onChange={e => setNewBlockTitle(e.target.value)}
+                                style={{
+                                  fontSize: '1.25rem',
+                                  fontWeight: 900,
+                                  color: '#0F172A',
+                                  border: 'none',
+                                  borderBottom: '2px solid transparent',
+                                  padding: '4px 0',
+                                  outline: 'none',
+                                  background: 'transparent',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '-0.02em',
+                                }}
+                                onFocus={e => e.target.style.borderBottomColor = '#0284C7'}
+                                onBlur={e => e.target.style.borderBottomColor = 'transparent'}
                               />
                             </div>
 
-                            {dayCfg.enabled ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <input
-                                  type="time"
-                                  value={dayCfg.startTime}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setBlockDaysConfig(prev => ({
-                                      ...prev,
-                                      [dateStr]: { ...(prev[dateStr] || dayCfg), startTime: val },
-                                    }));
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              {unconfiguredDaysCount === 0 ? (
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  background: '#DCFCE7',
+                                  color: '#15803D',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.80rem',
+                                  fontWeight: 800,
+                                  border: '1px solid #86EFAC',
+                                }}>
+                                  <Check size={16} />
+                                  <span>Todas as {totalDaysCount} datas configuradas</span>
+                                </div>
+                              ) : (
+                                <div style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  background: '#FEF3C7',
+                                  color: '#B45309',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.80rem',
+                                  fontWeight: 800,
+                                  border: '1px solid #FCD34D',
+                                }}>
+                                  <AlertCircle size={16} />
+                                  <span>{unconfiguredDaysCount} data(s) pendente(s) de configuração</span>
+                                </div>
+                              )}
+
+                              {unconfiguredDaysCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleConfigureAllRemaining}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    background: '#0284C7',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(2,132,199,0.2)',
                                   }}
-                                  style={{ width: '100%', padding: '3px', borderRadius: '4px', border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700 }}
-                                />
-                                <span style={{ fontSize: '0.65rem', color: '#94A3B8' }}>às</span>
-                                <input
-                                  type="time"
-                                  value={dayCfg.endTime}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setBlockDaysConfig(prev => ({
-                                      ...prev,
-                                      [dateStr]: { ...(prev[dateStr] || dayCfg), endTime: val },
-                                    }));
-                                  }}
-                                  style={{ width: '100%', padding: '3px', borderRadius: '4px', border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700 }}
-                                />
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', padding: '4px 0' }}>
-                                Fechado
-                              </span>
-                            )}
+                                  title="Aprova e marca todas as datas pendentes com o horário padrão"
+                                >
+                                  <Sparkles size={14} />
+                                  <span>Configurar Restantes com Padrão</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          {/* TELA DIVIDIDA (SPLIT-VIEW): Calendário Mensal à Esquerda e Configuração do Dia à Direita */}
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(0, 1.4fr) minmax(320px, 1fr)',
+                            gap: '24px',
+                            alignItems: 'start',
+                          }}>
+                            {/* COLUNA ESQUERDA: Calendário Mensal */}
+                            <div style={{
+                              background: '#FFFFFF',
+                              borderRadius: '14px',
+                              border: '1px solid var(--adm-border, #E2E8F0)',
+                              padding: '20px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '14px',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                            }}>
+                              {/* Barra de Navegação do Mês */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBlockCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                                    title="Mês Anterior"
+                                  >
+                                    <ChevronLeft size={16} />
+                                  </button>
+                                  <span style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize' }}>
+                                    {blockCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBlockCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                                    title="Próximo Mês"
+                                  >
+                                    <ChevronRight size={16} />
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const [y, m] = newBlockStart.split('-').map(Number);
+                                    setBlockCalendarMonth(new Date(y, m - 1, 1));
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: '1px solid #CBD5E1',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    color: '#64748B',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Início do Bloco
+                                </button>
+                              </div>
+
+                              {/* Legenda Visual de Status */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '0.72rem', padding: '6px 0', borderBottom: '1px solid #F1F5F9' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#F1F5F9', border: '1px solid #E2E8F0' }} />
+                                  <span style={{ color: '#94A3B8' }}>Fora do Bloco</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#FFFFFF', border: '1px solid #CBD5E1' }} />
+                                  <span style={{ color: '#475569', fontWeight: 600 }}>Pendente ({unconfiguredDaysCount})</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#DCFCE7', border: '1px solid #22C55E' }} />
+                                  <span style={{ color: '#15803D', fontWeight: 700 }}>Ativo & Configurado ({activeDaysCount})</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#FEE2E2', border: '1px solid #EF4444' }} />
+                                  <span style={{ color: '#DC2626', fontWeight: 700 }}>Desativado ({deactivatedDaysCount})</span>
+                                </div>
+                              </div>
+
+                              {/* Grade de 7 Colunas: Seg a Dom */}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+                                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(w => (
+                                  <span key={w} style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 800, color: '#64748B', padding: '4px 0' }}>
+                                    {w}
+                                  </span>
+                                ))}
+
+                                {blockCalendarDays.map((cell, idx) => {
+                                  if (!cell.isInBlock) {
+                                    // Célula fora do bloco: cinza, sem número de dia, desabilitada
+                                    return (
+                                      <div
+                                        key={cell.dateStr || `empty-${idx}`}
+                                        style={{
+                                          minHeight: '85px',
+                                          borderRadius: '10px',
+                                          background: '#F1F5F9',
+                                          border: '1px solid #E2E8F0',
+                                          cursor: 'not-allowed',
+                                        }}
+                                      />
+                                    );
+                                  }
+
+                                  const cfg = blockDaysConfig[cell.dateStr];
+                                  const isConfigured = Boolean(cfg?.isConfigured);
+                                  const isEnabled = Boolean(cfg?.enabled);
+                                  const isSelected = cell.dateStr === selectedBlockDate;
+
+                                  // Cores de fundo e borda baseadas no status
+                                  let bg = '#FFFFFF';
+                                  let borderColor = '#CBD5E1';
+                                  if (isConfigured) {
+                                    if (isEnabled) {
+                                      bg = '#DCFCE7';
+                                      borderColor = '#22C55E';
+                                    } else {
+                                      bg = '#FEE2E2';
+                                      borderColor = '#EF4444';
+                                    }
+                                  } else if (isSelected) {
+                                    // Destaca em amarelo suave enquanto pendente
+                                    bg = '#FEF3C7';
+                                    borderColor = '#F59E0B';
+                                  }
+
+                                  return (
+                                    <div
+                                      key={cell.dateStr}
+                                      onClick={() => setSelectedBlockDate(cell.dateStr)}
+                                      style={{
+                                        minHeight: '85px',
+                                        borderRadius: '10px',
+                                        background: bg,
+                                        border: `1.5px solid ${borderColor}`,
+                                        padding: '8px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        position: 'relative',
+                                        boxShadow: isSelected ? '0 0 0 3px #0284C7, 0 4px 12px rgba(2,132,199,0.2)' : 'none',
+                                        transition: 'all 0.12s ease',
+                                      }}
+                                    >
+                                      {/* Topo da Célula com Dia */}
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{
+                                          fontSize: '0.90rem',
+                                          fontWeight: 800,
+                                          color: !isConfigured ? '#334155' : (isEnabled ? '#15803D' : '#DC2626'),
+                                        }}>
+                                          {cell.dayNumber}
+                                        </span>
+
+                                        {isSelected && (
+                                          <span style={{
+                                            fontSize: '0.60rem',
+                                            fontWeight: 800,
+                                            padding: '1px 5px',
+                                            borderRadius: '4px',
+                                            background: '#0284C7',
+                                            color: '#FFFFFF',
+                                          }}>
+                                            Editando
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Centro da Célula com Ícone Lucide Check ou X */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '4px 0' }}>
+                                        {isConfigured ? (
+                                          isEnabled ? (
+                                            <>
+                                              <Check size={28} color="#16A34A" strokeWidth={2.8} />
+                                              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#15803D' }}>
+                                                {cfg?.startTime}-{cfg?.endTime}
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <X size={28} color="#DC2626" strokeWidth={2.8} />
+                                              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#DC2626' }}>
+                                                Desativado
+                                              </span>
+                                            </>
+                                          )
+                                        ) : (
+                                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#94A3B8', fontStyle: 'italic' }}>
+                                            Pendente
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* COLUNA DIREITA: Card de Configuração da Data Selecionada */}
+                            <div style={{
+                              background: '#FFFFFF',
+                              borderRadius: '14px',
+                              border: '1px solid var(--adm-border, #E2E8F0)',
+                              padding: '20px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '16px',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+                              position: 'sticky',
+                              top: '20px',
+                            }}>
+                              {selectedBlockDate && selectedCfg ? (
+                                <>
+                                  {/* Cabeçalho do Card da Data Selecionada */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', paddingBottom: '14px', borderBottom: '1px solid #F1F5F9' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedCfg.enabled}
+                                        onChange={e => handleUpdateSelectedBlockDay({ enabled: e.target.checked })}
+                                        style={{ width: '18px', height: '18px', accentColor: '#10B981', cursor: 'pointer' }}
+                                      />
+                                      <div>
+                                        <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                          {formatDateLong(selectedBlockDate)}
+                                        </span>
+                                        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#64748B' }}>
+                                          {formatWeekdayLong(selectedBlockDate)}
+                                        </span>
+                                      </div>
+                                    </label>
+
+                                    <span style={{
+                                      fontSize: '0.70rem',
+                                      fontWeight: 800,
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      background: !selectedCfg.isConfigured ? '#FEF3C7' : (selectedCfg.enabled ? '#DCFCE7' : '#FEE2E2'),
+                                      color: !selectedCfg.isConfigured ? '#B45309' : (selectedCfg.enabled ? '#15803D' : '#DC2626'),
+                                      border: `1px solid ${!selectedCfg.isConfigured ? '#FCD34D' : (selectedCfg.enabled ? '#86EFAC' : '#FCA5A5')}`,
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      {!selectedCfg.isConfigured ? 'Pendente' : (selectedCfg.enabled ? 'Ativo' : 'Desativado')}
+                                    </span>
+                                  </div>
+
+                                  {selectedCfg.enabled ? (
+                                    <>
+                                      {/* Faixa de Horário */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                                            INÍCIO
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={selectedCfg.startTime}
+                                            onChange={e => handleUpdateSelectedBlockDay({ startTime: e.target.value })}
+                                            style={{
+                                              width: '100%',
+                                              padding: '6px 10px',
+                                              borderRadius: '6px',
+                                              border: '1px solid #CBD5E1',
+                                              fontSize: '0.85rem',
+                                              fontWeight: 800,
+                                            }}
+                                          />
+                                        </div>
+                                        <span style={{ paddingTop: '16px', fontSize: '0.74rem', fontWeight: 700, color: '#94A3B8' }}>às</span>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                                            TÉRMINO
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={selectedCfg.endTime}
+                                            onChange={e => handleUpdateSelectedBlockDay({ endTime: e.target.value })}
+                                            style={{
+                                              width: '100%',
+                                              padding: '6px 10px',
+                                              borderRadius: '6px',
+                                              border: '1px solid #CBD5E1',
+                                              fontSize: '0.85rem',
+                                              fontWeight: 800,
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Campos de Configuração por Data: Duração, PAX e Vagas */}
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        <div style={{ gridColumn: 'span 2' }}>
+                                          <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                                            DURAÇÃO DO HORÁRIO
+                                          </label>
+                                          <select
+                                            value={selectedCfg.durationMinutes}
+                                            onChange={e => handleUpdateSelectedBlockDay({ durationMinutes: Number(e.target.value) })}
+                                            style={{
+                                              width: '100%',
+                                              padding: '7px 10px',
+                                              borderRadius: '6px',
+                                              border: '1px solid #CBD5E1',
+                                              fontSize: '0.80rem',
+                                              fontWeight: 700,
+                                              background: '#FFFFFF',
+                                            }}
+                                          >
+                                            {DURATION_OPTIONS.map(opt => (
+                                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+
+                                        <div>
+                                          <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                                            VAGAS SIMULTÂNEAS
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            max={20}
+                                            value={selectedCfg.maxConcurrentPerSlot}
+                                            onChange={e => handleUpdateSelectedBlockDay({ maxConcurrentPerSlot: Math.max(1, Number(e.target.value)) })}
+                                            style={{
+                                              width: '100%',
+                                              padding: '6px 10px',
+                                              borderRadius: '6px',
+                                              border: '1px solid #CBD5E1',
+                                              fontSize: '0.82rem',
+                                              fontWeight: 800,
+                                            }}
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                                            PAX MÁX. POR FAMÍLIA
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            max={50}
+                                            value={selectedCfg.maxPaxPerSlot}
+                                            onChange={e => handleUpdateSelectedBlockDay({ maxPaxPerSlot: Math.max(1, Number(e.target.value)) })}
+                                            style={{
+                                              width: '100%',
+                                              padding: '6px 10px',
+                                              borderRadius: '6px',
+                                              border: '1px solid #CBD5E1',
+                                              fontSize: '0.82rem',
+                                              fontWeight: 800,
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Lista de Slots Calculados em Tempo Real */}
+                                      <div style={{ marginTop: '4px' }}>
+                                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '6px' }}>
+                                          HORÁRIOS DISPONÍVEIS ({selectedDaySlots.length} SLOTS)
+                                        </label>
+                                        <div style={{
+                                          maxHeight: '180px',
+                                          overflowY: 'auto',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '6px',
+                                          paddingRight: '4px',
+                                        }}>
+                                          {selectedDaySlots.map(slot => (
+                                            <div
+                                              key={slot}
+                                              style={{
+                                                padding: '7px 12px',
+                                                borderRadius: '8px',
+                                                background: '#F0FDF4',
+                                                border: '1px solid #BBF7D0',
+                                                color: '#15803D',
+                                                fontWeight: 800,
+                                                fontSize: '0.82rem',
+                                                textAlign: 'center',
+                                              }}
+                                            >
+                                              {slot}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Ações Rápidas da Data */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px', borderTop: '1px solid #F1F5F9' }}>
+                                        <button
+                                          type="button"
+                                          onClick={handleApplySelectedBlockDayToAll}
+                                          style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '8px',
+                                            background: '#F8FAFC',
+                                            border: '1px solid #CBD5E1',
+                                            color: '#0F172A',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '6px',
+                                          }}
+                                        >
+                                          <Copy size={14} />
+                                          <span>Aplicar Horário a Todas as Datas do Bloco</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateSelectedBlockDay({ enabled: false })}
+                                          style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#EF4444',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          Desativar Atendimento neste Dia
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div style={{
+                                      padding: '20px 14px',
+                                      background: '#FEF2F2',
+                                      borderRadius: '10px',
+                                      border: '1px solid #FECACA',
+                                      textAlign: 'center',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '12px',
+                                      alignItems: 'center',
+                                    }}>
+                                      <X size={32} color="#DC2626" />
+                                      <div>
+                                        <strong style={{ display: 'block', fontSize: '0.84rem', color: '#DC2626' }}>
+                                          Dia Desativado no Bloco
+                                        </strong>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                          Nenhum horário será ofertado aos clientes para agendamento nesta data.
+                                        </p>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSelectedBlockDay({ enabled: true })}
+                                        style={{
+                                          padding: '7px 16px',
+                                          borderRadius: '8px',
+                                          background: '#10B981',
+                                          color: '#FFFFFF',
+                                          border: 'none',
+                                          fontSize: '0.78rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                        }}
+                                      >
+                                        <Check size={14} />
+                                        <span>Reativar Atendimento</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div style={{ textAlign: 'center', padding: '30px 10px', color: '#64748B', fontSize: '0.82rem' }}>
+                                  <Calendar size={28} color="#94A3B8" style={{ marginBottom: '8px' }} />
+                                  <p style={{ margin: 0, fontWeight: 700 }}>Selecione uma data no calendário</p>
+                                  <span style={{ fontSize: '0.74rem' }}>Clique em qualquer dia do bloco para configurar seus horários.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>
@@ -2523,6 +3244,29 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         </div>
       )}
 
+      {/* TOAST DE FEEDBACK DE SALVAMENTO */}
+      {saveSuccessToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: '#065F46',
+          color: '#FFFFFF',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          zIndex: 1400,
+          fontSize: '0.88rem',
+          fontWeight: 700,
+        }}>
+          <CheckCircle2 size={20} color="#34D399" />
+          <span>Configurações salvas com sucesso!</span>
+        </div>
+      )}
+
       {/* MODAL DE ADICIONAR NOVA DATA / BLOQUEIO */}
       {showOverrideForm && (
         <div style={{
@@ -2632,6 +3376,81 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   }}
                 />
               </div>
+
+              {!overrideIsBlocked && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                        INÍCIO
+                      </label>
+                      <input
+                        type="time"
+                        value={overrideStartTime}
+                        onChange={e => setOverrideStartTime(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                      />
+                    </div>
+                    <span style={{ paddingTop: '16px', fontSize: '0.72rem', color: '#94A3B8' }}>às</span>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                        TÉRMINO
+                      </label>
+                      <input
+                        type="time"
+                        value={overrideEndTime}
+                        onChange={e => setOverrideEndTime(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                        DURAÇÃO
+                      </label>
+                      <select
+                        value={overrideDuration}
+                        onChange={e => setOverrideDuration(Number(e.target.value))}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 700 }}
+                      >
+                        {DURATION_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                        VAGAS
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={overrideMaxConcurrent}
+                        onChange={e => setOverrideMaxConcurrent(Math.max(1, Number(e.target.value)))}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 800 }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
+                        PAX MÁX.
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={overrideMaxPax}
+                        onChange={e => setOverrideMaxPax(Math.max(1, Number(e.target.value)))}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 800 }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

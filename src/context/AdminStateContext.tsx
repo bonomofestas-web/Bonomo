@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { 
   AdminUser, 
   Collaborator,
@@ -322,6 +322,7 @@ export interface AdminContextType {
   duplicateFunnel: (funnelId: string, targetVenueId?: string) => string;
   reorderFunnels: (orderedFunnels: CommercialFunnel[]) => Promise<void>;
   markLeadAsRead: (leadId: string) => void;
+  loadOlderLeadActivities: (leadId: string, beforeTimestamp: string, limit?: number) => Promise<number>;
 
   // CRM Leads — Stage & Assignment
   unindexedLeadsCount: number;
@@ -385,6 +386,8 @@ export interface AdminContextType {
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
   deleteLead: (leadId: string) => void;
+  removeLeadFromFunnel: (leadId: string, reason: string) => Promise<boolean>;
+  restoreLeadToFunnel: (leadId: string) => Promise<boolean>;
   deleteMultipleLeads: (leadIds: string[]) => Promise<void>;
   archiveLead: (leadId: string) => Promise<boolean>;
   unarchiveLead: (leadId: string, funnelId?: string, stageId?: string) => Promise<boolean>;
@@ -2613,7 +2616,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     const id = generateUuid();
-    const resolvedMasterId = data.masterId || scopedMasterId || currentUser?.id;
+    const targetVenue = venuesRef.current.find(v => v.id === data.venueId || (data.venueIds && data.venueIds.includes(v.id)));
+    const resolvedMasterId = (data.masterId ||
+      (currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId) ||
+      targetVenue?.masterId ||
+      scopedMasterId) || undefined;
     const newCollab: Collaborator = {
       ...data,
       id,
@@ -3805,10 +3812,46 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  /**
+   * Carrega mensagens históricas anteriores de um lead específico sob demanda (rolagem para o passado)
+   */
+  const loadOlderLeadActivities = useCallback(async (
+    leadId: string,
+    beforeTimestamp: string,
+    limit: number = 40
+  ): Promise<number> => {
+    if (!leadId) return 0;
+    try {
+      const olderActs = await leadService.getOlderActivitiesForLead(leadId, beforeTimestamp, limit);
+      if (!olderActs || olderActs.length === 0) return 0;
+
+      setLeads(prev => prev.map(lead => {
+        if (lead.id !== leadId) return lead;
+        const currentActs = lead.activities || [];
+        const existingIds = new Set(currentActs.map(a => a.id));
+        const newActs = olderActs.filter(a => !existingIds.has(a.id));
+        if (newActs.length === 0) return lead;
+
+        const merged = [...newActs, ...currentActs].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        return {
+          ...lead,
+          activities: merged,
+        };
+      }));
+
+      return olderActs.length;
+    } catch (err) {
+      console.error('Erro em loadOlderLeadActivities:', err);
+      return 0;
+    }
+  }, []);
+
   // ── Leads Desindexados & Realocação de Funil ────────────────────────────────
   const unindexedLeadsCount = useMemo(() => {
     const validFunnelIds = new Set(scopedFunnels.map(f => f.id));
-    return scopedLeads.filter(l => !l.funnelId || !validFunnelIds.has(l.funnelId)).length;
+    return scopedLeads.filter(l => !l.isRemovedFromFunnel && (!l.funnelId || !validFunnelIds.has(l.funnelId))).length;
   }, [scopedLeads, scopedFunnels]);
 
   const reassignLeadFunnel = async (leadId: string, destinationFunnelId: string, stageId?: string): Promise<boolean> => {
@@ -5622,6 +5665,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
 
         if (existingLead) {
+          // ANTI-SPAM GUARD: Se o lead foi removido do funil (marcado como spam/telemarketing/removido),
+          // DESCARTA IMEDIATAMENTE a mensagem. Não salva no banco, não gera atividade, não altera unreadCount.
+          if (existingLead.isRemovedFromFunnel) {
+            console.warn(`[Anti-Spam Guard] Mensagem ignorada e descartada para lead removido do funil: ${existingLead.name} (${existingLead.phone})`);
+            return;
+          }
+
           const leadUpdates: Partial<Lead> = {};
 
           // 1. Vincula e preserva JID e LID no Lead
@@ -5943,6 +5993,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
         } else if (matchingLeads.length === 1 && !existingLead) {
           existingLead = matchingLeads[0];
+        }
+
+        if (existingLead?.isRemovedFromFunnel) {
+          console.warn(`[Anti-Spam Guard] Mensagem de gap ignorada e descartada para lead removido: ${existingLead.name} (${existingLead.phone})`);
+          return;
         }
 
         const isFromMe = Boolean(msg.fromMe) || (msg as any).fromMe === 'true' || (msg as any).fromMe === 1 ||
@@ -6352,6 +6407,93 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       leadService.delete(leadId).catch(err => console.error('❌ Erro ao deletar lead no Supabase:', err));
     }
+  };
+
+  const removeLeadFromFunnel = async (leadId: string, reason: string): Promise<boolean> => {
+    const targetLead = leadsRef.current.find(l => l.id === leadId);
+    if (!targetLead) {
+      console.warn('Lead não encontrado para remoção do funil:', leadId);
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const removalActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now,
+      type: 'status_change',
+      title: 'Lead Removido do Funil',
+      text: `Lead removido do funil comercial.\nMotivo: "${reason.trim()}"`,
+      authorName: currentUser?.name || 'Sistema F5',
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+    };
+
+    const updatedActivities = mergeAndSortActivities(targetLead.activities || [], [removalActivity], leadId);
+
+    const leadUpdates: Partial<Lead> = {
+      isRemovedFromFunnel: true,
+      removalReason: reason.trim(),
+      removedAt: now,
+      removedBy: currentUser?.name || currentUser?.id || 'Colaborador',
+      activities: updatedActivities,
+      updatedAt: now.split('T')[0],
+    };
+
+    updateLeadData(leadId, leadUpdates);
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.addActivity(leadId, removalActivity);
+        await leadService.update(leadId, leadUpdates);
+      } catch (err) {
+        console.error('❌ Erro ao persistir remoção do lead do funil no Supabase:', err);
+      }
+    }
+
+    return true;
+  };
+
+  const restoreLeadToFunnel = async (leadId: string): Promise<boolean> => {
+    const targetLead = leadsRef.current.find(l => l.id === leadId);
+    if (!targetLead) return false;
+
+    const now = new Date().toISOString();
+    const restoreActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now,
+      type: 'status_change',
+      title: 'Lead Restaurado ao Funil',
+      text: `Lead restaurado e reativado no funil por ${currentUser?.name || 'Administrador'}.`,
+      authorName: currentUser?.name || 'Sistema F5',
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+    };
+
+    const updatedActivities = mergeAndSortActivities(targetLead.activities || [], [restoreActivity], leadId);
+
+    const leadUpdates: Partial<Lead> = {
+      isRemovedFromFunnel: false,
+      removalReason: undefined,
+      removedAt: undefined,
+      removedBy: undefined,
+      activities: updatedActivities,
+      updatedAt: now.split('T')[0],
+    };
+
+    updateLeadData(leadId, leadUpdates);
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.addActivity(leadId, restoreActivity);
+        await leadService.update(leadId, leadUpdates);
+      } catch (err) {
+        console.error('❌ Erro ao restaurar lead ao funil no Supabase:', err);
+      }
+    }
+
+    return true;
   };
 
   const deleteMultipleLeads = async (leadIds: string[]) => {
@@ -8519,6 +8661,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       duplicateFunnel,
       reorderFunnels,
       markLeadAsRead,
+      loadOlderLeadActivities,
       unindexedLeadsCount,
       reassignLeadFunnel,
       reassignMultipleLeadsFunnel,
@@ -8539,6 +8682,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createLead,
       rejectLead,
       deleteLead,
+      removeLeadFromFunnel,
+      restoreLeadToFunnel,
       deleteMultipleLeads,
       archiveLead,
       unarchiveLead,

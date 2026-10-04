@@ -4,6 +4,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { ImageUploadField } from './ImageUploadField';
 import { AdminCollabInviteModal } from './AdminCollabInviteModal';
+import { VenueLogoImage } from '../common/VenueLogoImage';
 import type { Collaborator, AdminRole } from '../../types/admin';
 
 interface AdminCollaboratorModalProps {
@@ -17,7 +18,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
   onClose,
   collaboratorToEdit,
 }) => {
-  const { venues, addCollaborator, updateCollaborator } = useAdminState();
+  const { venues, addCollaborator, updateCollaborator, currentUser } = useAdminState();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -97,6 +98,9 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
       });
       onClose();
     } else {
+      const targetVenueObj = venues.find(v => v.id === primaryVenueId || selectedVenueIds.includes(v.id));
+      const effectiveMasterId = (currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId) || targetVenueObj?.masterId || undefined;
+
       const payload = {
         name: name.trim(),
         email: email.trim(),
@@ -108,6 +112,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
         primarySector: (primarySector || undefined) as any,
         venueId: role === 'master' ? 'all' : primaryVenueId,
         venueIds: role === 'master' ? venues.map(v => v.id) : selectedVenueIds,
+        masterId: effectiveMasterId,
         avatarUrl: avatarUrl.trim() || undefined,
         active,
         isFirstAccess: true,
@@ -492,7 +497,7 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
 
                         {/* Venue Logo or Icon */}
                         {v.logoUrl ? (
-                          <img
+                          <VenueLogoImage
                             src={v.logoUrl}
                             alt={v.name}
                             style={{

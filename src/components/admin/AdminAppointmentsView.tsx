@@ -9,15 +9,21 @@ import { AdminFilterBar, type FilterState } from './AdminFilterBar';
 import { AdminAppointmentModal } from './AdminAppointmentModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { VenueLogoImage } from '../common/VenueLogoImage';
 import type { Appointment } from '../../types';
 import type { AdminTask } from '../../types/admin';
 
-export const AdminAppointmentsView: React.FC = () => {
+interface AdminAppointmentsViewProps {
+  onOpenLead?: (leadId: string) => void;
+}
+
+export const AdminAppointmentsView: React.FC<AdminAppointmentsViewProps> = ({ onOpenLead }) => {
   const { 
     debutantes, 
     venues, 
     activeVenueId, 
     tasks,
+    leads,
     deleteAppointmentForDebutante 
   } = useAdminState();
 
@@ -624,7 +630,7 @@ export const AdminAppointmentsView: React.FC = () => {
                                   }}
                                 >
                                   {v!.logoUrl ? (
-                                    <img src={v!.logoUrl} alt={v!.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <VenueLogoImage src={v!.logoUrl} alt={v!.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   ) : (
                                     <span style={{ fontSize: '0.62rem', fontWeight: 900, color: 'var(--adm-accent)' }}>
                                       {v!.name.charAt(0).toUpperCase()}
@@ -704,6 +710,18 @@ export const AdminAppointmentsView: React.FC = () => {
                         key={`task_${t.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
+                          const targetLeadId = t.leadId || t.customProperties?.leadId;
+                          if (targetLeadId && onOpenLead) {
+                            onOpenLead(targetLeadId);
+                            return;
+                          }
+                          if (t.debutanteId && onOpenLead) {
+                            const debLead = leads.find(l => l.debutanteId === t.debutanteId || l.id === t.debutanteId);
+                            if (debLead) {
+                              onOpenLead(debLead.id);
+                              return;
+                            }
+                          }
                           setSelectedTaskForModal(t);
                           setIsTaskModalOpen(true);
                         }}

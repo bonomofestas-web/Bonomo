@@ -286,13 +286,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   };
 
-  const handleOpenLeadInWhatsApp = (leadId: string) => {
+  const handleOpenLeadInWhatsApp = (leadId: string, section?: 'followup' | 'won_missing' | 'tasks') => {
     setActiveWhatsAppLeadId(leadId);
     setActiveWhatsAppSearchQuery(''); // Mantém a busca limpa para não travar a lista de conversas em um único lead
     setActiveTab('whatsapp');
     try {
       localStorage.setItem('bonomo_admin_active_tab', 'whatsapp');
       localStorage.setItem('f5_wa_active_lead_id', leadId);
+      if (section) {
+        localStorage.setItem('f5_wa_open_section', section);
+      }
       if (currentUser?.id) {
         localStorage.setItem(`f5_wa_selected_lead_${currentUser.id}`, leadId);
       }
@@ -300,9 +303,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         const url = new URL(window.location.href);
         url.searchParams.set('tab', 'whatsapp');
         url.searchParams.set('lead_id', leadId);
+        if (section) url.searchParams.set('section', section);
         window.history.replaceState({}, '', url.toString());
       }
     } catch {}
+  };
+
+  const handleOpenLeadFromTask = (leadId: string, section: 'followup' | 'tasks' = 'followup') => {
+    handleOpenLeadInWhatsApp(leadId, section);
   };
 
   // Dynamic First Available Tab calculation (Audio 1 & 2)
@@ -437,9 +445,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const matchedCollaborators = useMemo<Collaborator[]>(() => cleanSearch ? collaborators.filter((c: Collaborator) => (c.name && c.name.toLowerCase().includes(cleanSearch)) || (c.email && c.email.toLowerCase().includes(cleanSearch)) || (c.role && c.role.toLowerCase().includes(cleanSearch))) : [], [collaborators, cleanSearch]);
   const totalSearchMatches = matchedVenues.length + matchedDebutantes.length + matchedLeads.length + matchedCollaborators.length;
 
-  const handleOpenLeadFromTask = (leadId: string) => {
-    handleOpenLeadInWhatsApp(leadId);
-  };
+  // Removido handleOpenLeadFromTask redundante
 
   // If not authenticated, show login view
   if (!currentUser) {
@@ -499,6 +505,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 activeFunnelId={activeFunnelId}
                 onSelectFunnel={(id) => setActiveFunnelId(id)}
                 onLeadOpened={() => setCrmOpenLeadId(undefined)}
+                onOpenLeadInWhatsApp={handleOpenLeadInWhatsApp}
               />
             );
           case 'debutantes':
@@ -542,6 +549,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             activeFunnelId={activeFunnelId}
             onSelectFunnel={(id) => setActiveFunnelId(id)}
             onLeadOpened={() => setCrmOpenLeadId(undefined)}
+            onOpenLeadInWhatsApp={handleOpenLeadInWhatsApp}
           />
         );
       case 'leads':

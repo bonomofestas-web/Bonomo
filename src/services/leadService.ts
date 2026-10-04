@@ -106,6 +106,10 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
     ...(lead.decisionMakers !== undefined ? { decisionMakers: lead.decisionMakers } : {}),
     ...(lead.isArchived !== undefined ? { is_archived: lead.isArchived } : {}),
     ...(lead.archivedAt !== undefined ? { archived_at: lead.archivedAt } : {}),
+    ...(lead.isRemovedFromFunnel !== undefined ? { is_removed_from_funnel: lead.isRemovedFromFunnel } : {}),
+    ...(lead.removalReason !== undefined ? { removal_reason: lead.removalReason } : {}),
+    ...(lead.removedAt !== undefined ? { removed_at: lead.removedAt } : {}),
+    ...(lead.removedBy !== undefined ? { removed_by: lead.removedBy } : {}),
   };
   if (lead.createdBy !== undefined) payload.created_by = (lead.createdBy && isUuid(lead.createdBy)) ? lead.createdBy : null;
   if (lead.createdByName !== undefined) payload.created_by_name = lead.createdByName || null;
@@ -291,6 +295,10 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     birthday: row.birthday || undefined,
     isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
     archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
+    isRemovedFromFunnel: Boolean(row.custom_field_values?.is_removed_from_funnel),
+    removalReason: row.custom_field_values?.removal_reason || undefined,
+    removedAt: row.custom_field_values?.removed_at || undefined,
+    removedBy: row.custom_field_values?.removed_by || undefined,
     unreadCount: row.unread_count !== undefined && row.unread_count !== null ? Number(row.unread_count) : 0,
     lastInteractionAt: row.last_interaction_at || undefined,
     lastMessageDirection: row.last_message_direction || undefined,
@@ -303,7 +311,7 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
 }
 
 export const leadService = {
-  async getAll(): Promise<Lead[]> {
+  async getAll(options?: { messageDays?: number }): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
     try {
       const { data: leadsData, error: leadsError } = await supabase
@@ -316,16 +324,38 @@ export const leadService = {
         return [];
       }
 
-      // Paginação completa de todas as atividades (supera a limitação padrão de 1.000 linhas do PostgREST)
+      // Limita o carregamento inicial de mensagens do WhatsApp aos últimos 3 dias (reduz brutalmente payload e memória)
+      const messageDays = options?.messageDays ?? 3;
+      const cutoffIso = new Date(Date.now() - messageDays * 24 * 60 * 60 * 1000).toISOString();
+
+      // Paginação completa de atividades dos últimos 3 dias (ou registros internos de CRM de qualquer data)
       const activitiesData: any[] = [];
       let actFrom = 0;
       const actStep = 1000;
       while (true) {
-        const { data: pageData, error: pageErr } = await supabase
+        let query = supabase
           .from('lead_activities')
           .select('*')
           .order('timestamp', { ascending: true })
           .range(actFrom, actFrom + actStep - 1);
+
+        if (messageDays > 0) {
+          query = query.or(`timestamp.gte.${cutoffIso},type.not.in.(contact,whatsapp),type.is.null`);
+        }
+
+        let { data: pageData, error: pageErr } = await query;
+        if (pageErr && messageDays > 0) {
+          // Fallback defensivo caso a sintaxe .or() encontre restrição no driver
+          const fallback = await supabase
+            .from('lead_activities')
+            .select('*')
+            .gte('timestamp', cutoffIso)
+            .order('timestamp', { ascending: true })
+            .range(actFrom, actFrom + actStep - 1);
+          pageData = fallback.data;
+          pageErr = fallback.error;
+        }
+
         if (pageErr || !pageData || pageData.length === 0) break;
         activitiesData.push(...pageData);
         if (pageData.length < actStep) break;
@@ -642,6 +672,48 @@ export const leadService = {
     } catch (err) {
       console.error('❌ Falha em leadService.updateActivity:', err);
       return false;
+    }
+  },
+
+  /**
+   * Busca mensagens anteriores para um lead específico (carregamento sob demanda para o passado)
+   */
+  async getOlderActivitiesForLead(
+    leadId: string,
+    beforeTimestamp: string,
+    limit: number = 40
+  ): Promise<LeadActivity[]> {
+    if (!isSupabaseConfigured) return [];
+    try {
+      let finalLeadId = leadId;
+      if (!isUuid(leadId)) {
+        const { data } = await supabase.from('leads').select('id').eq('code', leadId).maybeSingle();
+        if (data?.id) finalLeadId = data.id;
+      }
+      if (!isUuid(finalLeadId)) return [];
+
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('lead_id', finalLeadId)
+        .lt('timestamp', beforeTimestamp)
+        .order('timestamp', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Erro ao buscar mensagens anteriores do lead:', error);
+        return [];
+      }
+
+      if (!data || data.length === 0) return [];
+
+      // Retorna em ordem cronológica crescente (mais antigas primeiro)
+      return data
+        .map(row => formatActivityFromDb(row))
+        .reverse();
+    } catch (err) {
+      console.error('Falha em getOlderActivitiesForLead:', err);
+      return [];
     }
   },
 

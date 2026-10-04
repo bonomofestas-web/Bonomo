@@ -438,11 +438,27 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
             margin: 0,
             lineHeight: 1.45,
           }}>
-            {step === 'email' && 'Informe o seu e-mail corporativo para enviarmos o código de segurança de 6 dígitos.'}
-            {step === 'code' && `Insira o código de 6 dígitos enviado para ${email}`}
+            {step === 'email' && 'Informe o seu e-mail corporativo para enviarmos o código de segurança.'}
+            {step === 'code' && `Insira o código de segurança enviado para ${email}`}
             {step === 'password' && 'Defina uma senha com alto nível de segurança para proteger o acesso.'}
             {step === 'success' && 'Sua nova senha foi gravada com sucesso no sistema F5.'}
           </p>
+          {step === 'code' && (targetUser as any)?.isFirstAccess && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              color: '#F59E0B',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              marginTop: '10px',
+              lineHeight: 1.4,
+              textAlign: 'left',
+            }}>
+              Essa conta ainda não teve seu primeiro acesso. Estamos enviando o código para criação da sua senha.
+            </div>
+          )}
         </div>
 
         {/* Global Error Banner */}
@@ -534,7 +550,7 @@ export const AdminForgotPasswordModal: React.FC<AdminForgotPasswordModalProps> =
                 </>
               ) : (
                 <>
-                  <span>Enviar Código de 6 Dígitos</span>
+                  <span>Enviar Código de Segurança</span>
                   <ArrowRight size={17} />
                 </>
               )}

@@ -223,6 +223,41 @@ export const agendaAvailabilityService = {
   },
 
   /**
+   * Verifica se o compromisso (visita ou degustação) está efetivamente configurado e habilitado para a casa de festas
+   */
+  isCommitmentTypeConfigured(
+    config: VenueAgendaConfig | null | undefined,
+    type: CommercialCommitmentType
+  ): boolean {
+    if (!config) return false;
+    if (config.isFreeMode) return true;
+
+    const rule = type === 'visit' ? config.visitsRule : config.tastingsRule;
+    if (!rule) return false;
+    if (rule.enabled === false) return false;
+    if (rule.isFreeMode) return true;
+
+    // Checa se há pelo menos um dia ativo na recorrência semanal
+    const hasActiveRecurringDays = Boolean(
+      (rule.enabledDays && rule.enabledDays.length > 0) ||
+      (rule.daySchedules && Object.values(rule.daySchedules).some(s => s && s.enabled))
+    );
+
+    // Checa se há blocos de período cobrindo este compromisso
+    const targetBlockType = type === 'visit' ? 'visits' : 'tastings';
+    const hasActiveBlocks = Boolean(
+      config.blockRules && config.blockRules.some(b => b.type === 'both' || b.type === targetBlockType)
+    );
+
+    // Checa se há datas específicas (overrides) desbloqueadas
+    const hasOpenOverrides = Boolean(
+      config.dateOverrides && config.dateOverrides.some(o => !o.isBlocked)
+    );
+
+    return hasActiveRecurringDays || hasActiveBlocks || hasOpenOverrides;
+  },
+
+  /**
    * Calcula a disponibilidade de horários com PRECEDÊNCIA:
    * 1º: AgendaDateOverride (bloqueio ou ajuste pontual do dia)
    * 2º: AgendaBlockRule (regra por período de datas que suspende a regra semanal)
@@ -252,6 +287,18 @@ export const agendaAvailabilityService = {
       dateStr = String(arg2 || '');
       type = (arg3 as CommercialCommitmentType) || 'visit';
       existingAppointments = Array.isArray(arg4) ? arg4 : [];
+    }
+
+    // Se o compromisso (visita ou degustação) não estiver configurado para esta unidade, a opção de agendamento fica indisponível
+    if (!this.isCommitmentTypeConfigured(config, type)) {
+      const typeLabel = type === 'visit' ? 'Visita comercial' : 'Degustação';
+      return {
+        isBlocked: true,
+        isDayAvailable: false,
+        blockReason: `${typeLabel} não configurada para esta casa de festas.`,
+        reason: `${typeLabel} não configurada para esta casa de festas.`,
+        slots: [],
+      };
     }
 
     if (!dateStr) {
@@ -308,9 +355,19 @@ export const agendaAvailabilityService = {
           slots: [],
         };
       }
+      if (override.durationMinutes) {
+        effectiveDuration = override.durationMinutes;
+      }
+      if (override.maxConcurrentPerSlot) {
+        effectiveMaxBookings = override.maxConcurrentPerSlot;
+      }
+      if (override.maxPaxPerSlot !== undefined) {
+        effectiveMaxPax = override.maxPaxPerSlot;
+      }
       if (override.customSlots && override.customSlots.length > 0) {
         effectiveSlots = override.customSlots;
-        effectiveMaxPax = override.maxPaxPerSlot ?? effectiveMaxPax;
+      } else if (override.startTime && override.endTime) {
+        effectiveSlots = generateSlotsFromRange(override.startTime, override.endTime, effectiveDuration);
       } else {
         effectiveSlots = rule.timeSlots;
       }
@@ -320,9 +377,9 @@ export const agendaAvailabilityService = {
       effectiveMaxBookings = activeBlock.maxConcurrentPerSlot || effectiveMaxBookings;
       effectiveMaxPax = activeBlock.maxPaxPerSlot ?? effectiveMaxPax;
 
-      const blockDaySchedule = activeBlock.daySchedules?.[dayOfWeek];
-      if (blockDaySchedule) {
-        if (!blockDaySchedule.enabled) {
+      const blockDateSchedule = activeBlock.dateSchedules?.[dateStr];
+      if (blockDateSchedule) {
+        if (!blockDateSchedule.enabled) {
           return {
             isBlocked: true,
             isDayAvailable: false,
@@ -332,22 +389,45 @@ export const agendaAvailabilityService = {
             slots: [],
           };
         }
-        effectiveSlots = blockDaySchedule.timeSlots && blockDaySchedule.timeSlots.length > 0
-          ? blockDaySchedule.timeSlots
-          : generateSlotsFromRange(blockDaySchedule.startTime, blockDaySchedule.endTime, blockDaySchedule.slotDurationMinutes || effectiveDuration);
-      } else if (activeBlock.enabledDays && !activeBlock.enabledDays.includes(dayOfWeek)) {
-        return {
-          isBlocked: true,
-          isDayAvailable: false,
-          blockReason: `Dia não disponível no período selecionado (${activeBlock.title || 'Bloco'}).`,
-          reason: `Dia não disponível no período selecionado.`,
-          appliedMode: 'block',
-          slots: [],
-        };
-      } else if (activeBlock.timeSlots && activeBlock.timeSlots.length > 0) {
-        effectiveSlots = activeBlock.timeSlots;
+        effectiveDuration = blockDateSchedule.durationMinutes || effectiveDuration;
+        effectiveMaxBookings = blockDateSchedule.maxConcurrentPerSlot || effectiveMaxBookings;
+        effectiveMaxPax = blockDateSchedule.maxPaxPerSlot ?? effectiveMaxPax;
+        effectiveSlots = blockDateSchedule.timeSlots && blockDateSchedule.timeSlots.length > 0
+          ? blockDateSchedule.timeSlots
+          : generateSlotsFromRange(blockDateSchedule.startTime, blockDateSchedule.endTime, effectiveDuration);
       } else {
-        effectiveSlots = rule.timeSlots;
+        const blockDaySchedule = activeBlock.daySchedules?.[dayOfWeek];
+        if (blockDaySchedule) {
+          if (!blockDaySchedule.enabled) {
+            return {
+              isBlocked: true,
+              isDayAvailable: false,
+              blockReason: `Data sem atendimento no período configurado (${activeBlock.title || 'Bloco'}).`,
+              reason: `Data sem atendimento no período configurado.`,
+              appliedMode: 'block',
+              slots: [],
+            };
+          }
+          effectiveDuration = blockDaySchedule.slotDurationMinutes || effectiveDuration;
+          effectiveMaxBookings = blockDaySchedule.maxConcurrentPerSlot || effectiveMaxBookings;
+          effectiveMaxPax = blockDaySchedule.maxPaxPerSlot ?? effectiveMaxPax;
+          effectiveSlots = blockDaySchedule.timeSlots && blockDaySchedule.timeSlots.length > 0
+            ? blockDaySchedule.timeSlots
+            : generateSlotsFromRange(blockDaySchedule.startTime, blockDaySchedule.endTime, effectiveDuration);
+        } else if (activeBlock.enabledDays && !activeBlock.enabledDays.includes(dayOfWeek)) {
+          return {
+            isBlocked: true,
+            isDayAvailable: false,
+            blockReason: `Dia não disponível no período selecionado (${activeBlock.title || 'Bloco'}).`,
+            reason: `Dia não disponível no período selecionado.`,
+            appliedMode: 'block',
+            slots: [],
+          };
+        } else if (activeBlock.timeSlots && activeBlock.timeSlots.length > 0) {
+          effectiveSlots = activeBlock.timeSlots;
+        } else {
+          effectiveSlots = rule.timeSlots;
+        }
       }
     } else {
       // ── 3. PRECEDÊNCIA BASE: Modo Livre vs Regra Recorrente Semanal ──────────

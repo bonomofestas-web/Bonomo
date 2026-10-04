@@ -7,6 +7,7 @@ import {
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
+import { VenueLogoImage } from '../common/VenueLogoImage';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
@@ -41,6 +42,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setActiveVenueId, 
     tasks: contextTasks, 
     collaborators, 
+    leads,
     toggleTaskStatus,
     completeTaskWithFeedback,
     updateTask,
@@ -318,6 +320,22 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
 
   // Open detail modal with dynamically resolved database context
   const handleOpenTask = (task: AdminTask) => {
+    // 0. Redirecionamento Direto para o WhatsApp:
+    // Follow-ups, agendamentos e compromissos vinculados a um Lead ou Cliente não abrem Bloco de Notas Inteligente
+    const targetLeadId = task.leadId || task.customProperties?.leadId;
+    if (targetLeadId && onOpenLead) {
+      onOpenLead(targetLeadId);
+      return;
+    }
+
+    if (task.debutanteId && onOpenLead) {
+      const debLead = leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId);
+      if (debLead) {
+        onOpenLead(debLead.id);
+        return;
+      }
+    }
+
     let resolvedContext: TaskWorkspaceContext = 'all';
     let resolvedDbId = task.databaseId || 'default_collabs';
 
@@ -1008,7 +1026,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 }}
               >
                 {venue.logoUrl ? (
-                  <img
+                  <VenueLogoImage
                     src={venue.logoUrl}
                     alt={venue.name}
                     style={{

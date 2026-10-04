@@ -591,7 +591,14 @@ export const AdminFollowUpsView: React.FC<AdminFollowUpsViewProps> = ({ onOpenLe
 
                             <button
                               type="button"
-                              onClick={() => setSelectedTask(task)}
+                              onClick={() => {
+                                const targetLeadId = task.leadId || task.customProperties?.leadId;
+                                if (targetLeadId && onOpenLead) {
+                                  onOpenLead(targetLeadId);
+                                  return;
+                                }
+                                setSelectedTask(task);
+                              }}
                               style={{
                                 marginLeft: 'auto',
                                 background: 'transparent',

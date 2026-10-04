@@ -547,6 +547,10 @@ export interface Lead {
   partyDate?: string;   // Data prevista para a festa de 15 anos do lead
   funnelEnteredAt?: string; // Data exata em que o lead entrou no funil
   secondaryFunnelIds?: string[]; // IDs dos funis secundários onde o lead também é exibido simultaneamente
+  isRemovedFromFunnel?: boolean; // Se true, o lead foi removido da esteira (mas mantido no banco)
+  removalReason?: string; // Motivo da remoção (ex: spam, telemarketing, engano)
+  removedAt?: string; // Data/hora da remoção
+  removedBy?: string; // Nome do autor da remoção
   activities: LeadActivity[];
   createdBy?: string;         // ID do usuário/colaborador que realizou o cadastro manual
   createdByName?: string;     // Nome legível do autor do cadastro manual
@@ -597,7 +601,19 @@ export interface AgendaDaySchedule {
   maxPaxPerSlot?: number;
 }
 
+export interface AgendaBlockDayConfig {
+  enabled: boolean;
+  isConfigured: boolean;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  maxConcurrentPerSlot: number;
+  maxPaxPerSlot: number;
+  timeSlots?: string[];
+}
+
 export interface AgendaBlockRule {
+  dateSchedules?: Record<string, AgendaBlockDayConfig>;
   id: string;
   startDate: string;            // YYYY-MM-DD
   endDate: string;              // YYYY-MM-DD
@@ -629,6 +645,10 @@ export interface AgendaDateOverride {
   isBlocked: boolean;           // Se true, o dia inteiro está bloqueado
   reason?: string;              // 'Feriado', 'Manutenção', 'Evento Privado'
   customSlots?: string[];       // Horários específicos que substituem a regra naquele dia
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  maxConcurrentPerSlot?: number;
   maxPaxPerSlot?: number;
   createdAt?: string;           // ISO 8601
   updatedAt?: string;           // ISO 8601

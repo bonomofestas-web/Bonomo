@@ -8,8 +8,9 @@ import {
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
-  ArrowRightLeft, GitBranch
+  ArrowRightLeft, GitBranch, UserX, AlertCircle
 } from 'lucide-react';
+import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
@@ -91,7 +92,7 @@ const URGENCY_OPTIONS: { key: string; label: string; color: string }[] = [
   { key: 'imediata', label: 'Imediata / Crítica', color: '#EF4444' },
 ];
 
-export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
+const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   lead,
   onStageChange,
   onToggleCollapse,
@@ -115,6 +116,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     updateLeadStage,
     updateLeadData, 
     deleteLead,
+    removeLeadFromFunnel,
+    restoreLeadToFunnel,
     archiveLead,
     unarchiveLead,
     validateLead, 
@@ -127,6 +130,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     cancelCommercialCommitment,
     reassignLeadFunnel,
     closeLeadSaleWithValue,
+    venueAgendaConfigs,
   } = useAdminState();
 
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
@@ -149,14 +153,40 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deletePermanently, setDeletePermanently] = useState(false);
+  const [removalReasonCategory, setRemovalReasonCategory] = useState('spam');
+  const [removalReasonNotes, setRemovalReasonNotes] = useState('');
+  const [isProcessingRemoval, setIsProcessingRemoval] = useState(false);
+
+  // Sincronização Otimista Imediata de Funil e Etapa
+  const [currentFunnelId, setCurrentFunnelId] = useState<string | undefined>(lead.funnelId);
+  const [currentStageId, setCurrentStageId] = useState<string | undefined>(lead.stage);
+
+  React.useEffect(() => {
+    setCurrentFunnelId(lead.funnelId);
+    setCurrentStageId(lead.stage);
+  }, [lead.id, lead.funnelId, lead.stage]);
+
   const [scheduleCommitmentType, setScheduleCommitmentType] = useState<CommercialCommitmentType | null>(null);
+
+  // Verificação de disponibilidade de agenda para a casa do lead
+  const leadVenueConfig = useMemo(() => {
+    return venueAgendaConfigs.find(c => c.venueId === lead.venueId);
+  }, [venueAgendaConfigs, lead.venueId]);
+
+  const isVisitConfigured = useMemo(() => {
+    return agendaAvailabilityService.isCommitmentTypeConfigured(leadVenueConfig, 'visit');
+  }, [leadVenueConfig]);
+
+  const isTastingConfigured = useMemo(() => {
+    return agendaAvailabilityService.isCommitmentTypeConfigured(leadVenueConfig, 'tasting');
+  }, [leadVenueConfig]);
   const [completingCommitmentType, setCompletingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completionFeedback, setCompletionFeedback] = useState<string>('');
   const [cancellingCommitmentType, setCancellingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [cancellationReason, setCancellationReason] = useState<string>('');
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
-  const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isTempDropdownOpen, setIsTempDropdownOpen] = useState(false);
   const [isCreditCardDropdownOpen, setIsCreditCardDropdownOpen] = useState(false);
@@ -196,10 +226,11 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   const [isCloserDropdownOpen, setIsCloserDropdownOpen] = useState(false);
 
   const leadFunnel = useMemo(() => {
-    return funnels.find(f => f.id === lead.funnelId || f.name === lead.funnelId) ||
+    const fId = currentFunnelId || lead.funnelId;
+    return funnels.find(f => f.id === fId || f.name === fId) ||
       funnels.find(f => (f.venueId === 'all' || f.venueId === lead.venueId) && !f.isPostSale) ||
       funnels[0];
-  }, [funnels, lead.funnelId, lead.venueId]);
+  }, [funnels, currentFunnelId, lead.funnelId, lead.venueId]);
 
   const availableTags = useMemo(() => {
     const set = new Set<string>();
@@ -381,7 +412,8 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
   }, [leadFunnel]);
 
   const currentStageConfig = useMemo(() => {
-    const matched = funnelStages.find(s => s.id === lead.stage);
+    const effectiveStage = currentStageId || lead.stage;
+    const matched = funnelStages.find(s => s.id === effectiveStage);
     if (matched) {
       const color = matched.color || '#3B82F6';
       return {
@@ -392,12 +424,12 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         border: `${color}55`,
       };
     }
-    const fallback = STAGE_CONFIGS[lead.stage] || { label: lead.stage, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', border: '#3B82F6' };
+    const fallback = STAGE_CONFIGS[effectiveStage as CrmStage] || { label: effectiveStage, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', border: '#3B82F6' };
     return {
       ...fallback,
-      icon: (lead.stage as string) || 'layers',
+      icon: (effectiveStage as string) || 'layers',
     };
-  }, [funnelStages, lead.stage]);
+  }, [funnelStages, currentStageId, lead.stage]);
 
   const handleSelectStage = (newStageId: string) => {
     if (readOnly) return;
@@ -476,6 +508,15 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
         if (fPostSale) return false;
       }
 
+      // Restrição estrita: Apenas funis da mesma casa de festa do lead (ou 'all')
+      if (lead.venueId && lead.venueId !== 'all') {
+        const funnelVenueIds = Array.isArray((f as any).venueIds) ? (f as any).venueIds : [f.venueId];
+        const sharedVenues = (f as any).sharedVenueIds || (f as any).shared_venue_ids || [];
+        const allAssociatedVenues = [...funnelVenueIds, ...sharedVenues];
+        const belongsToLeadVenue = allAssociatedVenues.some((vId: string) => vId === 'all' || vId === lead.venueId);
+        if (!belongsToLeadVenue) return false;
+      }
+
       // Restrição de unidade para colaboradores comuns
       if (currentUser?.role !== 'master' && currentUser?.role !== 'admin') {
         const userVenueIds = (currentUser as any)?.venueIds || [];
@@ -488,7 +529,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
       return true;
     });
-  }, [funnels, leadFunnel, currentIsPostSale, isFunnelPostSale, currentUser]);
+  }, [funnels, leadFunnel, currentIsPostSale, isFunnelPostSale, currentUser, lead.venueId]);
 
   // ICP / MQL Questions específicas vinculadas a este Funil + Casa de Festas (Unidade)
   const venueMqlQuestions = useMemo(() => {
@@ -1212,13 +1253,14 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                       <Archive size={13} />
                     </button>
 
-                    {(currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev) && (
-                      lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost'
-                    ) && (
+                    {lead.stage !== 'contract_signed' && (lead.stage as string) !== 'deal_closed' && lead.stage !== 'lost' && (
                       <button
                         type="button"
-                        onClick={() => setShowDeleteConfirmModal(true)}
-                        title="Excluir este Lead"
+                        onClick={() => {
+                          setDeletePermanently(false);
+                          setShowDeleteConfirmModal(true);
+                        }}
+                        title={isManagerOrMaster ? "Remover do Funil ou Excluir Lead" : "Remover Lead do Funil"}
                         style={{
                           background: 'rgba(239, 68, 68, 0.12)',
                           border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -1263,6 +1305,52 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
             )}
           </div>
         </div>
+
+        {/* Banner de Lead Removido do Funil (com motivo e botão de restauração) */}
+        {lead.isRemovedFromFunnel && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '10px',
+            padding: '10px 14px',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <UserX size={18} color="#EF4444" style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: '0.78rem', color: '#EF4444', display: 'block' }}>
+                  Lead Removido do Funil
+                </strong>
+                <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
+                  {lead.removalReason ? `Motivo: ${lead.removalReason}` : 'Sem motivo informado'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                await restoreLeadToFunnel(lead.id);
+              }}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '6px',
+                background: '#EF4444',
+                border: 'none',
+                color: '#FFFFFF',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Restaurar ao Funil
+            </button>
+          </div>
+        )}
 
         {/* Tag Oficial de Código Único (LEAD-XXXXXX ou CLI-XXXXXX) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1706,21 +1794,18 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                                 <button
                                   key={targetStg.id}
                                   type="button"
-                                  disabled={isTransferringFunnel}
                                   onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={async (e) => {
+                                  onClick={(e) => {
                                     e.stopPropagation();
-                                    setIsTransferringFunnel(true);
-                                    try {
-                                      await reassignLeadFunnel(lead.id, f.id, targetStg.id);
-                                      if (onStageChange) {
-                                        onStageChange(targetStg.id as CrmStage);
-                                      }
-                                      setIsStageDropdownOpen(false);
-                                      setExpandedFunnelId(null);
-                                    } finally {
-                                      setIsTransferringFunnel(false);
-                                    }
+                                    // 1. Atualização Otimista Imediata da UI (0ms)
+                                    setCurrentFunnelId(f.id);
+                                    setCurrentStageId(targetStg.id);
+                                    setIsStageDropdownOpen(false);
+                                    setExpandedFunnelId(null);
+                                    // 2. Persistência assíncrona no banco
+                                    reassignLeadFunnel(lead.id, f.id, targetStg.id).catch(err => {
+                                      console.error('Erro ao transferir lead de funil:', err);
+                                    });
                                   }}
                                   style={{
                                     padding: '6px 10px',
@@ -1731,7 +1816,7 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    cursor: isTransferringFunnel ? 'wait' : 'pointer',
+                                    cursor: 'pointer',
                                     fontSize: '0.72rem',
                                     fontWeight: 700,
                                     textTransform: 'uppercase',
@@ -4569,55 +4654,88 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
                     {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setScheduleCommitmentType('visit')}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(56, 189, 248, 0.12)',
-                            border: '1px solid rgba(56, 189, 248, 0.4)',
-                            color: '#38BDF8',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Plus size={11} /> Reagendar Visita
-                        </button>
+                        {isVisitConfigured ? (
+                          <button
+                            type="button"
+                            onClick={() => setScheduleCommitmentType('visit')}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              background: 'rgba(56, 189, 248, 0.12)',
+                              border: '1px solid rgba(56, 189, 248, 0.4)',
+                              color: '#38BDF8',
+                              fontSize: '0.70rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Plus size={11} /> Reagendar Visita
+                          </button>
+                        ) : (
+                          <span
+                            title="A agenda de visitas comerciais não está configurada para esta casa de festas."
+                            style={{ fontSize: '0.70rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.75, cursor: 'not-allowed' }}
+                          >
+                            Reagendamento indisponível (Casa não configurada)
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
                 ) : (
                   !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setScheduleCommitmentType('visit')}
-                      style={{
-                        background: 'rgba(56, 189, 248, 0.1)',
-                        border: '1px dashed rgba(56, 189, 248, 0.4)',
-                        color: '#38BDF8',
-                        borderRadius: '6px',
-                        padding: '6px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar Visita</span>
-                    </button>
+                    isVisitConfigured ? (
+                      <button
+                        type="button"
+                        onClick={() => setScheduleCommitmentType('visit')}
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px dashed rgba(56, 189, 248, 0.4)',
+                          color: '#38BDF8',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          width: 'fit-content',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
+                      >
+                        <Plus size={12} />
+                        <span>Agendar Visita</span>
+                      </button>
+                    ) : (
+                      <div
+                        title="A agenda de visitas comerciais não está configurada para esta casa de festas."
+                        style={{
+                          background: 'rgba(100, 116, 139, 0.08)',
+                          border: '1px dashed rgba(100, 116, 139, 0.25)',
+                          color: 'var(--adm-text-muted)',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          width: 'fit-content',
+                          cursor: 'not-allowed',
+                          opacity: 0.75,
+                        }}
+                      >
+                        <AlertCircle size={12} />
+                        <span>Visita Indisponível (Não configurada)</span>
+                      </div>
+                    )
                   )
                 )}
               </div>
@@ -4746,55 +4864,88 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
 
                     {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        <button
-                          type="button"
-                          onClick={() => setScheduleCommitmentType('tasting')}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: 'rgba(212, 175, 55, 0.12)',
-                            border: '1px solid rgba(212, 175, 55, 0.4)',
-                            color: '#D4AF37',
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <Plus size={11} /> Reagendar Degustação
-                        </button>
+                        {isTastingConfigured ? (
+                          <button
+                            type="button"
+                            onClick={() => setScheduleCommitmentType('tasting')}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              background: 'rgba(212, 175, 55, 0.12)',
+                              border: '1px solid rgba(212, 175, 55, 0.4)',
+                              color: '#D4AF37',
+                              fontSize: '0.70rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Plus size={11} /> Reagendar Degustação
+                          </button>
+                        ) : (
+                          <span
+                            title="A agenda de degustações gastronômicas não está configurada para esta casa de festas."
+                            style={{ fontSize: '0.70rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.75, cursor: 'not-allowed' }}
+                          >
+                            Reagendamento indisponível (Casa não configurada)
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
                 ) : (
                   !effectiveReadOnly && (
-                    <button
-                      type="button"
-                      onClick={() => setScheduleCommitmentType('tasting')}
-                      style={{
-                        background: 'rgba(212, 175, 55, 0.1)',
-                        border: '1px dashed rgba(212, 175, 55, 0.4)',
-                        color: '#D4AF37',
-                        borderRadius: '6px',
-                        padding: '6px 10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        width: 'fit-content',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
-                    >
-                      <Plus size={12} />
-                      <span>Agendar Degustação</span>
-                    </button>
+                    isTastingConfigured ? (
+                      <button
+                        type="button"
+                        onClick={() => setScheduleCommitmentType('tasting')}
+                        style={{
+                          background: 'rgba(212, 175, 55, 0.1)',
+                          border: '1px dashed rgba(212, 175, 55, 0.4)',
+                          color: '#D4AF37',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          width: 'fit-content',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
+                      >
+                        <Plus size={12} />
+                        <span>Agendar Degustação</span>
+                      </button>
+                    ) : (
+                      <div
+                        title="A agenda de degustações gastronômicas não está configurada para esta casa de festas."
+                        style={{
+                          background: 'rgba(100, 116, 139, 0.08)',
+                          border: '1px dashed rgba(100, 116, 139, 0.25)',
+                          color: 'var(--adm-text-muted)',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          width: 'fit-content',
+                          cursor: 'not-allowed',
+                          opacity: 0.75,
+                        }}
+                      >
+                        <AlertCircle size={12} />
+                        <span>Degustação Indisponível (Não configurada)</span>
+                      </div>
+                    )
                   )
                 )}
               </div>
@@ -6027,32 +6178,119 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   width: '44px',
                   height: '44px',
                   borderRadius: '12px',
-                  backgroundColor: '#FEE2E2',
+                  backgroundColor: deletePermanently ? '#FEE2E2' : 'rgba(245, 158, 11, 0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <Trash2 size={22} color="#EF4444" />
+                {deletePermanently ? <Trash2 size={22} color="#EF4444" /> : <UserX size={22} color="#F59E0B" />}
               </div>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                  Excluir Lead
+                  {deletePermanently ? 'Excluir Lead Permanentemente' : 'Remover Lead do Funil'}
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted, #64748B)' }}>
-                  Esta ação é irreversível
+                  {deletePermanently ? 'Apaga definitivamente todos os dados do banco' : 'O lead não receberá mais mensagens'}
                 </p>
               </div>
             </div>
 
             <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--adm-text-body, #334155)', lineHeight: 1.5 }}>
-              Tem certeza que deseja excluir o lead <strong>"{lead.name}"</strong>? Todo o histórico de atendimentos, tarefas e dados associados serão removidos.
+              {deletePermanently ? (
+                <>Tem certeza que deseja excluir o lead <strong>"{lead.name}"</strong>? Todo o histórico de atendimentos, tarefas e dados associados serão removidos do sistema de forma irreversível.</>
+              ) : (
+                <>O lead <strong>"{lead.name}"</strong> será removido da esteira comercial. Se chegarem novas mensagens desse número de WhatsApp, elas serão descartadas automaticamente.</>
+              )}
             </p>
+
+            {/* Checkbox para Master e Gerente */}
+            {isManagerOrMaster && (
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: deletePermanently ? 'rgba(239, 68, 68, 0.08)' : 'var(--adm-bg-input, #F8FAFC)',
+                border: `1px solid ${deletePermanently ? 'rgba(239, 68, 68, 0.3)' : 'var(--adm-border, #CBD5E1)'}`,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={deletePermanently}
+                  onChange={(e) => setDeletePermanently(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: deletePermanently ? '#EF4444' : 'var(--adm-text-title)' }}>
+                  Excluir permanentemente do sistema (apaga todos os dados)
+                </span>
+              </label>
+            )}
+
+            {/* Motivo Obrigatório (Salvo no histórico do lead) */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: 'var(--adm-text-title)',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+              }}>
+                Motivo da {deletePermanently ? 'Exclusão' : 'Remoção'} *
+              </label>
+
+              <select
+                value={removalReasonCategory}
+                onChange={(e) => setRemovalReasonCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  background: 'var(--adm-bg-input, #F8FAFC)',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  marginBottom: '8px',
+                }}
+              >
+                <option value="spam">Spam / Robô / Mensagens Automáticas</option>
+                <option value="telemarketing">Telemarketing / Venda de Terceiros</option>
+                <option value="wrong_number">Número Errado / Engano</option>
+                <option value="no_interest">Sem Interesse / Desistiu</option>
+                <option value="duplicate">Duplicado / Contato em Outro Número</option>
+                <option value="other">Outro Motivo</option>
+              </select>
+
+              <textarea
+                value={removalReasonNotes}
+                onChange={(e) => setRemovalReasonNotes(e.target.value)}
+                placeholder="Descreva detalhes ou observações (vai para o histórico do lead)..."
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  background: 'var(--adm-bg-input, #F8FAFC)',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  resize: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
               <button
                 type="button"
+                disabled={isProcessingRemoval}
                 onClick={() => setShowDeleteConfirmModal(false)}
                 style={{
                   padding: '8px 16px',
@@ -6062,34 +6300,56 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
                   color: 'var(--adm-text-title, #334155)',
                   fontSize: '0.78rem',
                   fontWeight: 700,
-                  cursor: 'pointer',
+                  cursor: isProcessingRemoval ? 'wait' : 'pointer',
                 }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
+                disabled={isProcessingRemoval}
                 onClick={async () => {
-                  setShowDeleteConfirmModal(false);
-                  await deleteLead(lead.id);
-                  if (onToggleCollapse) onToggleCollapse();
+                  setIsProcessingRemoval(true);
+                  try {
+                    const categoryLabels: Record<string, string> = {
+                      spam: 'Spam / Robô',
+                      telemarketing: 'Telemarketing',
+                      wrong_number: 'Número Errado / Engano',
+                      no_interest: 'Sem Interesse / Desistiu',
+                      duplicate: 'Duplicado',
+                      other: 'Outro',
+                    };
+                    const label = categoryLabels[removalReasonCategory] || removalReasonCategory;
+                    const fullReason = removalReasonNotes.trim() ? `${label} - ${removalReasonNotes.trim()}` : label;
+
+                    if (deletePermanently) {
+                      await deleteLead(lead.id);
+                      setShowDeleteConfirmModal(false);
+                      if (onToggleCollapse) onToggleCollapse();
+                    } else {
+                      await removeLeadFromFunnel(lead.id, fullReason);
+                      setShowDeleteConfirmModal(false);
+                    }
+                  } finally {
+                    setIsProcessingRemoval(false);
+                  }
                 }}
                 style={{
                   padding: '8px 18px',
                   borderRadius: '8px',
-                  background: '#EF4444',
+                  background: deletePermanently ? '#EF4444' : '#F59E0B',
                   border: 'none',
                   color: '#FFFFFF',
                   fontSize: '0.78rem',
                   fontWeight: 800,
-                  cursor: 'pointer',
+                  cursor: isProcessingRemoval ? 'wait' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
                 }}
               >
-                <Trash2 size={14} />
-                <span>Sim, Excluir</span>
+                {deletePermanently ? <Trash2 size={14} /> : <UserX size={14} />}
+                <span>{deletePermanently ? 'Sim, Excluir Definitivamente' : 'Confirmar Remoção do Funil'}</span>
               </button>
             </div>
           </div>
@@ -6132,3 +6392,5 @@ export const AdminLeadInspector: React.FC<AdminLeadInspectorProps> = ({
     </div>
   );
 };
+
+export const AdminLeadInspector = React.memo(AdminLeadInspectorComponent);

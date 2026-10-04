@@ -76,6 +76,23 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<AdminTask | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<AdminTask | null>(null);
 
+  const handleTaskClick = (task: AdminTask) => {
+    const targetLeadId = task.leadId || task.customProperties?.leadId;
+    if (targetLeadId && onOpenLead) {
+      onOpenLead(targetLeadId);
+      return;
+    }
+    if (task.debutanteId && onOpenLead) {
+      const debLead = leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId);
+      if (debLead) {
+        onOpenLead(debLead.id);
+        return;
+      }
+    }
+    setSelectedTaskForDetail(task);
+    setIsTaskDetailModalOpen(true);
+  };
+
   // Filters for Left Column (Tasks)
   const [taskTab, setTaskTab] = useState<'today' | 'upcoming' | 'completed' | 'all'>('today');
   const [scopeFilter, setScopeFilter] = useState<'my' | 'all'>('my');
@@ -808,10 +825,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                           return (
                             <tr
                               key={task.id}
-                              onClick={() => {
-                                setSelectedTaskForDetail(task);
-                                setIsTaskDetailModalOpen(true);
-                              }}
+                              onClick={() => handleTaskClick(task)}
                               style={{
                                 borderBottom: '1px solid var(--adm-border)',
                                 background: group.rowBg,
@@ -1114,10 +1128,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                   return (
                     <div
                       key={`allday_${task.id}`}
-                      onClick={() => {
-                        setSelectedTaskForDetail(task);
-                        setIsTaskDetailModalOpen(true);
-                      }}
+                      onClick={() => handleTaskClick(task)}
                       style={{
                         background: typeConf.bg,
                         border: `1px solid ${typeConf.border}`,
@@ -1321,10 +1332,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                         <div
                           key={`task_${task.id}`}
                           className="admin-timeline-task-card"
-                          onClick={() => {
-                            setSelectedTaskForDetail(task);
-                            setIsTaskDetailModalOpen(true);
-                          }}
+                          onClick={() => handleTaskClick(task)}
                           style={{
                             background: typeConf.bg,
                             border: `1px solid ${typeConf.border}`,

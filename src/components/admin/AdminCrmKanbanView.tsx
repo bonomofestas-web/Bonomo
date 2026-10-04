@@ -11,7 +11,7 @@ import {
   UserPlus, Eye, AlertTriangle,
   User, SunMedium, Snowflake, Tag as TagIcon,
   MoreVertical, CheckSquare, Trash2, GitBranch, Archive,
-  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock
+  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock, UserX
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
@@ -45,6 +45,7 @@ interface AdminCrmKanbanViewProps {
   onSelectFunnel?: (funnelId: string | null) => void;
   onLeadOpened?: () => void;
   isPostSaleView?: boolean;
+  onOpenLeadInWhatsApp?: (leadId: string, section?: 'followup' | 'won_missing' | 'tasks') => void;
 }
 
 const DEFAULT_FORM_STAGES: FunnelStageConfig[] = [
@@ -193,6 +194,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   onSelectFunnel,
   onLeadOpened,
   isPostSaleView = false,
+  onOpenLeadInWhatsApp,
 }) => {
   const { 
     leads, 
@@ -218,6 +220,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     reassignLeadFunnel,
     viewingAsCollaborator,
   } = useAdminState();
+
+  const [showRemovedLeads, setShowRemovedLeads] = useState(false);
 
   const totalUnreadMessages = useMemo(() => {
     return leads.reduce((acc, l) => acc + (l.unreadCount || 0), 0);
@@ -1031,6 +1035,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (isClientRecord) return false;
       }
 
+      // Filtro de Leads Removidos do Funil
+      if (showRemovedLeads) {
+        if (!l.isRemovedFromFunnel) return false;
+      } else {
+        if (l.isRemovedFromFunnel) return false;
+      }
+
       // 1. Mandatory Strict Funnel Matching:
       if (currentFunnel) {
         if (!l.funnelId) return false; // Lead desindexado (sem funil) NUNCA deve aparecer no Kanban de funis
@@ -1096,7 +1107,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     });
 
     return sortLeadsByCriteria(matching, filterState.sortBy || 'waiting_time', collabIdSet);
-  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, collabIdSet]);
+  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, collabIdSet, showRemovedLeads]);
+
+  const removedLeadsCount = useMemo(() => {
+    return leads.filter(l => {
+      if (!l.isRemovedFromFunnel) return false;
+      if (currentFunnel) {
+        return l.funnelId === currentFunnel.id || l.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim();
+      }
+      return true;
+    }).length;
+  }, [leads, currentFunnel]);
 
   const renderColumnIcon = (iconOrStage: string, size = 15, color?: string) => {
     return renderFunnelOrStageIcon(iconOrStage, size, color, 'layers');
@@ -2807,6 +2828,31 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
               Vendas VIP: <strong style={{ color: 'var(--adm-accent)' }}>{filteredLeads.filter(l => l.stage === 'contract_signed').length}</strong>
             </div>
+
+            {/* Toggle de Leads Removidos do Funil */}
+            {removedLeadsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowRemovedLeads(!showRemovedLeads)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  fontSize: '0.70rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: showRemovedLeads ? '1px solid #EF4444' : '1px solid var(--adm-border)',
+                  background: showRemovedLeads ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                  color: showRemovedLeads ? '#EF4444' : 'var(--adm-text-muted)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <UserX size={12} />
+                <span>{showRemovedLeads ? 'Ocultar Removidos' : `Ver Removidos (${removedLeadsCount})`}</span>
+              </button>
+            )}
           </div>
 
           {/* KANBAN BOARD VIEW (Scroll Vertical Unificado da Tela com Headers Sticky e Arraste Horizontal) */}
@@ -4896,8 +4942,12 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           if (missingFieldsLead) {
             const target = missingFieldsLead;
             setIsMissingFieldsModalOpen(false);
-            setDetailModalLead(target);
-            setDetailModalHighlightMissing(true);
+            if (onOpenLeadInWhatsApp) {
+              onOpenLeadInWhatsApp(target.id, 'won_missing');
+            } else {
+              setDetailModalLead(target);
+              setDetailModalHighlightMissing(true);
+            }
           }
         }}
         lead={missingFieldsLead}
