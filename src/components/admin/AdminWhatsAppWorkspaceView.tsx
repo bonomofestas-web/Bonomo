@@ -3141,12 +3141,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setFilterTemperature('all');
   };
 
+  // Atividades do Lead com cache instantâneo de LocalStorage para abertura em 0ms
+  const effectiveLeadActivities = useMemo(() => {
+    const memActs = selectedLead?.activities || [];
+    if (memActs.length > 0) return memActs;
+    if (!selectedLeadId) return [];
+    const cached = leadService.getActivitiesFromCache(selectedLeadId);
+    return cached.length > 0 ? cached : memActs;
+  }, [selectedLead?.activities, selectedLeadId]);
+
   // Timeline Activities (Chat do WhatsApp - Exclusivamente mensagens de conversação e anotações internas)
   const timelineActivities = useMemo(() => {
-    if (!selectedLead?.activities) return [];
+    if (!effectiveLeadActivities) return [];
 
     // Filtra estritamente apenas mensagens reais trocadas com o lead e marcadores transitórios de caixa de mensagem (visualização e encerramento de sessão)
-    const chatOnly = selectedLead.activities.filter(a => {
+    const chatOnly = effectiveLeadActivities.filter(a => {
       // 1. Rejeita tipos de eventos internos de CRM
       if (
         a.type === 'status_change' ||
@@ -3234,7 +3243,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     return deduped;
-  }, [selectedLead?.activities]);
+  }, [effectiveLeadActivities]);
 
   // Função para carregar lote anterior de mensagens do histórico (rolagem para o passado)
   const loadOlderMessages = useCallback(async () => {

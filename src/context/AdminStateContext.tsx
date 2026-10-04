@@ -3910,24 +3910,52 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const loadLeadConversationDays = useCallback(async (leadId: string, days: number = 3): Promise<boolean> => {
     if (!leadId) return false;
     try {
+      // 1. Verificação instantânea do cache em LocalStorage (0ms)
+      const cached = leadService.getActivitiesFromCache(leadId);
+      if (cached && cached.length > 0) {
+        setLeads(prev => prev.map(lead => {
+          if (lead.id !== leadId) return lead;
+          const currentActs = lead.activities || [];
+          if (currentActs.length >= cached.length) return lead;
+          const existingIds = new Set(currentActs.map(a => a.id));
+          const newActs = cached.filter(a => !existingIds.has(a.id));
+          if (newActs.length === 0) return lead;
+          return {
+            ...lead,
+            activities: [...currentActs, ...newActs].sort(
+              (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            ),
+          };
+        }));
+      }
+
+      // 2. Busca do Supabase os 3 dias de conversa em que o lead efetivamente conversou
       const res = await leadService.getLeadConversationDays(leadId, days);
       if (!res || !res.activities || res.activities.length === 0) return false;
 
-      setLeads(prev => prev.map(lead => {
-        if (lead.id !== leadId) return lead;
-        const currentActs = lead.activities || [];
-        const existingIds = new Set(currentActs.map(a => a.id));
-        const newActs = res.activities.filter(a => !existingIds.has(a.id));
-        if (newActs.length === 0) return lead;
+      setLeads(prev => {
+        let changed = false;
+        const updated = prev.map(lead => {
+          if (lead.id !== leadId) return lead;
+          const currentActs = lead.activities || [];
+          const existingIds = new Set(currentActs.map(a => a.id));
+          const newActs = res.activities.filter(a => !existingIds.has(a.id));
+          if (newActs.length === 0) return lead;
 
-        const merged = [...currentActs, ...newActs].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        return {
-          ...lead,
-          activities: merged,
-        };
-      }));
+          changed = true;
+          const merged = [...currentActs, ...newActs].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          return {
+            ...lead,
+            activities: merged,
+          };
+        });
+        if (changed) {
+          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+        }
+        return updated;
+      });
       return true;
     } catch (err) {
       console.error('Erro em loadLeadConversationDays:', err);

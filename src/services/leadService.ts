@@ -718,8 +718,60 @@ export const leadService = {
   },
 
   /**
-   * Busca as mensagens dos últimos 3 dias em que o lead conversou
-   * (o parâmetro referencial é a data da última mensagem do próprio lead)
+   * Helpers para salvar e recuperar atividades recentes do lead no LocalStorage
+   * para exibição instantânea (0ms) no WhatsApp Workspace
+   */
+  saveActivitiesToCache(leadId: string, activities: LeadActivity[]): void {
+    if (!leadId || !activities || activities.length === 0) return;
+    try {
+      const cacheKey = `f5_lead_chat_${leadId}`;
+      const simplified = activities.slice(-120).map(a => ({
+        id: a.id,
+        leadId: a.leadId,
+        timestamp: a.timestamp,
+        type: a.type,
+        title: a.title,
+        text: a.text,
+        authorName: a.authorName,
+        authorId: a.authorId,
+        authorAvatarUrl: a.authorAvatarUrl,
+        mediaUrl: a.mediaUrl,
+        mediaType: a.mediaType,
+        status: a.status,
+        metadata: a.metadata,
+      }));
+      localStorage.setItem(cacheKey, JSON.stringify(simplified));
+    } catch {
+      // Se quota excedida, limpa caches mais antigos
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('f5_lead_chat_') && k !== `f5_lead_chat_${leadId}`) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.slice(0, 10).forEach(k => localStorage.removeItem(k));
+      } catch {}
+    }
+  },
+
+  getActivitiesFromCache(leadId: string): LeadActivity[] {
+    if (!leadId) return [];
+    try {
+      const raw = localStorage.getItem(`f5_lead_chat_${leadId}`);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Busca as mensagens dos últimos 'days' dias em que o lead EFETIVAMENTE conversou
+   * (identifica os dias de calendário distintos em que houve mensagens/atividades do lead).
+   * Exemplo: se conversou no dia 1, dia 3 e dia 7, traz as mensagens desses 3 dias específicos!
    */
   async getLeadConversationDays(
     leadId: string, 
@@ -734,51 +786,85 @@ export const leadService = {
       }
       if (!isUuid(finalLeadId)) return { activities: [], hasOlder: false };
 
-      // 1. Localiza a data da última mensagem/atividade do lead
-      const { data: latestRows, error: latestErr } = await supabase
+      // 1. Busca os timestamps das atividades mais recentes do lead para descobrir os dias de conversa
+      const { data: recentRows, error: recentErr } = await supabase
         .from('lead_activities')
         .select('timestamp')
         .eq('lead_id', finalLeadId)
         .order('timestamp', { ascending: false })
-        .limit(1);
+        .limit(300);
 
-      if (latestErr || !latestRows || latestRows.length === 0) {
+      if (recentErr || !recentRows || recentRows.length === 0) {
         return { activities: [], hasOlder: false };
       }
 
-      const latestTime = latestRows[0].timestamp || new Date().toISOString();
-      const latestDate = new Date(latestTime);
+      // 2. Extrai as datas distintas no formato YYYY-MM-DD
+      const distinctDaysMap = new Map<string, string>();
+      for (const r of recentRows) {
+        if (!r.timestamp) continue;
+        const d = new Date(r.timestamp);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const dayKey = `${y}-${m}-${day}`;
+        if (!distinctDaysMap.has(dayKey)) {
+          distinctDaysMap.set(dayKey, r.timestamp);
+        }
+      }
 
-      // Janela dos últimos 'days' dias de conversa do lead:
-      // Se última mensagem foi dia D às 16h, abrange D-2, D-1 e D (iniciando em D-2 00:00:00)
-      const cutoffDate = new Date(latestDate);
-      cutoffDate.setDate(cutoffDate.getDate() - (days - 1));
-      cutoffDate.setHours(0, 0, 0, 0);
-      const cutoffIso = cutoffDate.toISOString();
+      const sortedDays = Array.from(distinctDaysMap.keys()).sort((a, b) => b.localeCompare(a));
 
-      // 2. Busca todas as mensagens e atividades desse lead no intervalo dos 3 dias
-      const { data: acts, error: actsErr } = await supabase
+      let cutoffIso: string | null = null;
+      let hasOlder = false;
+
+      if (sortedDays.length > days) {
+        // Pega os últimos N dias de conversa (ex: 3 dias)
+        const targetDays = sortedDays.slice(0, days);
+        const oldestTargetDay = targetDays[targetDays.length - 1]; // Ex: "2026-10-01"
+        const [y, m, d] = oldestTargetDay.split('-').map(Number);
+        // Início desse dia mais antigo no horário local (00:00:00)
+        const cutoffDate = new Date(y, m - 1, d, 0, 0, 0, 0);
+        cutoffIso = cutoffDate.toISOString();
+        hasOlder = true;
+      } else {
+        // Se conversou em N dias ou menos (ex: 1, 2 ou 3 dias), não há corte — traz todas!
+        cutoffIso = null;
+        if (recentRows.length === 300) {
+          const { count } = await supabase
+            .from('lead_activities')
+            .select('id', { count: 'exact', head: true })
+            .eq('lead_id', finalLeadId);
+          hasOlder = (count || 0) > 300;
+        } else {
+          hasOlder = false;
+        }
+      }
+
+      // 3. Busca todas as mensagens e atividades desse lead no intervalo definido
+      let query = supabase
         .from('lead_activities')
         .select('*')
         .eq('lead_id', finalLeadId)
-        .gte('timestamp', cutoffIso)
         .order('timestamp', { ascending: true });
+
+      if (cutoffIso) {
+        query = query.gte('timestamp', cutoffIso);
+      }
+
+      const { data: acts, error: actsErr } = await query;
 
       if (actsErr || !acts) {
         return { activities: [], hasOlder: false };
       }
 
-      // 3. Verifica se existem mensagens anteriores ao cutoff
-      const { count: olderCount } = await supabase
-        .from('lead_activities')
-        .select('id', { count: 'exact', head: true })
-        .eq('lead_id', finalLeadId)
-        .lt('timestamp', cutoffIso);
-
       const formatted = acts.map(a => formatActivityFromDb(a));
+
+      // Salva no cache do LocalStorage para abertura instantânea futura
+      this.saveActivitiesToCache(finalLeadId, formatted);
+
       return {
         activities: formatted,
-        hasOlder: (olderCount || 0) > 0,
+        hasOlder,
         oldestTimestamp: formatted.length > 0 ? formatted[0].timestamp : undefined,
       };
     } catch (err) {

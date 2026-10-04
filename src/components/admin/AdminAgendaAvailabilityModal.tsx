@@ -4,7 +4,7 @@ import {
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft,
-  Edit3, CheckCircle2, AlertCircle, MapPin
+  Edit3, CheckCircle2, AlertCircle, MapPin, RotateCcw
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -48,6 +48,72 @@ const DURATION_OPTIONS = [
   { value: 90, label: '1h 30 min' },
   { value: 120, label: '2 horas' },
 ];
+
+
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: (val: boolean) => void;
+  disabled?: boolean;
+  activeColor?: string;
+  size?: 'sm' | 'md';
+}
+
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ 
+  checked, 
+  onChange, 
+  disabled = false, 
+  activeColor = '#10B981',
+  size = 'md' 
+}) => {
+  const isSm = size === 'sm';
+  const width = isSm ? '38px' : '48px';
+  const height = isSm ? '22px' : '26px';
+  const knobSize = isSm ? '18px' : '22px';
+  const translate = isSm ? '16px' : '22px';
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!checked);
+      }}
+      style={{
+        position: 'relative',
+        display: 'inline-flex',
+        alignItems: 'center',
+        width,
+        height,
+        borderRadius: '9999px',
+        background: checked ? activeColor : '#CBD5E1',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+        padding: '2px',
+        boxShadow: checked ? `0 2px 8px ${activeColor}40` : 'none',
+        opacity: disabled ? 0.6 : 1,
+        outline: 'none',
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          display: 'inline-block',
+          width: knobSize,
+          height: knobSize,
+          borderRadius: '50%',
+          background: '#FFFFFF',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
+          transform: checked ? `translateX(${translate})` : 'translateX(0)',
+          transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      />
+    </button>
+  );
+};
 
 export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModalProps> = ({
   venueId,
@@ -109,8 +175,11 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   // Toast de sucesso para salvar alterações
   const [saveSuccessToast, setSaveSuccessToast] = useState(false);
 
+  // Estados da Configuração por Data em Split-View (100% Livre)
+  const [overrideCalendarMonth, setOverrideCalendarMonth] = useState<Date>(() => new Date());
+  const [selectedOverrideDate, setSelectedOverrideDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
   // Sub-estados para Data Específica / Overrides com duração, vagas e pax por data
-  const [overrideDateInput, setOverrideDateInput] = useState('');
   const [overrideIsBlocked, setOverrideIsBlocked] = useState(true);
   const [overrideReason, setOverrideReason] = useState('');
   const [overrideStartTime, setOverrideStartTime] = useState('09:00');
@@ -118,7 +187,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const [overrideDuration, setOverrideDuration] = useState(60);
   const [overrideMaxConcurrent, setOverrideMaxConcurrent] = useState(3);
   const [overrideMaxPax, setOverrideMaxPax] = useState(15);
-  const [showOverrideForm, setShowOverrideForm] = useState(false);
 
   // Regras de Visitas e Degustações
   const [visitsRule, setVisitsRule] = useState<AgendaRecurringRule>(() => ({
@@ -173,12 +241,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   // Bloqueios e Exceções Pontuais
   const [dateOverrides, setDateOverrides] = useState<AgendaDateOverride[]>(() => existingConfig.dateOverrides || []);
 
-  // Calendário de Navegação para Modos 2 e 3
-  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d;
-  });
 
   // Modal de Conflito de Bloqueio
   const [conflictModalData, setConflictModalData] = useState<{
@@ -193,71 +255,92 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const setCurrentRule = activeType === 'visit' ? setVisitsRule : setTastingsRule;
   const themeColor = activeType === 'visit' ? '#10B981' : '#D97706';
 
-  const handleToggleFreeMode = () => {
+  // Auto-Save reativo ao alternar o Modo Livre no Hub com mútua exclusão
+  const handleToggleFreeModeAutoSave = (willBeFree: boolean) => {
+    const updatedRule: AgendaRecurringRule = {
+      ...currentRule,
+      isFreeMode: willBeFree,
+      enabled: willBeFree ? false : currentRule.enabled,
+    };
+    setCurrentRule(updatedRule);
+
+    const updatedConfig: VenueAgendaConfig = {
+      ...existingConfig,
+      venueId: selectedVenueId,
+      visitsRule: activeType === 'visit' ? updatedRule : existingConfig.visitsRule,
+      tastingsRule: activeType === 'tasting' ? updatedRule : existingConfig.tastingsRule,
+      blockRules: existingConfig.blockRules || [],
+      dateOverrides,
+      updatedAt: new Date().toISOString(),
+    };
+
+    updateVenueAgendaConfig(updatedConfig);
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 2000);
+  };
+
+  // Auto-Save reativo ao alternar a Recorrência Semanal no Hub com mútua exclusão
+  const handleToggleRecurringAutoSave = (willBeActive: boolean) => {
+    const updatedRule: AgendaRecurringRule = {
+      ...currentRule,
+      enabled: willBeActive,
+      isFreeMode: willBeActive ? false : currentRule.isFreeMode,
+    };
+    setCurrentRule(updatedRule);
+
+    const updatedConfig: VenueAgendaConfig = {
+      ...existingConfig,
+      venueId: selectedVenueId,
+      visitsRule: activeType === 'visit' ? updatedRule : existingConfig.visitsRule,
+      tastingsRule: activeType === 'tasting' ? updatedRule : existingConfig.tastingsRule,
+      blockRules: existingConfig.blockRules || [],
+      dateOverrides,
+      updatedAt: new Date().toISOString(),
+    };
+
+    updateVenueAgendaConfig(updatedConfig);
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 2000);
+  };
+
+  // Atualiza campo individual de um dia na Recorrência Semanal
+  const handleUpdateDayScheduleField = (
+    dayId: number,
+    field: 'startTime' | 'endTime' | 'slotDurationMinutes' | 'maxConcurrentPerSlot' | 'maxPaxPerSlot',
+    value: any
+  ) => {
+    if (!isEditingRecurring) return;
     setCurrentRule(prev => {
-      const willBeFree = !prev.isFreeMode;
+      const currentSchedule = prev.daySchedules?.[dayId] || {
+        dayOfWeek: dayId,
+        enabled: true,
+        startTime: activeType === 'visit' ? '09:00' : '19:00',
+        endTime: activeType === 'visit' ? '18:00' : '22:00',
+        slotDurationMinutes: prev.durationMinutes || 60,
+        maxConcurrentPerSlot: prev.maxConcurrentPerSlot || 1,
+        maxPaxPerSlot: prev.maxPaxPerSlot || 5,
+      };
+
+      const updated = {
+        ...currentSchedule,
+        [field]: value,
+      };
+
+      const dur = field === 'slotDurationMinutes' ? Number(value) : (updated.slotDurationMinutes || prev.durationMinutes || 60);
+      updated.slotDurationMinutes = dur;
+      updated.timeSlots = generateSlotsFromRange(updated.startTime, updated.endTime, dur);
+
       return {
         ...prev,
-        isFreeMode: willBeFree,
-        // Exclusão mútua: ativar Modo Livre desativa a recorrência semanal
-        enabled: willBeFree ? false : prev.enabled,
+        daySchedules: {
+          ...(prev.daySchedules || {}),
+          [dayId]: updated,
+        },
       };
     });
   };
 
-  const handleToggleRecurringFromHub = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentRule(prev => {
-      const isCurrentlyActive = prev.enabled !== false && !prev.isFreeMode;
-      if (isCurrentlyActive) {
-        // Desativa a recorrência semanal (e mantém modo livre desligado)
-        return {
-          ...prev,
-          enabled: false,
-          isFreeMode: false,
-        };
-      } else {
-        // Ativa a recorrência semanal e desativa o modo livre (exclusão mútua)
-        return {
-          ...prev,
-          enabled: true,
-          isFreeMode: false,
-        };
-      }
-    });
-  };
 
-  const handleToggleRecurringEnabled = () => {
-    if (!isEditingRecurring) return;
-    setCurrentRule(prev => ({
-      ...prev,
-      enabled: prev.enabled === false ? true : false,
-    }));
-  };
-
-  // Duração da Sessão
-  const handleDurationChange = (duration: number) => {
-    if (!isEditingRecurring) return;
-    setCurrentRule(prev => {
-      const nextSchedules: Record<number, AgendaDaySchedule> = { ...(prev.daySchedules || {}) };
-      Object.keys(nextSchedules).forEach(key => {
-        const d = Number(key);
-        if (nextSchedules[d]) {
-          nextSchedules[d] = {
-            ...nextSchedules[d],
-            slotDurationMinutes: duration,
-            timeSlots: generateSlotsFromRange(nextSchedules[d].startTime, nextSchedules[d].endTime, duration),
-          };
-        }
-      });
-
-      return {
-        ...prev,
-        durationMinutes: duration,
-        daySchedules: nextSchedules,
-      };
-    });
-  };
 
   // Alterna ativação de um dia da semana na regra recorrente
   const handleToggleDay = (dayId: number) => {
@@ -324,11 +407,18 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     });
   };
 
-  // Copia a configuração de um dia para todos os demais dias ativos
+  // Copia a configuração completa (horários, duração, vagas e pax) de um dia para todos os demais dias ativos
   const handleCopyDayScheduleToAll = (sourceDayId: number) => {
     if (!isEditingRecurring) return;
-    const source = currentRule.daySchedules?.[sourceDayId];
-    if (!source) return;
+    const source = currentRule.daySchedules?.[sourceDayId] || {
+      dayOfWeek: sourceDayId,
+      enabled: true,
+      startTime: activeType === 'visit' ? '09:00' : '19:00',
+      endTime: activeType === 'visit' ? '18:00' : '22:00',
+      slotDurationMinutes: currentRule.durationMinutes || 60,
+      maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 1,
+      maxPaxPerSlot: currentRule.maxPaxPerSlot || 5,
+    };
 
     setCurrentRule(prev => {
       const nextSchedules: Record<number, AgendaDaySchedule> = { ...(prev.daySchedules || {}) };
@@ -525,18 +615,86 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     }
   };
 
-  // Salva ou atualiza exceção pontual / bloqueio de data
-  const handleSaveDateOverride = () => {
-    if (!overrideDateInput) {
-      alert('Selecione uma data para configurar.');
-      return;
+
+  // Células do calendário mensal livre para a Configuração por Data em Split-View
+  const overrideCalendarDays = useMemo(() => {
+    const year = overrideCalendarMonth.getFullYear();
+    const month = overrideCalendarMonth.getMonth();
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const totalDays = lastDayOfMonth.getDate();
+
+    // 0=Dom, 1=Seg, ..., 6=Sab -> mapear para Seg=0 ... Dom=6
+    let firstWeekday = firstDayOfMonth.getDay() - 1;
+    if (firstWeekday < 0) firstWeekday = 6;
+
+    const cells: Array<{
+      dateStr: string;
+      dayNumber: number;
+      isCurrentMonth: boolean;
+      override?: AgendaDateOverride;
+    }> = [];
+
+    // Células vazias antes do primeiro dia
+    for (let i = 0; i < firstWeekday; i++) {
+      cells.push({
+        dateStr: '',
+        dayNumber: 0,
+        isCurrentMonth: false,
+      });
     }
 
+    // Dias do mês atual
+    for (let day = 1; day <= totalDays; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const override = dateOverrides.find(o => o.date === dateStr);
+      cells.push({
+        dateStr,
+        dayNumber: day,
+        isCurrentMonth: true,
+        override,
+      });
+    }
+
+    return cells;
+  }, [overrideCalendarMonth, dateOverrides]);
+
+  // Carrega os dados da data clicada no painel de Override
+  const handleSelectOverrideDate = (dateStr: string) => {
+    setSelectedOverrideDate(dateStr);
+    const existing = dateOverrides.find(o => o.date === dateStr);
+    if (existing) {
+      setOverrideIsBlocked(existing.isBlocked);
+      setOverrideReason(existing.reason || '');
+      setOverrideStartTime(existing.startTime || (activeType === 'visit' ? '09:00' : '19:00'));
+      setOverrideEndTime(existing.endTime || (activeType === 'visit' ? '18:00' : '22:00'));
+      setOverrideDuration(existing.durationMinutes || currentRule.durationMinutes || 60);
+      setOverrideMaxConcurrent(existing.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 1);
+      setOverrideMaxPax(existing.maxPaxPerSlot || currentRule.maxPaxPerSlot || 5);
+    } else {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dayOfWeek = new Date(y, m - 1, d).getDay();
+      const daySchedule = currentRule.daySchedules?.[dayOfWeek];
+      setOverrideIsBlocked(false);
+      setOverrideReason('');
+      setOverrideStartTime(daySchedule?.startTime || (activeType === 'visit' ? '09:00' : '19:00'));
+      setOverrideEndTime(daySchedule?.endTime || (activeType === 'visit' ? '18:00' : '22:00'));
+      setOverrideDuration(daySchedule?.slotDurationMinutes || currentRule.durationMinutes || 60);
+      setOverrideMaxConcurrent(daySchedule?.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 1);
+      setOverrideMaxPax(daySchedule?.maxPaxPerSlot || currentRule.maxPaxPerSlot || 5);
+    }
+  };
+
+  // Salva a data selecionada no painel de Override
+  const handleSaveSelectedOverrideDate = () => {
+    if (!selectedOverrideDate) return;
+
     if (overrideIsBlocked) {
-      const conflicts = findConflictingAppointmentsForDate(overrideDateInput);
+      const conflicts = findConflictingAppointmentsForDate(selectedOverrideDate);
       if (conflicts.length > 0) {
         setConflictModalData({
-          targetDate: overrideDateInput,
+          targetDate: selectedOverrideDate,
           affectedTasks: conflicts,
           onConfirm: () => {
             conflicts.forEach(task => {
@@ -547,24 +705,36 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 customProperties: {
                   ...task.customProperties,
                   cancelledDueToBlock: true,
-                  blockedDate: overrideDateInput,
+                  blockedDate: selectedOverrideDate,
                 }
               });
             });
 
-            setDateOverrides(prev => [
-              ...prev.filter(o => o.date !== overrideDateInput),
+            const newOverrides = [
+              ...dateOverrides.filter(o => o.date !== selectedOverrideDate),
               {
-                date: overrideDateInput,
+                date: selectedOverrideDate,
                 isBlocked: true,
                 reason: overrideReason || 'Data bloqueada pela administração com cancelamento de agendamentos.',
                 updatedAt: new Date().toISOString(),
               }
-            ]);
+            ];
+            setDateOverrides(newOverrides);
+
+            const updatedConfig: VenueAgendaConfig = {
+              ...existingConfig,
+              venueId: selectedVenueId,
+              visitsRule,
+              tastingsRule,
+              blockRules,
+              dateOverrides: newOverrides,
+              updatedAt: new Date().toISOString(),
+            };
+            updateVenueAgendaConfig(updatedConfig);
+
             setConflictModalData(null);
-            setShowOverrideForm(false);
-            setOverrideDateInput('');
-            setOverrideReason('');
+            setSaveSuccessToast(true);
+            setTimeout(() => setSaveSuccessToast(false), 2500);
           },
         });
         return;
@@ -575,10 +745,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       ? generateSlotsFromRange(overrideStartTime, overrideEndTime, overrideDuration)
       : undefined;
 
-    setDateOverrides(prev => [
-      ...prev.filter(o => o.date !== overrideDateInput),
+    const newOverrides: AgendaDateOverride[] = [
+      ...dateOverrides.filter(o => o.date !== selectedOverrideDate),
       {
-        date: overrideDateInput,
+        date: selectedOverrideDate,
         isBlocked: overrideIsBlocked,
         reason: overrideReason || (overrideIsBlocked ? 'Bloqueio Pontual' : 'Horário Personalizado'),
         startTime: !overrideIsBlocked ? overrideStartTime : undefined,
@@ -589,11 +759,44 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         customSlots: calculatedSlots,
         updatedAt: new Date().toISOString(),
       }
-    ]);
+    ];
 
-    setShowOverrideForm(false);
-    setOverrideDateInput('');
-    setOverrideReason('');
+    setDateOverrides(newOverrides);
+
+    const updatedConfig: VenueAgendaConfig = {
+      ...existingConfig,
+      venueId: selectedVenueId,
+      visitsRule,
+      tastingsRule,
+      blockRules,
+      dateOverrides: newOverrides,
+      updatedAt: new Date().toISOString(),
+    };
+    updateVenueAgendaConfig(updatedConfig);
+
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 2500);
+  };
+
+  // Remove a personalização da data selecionada (restaura padrão da casa)
+  const handleRemoveSelectedOverrideDate = () => {
+    if (!selectedOverrideDate) return;
+    const newOverrides = dateOverrides.filter(o => o.date !== selectedOverrideDate);
+    setDateOverrides(newOverrides);
+
+    const updatedConfig: VenueAgendaConfig = {
+      ...existingConfig,
+      venueId: selectedVenueId,
+      visitsRule,
+      tastingsRule,
+      blockRules,
+      dateOverrides: newOverrides,
+      updatedAt: new Date().toISOString(),
+    };
+    updateVenueAgendaConfig(updatedConfig);
+
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 2500);
   };
 
   // Busca agendamentos conflitantes em uma data
@@ -607,37 +810,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       const titleStr = (t.title || '').toLowerCase();
       return typeStr.includes(targetTypeKeyword) || titleStr.includes(targetTypeKeyword);
     });
-  };
-
-  // Clique em uma data no calendário mensal de exceções
-  const handleCalendarDayClick = (dateStr: string) => {
-    const existingOverride = dateOverrides.find(o => o.date === dateStr);
-
-    if (existingOverride) {
-      if (existingOverride.isBlocked) {
-        setDateOverrides(prev => prev.filter(o => o.date !== dateStr));
-      } else {
-        setOverrideDateInput(dateStr);
-        setOverrideIsBlocked(false);
-        setOverrideReason(existingOverride.reason || '');
-        setOverrideStartTime(existingOverride.startTime || '09:00');
-        setOverrideEndTime(existingOverride.endTime || '18:00');
-        setOverrideDuration(existingOverride.durationMinutes || currentRule.durationMinutes || 60);
-        setOverrideMaxConcurrent(existingOverride.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 3);
-        setOverrideMaxPax(existingOverride.maxPaxPerSlot || currentRule.maxPaxPerSlot || 15);
-        setShowOverrideForm(true);
-      }
-    } else {
-      setOverrideDateInput(dateStr);
-      setOverrideIsBlocked(true);
-      setOverrideReason('');
-      setOverrideStartTime('09:00');
-      setOverrideEndTime('18:00');
-      setOverrideDuration(currentRule.durationMinutes || 60);
-      setOverrideMaxConcurrent(currentRule.maxConcurrentPerSlot || 3);
-      setOverrideMaxPax(currentRule.maxPaxPerSlot || 15);
-      setShowOverrideForm(true);
-    }
   };
 
   // Salvar alterações gerais no Supabase e voltar para a tela de modos (Hub)
@@ -706,7 +878,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       setActiveMode('hub');
       setBlockViewMode('list');
       setIsEditingRecurring(false);
-      setShowOverrideForm(false);
     } catch (err) {
       console.error('Erro ao salvar disponibilidade:', err);
       alert('Erro ao salvar as configurações no servidor.');
@@ -724,7 +895,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       }
       setActiveMode('hub');
       setIsEditingRecurring(false);
-      setShowOverrideForm(false);
       return;
     }
 
@@ -822,40 +992,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
     return cells;
   }, [blockCalendarMonth, newBlockStart, newBlockEnd]);
-
-  // Dias do calendário mensal para o Modo 3
-  const calendarGrid = useMemo(() => {
-    const year = calendarMonth.getFullYear();
-    const month = calendarMonth.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const totalDays = new Date(year, month + 1, 0).getDate();
-
-    const days = [];
-    for (let i = 0; i < firstDay; i++) {
-      days.push({ day: null, dateStr: '' });
-    }
-
-    for (let d = 1; d <= totalDays; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const override = dateOverrides.find(o => o.date === dateStr);
-      const isBlocked = Boolean(override?.isBlocked);
-      const hasBlockRule = blockRules.some(b => dateStr >= b.startDate && dateStr <= b.endDate);
-      const dayOfWeek = new Date(year, month, d).getDay();
-      const isRecurringActive = currentRule.enabledDays.includes(dayOfWeek);
-
-      days.push({
-        day: d,
-        dateStr,
-        isBlocked,
-        override,
-        hasBlockRule,
-        isRecurringActive,
-        conflictsCount: findConflictingAppointmentsForDate(dateStr).length,
-      });
-    }
-
-    return days;
-  }, [calendarMonth, dateOverrides, blockRules, currentRule, tasks, selectedVenueId]);
 
   const venueName = venues.find(v => v.id === selectedVenueId)?.name || 'Todas as Unidades';
 
@@ -1307,28 +1443,30 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 20px',
-              borderRadius: '8px',
-              background: themeColor,
-              color: '#FFFFFF',
-              border: 'none',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: `0 4px 14px ${themeColor}33`,
-            }}
-          >
-            <Check size={16} />
-            {isSaving ? 'Salvando...' : 'Salvar Alterações'}
-          </button>
+          {activeMode !== 'hub' && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 20px',
+                borderRadius: '8px',
+                background: themeColor,
+                color: '#FFFFFF',
+                border: 'none',
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: `0 4px 14px ${themeColor}33`,
+              }}
+            >
+              <Check size={16} />
+              {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+          )}
 
           <button
             type="button"
@@ -1367,26 +1505,38 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         {activeMode === 'hub' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
             
-            {/* Banner Chamativo quando Ambos estão Desativados */}
+            {/* Banner Moderno e Suave quando Ambos estão Desativados */}
             {!currentRule.isFreeMode && currentRule.enabled === false && (
               <div style={{
-                background: '#FEF2F2',
-                border: '1.5px solid #F87171',
+                background: 'rgba(239, 68, 68, 0.05)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
                 borderRadius: '12px',
                 padding: '14px 18px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
+                gap: '14px',
                 color: '#991B1B',
-                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.1)',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.04)',
               }}>
-                <AlertCircle size={22} color="#DC2626" style={{ flexShrink: 0 }} />
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  color: '#DC2626',
+                }}>
+                  <AlertCircle size={20} />
+                </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>
-                    Agenda de {activeType === 'visit' ? 'Visitas Comerciais' : 'Degustações Gastronômicas'} Desativada para esta Unidade
+                  <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#B91C1C' }}>
+                    Agenda de {activeType === 'visit' ? 'Visitas Comerciais' : 'Degustações'} Desativada para esta Casa
                   </div>
-                  <div style={{ fontSize: '0.76rem', color: '#B91C1C', marginTop: '2px', lineHeight: 1.4 }}>
-                    Nenhum horário ou dia semanal está ativo para agendamento na casa <strong>{venueName}</strong>. A opção de agendar ficará automaticamente indisponível na ficha do lead até que você ative a Recorrência Semanal ou o Modo Livre abaixo.
+                  <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '2px', lineHeight: 1.45 }}>
+                    Nenhum dia ou horário está aberto para agendamentos na unidade <strong>{venueName}</strong>. Para liberar a agenda desta casa, ligue a chavinha da <strong>Recorrência Semanal</strong> ou do <strong>Modo Livre</strong> abaixo.
                   </div>
                 </div>
               </div>
@@ -1394,7 +1544,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
             {/* Card 0: Modo Livre (Qualquer Horário) */}
             <div style={{
-              background: currentRule.isFreeMode ? 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(2,132,199,0.06) 100%)' : '#FFFFFF',
+              background: '#FFFFFF',
               borderRadius: '14px',
               border: `1.5px solid ${currentRule.isFreeMode ? themeColor : 'var(--adm-border, #E2E8F0)'}`,
               padding: '20px 24px',
@@ -1403,285 +1553,299 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               justifyContent: 'space-between',
               gap: '20px',
               boxShadow: currentRule.isFreeMode ? `0 4px 18px ${themeColor}1a` : '0 2px 8px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
             }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                 <div style={{
                   width: '46px',
                   height: '46px',
                   borderRadius: '12px',
-                  background: currentRule.isFreeMode ? `${themeColor}20` : 'rgba(100,116,139,0.1)',
+                  background: currentRule.isFreeMode ? `${themeColor}18` : 'rgba(100,116,139,0.08)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: currentRule.isFreeMode ? themeColor : '#64748B',
                   flexShrink: 0,
                 }}>
-                  <Sparkles size={24} />
+                  <Sparkles size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
+                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Modo Livre (Qualquer Horário)
                     </span>
                     <span style={{
-                      fontSize: '0.70rem',
+                      fontSize: '0.68rem',
                       fontWeight: 800,
-                      padding: '3px 10px',
-                      borderRadius: '20px',
-                      background: currentRule.isFreeMode ? 'rgba(16,185,129,0.15)' : 'rgba(100,116,139,0.12)',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: currentRule.isFreeMode ? 'rgba(16,185,129,0.12)' : 'rgba(100,116,139,0.10)',
                       color: currentRule.isFreeMode ? '#059669' : '#64748B',
-                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.2)'}`,
+                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(16,185,129,0.25)' : 'rgba(100,116,139,0.18)'}`,
                     }}>
                       {currentRule.isFreeMode ? 'ATIVADO' : 'DESATIVADO'}
                     </span>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
-                    Quando ativado, a regra semanal fixa fica suspensa e qualquer horário pode ser agendado livremente. Se houver um bloco especial ou bloqueio pontual configurado, ele continuará se adaptando com prioridade máxima.
+                    Permite agendar em qualquer horário livremente sem travas na grade semanal fixa. Blocos especiais continuam prevalecendo com prioridade.
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleFreeMode}
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: '8px',
-                  background: currentRule.isFreeMode ? 'rgba(239, 68, 68, 0.1)' : themeColor,
-                  border: `1px solid ${currentRule.isFreeMode ? '#EF4444' : themeColor}`,
-                  color: currentRule.isFreeMode ? '#EF4444' : '#FFFFFF',
-                  fontSize: '0.80rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  flexShrink: 0,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span>{currentRule.isFreeMode ? 'Desativar Modo Livre' : 'Ativar Modo Livre'}</span>
-              </button>
+              {/* Switch On/Off Elegante */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <ToggleSwitch
+                  checked={Boolean(currentRule.isFreeMode)}
+                  onChange={handleToggleFreeModeAutoSave}
+                  activeColor={themeColor}
+                />
+              </div>
             </div>
 
             {/* Card 1: Recorrência Semanal */}
-            <div 
-              onClick={() => setActiveMode('recurring')}
-              style={{
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid var(--adm-border, #E2E8F0)',
-                padding: '22px 24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '20px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '14px',
+              border: `1.5px solid ${currentRule.enabled !== false && !currentRule.isFreeMode ? themeColor : 'var(--adm-border, #E2E8F0)'}`,
+              padding: '20px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              boxShadow: currentRule.enabled !== false && !currentRule.isFreeMode ? `0 4px 18px ${themeColor}1a` : '0 2px 8px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                 <div style={{
                   width: '46px',
                   height: '46px',
                   borderRadius: '12px',
-                  background: `${themeColor}14`,
+                  background: currentRule.enabled !== false && !currentRule.isFreeMode ? `${themeColor}18` : 'rgba(100,116,139,0.08)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: themeColor,
+                  color: currentRule.enabled !== false && !currentRule.isFreeMode ? themeColor : '#64748B',
                   flexShrink: 0,
                 }}>
-                  <Repeat size={24} />
+                  <Repeat size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Recorrência Semanal
                     </span>
                     <span style={{
-                      fontSize: '0.70rem',
-                      fontWeight: 700,
-                      padding: '3px 10px',
-                      borderRadius: '20px',
-                      background: currentRule.isFreeMode ? 'rgba(217,119,6,0.12)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'),
-                      color: currentRule.isFreeMode ? '#D97706' : (currentRule.enabled !== false ? '#10B981' : '#EF4444'),
-                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(217,119,6,0.25)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)')}`,
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: currentRule.isFreeMode ? 'rgba(217,119,6,0.12)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)'),
+                      color: currentRule.isFreeMode ? '#D97706' : (currentRule.enabled !== false ? '#059669' : '#DC2626'),
+                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(217,119,6,0.25)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.20)')}`,
                     }}>
-                      {currentRule.isFreeMode ? 'Suspensa (Modo Livre)' : (currentRule.enabled !== false ? 'Ativo' : 'Desativado')}
+                      {currentRule.isFreeMode ? 'SUSPENSA (MODO LIVRE)' : (currentRule.enabled !== false ? 'ATIVO NA SEMANA' : 'DESATIVADO')}
                     </span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', lineHeight: 1.45 }}>
+                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
                     {currentRule.enabled !== false && !currentRule.isFreeMode ? (
-                      <>Ativo em <strong>{currentRule.enabledDays.length} dias da semana</strong> com slots de <strong>{currentRule.durationMinutes} minutos</strong>. Capacidade de <strong>{currentRule.maxConcurrentPerSlot} vaga(s) simultânea(s)</strong> • Até <strong>{currentRule.maxPaxPerSlot || 5} PAX</strong>.</>
+                      <>Grade fixa ativa em <strong>{currentRule.enabledDays.length} dia(s) da semana</strong> com horários, vagas e limites configurados por dia.</>
                     ) : currentRule.isFreeMode ? (
                       <span style={{ color: '#D97706', fontWeight: 600 }}>Suspensa enquanto o Modo Livre estiver ativo acima.</span>
                     ) : (
-                      <span style={{ color: '#EF4444', fontWeight: 600 }}>Recorrência desativada. Nenhum dia semanal padrão estará aberto para agendamento.</span>
+                      <span style={{ color: '#DC2626', fontWeight: 600 }}>Recorrência desativada. Ligue a chavinha para reativar.</span>
                     )}
                   </p>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Switch On/Off + Botão Configurar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
+                <ToggleSwitch
+                  checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
+                  onChange={handleToggleRecurringAutoSave}
+                  activeColor={themeColor}
+                />
                 <button
                   type="button"
-                  onClick={handleToggleRecurringFromHub}
+                  onClick={() => setActiveMode('recurring')}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
                     padding: '8px 14px',
                     borderRadius: '8px',
-                    background: (currentRule.enabled !== false && !currentRule.isFreeMode) ? 'rgba(239, 68, 68, 0.1)' : themeColor,
-                    border: `1px solid ${(currentRule.enabled !== false && !currentRule.isFreeMode) ? '#EF4444' : themeColor}`,
-                    color: (currentRule.enabled !== false && !currentRule.isFreeMode) ? '#EF4444' : '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    color: '#334155',
                     fontSize: '0.78rem',
-                    fontWeight: 800,
+                    fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
+                  title="Configurar horários de cada dia da semana"
                 >
-                  {(currentRule.enabled !== false && !currentRule.isFreeMode) ? 'Desativar Recorrência' : 'Ativar Recorrência'}
+                  <span>Configurar Grade</span>
+                  <ChevronRight size={15} color="#64748B" />
                 </button>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: themeColor, fontWeight: 700, fontSize: '0.82rem' }}>
-                  <span>Abrir</span>
-                  <ChevronRight size={18} />
-                </div>
               </div>
             </div>
 
-            {/* Card 2: Configuração por Bloco */}
-            <div 
-              onClick={() => {
-                setActiveMode('block');
-                setBlockViewMode('list');
-              }}
-              style={{
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid var(--adm-border, #E2E8F0)',
-                padding: '22px 24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '20px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+            {/* Card 2: Configuração por Bloco de Datas */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '14px',
+              border: '1px solid var(--adm-border, #E2E8F0)',
+              padding: '20px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                 <div style={{
                   width: '46px',
                   height: '46px',
                   borderRadius: '12px',
-                  background: 'rgba(2,132,199,0.12)',
+                  background: 'rgba(2,132,199,0.10)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#0284C7',
                   flexShrink: 0,
                 }}>
-                  <CalendarRange size={24} />
+                  <CalendarRange size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Configuração por Bloco
                     </span>
                     <span style={{
-                      fontSize: '0.70rem',
-                      fontWeight: 700,
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
                       padding: '2px 8px',
-                      borderRadius: '6px',
-                      background: activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.12)',
+                      borderRadius: '12px',
+                      background: activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.10)',
                       color: activeTypeBlockRules.length > 0 ? '#0284C7' : '#64748B',
-                      border: `1px solid ${activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.25)' : 'rgba(100,116,139,0.2)'}`,
+                      border: `1px solid ${activeTypeBlockRules.length > 0 ? 'rgba(2,132,199,0.25)' : 'rgba(100,116,139,0.18)'}`,
                     }}>
                       {activeTypeBlockRules.length} bloco(s) configurado(s)
                     </span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', lineHeight: 1.45 }}>
-                    {activeTypeBlockRules.length === 0 ? (
-                      'Defina períodos com minicalendário onde cada dia é configurado de forma individual.'
-                    ) : (
-                      `Existem ${activeTypeBlockRules.length} bloco(s) cadastrados com horários específicos que sobrepõem a semana.`
-                    )}
+                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
+                    Defina períodos com minicalendário onde cada dia é configurado de forma individual com horários e vagas próprias.
                   </p>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284C7', fontWeight: 700, fontSize: '0.82rem' }}>
-                <span>Ver Blocos</span>
-                <ChevronRight size={18} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBlockViewMode('list');
+                    setActiveMode('block');
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    color: '#0284C7',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>Configurar Blocos</span>
+                  <ChevronRight size={15} color="#0284C7" />
+                </button>
               </div>
             </div>
 
             {/* Card 3: Configuração por Data */}
-            <div 
-              onClick={() => setActiveMode('override')}
-              style={{
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid var(--adm-border, #E2E8F0)',
-                padding: '22px 24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '20px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flex: 1 }}>
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '14px',
+              border: '1px solid var(--adm-border, #E2E8F0)',
+              padding: '20px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                 <div style={{
                   width: '46px',
                   height: '46px',
                   borderRadius: '12px',
-                  background: 'rgba(239,68,68,0.12)',
+                  background: 'rgba(239,68,68,0.10)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#EF4444',
                   flexShrink: 0,
                 }}>
-                  <Calendar size={24} />
+                  <Calendar size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Configuração por Data
                     </span>
                     <span style={{
-                      fontSize: '0.70rem',
-                      fontWeight: 700,
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
                       padding: '2px 8px',
-                      borderRadius: '6px',
-                      background: dateOverrides.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.12)',
-                      color: dateOverrides.length > 0 ? '#EF4444' : '#64748B',
-                      border: `1px solid ${dateOverrides.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(100,116,139,0.2)'}`,
+                      borderRadius: '12px',
+                      background: dateOverrides.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.10)',
+                      color: dateOverrides.length > 0 ? '#DC2626' : '#64748B',
+                      border: `1px solid ${dateOverrides.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(100,116,139,0.18)'}`,
                     }}>
-                      {dateOverrides.length} data(s) configurada(s)
+                      {dateOverrides.length} data(s) personalizada(s)
                     </span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', lineHeight: 1.45 }}>
-                    Lista de datas com bloqueios de feriados, recessos pontuais ou horários específicos.
+                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
+                    Calendário mensal 100% livre para bloquear feriados ou criar horários especiais em datas pontuais.
                   </p>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#EF4444', fontWeight: 700, fontSize: '0.82rem' }}>
-                <span>Ver Datas</span>
-                <ChevronRight size={18} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('override')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    color: '#DC2626',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>Configurar Datas</span>
+                  <ChevronRight size={15} color="#DC2626" />
+                </button>
               </div>
             </div>
+
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            MODO 1: RECORRÊNCIA SEMANAL (MODO LEITURA -> EDITAR -> SALVAR)
-            ═══════════════════════════════════════════════════════════════════ */}
         {activeMode === 'recurring' && (
           <div style={{
             background: '#FFFFFF',
@@ -1695,7 +1859,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
             flex: 1,
             minHeight: '540px',
           }}>
-            {/* Barra Superior da Recorrência com Modo Leitura / Edição */}
+            {/* Barra Superior Enxuta da Recorrência Semanal */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -1707,37 +1871,12 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                     Grade de Horários Semanais Padrão
                   </h3>
-              {/* Toggle Rápido de Modo Livre */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>Modo Livre:</span>
-                <button
-                  type="button"
-                  onClick={handleToggleFreeMode}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '16px',
-                    border: '1px solid',
-                    borderColor: currentRule.isFreeMode ? '#10B981' : '#CBD5E1',
-                    background: currentRule.isFreeMode ? 'rgba(16,185,129,0.12)' : '#FFFFFF',
-                    color: currentRule.isFreeMode ? '#059669' : '#64748B',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <Sparkles size={12} />
-                  <span>{currentRule.isFreeMode ? 'Ativo' : 'Desativado'}</span>
-                </button>
-              </div>
                   <span style={{
                     fontSize: '0.68rem',
-                    fontWeight: 700,
+                    fontWeight: 800,
                     padding: '2px 8px',
                     borderRadius: '6px',
                     background: isEditingRecurring ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.12)',
@@ -1748,14 +1887,25 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   </span>
                 </div>
                 <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                  {isEditingRecurring 
-                    ? 'Faça os ajustes desejados nos dias e turnos e clique em Salvar Planejamento.' 
-                    : 'Visualização da regra semanal. Clique em "Editar Planejamento" para modificar.'}
+                  Configure individualmente para cada dia da semana os horários, duração, vagas simultâneas e limite de convidados (PAX).
                 </p>
               </div>
 
-              {/* Botões de Ação do Modo */}
+              {/* Controles de Ação da Grade Semanal */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {/* Switch de Ativação Geral da Recorrência */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '12px', borderRight: '1px solid #E2E8F0' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                    {currentRule.enabled !== false && !currentRule.isFreeMode ? 'Recorrência Ativa' : 'Recorrência Desativada'}
+                  </span>
+                  <ToggleSwitch
+                    checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
+                    onChange={handleToggleRecurringAutoSave}
+                    activeColor={themeColor}
+                    size="sm"
+                  />
+                </div>
+
                 {!isEditingRecurring ? (
                   <button
                     type="button"
@@ -1773,10 +1923,11 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                       fontWeight: 700,
                       cursor: 'pointer',
                       boxShadow: `0 4px 12px ${themeColor}33`,
+                      transition: 'all 0.15s ease',
                     }}
                   >
                     <Edit3 size={15} />
-                    Editar Planejamento
+                    <span>Editar Grade Semanal</span>
                   </button>
                 ) : (
                   <>
@@ -1816,150 +1967,39 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                       }}
                     >
                       <Check size={16} />
-                      Salvar Planejamento
+                      <span>Salvar Grade</span>
                     </button>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Configurações Gerais da Recorrência */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '16px',
-              padding: '12px 16px',
-              borderRadius: '10px',
-              background: 'var(--adm-bg-surface, #F8FAFC)',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>Status da Recorrência:</span>
-                <button
-                  type="button"
-                  disabled={!isEditingRecurring}
-                  onClick={handleToggleRecurringEnabled}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: '20px',
-                    border: '1px solid',
-                    borderColor: currentRule.enabled !== false ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)',
-                    background: currentRule.enabled !== false ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                    color: currentRule.enabled !== false ? '#10B981' : '#EF4444',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: isEditingRecurring ? 'pointer' : 'default',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    opacity: isEditingRecurring ? 1 : 0.85,
-                  }}
-                >
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: currentRule.enabled !== false ? '#10B981' : '#EF4444' }} />
-                  {currentRule.enabled !== false ? 'Ativo na Semana' : 'Desativado'}
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B', marginBottom: '2px' }}>
-                    DURAÇÃO DO HORÁRIO
-                  </label>
-                  <select
-                    disabled={!isEditingRecurring}
-                    value={currentRule.durationMinutes}
-                    onChange={e => handleDurationChange(Number(e.target.value))}
-                    style={{
-                      padding: '5px 8px',
-                      borderRadius: '6px',
-                      background: isEditingRecurring ? '#FFFFFF' : '#F1F5F9',
-                      color: '#0F172A',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: isEditingRecurring ? 'pointer' : 'default',
-                    }}
-                  >
-                    {DURATION_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B', marginBottom: '2px' }}>
-                    VAGAS SIMULTÂNEAS
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={15}
-                    disabled={!isEditingRecurring}
-                    value={currentRule.maxConcurrentPerSlot}
-                    onChange={e => setCurrentRule(prev => ({ ...prev, maxConcurrentPerSlot: Number(e.target.value) || 1 }))}
-                    style={{
-                      width: '70px',
-                      padding: '5px 8px',
-                      borderRadius: '6px',
-                      background: isEditingRecurring ? '#FFFFFF' : '#F1F5F9',
-                      color: '#0F172A',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: isEditingRecurring ? 'text' : 'default',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B', marginBottom: '2px' }}>
-                    PAX MÁX. POR FAMÍLIA
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    disabled={!isEditingRecurring}
-                    value={currentRule.maxPaxPerSlot || (activeType === 'tasting' ? 4 : 5)}
-                    onChange={e => setCurrentRule(prev => ({ ...prev, maxPaxPerSlot: Number(e.target.value) || 5 }))}
-                    style={{
-                      width: '70px',
-                      padding: '5px 8px',
-                      borderRadius: '6px',
-                      background: isEditingRecurring ? '#FFFFFF' : '#F1F5F9',
-                      color: '#0F172A',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: isEditingRecurring ? 'text' : 'default',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Grid Visual de 7 Colunas da Semana EXPANDIDA VERTICALMENTE */}
+            {/* Grid Visual de 7 Colunas da Semana (Configuração Individual por Dia) */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
               gap: '10px',
               flex: 1,
-              minHeight: '380px',
+              alignItems: 'stretch',
             }}>
               {DAYS_OF_WEEK.map(day => {
                 const isEnabled = currentRule.enabledDays.includes(day.id);
-                const schedule = currentRule.daySchedules?.[day.id] || {
+                const schedule: AgendaDaySchedule = currentRule.daySchedules?.[day.id] || {
                   dayOfWeek: day.id,
                   enabled: isEnabled,
                   startTime: activeType === 'visit' ? '09:00' : '19:00',
                   endTime: activeType === 'visit' ? '18:00' : '22:00',
-                  slotDurationMinutes: currentRule.durationMinutes,
+                  slotDurationMinutes: currentRule.durationMinutes || 60,
+                  maxConcurrentPerSlot: currentRule.maxConcurrentPerSlot || 1,
+                  maxPaxPerSlot: currentRule.maxPaxPerSlot || 5,
                 };
 
+                const dayDuration = schedule.slotDurationMinutes || currentRule.durationMinutes || 60;
+                const dayConcurrent = schedule.maxConcurrentPerSlot || currentRule.maxConcurrentPerSlot || 1;
+                const dayPax = schedule.maxPaxPerSlot || currentRule.maxPaxPerSlot || 5;
+
                 const slots = isEnabled 
-                  ? (schedule.timeSlots?.length ? schedule.timeSlots : generateSlotsFromRange(schedule.startTime, schedule.endTime, currentRule.durationMinutes))
+                  ? (schedule.timeSlots?.length ? schedule.timeSlots : generateSlotsFromRange(schedule.startTime, schedule.endTime, dayDuration))
                   : [];
 
                 return (
@@ -1967,17 +2007,18 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                     key={day.id}
                     style={{
                       background: isEnabled ? '#FFFFFF' : 'var(--adm-bg-surface, #F8FAFC)',
-                      borderRadius: '10px',
-                      border: isEnabled ? `1px solid ${themeColor}66` : '1px dashed var(--adm-border, #CBD5E1)',
+                      borderRadius: '12px',
+                      border: isEnabled ? `1.5px solid ${themeColor}55` : '1px dashed var(--adm-border, #CBD5E1)',
                       padding: '12px 10px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '10px',
-                      boxShadow: isEnabled ? '0 2px 6px rgba(0,0,0,0.03)' : 'none',
+                      boxShadow: isEnabled ? '0 2px 8px rgba(0,0,0,0.03)' : 'none',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    {/* Topo da Coluna: Checkbox e Nome do Dia */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {/* Topo da Coluna: Checkbox de ativação do dia e nome */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: isEnabled ? '1px solid #F1F5F9' : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <input
                           type="checkbox"
@@ -1986,7 +2027,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           onChange={() => handleToggleDay(day.id)}
                           style={{ width: '15px', height: '15px', cursor: isEditingRecurring ? 'pointer' : 'default', accentColor: themeColor }}
                         />
-                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: isEnabled ? '#0F172A' : '#94A3B8' }}>
+                        <span style={{ fontSize: '0.84rem', fontWeight: 900, color: isEnabled ? '#0F172A' : '#94A3B8' }}>
                           {day.short}
                         </span>
                       </div>
@@ -1998,100 +2039,248 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                           style={{
                             background: 'transparent',
                             border: 'none',
-                            color: '#94A3B8',
+                            color: '#64748B',
                             cursor: 'pointer',
-                            padding: '2px',
+                            padding: '3px 5px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '0.65rem',
+                            fontWeight: 700,
                           }}
-                          title="Copiar horário deste dia para os demais"
+                          title="Copiar horários, duração, vagas e PAX deste dia para os outros dias da semana"
                         >
-                          <Copy size={13} />
+                          <Copy size={12} />
+                          <span>Copiar</span>
                         </button>
                       )}
                     </div>
 
-                    {/* Configuração de Horários (Início e Fim) */}
+                    {/* Conteúdo do Dia Ativo */}
                     {isEnabled ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                          <input
-                            type="time"
-                            disabled={!isEditingRecurring}
-                            value={schedule.startTime}
-                            onChange={e => handleUpdateDayTime(day.id, 'startTime', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '4px',
-                              borderRadius: '5px',
-                              border: '1px solid #CBD5E1',
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              color: '#0F172A',
-                              background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              colorScheme: 'light',
-                            }}
-                          />
-                          <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>às</span>
-                          <input
-                            type="time"
-                            disabled={!isEditingRecurring}
-                            value={schedule.endTime}
-                            onChange={e => handleUpdateDayTime(day.id, 'endTime', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '4px',
-                              borderRadius: '5px',
-                              border: '1px solid #CBD5E1',
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              color: '#0F172A',
-                              background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
-                              colorScheme: 'light',
-                            }}
-                          />
-                        </div>
-
-                        {/* Lista de Horários Gerados com Altura Ampla */}
-                        <div style={{
-                          flex: 1,
-                          minHeight: '260px',
-                          maxHeight: '340px',
-                          overflowY: 'auto',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px',
-                          paddingRight: '2px',
-                        }}>
-                          {slots.map(s => (
-                            <div
-                              key={s}
+                        {/* 1. Horário Início e Fim */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
+                            Horário
+                          </label>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}>
+                            <input
+                              type="time"
+                              disabled={!isEditingRecurring}
+                              value={schedule.startTime}
+                              onChange={e => handleUpdateDayTime(day.id, 'startTime', e.target.value)}
                               style={{
-                                padding: '6px 4px',
+                                width: '100%',
+                                padding: '4px 3px',
                                 borderRadius: '5px',
-                                background: activeType === 'visit' ? 'rgba(16,185,129,0.08)' : 'rgba(217,119,6,0.08)',
-                                border: `1px solid ${activeType === 'visit' ? 'rgba(16,185,129,0.2)' : 'rgba(217,119,6,0.2)'}`,
-                                color: activeType === 'visit' ? '#047857' : '#B45309',
-                                fontSize: '0.76rem',
-                                fontWeight: 700,
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                                colorScheme: 'light',
                                 textAlign: 'center',
                               }}
+                            />
+                            <span style={{ fontSize: '0.65rem', color: '#94A3B8' }}>às</span>
+                            <input
+                              type="time"
+                              disabled={!isEditingRecurring}
+                              value={schedule.endTime}
+                              onChange={e => handleUpdateDayTime(day.id, 'endTime', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '4px 3px',
+                                borderRadius: '5px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                                colorScheme: 'light',
+                                textAlign: 'center',
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 2. Duração do Horário deste Dia */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.62rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
+                            Duração
+                          </label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <select
+                              disabled={!isEditingRecurring}
+                              value={[30, 45, 60, 90, 120].includes(dayDuration) ? dayDuration : 'custom'}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val !== 'custom') {
+                                  handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Number(val));
+                                }
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: '4px 3px',
+                                borderRadius: '5px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                              }}
                             >
-                              {s}
-                            </div>
-                          ))}
+                              <option value={30}>30 min</option>
+                              <option value={45}>45 min</option>
+                              <option value={60}>1h</option>
+                              <option value={90}>1h 30m</option>
+                              <option value={120}>2h</option>
+                              <option value="custom">Outro</option>
+                            </select>
+
+                            <input
+                              type="number"
+                              min={10}
+                              max={300}
+                              disabled={!isEditingRecurring}
+                              value={dayDuration}
+                              onChange={e => handleUpdateDayScheduleField(day.id, 'slotDurationMinutes', Math.max(10, Number(e.target.value) || 60))}
+                              style={{
+                                width: '42px',
+                                padding: '4px 2px',
+                                borderRadius: '5px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                textAlign: 'center',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                              }}
+                              title="Duração em minutos"
+                            />
+                            <span style={{ fontSize: '0.62rem', color: '#64748B' }}>m</span>
+                          </div>
+                        </div>
+
+                        {/* 3. Vagas Simultâneas e PAX Máximo deste Dia */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.60rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
+                              Vagas
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              disabled={!isEditingRecurring}
+                              value={dayConcurrent}
+                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxConcurrentPerSlot', Math.max(1, Number(e.target.value) || 1))}
+                              style={{
+                                width: '100%',
+                                padding: '4px 3px',
+                                borderRadius: '5px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                textAlign: 'center',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.60rem', fontWeight: 800, color: '#64748B', marginBottom: '2px', textTransform: 'uppercase' }}>
+                              PAX Máx
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              disabled={!isEditingRecurring}
+                              value={dayPax}
+                              onChange={e => handleUpdateDayScheduleField(day.id, 'maxPaxPerSlot', Math.max(1, Number(e.target.value) || 5))}
+                              style={{
+                                width: '100%',
+                                padding: '4px 3px',
+                                borderRadius: '5px',
+                                border: '1px solid #CBD5E1',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                color: '#0F172A',
+                                textAlign: 'center',
+                                background: isEditingRecurring ? '#FFFFFF' : '#F8FAFC',
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 4. Grade de Slots Calculados deste Dia */}
+                        <div style={{ marginTop: '4px', borderTop: '1px solid #F1F5F9', paddingTop: '6px' }}>
+                          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94A3B8', display: 'block', marginBottom: '4px' }}>
+                            SLOTS ({slots.length})
+                          </span>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))',
+                            gap: '4px',
+                            maxHeight: '180px',
+                            overflowY: 'auto',
+                          }}>
+                            {slots.map(s => (
+                              <div
+                                key={s}
+                                style={{
+                                  padding: '3px 2px',
+                                  borderRadius: '4px',
+                                  background: `${themeColor}12`,
+                                  border: `1px solid ${themeColor}33`,
+                                  color: themeColor,
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {s}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : (
                       <div style={{
                         flex: 1,
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: '#94A3B8',
                         fontSize: '0.74rem',
                         fontStyle: 'italic',
-                        minHeight: '200px',
+                        minHeight: '220px',
+                        gap: '8px',
                       }}>
-                        Fechado
+                        <span>Fechado</span>
+                        {isEditingRecurring && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleDay(day.id)}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #CBD5E1',
+                              background: '#FFFFFF',
+                              color: '#64748B',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Ativar
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2101,9 +2290,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            MODO 2: POR BLOCO DE DATAS (LISTA DE BLOCOS -> MINICALENDÁRIO INDIVIDUAL)
-            ═══════════════════════════════════════════════════════════════════ */}
         {activeMode === 'block' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Visualização 1: Lista de Blocos Cadastrados */}
@@ -3092,7 +3278,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               background: '#FFFFFF',
               borderRadius: '14px',
               border: '1px solid var(--adm-border, #E2E8F0)',
-              padding: '22px',
+              padding: '20px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -3102,191 +3288,497 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Calendar size={22} color="#EF4444" />
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
-                    Datas com Configurações e Bloqueios Específicos
+                  <Calendar size={22} color="#DC2626" />
+                  <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
+                    Configuração por Data Específica (Bloqueios e Horários Especiais)
                   </h3>
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: dateOverrides.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.12)',
+                    color: dateOverrides.length > 0 ? '#DC2626' : '#64748B',
+                    border: `1px solid ${dateOverrides.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(100,116,139,0.2)'}`,
+                  }}>
+                    {dateOverrides.length} data(s) personalizada(s)
+                  </span>
                 </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.80rem', color: '#64748B' }}>
-                  Visualize as datas configuradas ou clique em qualquer dia do calendário para bloquear ou ajustar.
+                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                  Navegue livremente pelo calendário mensal à esquerda, clique em qualquer dia e ajuste os horários ou bloqueie o atendimento à direita.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setOverrideDateInput('');
-                  setOverrideIsBlocked(true);
-                  setOverrideReason('');
-                  setShowOverrideForm(true);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '9px 18px',
-                  borderRadius: '8px',
-                  background: '#EF4444',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(239,68,68,0.25)',
-                }}
-              >
-                <Plus size={16} />
-                Adicionar Nova Data / Bloqueio
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    handleSelectOverrideDate(today);
+                    setOverrideCalendarMonth(new Date());
+                  }}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    background: '#F8FAFC',
+                    border: '1px solid #CBD5E1',
+                    color: '#334155',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Ir para Data Atual
+                </button>
+              </div>
             </div>
 
-            {/* Lista das Datas Já Configuradas */}
-            {dateOverrides.length > 0 && (
+            {/* TELA DIVIDIDA (SPLIT-VIEW): Calendário 100% Livre à Esquerda e Painel do Dia à Direita */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1.8fr) minmax(280px, 0.95fr)',
+              gap: '24px',
+              alignItems: 'start',
+            }}>
+              {/* COLUNA ESQUERDA: Calendário Mensal 100% Livre */}
               <div style={{
                 background: '#FFFFFF',
                 borderRadius: '14px',
                 border: '1px solid var(--adm-border, #E2E8F0)',
                 padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
               }}>
-                <h4 style={{ margin: '0 0 14px', fontSize: '0.90rem', fontWeight: 800, color: '#0F172A' }}>
-                  Datas Pré-Configuradas ({dateOverrides.length})
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
-                  {dateOverrides.map(o => (
-                    <div
-                      key={o.date}
+                {/* Navegação de Mês */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setOverrideCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                      style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                      title="Mês Anterior"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, minWidth: '160px', textAlign: 'center', textTransform: 'capitalize', color: '#0F172A' }}>
+                      {overrideCalendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOverrideCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                      style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '5px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                      title="Próximo Mês"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#F8FAFC', border: '1px solid #CBD5E1' }} />
+                      <span style={{ color: '#64748B' }}>Padrão</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#DCFCE7', border: '1px solid #22C55E' }} />
+                      <span style={{ color: '#15803D', fontWeight: 700 }}>Especial</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#FEE2E2', border: '1px solid #EF4444' }} />
+                      <span style={{ color: '#DC2626', fontWeight: 700 }}>Bloqueado</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grade de 7 Colunas: Seg a Dom */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
+                  {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(w => (
+                    <span key={w} style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 800, color: '#64748B', padding: '4px 0' }}>
+                      {w}
+                    </span>
+                  ))}
+
+                  {overrideCalendarDays.map((cell, idx) => {
+                    if (!cell.isCurrentMonth) {
+                      return <div key={`empty-${idx}`} style={{ minHeight: '80px', borderRadius: '8px' }} />;
+                    }
+
+                    const isSelected = selectedOverrideDate === cell.dateStr;
+                    const ov = cell.override;
+                    const isBlocked = ov?.isBlocked;
+                    const isSpecial = Boolean(ov && !ov.isBlocked);
+
+                    let bg = '#FFFFFF';
+                    let borderColor = '#E2E8F0';
+                    let textColor = '#0F172A';
+
+                    if (isBlocked) {
+                      bg = '#FEF2F2';
+                      borderColor = '#FCA5A5';
+                      textColor = '#DC2626';
+                    } else if (isSpecial) {
+                      bg = '#F0FDF4';
+                      borderColor = '#86EFAC';
+                      textColor = '#15803D';
+                    }
+
+                    if (isSelected) {
+                      borderColor = '#0F172A';
+                    }
+
+                    return (
+                      <div
+                        key={cell.dateStr}
+                        onClick={() => handleSelectOverrideDate(cell.dateStr)}
+                        style={{
+                          minHeight: '80px',
+                          borderRadius: '10px',
+                          border: isSelected ? '2px solid #0F172A' : `1px solid ${borderColor}`,
+                          background: bg,
+                          padding: '8px 6px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.1)' : 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.84rem', fontWeight: 900, color: textColor }}>
+                            {cell.dayNumber}
+                          </span>
+                          {isBlocked && (
+                            <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '1px 4px', borderRadius: '4px', background: '#EF4444', color: '#FFFFFF' }}>
+                              Bloq
+                            </span>
+                          )}
+                          {isSpecial && (
+                            <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '1px 4px', borderRadius: '4px', background: '#10B981', color: '#FFFFFF' }}>
+                              Especial
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: '0.66rem', color: isBlocked ? '#DC2626' : (isSpecial ? '#15803D' : '#64748B'), lineHeight: 1.2 }}>
+                          {isBlocked 
+                            ? (ov?.reason || 'Bloqueado')
+                            : isSpecial 
+                              ? `${ov?.startTime || '09:00'} - ${ov?.endTime || '18:00'}`
+                              : 'Padrão da Casa'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* COLUNA DIREITA: Painel da Data Selecionada */}
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid var(--adm-border, #E2E8F0)',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+              }}>
+                <div>
+                  <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                    Data Selecionada
+                  </span>
+                  <h4 style={{ margin: '2px 0 0', fontSize: '1.05rem', fontWeight: 900, color: '#0F172A' }}>
+                    {selectedOverrideDate ? selectedOverrideDate.split('-').reverse().join('/') : 'Nenhuma data selecionada'}
+                  </h4>
+                </div>
+
+                {/* Toggle Aberto vs Bloqueado */}
+                <div style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: overrideIsBlocked ? '#FEF2F2' : '#F0FDF4',
+                  border: `1px solid ${overrideIsBlocked ? '#FECACA' : '#BBF7D0'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: overrideIsBlocked ? '#DC2626' : '#15803D' }}>
+                      {overrideIsBlocked ? 'Dia Bloqueado / Sem Atendimento' : 'Dia Aberto para Atendimento'}
+                    </div>
+                    <div style={{ fontSize: '0.70rem', color: overrideIsBlocked ? '#B91C1C' : '#166534', marginTop: '1px' }}>
+                      {overrideIsBlocked ? 'Nenhum agendamento será aceito nesta data.' : 'Horários configurados exclusivamente para este dia.'}
+                    </div>
+                  </div>
+
+                  <ToggleSwitch
+                    checked={!overrideIsBlocked}
+                    onChange={val => setOverrideIsBlocked(!val)}
+                    activeColor="#10B981"
+                  />
+                </div>
+
+                {/* Campos se Bloqueado: Motivo */}
+                {overrideIsBlocked ? (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                      Motivo do Bloqueio (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      placeholder="Ex: Feriado Nacional, Manutenção, Evento Privado..."
                       style={{
-                        padding: '12px 16px',
+                        width: '100%',
+                        padding: '8px 12px',
                         borderRadius: '8px',
-                        background: o.isBlocked ? '#FEF2F2' : '#F0FDF4',
-                        border: `1px solid ${o.isBlocked ? '#FECACA' : '#BBF7D0'}`,
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.80rem',
+                        color: '#0F172A',
+                        background: '#FFFFFF',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  /* Campos se Aberto: Horários, Duração, Vagas e PAX */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* Horário Início e Fim */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                        Horário de Atendimento
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="time"
+                          value={overrideStartTime}
+                          onChange={e => setOverrideStartTime(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                            colorScheme: 'light',
+                            textAlign: 'center',
+                          }}
+                        />
+                        <span style={{ fontSize: '0.74rem', color: '#64748B' }}>às</span>
+                        <input
+                          type="time"
+                          value={overrideEndTime}
+                          onChange={e => setOverrideEndTime(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                            colorScheme: 'light',
+                            textAlign: 'center',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Duração */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                        Duração de Cada Horário
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <select
+                          value={[30, 45, 60, 90, 120].includes(overrideDuration) ? overrideDuration : 'custom'}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val !== 'custom') setOverrideDuration(Number(val));
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                          }}
+                        >
+                          <option value={30}>30 minutos</option>
+                          <option value={45}>45 minutos</option>
+                          <option value={60}>1 hora (60 min)</option>
+                          <option value={90}>1 hora e meia (90 min)</option>
+                          <option value={120}>2 horas (120 min)</option>
+                          <option value="custom">Outro (Digitar)</option>
+                        </select>
+
+                        <input
+                          type="number"
+                          min={10}
+                          max={300}
+                          value={overrideDuration}
+                          onChange={e => setOverrideDuration(Math.max(10, Number(e.target.value) || 60))}
+                          style={{
+                            width: '65px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            textAlign: 'center',
+                            background: '#FFFFFF',
+                          }}
+                          title="Duração em minutos"
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>min</span>
+                      </div>
+                    </div>
+
+                    {/* Vagas Simultâneas e Limite PAX */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                          Vagas Simultâneas
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={overrideMaxConcurrent}
+                          onChange={e => setOverrideMaxConcurrent(Math.max(1, Number(e.target.value) || 1))}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            textAlign: 'center',
+                            background: '#FFFFFF',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                          PAX Máx. Família
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={overrideMaxPax}
+                          onChange={e => setOverrideMaxPax(Math.max(1, Number(e.target.value) || 5))}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            textAlign: 'center',
+                            background: '#FFFFFF',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preview dos Slots Calculados */}
+                    <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '10px' }}>
+                      <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748B', display: 'block', marginBottom: '6px' }}>
+                        HORÁRIOS GERADOS EM TEMPO REAL:
+                      </span>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(65px, 1fr))',
+                        gap: '6px',
+                        maxHeight: '130px',
+                        overflowY: 'auto',
+                      }}>
+                        {generateSlotsFromRange(overrideStartTime, overrideEndTime, overrideDuration).map(s => (
+                          <div
+                            key={s}
+                            style={{
+                              padding: '4px 2px',
+                              borderRadius: '5px',
+                              background: '#F0FDF4',
+                              border: '1px solid #86EFAC',
+                              color: '#15803D',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              textAlign: 'center',
+                            }}
+                          >
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões de Ação do Painel */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveSelectedOverrideDate}
+                    style={{
+                      width: '100%',
+                      padding: '9px 16px',
+                      borderRadius: '8px',
+                      background: '#0F172A',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontSize: '0.82rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 8px rgba(15,23,42,0.2)',
+                    }}
+                  >
+                    <Check size={16} />
+                    <span>Salvar Configuração Desta Data</span>
+                  </button>
+
+                  {dateOverrides.some(o => o.date === selectedOverrideDate) && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveSelectedOverrideDate}
+                      style={{
+                        width: '100%',
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        background: 'transparent',
+                        border: '1px solid #CBD5E1',
+                        color: '#64748B',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        justifyContent: 'center',
+                        gap: '6px',
                       }}
                     >
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: o.isBlocked ? '#DC2626' : '#15803D' }}>
-                            {o.date.split('-').reverse().join('/')}
-                          </span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: o.isBlocked ? '#EF444422' : '#10B98122', color: o.isBlocked ? '#DC2626' : '#15803D' }}>
-                            {o.isBlocked ? 'Bloqueada' : 'Especial'}
-                          </span>
-                        </div>
-                        {o.reason && (
-                          <p style={{ margin: '3px 0 0', fontSize: '0.72rem', color: '#64748B' }}>{o.reason}</p>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setDateOverrides(prev => prev.filter(x => x.date !== o.date))}
-                        style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
-                        title="Remover Configuração desta Data"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
+                      <RotateCcw size={14} />
+                      <span>Restaurar Regra Padrão</span>
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Calendário Mensal */}
-            <div style={{
-              background: '#FFFFFF',
-              borderRadius: '14px',
-              border: '1px solid var(--adm-border, #E2E8F0)',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span style={{ fontSize: '0.90rem', fontWeight: 800, minWidth: '150px', textAlign: 'center' }}>
-                    {calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-                    style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.74rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#F0FDF4', border: '1px solid #86EFAC' }} />
-                    <span>Recorrência Ativa</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#FEF2F2', border: '1px solid #EF4444' }} />
-                    <span>Data Bloqueada</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Grid Mensal */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(w => (
-                  <span key={w} style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 800, color: '#64748B', padding: '6px 0' }}>
-                    {w}
-                  </span>
-                ))}
-
-                {calendarGrid.map((cell, idx) => {
-                  if (!cell.day) {
-                    return <div key={`empty-${idx}`} style={{ height: '70px' }} />;
-                  }
-
-                  return (
-                    <div
-                      key={cell.dateStr}
-                      onClick={() => handleCalendarDayClick(cell.dateStr)}
-                      style={{
-                        height: '70px',
-                        borderRadius: '8px',
-                        border: cell.isBlocked ? '2px solid #EF4444' : '1px solid #E2E8F0',
-                        background: cell.isBlocked ? '#FEF2F2' : (cell.isRecurringActive ? '#F0FDF4' : '#F8FAFC'),
-                        padding: '6px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        cursor: 'pointer',
-                        transition: 'all 0.12s ease',
-                      }}
-                      title={cell.isBlocked ? 'Data bloqueada (clique para desbloquear)' : 'Clique para bloquear ou configurar esta data'}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.80rem', fontWeight: 800, color: cell.isBlocked ? '#EF4444' : '#0F172A' }}>
-                          {cell.day}
-                        </span>
-                        {cell.isBlocked && (
-                          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#EF4444' }}>
-                            Bloqueado
-                          </span>
-                        )}
-                      </div>
-
-                      {cell.conflictsCount > 0 && (
-                        <span style={{ fontSize: '0.64rem', color: '#D97706', fontWeight: 700 }}>
-                          {cell.conflictsCount} agendamento(s)
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </div>
@@ -3438,229 +3930,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       )}
 
       {/* MODAL DE ADICIONAR NOVA DATA / BLOQUEIO */}
-      {showOverrideForm && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.6)',
-          zIndex: 1300,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: '14px',
-            border: '1px solid var(--adm-border, #E2E8F0)',
-            maxWidth: '460px',
-            width: '100%',
-            padding: '22px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
-          }}>
-            <h3 style={{ margin: '0 0 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-              Configurar Data Específica
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                  DATA *
-                </label>
-                <input
-                  type="date"
-                  value={overrideDateInput}
-                  onChange={e => setOverrideDateInput(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    colorScheme: 'light',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                  TIPO DE AÇÃO
-                </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setOverrideIsBlocked(true)}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      borderRadius: '8px',
-                      border: '1px solid',
-                      borderColor: overrideIsBlocked ? '#EF4444' : '#CBD5E1',
-                      background: overrideIsBlocked ? '#FEF2F2' : '#FFFFFF',
-                      color: overrideIsBlocked ? '#DC2626' : '#64748B',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Bloquear Data Inteira
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOverrideIsBlocked(false)}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      borderRadius: '8px',
-                      border: '1px solid',
-                      borderColor: !overrideIsBlocked ? '#10B981' : '#CBD5E1',
-                      background: !overrideIsBlocked ? '#F0FDF4' : '#FFFFFF',
-                      color: !overrideIsBlocked ? '#15803D' : '#64748B',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Liberar Exceção
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                  MOTIVO / OBSERVAÇÃO
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Feriado Nacional, Manutenção no Salão..."
-                  value={overrideReason}
-                  onChange={e => setOverrideReason(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.82rem',
-                    fontWeight: 600,
-                  }}
-                />
-              </div>
-
-              {!overrideIsBlocked && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                        INÍCIO
-                      </label>
-                      <input
-                        type="time"
-                        value={overrideStartTime}
-                        onChange={e => setOverrideStartTime(e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
-                      />
-                    </div>
-                    <span style={{ paddingTop: '16px', fontSize: '0.72rem', color: '#94A3B8' }}>às</span>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                        TÉRMINO
-                      </label>
-                      <input
-                        type="time"
-                        value={overrideEndTime}
-                        onChange={e => setOverrideEndTime(e.target.value)}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                        DURAÇÃO
-                      </label>
-                      <select
-                        value={overrideDuration}
-                        onChange={e => setOverrideDuration(Number(e.target.value))}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.76rem', fontWeight: 700 }}
-                      >
-                        {DURATION_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                        VAGAS
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={overrideMaxConcurrent}
-                        onChange={e => setOverrideMaxConcurrent(Math.max(1, Number(e.target.value)))}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 800 }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '3px' }}>
-                        PAX MÁX.
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={overrideMaxPax}
-                        onChange={e => setOverrideMaxPax(Math.max(1, Number(e.target.value)))}
-                        style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 800 }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setShowOverrideForm(false)}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  background: 'transparent',
-                  border: '1px solid #CBD5E1',
-                  color: '#64748B',
-                  fontSize: '0.80rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveDateOverride}
-                style={{
-                  padding: '8px 18px',
-                  borderRadius: '6px',
-                  background: '#10B981',
-                  border: 'none',
-                  color: '#FFFFFF',
-                  fontSize: '0.80rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Salvar Data
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       {/* MODAL DE CONFIRMAÇÃO DE CONFLITO DE BLOQUEIO */}
       {conflictModalData && (
