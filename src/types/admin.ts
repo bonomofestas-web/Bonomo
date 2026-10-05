@@ -372,7 +372,7 @@ export interface PodiumConfig {
 
 export interface FunnelStageTrigger {
   id: string;
-  type: 'move_to_funnel' | 'move_copy_to_funnel' | 'notify_closer' | 'assign_role' | 'send_whatsapp' | 'open_schedule';
+  type: 'move_to_funnel' | 'move_copy_to_funnel' | 'notify_closer' | 'assign_role' | 'send_whatsapp' | 'open_schedule' | 'create_post_sale_client';
   label: string;
   targetFunnelId?: string;
   targetStageId?: string;
@@ -768,7 +768,8 @@ export interface Client {
   paymentTerms?: string;                 // Condições de pagamento (Entrada, parcelas, etc.)
   paymentStatus?: 'up_to_date' | 'pending' | 'overdue' | 'paid_in_full';
 
-  stage: ClientStage;                    // Etapa no Funil de Pós-Venda
+  funnelId?: string;                     // ID do Funil de Pós-Venda em que o cliente está alocado
+  stage: ClientStage | string;           // Etapa no Funil de Pós-Venda
   contacts?: LeadContact[];              // Subcontatos e decisores vinculados
   assignedTo?: string;
   assignedToId?: string;

@@ -5,7 +5,7 @@ import {
   ChevronDown, Plus, Layers,
   Users, ArrowRight, X,
   Megaphone, Sparkles, Target,
-  Settings, Lock, Pin,
+  Settings, Lock, Pin, Copy,
   Flame, PhoneCall, MessageSquare, Gift, FileText,
   Compass, ShieldCheck, Camera,
   UserPlus, Eye, AlertTriangle,
@@ -205,6 +205,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     funnels,
     tasks,
     addFunnel,
+    duplicateFunnel,
     updateLeadStage,
     rejectLead,
     closeLeadSaleWithValue,
@@ -823,6 +824,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const handleOpenConfigureFunnel = (funnel: CommercialFunnel, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     openComoFunnelSettings(funnel.id);
+  };
+
+  const handleDuplicateFunnel = (funnelId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const newId = duplicateFunnel(funnelId);
+    if (newId) {
+      handleSelectFunnel(newId);
+    }
   };
 
 
@@ -1777,33 +1786,63 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         })()}
 
                         {canConfigureFunnels && (
-                          <button
-                            type="button"
-                            title="Configurações e Identidade do Funil"
-                            onClick={(e) => handleOpenConfigureFunnel(funnel, e)}
-                            style={{
-                              background: 'var(--adm-bg-input)',
-                              border: '1px solid var(--adm-border)',
-                              borderRadius: '7px',
-                              padding: '4px 6px',
-                              color: 'var(--adm-text-muted)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all 0.15s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.color = 'var(--adm-accent)';
-                              e.currentTarget.style.borderColor = 'var(--adm-accent)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.color = 'var(--adm-text-muted)';
-                              e.currentTarget.style.borderColor = 'var(--adm-border)';
-                            }}
-                          >
-                            <Settings size={12} />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              title="Duplicar Funil (Criar cópia sem leads)"
+                              onClick={(e) => handleDuplicateFunnel(funnel.id, e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '7px',
+                                padding: '4px 6px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-accent)';
+                                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                                e.currentTarget.style.borderColor = 'var(--adm-border)';
+                              }}
+                            >
+                              <Copy size={12} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Configurações e Identidade do Funil"
+                              onClick={(e) => handleOpenConfigureFunnel(funnel, e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '7px',
+                                padding: '4px 6px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-accent)';
+                                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                                e.currentTarget.style.borderColor = 'var(--adm-border)';
+                              }}
+                            >
+                              <Settings size={12} />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -2281,6 +2320,43 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       >
                         <Layers size={12} />
                         <span>Ver todos os funis (Central)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsFunnelSwitcherOpen(false);
+                          if (currentFunnel) handleDuplicateFunnel(currentFunnel.id);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--adm-text-muted)',
+                          fontSize: '0.70rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          width: '100%',
+                          textAlign: 'left',
+                          transition: 'color 0.1s ease',
+                          marginTop: '2px',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = 'var(--adm-accent)';
+                          e.currentTarget.style.background = 'var(--adm-bg-input)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--adm-text-muted)';
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <Copy size={12} />
+                        <span>Duplicar este Funil</span>
                       </button>
                     </div>
                   )}

@@ -50,16 +50,38 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   const typeLabel = isVisit ? 'Visita Comercial' : 'Degustação Gastronômica';
   const formattedCode = receipt.code.startsWith('#') ? receipt.code : `#${receipt.code}`;
 
-  // Pre-conversão das imagens em data URL para garantir que o html2canvas capture 100% sem erros de CORS
+  // Estados de imagem pré-convertida para Data URL (evita tainted canvas) e controle de erro
   const [closerPhotoDataUrl, setCloserPhotoDataUrl] = useState<string | null>(receipt.closerPhotoUrl || null);
   const [venueLogoDataUrl, setVenueLogoDataUrl] = useState<string | null>(receipt.venueLogoUrl || null);
+  const [venueLogoFailed, setVenueLogoFailed] = useState(false);
+  const [closerPhotoFailed, setCloserPhotoFailed] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    // Helper para converter URL remota para Data URL base64
+    // Helper para converter URL remota para Data URL base64 contornando bloqueios CORS
     const convertUrlToDataUrl = async (url: string): Promise<string> => {
+      if (!url) return '';
       if (url.startsWith('data:')) return url;
+
+      // 1. Tenta obter via proxy local do Vite para garantir cabeçalhos CORS de desenvolvimento
+      try {
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+        const res = await fetch(proxyUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string) || url);
+            reader.onerror = () => resolve(url);
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch {
+        // Fallback para fetch direto
+      }
+
+      // 2. Fallback com fetch direto
       try {
         const res = await fetch(url, { mode: 'cors' });
         if (!res.ok) return url;
@@ -130,7 +152,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       const canvas = await html2canvas(printableCardRef.current, {
         scale: 2, // 2x para nitidez cristalina
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#FFFFFF',
         logging: false,
       });
@@ -160,7 +182,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       const canvas = await html2canvas(printableCardRef.current, {
         scale: 2,
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#FFFFFF',
         logging: false,
       });
@@ -340,7 +362,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     width: '44px',
                     height: '44px',
                     borderRadius: '10px',
-                    background: '#000000',
+                    background: '#0F172A',
                     padding: '4px',
                     display: 'flex',
                     alignItems: 'center',
@@ -350,11 +372,11 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     border: '1px solid rgba(255, 255, 255, 0.15)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
                   }}>
-                    {venueLogoDataUrl || receipt.venueLogoUrl ? (
+                    {!venueLogoFailed && (venueLogoDataUrl || receipt.venueLogoUrl) ? (
                       <img 
                         src={venueLogoDataUrl || receipt.venueLogoUrl} 
-                        crossOrigin="anonymous" 
-                        alt={receipt.venueName} 
+                        alt="" 
+                        onError={() => setVenueLogoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
                       />
                     ) : (
@@ -463,25 +485,38 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     width: '46px',
                     height: '46px',
                     borderRadius: '50%',
-                    background: '#E2E8F0',
+                    background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
                     overflow: 'hidden',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#64748B',
+                    color: '#FFFFFF',
+                    fontWeight: 800,
+                    fontSize: '0.92rem',
+                    letterSpacing: '0.5px',
                     flexShrink: 0,
                     border: '2px solid #FFFFFF',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                   }}>
-                    {closerPhotoDataUrl || receipt.closerPhotoUrl ? (
+                    {!closerPhotoFailed && (closerPhotoDataUrl || receipt.closerPhotoUrl) ? (
                       <img 
                         src={closerPhotoDataUrl || receipt.closerPhotoUrl} 
-                        crossOrigin="anonymous" 
-                        alt={receipt.closerName} 
+                        alt="" 
+                        onError={() => setCloserPhotoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                       />
                     ) : (
-                      <User size={24} />
+                      (() => {
+                        const nameParts = (receipt.closerName || '').trim().split(/\s+/).filter(Boolean);
+                        const initials = nameParts.length >= 2 
+                          ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+                          : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : '');
+                        return initials ? (
+                          <span style={{ color: '#F8FAFC', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{initials}</span>
+                        ) : (
+                          <User size={22} color="#94A3B8" />
+                        );
+                      })()
                     )}
                   </div>
                   <div>

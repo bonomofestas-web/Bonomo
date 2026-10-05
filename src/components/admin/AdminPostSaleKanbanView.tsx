@@ -4,7 +4,8 @@ import {
   PartyPopper, Settings, CheckCircle2,
   ChevronDown, MoreVertical, Store, Tag as TagIcon, Clock, Sparkles,
   MessageSquare, Trash2, ExternalLink,
-  Eye, Check, X, Gem, Calendar, CheckSquare, UserPlus
+  Eye, Check, X, Gem, Calendar, CheckSquare, UserPlus,
+  Copy, Building2, Layers, Users, DollarSign, ArrowRight, ChevronLeft, Pin, ShieldCheck
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -12,11 +13,13 @@ import { AdminNewClientModal } from './AdminNewClientModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminClientInspector } from './AdminClientInspector';
+import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import type { Client, ClientStage } from '../../types/admin';
+import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
+  initialFunnelId?: string | null;
   onOpenDebutanteApp?: (slug: string) => void;
   onOpenCommercialLead?: (leadId: string) => void;
   onOpenLead?: (leadId: string) => void;
@@ -213,6 +216,7 @@ const POST_SALE_ENTRY_COLUMN: StageColumn = {
 };
 
 export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = ({
+  initialFunnelId = null,
   onOpenDebutanteApp,
   onOpenCommercialLead,
   onOpenLead,
@@ -229,18 +233,26 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     updateClientStage, 
     funnels, 
     addFunnel,
+    duplicateFunnel,
+    togglePinFunnel,
+    isFunnelPinned,
     tasks,
     appointments
   } = useAdminState();
 
+  const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(initialFunnelId || null);
   const [viewMode, setViewMode] = useState<'kanban' | 'inbox' | 'list'>('kanban');
   const [search, setSearch] = useState('');
+  const [funnelSearch, setFunnelSearch] = useState('');
+  const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [inspectorClientId, setInspectorClientId] = useState<string | null>(null);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsFunnelId, setActiveSettingsFunnelId] = useState<string | null>(null);
   const [draggedClientId, setDraggedClientId] = useState<string | null>(null);
+  const funnelSwitcherRef = useRef<HTMLDivElement>(null);
 
   // Permissão de Configuração: Master, Admin ou Dev
   const canConfigurePostSale = Boolean(
@@ -280,8 +292,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [newTagInput, setNewTagInput] = useState<string>('');
 
   useEffect(() => {
-    const handleClickOutside = () => {
+    const handleClickOutside = (e: MouseEvent) => {
       setActiveClientMenuId(null);
+      if (funnelSwitcherRef.current && !funnelSwitcherRef.current.contains(e.target as Node)) {
+        setIsFunnelSwitcherOpen(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
@@ -310,13 +325,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     setAddTagClientId(null);
   };
 
-  // Animações simétricas de recolher/expandir colunas (isoladas por funil)
-  const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
-  const [expandingColumns, setExpandingColumns] = useState<Record<string, 'starting' | 'active'>>({});
-  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({});
-
-  const postSaleFunnel = useMemo(() => {
-    return (funnels || []).find(f => 
+  // Funis de Pós-Venda Identificados no Tenant
+  const postSaleFunnels = useMemo(() => {
+    return (funnels || []).filter(f => 
       f.isPostSale || 
       f.category === 'Pós-Venda' || 
       f.category === 'pos_venda' ||
@@ -324,11 +335,117 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       f.name?.toLowerCase().includes('pos venda') ||
       f.name?.toLowerCase().includes('sucesso do cliente') ||
       f.name?.toLowerCase().includes('sucesso')
-    ) || null;
+    );
   }, [funnels]);
 
+  // Funil Atualmente Selecionado no Kanban
+  const currentFunnel = useMemo(() => {
+    if (selectedFunnelId) {
+      return (funnels || []).find(f => f.id === selectedFunnelId) || null;
+    }
+    return null;
+  }, [funnels, selectedFunnelId]);
+
+  // Recupera unidades vinculadas manualmente a qualquer funil
+  const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
+    const venueIdSet = new Set<string>();
+    if (targetFunnel.venueId && targetFunnel.venueId !== 'all') {
+      venueIdSet.add(targetFunnel.venueId);
+    }
+    if (Array.isArray(targetFunnel.sharedVenueIds)) {
+      targetFunnel.sharedVenueIds.forEach(id => {
+        if (id && id !== 'all') venueIdSet.add(id);
+      });
+    }
+    return venues.filter(v => venueIdSet.has(v.id));
+  };
+
+  const currentFunnelLinkedVenues = useMemo(() => {
+    if (!currentFunnel) return [];
+    return getLinkedVenuesForFunnel(currentFunnel);
+  }, [currentFunnel, venues]);
+
+  // Duplicar Funil (sem leads nem clientes, apenas configurações)
+  const handleDuplicateFunnel = (funnelId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const newId = duplicateFunnel(funnelId);
+    if (newId) {
+      setSelectedFunnelId(newId);
+    }
+  };
+
+  const renderFunnelVisual = (funnel: CommercialFunnel, iconSize = 16, boxSize = 34) => {
+    const isImage = Boolean(funnel.icon && (funnel.icon.startsWith('http') || funnel.icon.startsWith('/') || funnel.icon.startsWith('data:')));
+    return (
+      <div style={{
+        width: `${boxSize}px`,
+        height: `${boxSize}px`,
+        borderRadius: '10px',
+        backgroundColor: `${funnel.badgeColor || '#06B6D4'}22`,
+        border: `1.5px solid ${funnel.badgeColor || '#06B6D4'}55`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}>
+        {isImage ? (
+          <img src={funnel.icon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          renderFunnelOrStageIcon(funnel.icon || 'shield-check', iconSize, funnel.badgeColor || '#06B6D4')
+        )}
+      </div>
+    );
+  };
+
+  const displayedFunnels = useMemo(() => {
+    return postSaleFunnels.filter(f => {
+      if (!funnelSearch.trim()) return true;
+      const q = funnelSearch.toLowerCase().trim();
+      const matchesName = (f.name || '').toLowerCase().includes(q);
+      const matchesCat = (f.category || '').toLowerCase().includes(q);
+      const linked = getLinkedVenuesForFunnel(f);
+      const matchesVenue = linked.some(v => v.name.toLowerCase().includes(q));
+      return matchesName || matchesCat || matchesVenue;
+    });
+  }, [postSaleFunnels, funnelSearch, venues]);
+
+  const getFunnelClientMetrics = (funnel: CommercialFunnel) => {
+    const linked = getLinkedVenuesForFunnel(funnel);
+    const linkedVenueIds = linked.map(v => v.id);
+    const funnelClients = clients.filter(c => {
+      if (c.funnelId && c.funnelId !== funnel.id) return false;
+      if (c.funnelId === funnel.id) return true;
+      if (linkedVenueIds.length === 0) return true;
+      return c.venueId && linkedVenueIds.includes(c.venueId);
+    });
+
+    const activeCount = funnelClients.filter(c => c.stage !== 'completed' && c.stage !== 'lost' && c.stage !== 'archived').length;
+    const totalPipeline = funnelClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
+    const partiesNext60 = funnelClients.filter(c => {
+      const pStr = c.partyDate || c.eventDate;
+      if (!pStr) return false;
+      const pTime = new Date(pStr).getTime();
+      const now = Date.now();
+      const diffDays = Math.ceil((pTime - now) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 60;
+    }).length;
+
+    return {
+      totalClients: funnelClients.length,
+      activeCount,
+      totalPipeline,
+      partiesNext60
+    };
+  };
+
+  // Animações simétricas de recolher/expandir colunas (isoladas por funil)
+  const [collapsingColumns, setCollapsingColumns] = useState<Record<string, boolean>>({});
+  const [expandingColumns, setExpandingColumns] = useState<Record<string, 'starting' | 'active'>>({});
+  const [collapsedColumns, setCollapsedColumns] = useState<Record<string, boolean>>({});
+
   const getPostSaleColKey = (colId: string) => {
-    const fId = postSaleFunnel?.id || activeVenueId || 'post_sale_default';
+    const fId = currentFunnel?.id || activeVenueId || 'post_sale_default';
     return `${fId}:${colId}`;
   };
 
@@ -371,16 +488,26 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     }
   };
 
-  // Colunas Ativas (Inclui "Entrada do Cliente" quando a flag do funil estiver ativada)
+  // Colunas Ativas (dinâmicas conforme configuração do funil)
   const activeStageColumns = useMemo(() => {
-    if (postSaleFunnel?.isEntryStageActive) {
+    if (currentFunnel?.stages && currentFunnel.stages.length > 0) {
+      return currentFunnel.stages.map(st => ({
+        id: st.id as any,
+        title: st.name,
+        color: st.color || '#3B82F6',
+        bgColor: `${st.color || '#3B82F6'}14`,
+        borderColor: `${st.color || '#3B82F6'}4D`,
+      }));
+    }
+    if (currentFunnel?.isEntryStageActive) {
       return [POST_SALE_ENTRY_COLUMN, ...STAGE_COLUMNS];
     }
     return STAGE_COLUMNS;
-  }, [postSaleFunnel?.isEntryStageActive]);
+  }, [currentFunnel]);
 
-  const handleOpenSettings = async () => {
-    let funnelId = postSaleFunnel?.id;
+  const handleOpenSettings = async (targetFunnelId?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    let funnelId = targetFunnelId || currentFunnel?.id;
     if (!funnelId) {
       funnelId = await addFunnel({
         name: 'Sucesso do Cliente',
@@ -424,7 +551,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const allClients = useMemo<Client[]>(() => {
     const existingClientIds = new Set(clients.map(c => c.id));
     const extraClientsFromLeads: Client[] = (leads || [])
-      .filter(l => (l.isClient || l.group === 'Pós-Venda' || (postSaleFunnel && l.funnelId === postSaleFunnel.id)) && !existingClientIds.has(l.id))
+      .filter(l => (l.isClient || l.group === 'Pós-Venda' || (currentFunnel && l.funnelId === currentFunnel.id)) && !existingClientIds.has(l.id))
       .map(l => ({
         id: l.id,
         code: l.code || `CLI-${l.id.slice(0, 5).toUpperCase()}`,
@@ -441,12 +568,23 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         updatedAt: l.updatedAt || new Date().toISOString(),
       } as Client));
     return [...clients, ...extraClientsFromLeads];
-  }, [clients, leads, postSaleFunnel]);
+  }, [clients, leads, currentFunnel]);
 
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
     let list = allClients.filter(client => {
-      // 1. Casa de Festas
+      // 0. Casas de Festas e Funil Vinculado
+      if (currentFunnel) {
+        if ((client as any).funnelId && (client as any).funnelId !== currentFunnel.id) {
+          return false;
+        }
+        if (currentFunnelLinkedVenues.length > 0 && !(client as any).funnelId) {
+          const belongsToFunnel = currentFunnelLinkedVenues.some(v => v.id === client.venueId);
+          if (!belongsToFunnel) return false;
+        }
+      }
+
+      // 1. Casa de Festas (Filtro dropdown adicional)
       const effectiveVenue = filterState.venueId !== 'all' ? filterState.venueId : activeVenueId;
       if (effectiveVenue && effectiveVenue !== 'all' && client.venueId !== effectiveVenue) {
         return false;
@@ -653,10 +791,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     );
   }
 
-  if (isSettingsOpen && (activeSettingsFunnelId || postSaleFunnel?.id)) {
+  if (isSettingsOpen && (activeSettingsFunnelId || currentFunnel?.id || postSaleFunnels[0]?.id)) {
     return (
       <AdminFunnelSettingsView
-        initialFunnelId={activeSettingsFunnelId || postSaleFunnel?.id}
+        initialFunnelId={activeSettingsFunnelId || currentFunnel?.id || postSaleFunnels[0]?.id}
         onClose={() => {
           setIsSettingsOpen(false);
           setActiveSettingsFunnelId(null);
@@ -666,6 +804,498 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           setActiveSettingsFunnelId(null);
         }}
       />
+    );
+  }
+
+  // ── CENTRAL DE FUNIS DE PÓS-VENDA (PRÉ-TELA QUANDO NENHUM FUNIL ESTIVER SELECIONADO) ──
+  if (!selectedFunnelId) {
+    const totalClientsCount = clients.length;
+    const totalPipelineSum = clients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
+    const formattedPipeline = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalPipelineSum);
+
+    return (
+      <div style={{
+        padding: '24px 32px 48px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '24px',
+        width: '100%',
+        height: '100%',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        boxSizing: 'border-box',
+        animation: 'fadeIn 0.25s ease-out',
+        fontFamily: "'Plus Jakarta Sans', sans-serif"
+      }}>
+        {/* Main Title & Action */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+              <ShieldCheck size={24} color="#06B6D4" />
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '-0.4px', margin: 0 }}>
+                Central de Funis de Pós-Venda (Sucesso do Cliente)
+              </h1>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>
+              Pipelines de pós-venda estruturados e independentes. Gerencie clientes, alinhamento técnico, visitas e degustações das casas.
+            </p>
+          </div>
+
+          {canConfigurePostSale && (
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                color: '#FFFFFF',
+                borderRadius: '10px',
+                border: 'none',
+                padding: '10px 20px',
+                fontSize: '0.85rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <Plus size={16} color="#FFFFFF" />
+              <span>Novo Funil Pós-Venda</span>
+            </button>
+          )}
+        </div>
+
+        {/* Overview KPIs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06B6D4' }}>
+              <Layers size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipelines Ativos</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{postSaleFunnels.length} Funis</div>
+            </div>
+          </div>
+          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Clientes Atendidos</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{totalClientsCount} Clientes</div>
+            </div>
+          </div>
+          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+              <DollarSign size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Volume em Contratos</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10B981' }}>
+                {formattedPipeline}
+              </div>
+            </div>
+          </div>
+          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B5CF6' }}>
+              <Building2 size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Unidades Atendidas</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{venues.length} Casas</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Search Bar for Funnels */}
+        <div style={{ position: 'relative', maxWidth: '440px' }}>
+          <Search size={16} color="#06B6D4" style={{ position: 'absolute', left: '14px', top: '12px' }} />
+          <input
+            type="text"
+            placeholder="Buscar funil de pós-venda..."
+            value={funnelSearch}
+            onChange={(e) => setFunnelSearch(e.target.value)}
+            style={{
+              width: '100%',
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '12px',
+              padding: '10px 14px 10px 42px',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.84rem',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+
+        {/* Grid de Funis */}
+        {displayedFunnels.length === 0 ? (
+          <div className="saas-card" style={{ padding: '48px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06B6D4' }}>
+              <ShieldCheck size={28} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 4px 0' }}>Nenhum Funil de Pós-Venda Encontrado</h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0 }}>Crie um novo funil de pós-venda ou ajuste a busca para visualizar as esteiras.</p>
+            </div>
+            {canConfigurePostSale && (
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                style={{
+                  background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                  color: '#FFFFFF',
+                  borderRadius: '10px',
+                  border: 'none',
+                  padding: '9px 18px',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginTop: '8px'
+                }}
+              >
+                <Plus size={15} />
+                <span>Criar Novo Funil Pós-Venda</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '18px' }}>
+            {displayedFunnels.map(funnel => {
+              const linkedVenues = getLinkedVenuesForFunnel(funnel);
+              const fMetrics = getFunnelClientMetrics(funnel);
+              const isPinned = isFunnelPinned(funnel.id);
+
+              return (
+                <div
+                  key={funnel.id}
+                  onClick={() => setSelectedFunnelId(funnel.id)}
+                  className="saas-card"
+                  style={{
+                    borderRadius: '16px',
+                    padding: '14px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    border: '1px solid var(--adm-border)',
+                    background: 'var(--adm-bg-card)',
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.05)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.borderColor = funnel.badgeColor || '#06B6D4';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.borderColor = 'var(--adm-border)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.05)';
+                  }}
+                >
+                  <div>
+                    {/* Top Row: Ícone + Nome + Badge Pós-Venda + [Fixar] + [Duplicar] + [Configurações] */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <div style={{ flexShrink: 0 }}>
+                          {renderFunnelVisual(funnel, 15, 32)}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                          <h3 style={{
+                            fontSize: '0.95rem',
+                            fontWeight: 800,
+                            color: 'var(--adm-text-title)',
+                            margin: 0,
+                            letterSpacing: '-0.2px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }} title={funnel.name}>
+                            {funnel.name}
+                          </h3>
+
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            padding: '1px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(6, 182, 212, 0.15)',
+                            color: '#06B6D4',
+                            border: '1px solid rgba(6, 182, 212, 0.35)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            flexShrink: 0,
+                          }}>
+                            <ShieldCheck size={9} />
+                            <span>Pós-Venda</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Top Right: Pin Button + Duplicate + Settings */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          title={isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePinFunnel(funnel.id);
+                          }}
+                          style={{
+                            background: isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                            border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                            borderRadius: '7px',
+                            padding: '4px 7px',
+                            color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '0.64rem',
+                            fontWeight: 700,
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Pin size={10} style={{ transform: isPinned ? 'rotate(45deg)' : 'none' }} />
+                          <span>{isPinned ? 'Fixado' : 'Fixar'}</span>
+                        </button>
+
+                        {canConfigurePostSale && (
+                          <>
+                            <button
+                              type="button"
+                              title="Duplicar Funil de Pós-Venda (Criar cópia com todas as regras, etapas e casas vinculadas)"
+                              onClick={(e) => handleDuplicateFunnel(funnel.id, e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '7px',
+                                padding: '4px 6px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = '#06B6D4';
+                                e.currentTarget.style.borderColor = '#06B6D4';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                                e.currentTarget.style.borderColor = 'var(--adm-border)';
+                              }}
+                            >
+                              <Copy size={12} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Configurações e Vínculo de Casas do Funil"
+                              onClick={(e) => handleOpenSettings(funnel.id, e)}
+                              style={{
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '7px',
+                                padding: '4px 6px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-accent)';
+                                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                                e.currentTarget.style.borderColor = 'var(--adm-border)';
+                              }}
+                            >
+                              <Settings size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bloco de Métricas */}
+                    <div style={{
+                      background: 'var(--adm-bg-input)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '7px 10px',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '4px',
+                      textAlign: 'center',
+                      marginBottom: '8px',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Clientes</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-text-title)', marginTop: '1px' }}>{fMetrics.totalClients}</div>
+                      </div>
+                      <div style={{ borderLeft: '1px solid var(--adm-border)', borderRight: '1px solid var(--adm-border)' }}>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Contratos</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#10B981', marginTop: '1px' }}>
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(fMetrics.totalPipeline)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Festas 60d</div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#06B6D4', marginTop: '1px' }}>{fMetrics.partiesNext60}</div>
+                      </div>
+                    </div>
+
+                    {/* Tags de Casas de Festas Vinculadas Manualmente */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      {linkedVenues.length > 0 ? (
+                        linkedVenues.map(v => (
+                          <span key={v.id} style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(99, 102, 241, 0.12)',
+                            color: '#818cf8',
+                            border: '1px solid rgba(99, 102, 241, 0.25)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}>
+                            <Building2 size={9} />
+                            <span>{v.name}</span>
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          padding: '2px 6px',
+                          borderRadius: '6px',
+                          background: 'rgba(99, 102, 241, 0.12)',
+                          color: '#818cf8',
+                          border: '1px solid rgba(99, 102, 241, 0.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}>
+                          <Building2 size={9} />
+                          <span>Todas as Casas da Rede (Geral)</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                      {funnel.stages?.length || 0} Etapas no Kanban
+                    </span>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFunnelId(funnel.id);
+                      }}
+                      style={{
+                        background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        borderRadius: '9px',
+                        padding: '6px 12px',
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span>Entrar no Funil</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* "+ Adicionar Funil de Pós-Venda" Slot */}
+            {canConfigurePostSale && (
+              <div
+                onClick={() => setIsCreateModalOpen(true)}
+                style={{
+                  borderRadius: '16px',
+                  padding: '24px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  border: '2px dashed var(--adm-border)',
+                  background: 'transparent',
+                  color: 'var(--adm-text-muted)',
+                  transition: 'all 0.18s ease',
+                  minHeight: '180px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#06B6D4';
+                  e.currentTarget.style.color = '#06B6D4';
+                  e.currentTarget.style.background = 'rgba(6, 182, 212, 0.04)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                  e.currentTarget.style.color = 'var(--adm-text-muted)';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Plus size={18} />
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>Novo Funil de Pós-Venda</div>
+                <div style={{ fontSize: '0.68rem', textAlign: 'center', maxWidth: '200px' }}>
+                  Crie esteiras dedicadas para pós-venda vinculando uma ou mais casas da rede
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modal de Criação de Funil de Pós-Venda quando na Central */}
+        <AdminCreatePostSaleFunnelModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={(newId) => {
+            setSelectedFunnelId(newId);
+            setIsCreateModalOpen(false);
+          }}
+        />
+      </div>
     );
   }
 
@@ -694,31 +1324,182 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         {/* Left Side: Funnel Pill + Search + Inline Filters + Ownership Toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
           
-          {/* Active Funnel Indicator Pill */}
-          <div
+          {/* Botão Voltar para Central de Funis */}
+          <button
+            type="button"
+            onClick={() => setSelectedFunnelId(null)}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '4px 9px',
-              borderRadius: '7px',
-              background: `${postSaleFunnel?.badgeColor || '#06B6D4'}18`,
-              border: `1px solid ${postSaleFunnel?.badgeColor || '#06B6D4'}45`,
+              gap: '4px',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
               color: 'var(--adm-text-title)',
-              fontSize: '0.74rem',
-              fontWeight: 800,
-              cursor: 'default',
-              flexShrink: 0,
-              userSelect: 'none',
+              fontSize: '0.73rem',
+              fontWeight: 700,
+              cursor: 'pointer',
               transition: 'all 0.15s ease',
+              flexShrink: 0,
             }}
+            title="Voltar para a Central de Funis de Pós-Venda"
           >
-            <span style={{ color: postSaleFunnel?.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center' }}>
-              {renderFunnelOrStageIcon(postSaleFunnel?.icon || 'shield-check', 13, postSaleFunnel?.badgeColor || '#06B6D4')}
-            </span>
-            <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
-              SUCESSO DO CLIENTE
-            </span>
+            <ChevronLeft size={13} />
+            <span>Central de Funis</span>
+          </button>
+
+          {/* Active Funnel Indicator Pill com Dropdown Switcher */}
+          <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-block' }}>
+            <button
+              type="button"
+              onClick={() => setIsFunnelSwitcherOpen(!isFunnelSwitcherOpen)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 9px',
+                borderRadius: '7px',
+                background: `${currentFunnel?.badgeColor || '#06B6D4'}18`,
+                border: `1px solid ${currentFunnel?.badgeColor || '#06B6D4'}45`,
+                color: 'var(--adm-text-title)',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                flexShrink: 0,
+                userSelect: 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Trocar funil de pós-venda"
+            >
+              <span style={{ color: currentFunnel?.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center' }}>
+                {renderFunnelOrStageIcon(currentFunnel?.icon || 'shield-check', 13, currentFunnel?.badgeColor || '#06B6D4')}
+              </span>
+              <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+                {currentFunnel?.name || 'SUCESSO DO CLIENTE'}
+              </span>
+              <ChevronDown size={11} style={{ transform: isFunnelSwitcherOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {/* Dropdown Menu de Troca de Funil */}
+            {isFunnelSwitcherOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0,
+                zIndex: 1000,
+                minWidth: '240px',
+                background: 'var(--adm-bg-card)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '10px',
+                boxShadow: '0 10px 28px rgba(0,0,0,0.25)',
+                padding: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '3px',
+              }}>
+                <div style={{ padding: '4px 8px', fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                  Funis de Pós-Venda
+                </div>
+                {postSaleFunnels.map(f => {
+                  const isActive = f.id === currentFunnel?.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunnelId(f.id);
+                        setIsFunnelSwitcherOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: isActive ? 'var(--adm-accent-bg)' : 'transparent',
+                        border: 'none',
+                        color: isActive ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                        fontSize: '0.74rem',
+                        fontWeight: isActive ? 800 : 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        width: '100%',
+                        transition: 'background 0.1s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ color: f.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                          {renderFunnelOrStageIcon(f.icon || 'shield-check', 12, f.badgeColor || '#06B6D4')}
+                        </span>
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {f.name}
+                        </span>
+                      </div>
+                      {isActive && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+
+                <div style={{ borderTop: '1px solid var(--adm-border)', marginTop: '4px', paddingTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFunnelId(null);
+                      setIsFunnelSwitcherOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--adm-text-muted)',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      width: '100%',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <Layers size={12} />
+                    <span>Ver todos os funis (Central)</span>
+                  </button>
+
+                  {canConfigurePostSale && currentFunnel && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsFunnelSwitcherOpen(false);
+                        handleDuplicateFunnel(currentFunnel.id);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--adm-text-muted)',
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        width: '100%',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <Copy size={12} />
+                      <span>Duplicar este funil</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Busca Compacta */}
@@ -1055,10 +1836,43 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               <List size={14} />
             </button>
 
+            {canConfigurePostSale && currentFunnel && (
+              <button
+                type="button"
+                onClick={(e) => handleDuplicateFunnel(currentFunnel.id, e)}
+                title="Duplicar este Funil de Pós-Venda"
+                style={{
+                  background: 'var(--adm-bg-input)',
+                  color: 'var(--adm-text-title)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--adm-border)',
+                  padding: '4px 9px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#06B6D4';
+                  e.currentTarget.style.borderColor = '#06B6D4';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--adm-text-title)';
+                  e.currentTarget.style.borderColor = 'var(--adm-border)';
+                }}
+              >
+                <Copy size={13} />
+                <span>Duplicar</span>
+              </button>
+            )}
+
             {canConfigurePostSale && (
               <button
                 type="button"
-                onClick={handleOpenSettings}
+                onClick={() => handleOpenSettings()}
                 title="Configurar etapas e automações do funil"
                 style={{
                   background: 'var(--adm-bg-input)',
@@ -1207,7 +2021,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         {viewMode === 'inbox' ? (
           <AdminWhatsAppWorkspaceView 
             initialLeadId={selectedClientId || undefined}
-            activeFunnelId={postSaleFunnel?.id || 'post_sale_default'}
+            activeFunnelId={currentFunnel?.id || 'post_sale_default'}
             isPostSale={true}
             isEmbeddedInFunnel={true}
             searchQuery={search}
@@ -2629,6 +3443,16 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           onClientCreated={(newId) => setSelectedClientId(newId)}
         />
       )}
+
+      {/* ── Modal de Criação de Novo Funil de Pós-Venda ── */}
+      <AdminCreatePostSaleFunnelModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={(newId) => {
+          setSelectedFunnelId(newId);
+          setIsCreateModalOpen(false);
+        }}
+      />
     </div>
   );
 };

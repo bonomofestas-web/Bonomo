@@ -171,7 +171,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   if (!client) return null;
 
   const linkedDebutante = client.debutanteId ? debutantes.find(d => d.id === client.debutanteId) : null;
-  const stageInfo = STAGE_CONFIG[client.stage] || STAGE_CONFIG.onboarding;
+  const stageInfo = STAGE_CONFIG[client.stage as ClientStage] || STAGE_CONFIG.onboarding;
 
   // Lista de destinatários com prioridade para o Decisor
   const clientRecipients = useMemo(() => {

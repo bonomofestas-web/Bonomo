@@ -324,7 +324,57 @@ function inviteDevPlugin() {
   };
 }
 
+function r2ImageProxyPlugin() {
+  return {
+    name: 'r2-image-proxy-middleware',
+    configureServer(server: any) {
+      server.middlewares.use('/api/proxy-image', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 200;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', '*');
+          res.end();
+          return;
+        }
+
+        try {
+          const urlObj = new URL(req.url, 'http://localhost');
+          const targetUrl = urlObj.searchParams.get('url');
+          if (!targetUrl) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Missing url parameter' }));
+            return;
+          }
+
+          const remoteRes = await fetch(targetUrl);
+          if (!remoteRes.ok) {
+            res.statusCode = remoteRes.status;
+            res.end('Remote fetch failed');
+            return;
+          }
+
+          const contentType = remoteRes.headers.get('content-type') || 'image/png';
+          const arrayBuffer = await remoteRes.arrayBuffer();
+
+          res.statusCode = 200;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.end(Buffer.from(arrayBuffer));
+        } catch (err: any) {
+          console.error('[R2 Proxy Error]:', err);
+          res.statusCode = 500;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end(err.message || 'Proxy error');
+        }
+      });
+    }
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), r2DevUploadPlugin(), inviteDevPlugin()],
+  plugins: [react(), r2DevUploadPlugin(), inviteDevPlugin(), r2ImageProxyPlugin()],
 });

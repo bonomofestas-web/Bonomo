@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, 
-  ShieldAlert, Sparkles, AlertTriangle, Building2, FileText, Settings,
-  Calendar, Tag, Sliders,
+  ShieldAlert, ShieldCheck, Sparkles, AlertTriangle, Building2, FileText, Settings,
+  Calendar, Tag, Sliders, Check,
   ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -178,11 +178,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
   // Estados de Gatilhos / Automação da Etapa
   const [activeTriggerStageId, setActiveTriggerStageId] = useState<string | null>(null);
-  const [selectedTriggerType, setSelectedTriggerType] = useState<'move_to_funnel' | 'open_schedule'>('open_schedule');
+  const [triggerMenuOpenStageId, setTriggerMenuOpenStageId] = useState<string | null>(null);
+  const [selectedTriggerType, setSelectedTriggerType] = useState<'move_to_funnel' | 'open_schedule' | 'create_post_sale_client'>('open_schedule');
   const [selectedScheduleType, setSelectedScheduleType] = useState<'visit' | 'tasting' | 'any'>('visit');
   const [selectedTargetFunnelId, setSelectedTargetFunnelId] = useState<string>('');
   const [selectedTargetStageId, setSelectedTargetStageId] = useState<string>('');
   const [funnelVenueId, setFunnelVenueId] = useState<string>('all');
+  const [sharedVenueIds, setSharedVenueIds] = useState<string[]>([]);
   const [disabledVenueIds, setDisabledVenueIds] = useState<string[]>([]);
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
@@ -275,6 +277,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       action: 'keep_recent',
     });
     setFunnelVenueId(activeFunnel.venueId || 'all');
+    const initialShared = Array.isArray(activeFunnel.sharedVenueIds) 
+      ? activeFunnel.sharedVenueIds 
+      : (activeFunnel.venueId && activeFunnel.venueId !== 'all' ? [activeFunnel.venueId] : []);
+    setSharedVenueIds(initialShared);
     setDisabledVenueIds(activeFunnel.disabledVenueIds || (activeFunnel as any)?.duplicateRuleConfig?._disabledVenueIds || []);
     setExplicitlyAddedVenueIds([]);
     setPackageOptions(activeFunnel.packageOptions || []);
@@ -374,9 +380,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       order: idx,
     }));
 
+    const effectiveVenueId = sharedVenueIds.length === 1 
+      ? sharedVenueIds[0] 
+      : (sharedVenueIds.length > 1 ? sharedVenueIds[0] : (funnelVenueId === 'all' ? 'all' : funnelVenueId));
+
     updateFunnel(activeFunnel.id, {
       name: funnelName.trim() || activeFunnel.name,
-      venueId: funnelVenueId === 'all' ? 'all' : funnelVenueId,
+      venueId: effectiveVenueId,
+      sharedVenueIds: sharedVenueIds,
       disabledVenueIds,
       icon: funnelIcon,
       badgeColor: funnelBadgeColor,
@@ -617,16 +628,43 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     return list;
   }, [stages, isEntryStageActive, isWonStageEnabled]);
 
+  const postSaleFunnels = useMemo(() => {
+    return (funnels || []).filter(f => 
+      f.isPostSale || 
+      f.category === 'Pós-Venda' || 
+      f.category === 'pos_venda' ||
+      f.name?.toLowerCase().includes('pós-venda') || 
+      f.name?.toLowerCase().includes('pos venda') ||
+      f.name?.toLowerCase().includes('sucesso do cliente') ||
+      f.name?.toLowerCase().includes('sucesso')
+    );
+  }, [funnels]);
+
   const handleSaveTrigger = (stageId: string) => {
     let newTrigger: any;
     if (selectedTriggerType === 'move_to_funnel') {
       if (!selectedTargetFunnelId) return;
+      const targetFunnel = funnels.find(f => f.id === selectedTargetFunnelId);
+      const targetStage = targetFunnel?.stages?.find(s => s.id === selectedTargetStageId);
       newTrigger = {
         id: `trig_${Date.now()}`,
         type: 'move_to_funnel' as const,
         label: 'Transferência de Funil',
         targetFunnelId: selectedTargetFunnelId,
         targetStageId: selectedTargetStageId,
+        description: `Mover lead para ${targetFunnel?.name || 'Outro Funil'} ${targetStage ? `• ${targetStage.name}` : ''}`,
+      };
+    } else if (selectedTriggerType === 'create_post_sale_client') {
+      if (!selectedTargetFunnelId) return;
+      const targetFunnel = funnels.find(f => f.id === selectedTargetFunnelId);
+      const targetStage = targetFunnel?.stages?.find(s => s.id === selectedTargetStageId);
+      newTrigger = {
+        id: `trig_${Date.now()}`,
+        type: 'create_post_sale_client' as const,
+        label: `Vínculo com Pós-Venda: ${targetFunnel?.name || 'Pós-Venda'}`,
+        targetFunnelId: selectedTargetFunnelId,
+        targetStageId: selectedTargetStageId,
+        description: `Duplica o lead ganho para o funil ${targetFunnel?.name || ''} na etapa ${targetStage?.name || 'Onboarding'}`,
       };
     } else {
       const scheduleLabel = selectedScheduleType === 'tasting' 
@@ -639,6 +677,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         type: 'open_schedule' as const,
         label: scheduleLabel,
         scheduleType: selectedScheduleType,
+        description: `Abre agendamento de: ${selectedScheduleType === 'tasting' ? 'Degustação Gastronômica' : 'Visita Comercial'}`,
       };
     }
 
@@ -651,6 +690,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       };
     }));
     setActiveTriggerStageId(null);
+    setTriggerMenuOpenStageId(null);
   };
 
   const handleRemoveTrigger = (stageId: string, triggerId: string) => {
@@ -845,66 +885,62 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             </div>
           </div>
 
-          {!isPostSale && (
-            <>
-              <button
-                type="button"
-                onClick={handleDuplicate}
-                style={{
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  color: 'var(--adm-text-muted)',
-                  borderRadius: '8px',
-                  padding: '6px 12px',
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = 'var(--adm-text-title)';
-                  e.currentTarget.style.borderColor = 'var(--adm-accent)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'var(--adm-text-muted)';
-                  e.currentTarget.style.borderColor = 'var(--adm-border)';
-                }}
-              >
-                <Copy size={13} />
-                <span>Duplicar Funil</span>
-              </button>
+            <button
+              type="button"
+              onClick={handleDuplicate}
+              style={{
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                color: 'var(--adm-text-muted)',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--adm-text-title)';
+                e.currentTarget.style.borderColor = 'var(--adm-accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--adm-text-muted)';
+                e.currentTarget.style.borderColor = 'var(--adm-border)';
+              }}
+            >
+              <Copy size={13} />
+              <span>Duplicar Funil</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(true)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--adm-text-muted)',
-                  opacity: 0.55,
-                  fontSize: '0.74rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  padding: '6px 8px',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                  e.currentTarget.style.color = '#EF4444';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '0.55';
-                  e.currentTarget.style.color = 'var(--adm-text-muted)';
-                }}
-              >
-                Excluir funil
-              </button>
-            </>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-text-muted)',
+                opacity: 0.55,
+                fontSize: '0.74rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                padding: '6px 8px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1';
+                e.currentTarget.style.color = '#EF4444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.55';
+                e.currentTarget.style.color = 'var(--adm-text-muted)';
+              }}
+            >
+              Excluir funil
+            </button>
+          </div>
 
         {/* Right: Voltar (Descartar) & Salvar Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -1144,27 +1180,134 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             </div>
           </div>
 
-          {/* ── 3. UNIDADES ── */}
-          {!isPostSale && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Building2 size={14} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
-                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-                    3. UNIDADES
-                  </span>
-                </div>
-                <span style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  color: 'var(--adm-accent)',
-                }}>
-                  {venues.filter(v => !disabledVenueIds.includes(v.id)).length} Ativas • {disabledVenueIds.length} Desativadas
+          {/* ── 3. UNIDADES & CASAS DE FESTAS ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={14} style={{ color: 'var(--adm-accent, #3B82F6)' }} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                  3. UNIDADES & CASAS
                 </span>
               </div>
+              <span style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                padding: '2px 6px',
+                borderRadius: '6px',
+                background: 'rgba(59, 130, 246, 0.15)',
+                color: 'var(--adm-accent)',
+              }}>
+                {sharedVenueIds.length === 0 ? 'Todas as Casas' : `${sharedVenueIds.length} Vinculada(s)`}
+              </span>
+            </div>
+
+            {/* Seletor Manual Multi-Casas */}
+            <div style={{
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '10px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              marginBottom: '4px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>
+                  Casas Vinculadas a este Funil
+                </label>
+                <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
+                  Multi-Casas
+                </span>
+              </div>
+              <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
+                {isPostSale
+                  ? 'Selecione manualmente quais casas de festa este funil atende. Clientes cadastrados nessas unidades físicas serão direcionados e acompanhados aqui.'
+                  : 'Selecione quais unidades físicas compartilham este funil comercial.'}
+              </span>
+
+              {/* Botão Geral: Todas as Casas da Rede */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSharedVenueIds([]);
+                  setFunnelVenueId('all');
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '7px 10px',
+                  borderRadius: '7px',
+                  background: sharedVenueIds.length === 0 ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.15))' : 'var(--adm-bg-card)',
+                  border: `1px solid ${sharedVenueIds.length === 0 ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border)'}`,
+                  color: sharedVenueIds.length === 0 ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-title)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <Building2 size={12} />
+                  <span>Todas as Casas da Rede (Geral)</span>
+                </div>
+                {sharedVenueIds.length === 0 && <Check size={12} />}
+              </button>
+
+              {/* Lista Selecionável de Unidades Físicas */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {venues.filter(v => v.active !== false).map(v => {
+                  const isSelected = sharedVenueIds.includes(v.id);
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => {
+                        setSharedVenueIds(prev => {
+                          let updated: string[];
+                          if (prev.includes(v.id)) {
+                            updated = prev.filter(id => id !== v.id);
+                          } else {
+                            updated = [...prev, v.id];
+                          }
+                          if (updated.length > 0) {
+                            setFunnelVenueId(updated[0]);
+                          } else {
+                            setFunnelVenueId('all');
+                          }
+                          return updated;
+                        });
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 10px',
+                        borderRadius: '7px',
+                        background: isSelected ? 'var(--adm-accent-bg, rgba(99, 102, 241, 0.15))' : 'var(--adm-bg-card)',
+                        border: `1px solid ${isSelected ? 'var(--adm-accent, #6366F1)' : 'var(--adm-border)'}`,
+                        color: isSelected ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-title)',
+                        fontSize: '0.72rem',
+                        fontWeight: isSelected ? 800 : 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+                        <Building2 size={12} color={isSelected ? 'var(--adm-accent)' : 'var(--adm-text-muted)'} style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {v.name}
+                        </span>
+                      </div>
+                      {isSelected && <Check size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
               {/* Seletor de Unidade Principal do Funil */}
               <div style={{
@@ -1853,7 +1996,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 );
               })()}
             </div>
-          )}
         </div>
 
         {/* ── RIGHT MAIN PIPELINE GRID (KOMMO REPLICA + HORIZONTAL PAN/DRAG) ── */}
@@ -2145,6 +2287,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         {/* Lista de Gatilhos configurados */}
                         {(stage.triggers || []).map(trigger => {
                           const isSchedule = trigger.type === 'open_schedule';
+                          const isPostSale = trigger.type === 'create_post_sale_client';
                           const targetFunnel = funnels.find(f => f.id === trigger.targetFunnelId);
                           const targetStage = targetFunnel?.stages?.find(s => s.id === trigger.targetStageId);
 
@@ -2154,12 +2297,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               ? 'Visita Comercial'
                               : 'Visita / Degustação';
 
+                          const badgeColor = isPostSale ? '#06B6D4' : isSchedule ? '#3B82F6' : '#8B5CF6';
+                          const badgeBg = isPostSale ? 'rgba(6, 182, 212, 0.08)' : isSchedule ? 'rgba(59, 130, 246, 0.08)' : 'rgba(139, 92, 246, 0.08)';
+                          const badgeBorder = isPostSale ? 'rgba(6, 182, 212, 0.25)' : isSchedule ? 'rgba(59, 130, 246, 0.25)' : 'rgba(139, 92, 246, 0.25)';
+
                           return (
                             <div
                               key={trigger.id}
                               style={{
-                                background: isSchedule ? 'rgba(59, 130, 246, 0.08)' : 'rgba(139, 92, 246, 0.08)',
-                                border: `1px solid ${isSchedule ? 'rgba(59, 130, 246, 0.25)' : 'rgba(139, 92, 246, 0.25)'}`,
+                                background: badgeBg,
+                                border: `1px solid ${badgeBorder}`,
                                 borderRadius: '6px',
                                 padding: '6px 8px',
                                 display: 'flex',
@@ -2169,14 +2316,16 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               }}
                             >
                               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: isSchedule ? '#3B82F6' : '#8B5CF6', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  {isSchedule ? <Calendar size={11} /> : <Zap size={11} />}
-                                  {isSchedule ? 'Agendamento Automático' : 'Transferência de Funil'}
+                                <span style={{ fontSize: '0.70rem', fontWeight: 800, color: badgeColor, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {isPostSale ? <ShieldCheck size={11} /> : isSchedule ? <Calendar size={11} /> : <Zap size={11} />}
+                                  {isPostSale ? 'Vínculo com Pós-Venda' : isSchedule ? 'Agendamento Automático' : 'Transferência de Funil'}
                                 </span>
                                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-body)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {isSchedule 
-                                    ? `Abre agendamento de: ${scheduleTypeText}`
-                                    : `Para: ${targetFunnel?.name || 'Outro Funil'} ${targetStage ? `• ${targetStage.name}` : ''}`}
+                                  {isPostSale 
+                                    ? `Enviar para: ${targetFunnel?.name || 'Pós-Venda'} • ${targetStage?.name || 'Onboarding'}`
+                                    : isSchedule 
+                                      ? `Abre agendamento de: ${scheduleTypeText}`
+                                      : `Para: ${targetFunnel?.name || 'Outro Funil'} ${targetStage ? `• ${targetStage.name}` : ''}`}
                                 </span>
                               </div>
                               <button
@@ -2201,7 +2350,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           );
                         })}
 
-                        {/* Formulário Inline para Adicionar Novo Gatilho */}
+                        {/* Formulário Inline para Configuração do Gatilho */}
                         {activeTriggerStageId === stage.id ? (
                           <div style={{
                             background: 'var(--adm-bg-input)',
@@ -2212,63 +2361,27 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             flexDirection: 'column',
                             gap: '8px',
                           }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                              Configurar Novo Gatilho da Etapa
-                            </span>
-
-                            {/* Seletor de Tipo de Ação do Gatilho */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                {selectedTriggerType === 'create_post_sale_client' && <ShieldCheck size={12} color="#06B6D4" />}
+                                {selectedTriggerType === 'open_schedule' && <Calendar size={12} color="#3B82F6" />}
+                                {selectedTriggerType === 'move_to_funnel' && <Zap size={12} color="#8B5CF6" />}
+                                {selectedTriggerType === 'create_post_sale_client' ? 'Configurar Vínculo com Pós-Venda' : selectedTriggerType === 'open_schedule' ? 'Configurar Agendamento Automático' : 'Configurar Transferência de Funil'}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => setSelectedTriggerType('open_schedule')}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '5px',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  border: selectedTriggerType === 'open_schedule' ? '1px solid #3B82F6' : '1px solid var(--adm-border)',
-                                  background: selectedTriggerType === 'open_schedule' ? 'rgba(59, 130, 246, 0.15)' : 'var(--adm-bg-card)',
-                                  color: selectedTriggerType === 'open_schedule' ? '#3B82F6' : 'var(--adm-text-muted)',
-                                  transition: 'all 0.15s ease',
-                                }}
+                                onClick={() => setActiveTriggerStageId(null)}
+                                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: '2px', display: 'flex' }}
                               >
-                                <Calendar size={12} />
-                                <span>Agendamento</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTriggerType('move_to_funnel')}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '5px',
-                                  padding: '6px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.68rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  border: selectedTriggerType === 'move_to_funnel' ? '1px solid #8B5CF6' : '1px solid var(--adm-border)',
-                                  background: selectedTriggerType === 'move_to_funnel' ? 'rgba(139, 92, 246, 0.15)' : 'var(--adm-bg-card)',
-                                  color: selectedTriggerType === 'move_to_funnel' ? '#8B5CF6' : 'var(--adm-text-muted)',
-                                  transition: 'all 0.15s ease',
-                                }}
-                              >
-                                <Zap size={12} />
-                                <span>Mudar Funil</span>
+                                <X size={12} />
                               </button>
                             </div>
 
                             {/* Conteúdo: Agendamento Automático */}
                             {selectedTriggerType === 'open_schedule' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                                  Tipo de Compromisso ao mover para esta etapa:
+                                  Tipo de Compromisso:
                                 </label>
                                 <select
                                   value={selectedScheduleType}
@@ -2286,19 +2399,18 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 >
                                   <option value="visit">Visita Comercial (Casa de Festas)</option>
                                   <option value="tasting">Degustação Gastronômica</option>
-                                  <option value="any">Qualquer Agendamento (À escolha do usuário)</option>
                                 </select>
                                 <p style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.3 }}>
-                                  Ao arrastar ou transferir um lead para esta etapa, a janela de agendamento abrirá automaticamente com a ficha do lead pronta para marcar a data e horário.
+                                  Ao mover um lead para esta etapa, a janela de agendamento abrirá automaticamente com a ficha do lead pronta para marcar a data e horário.
                                 </p>
                               </div>
                             )}
 
                             {/* Conteúdo: Transferência de Funil */}
                             {selectedTriggerType === 'move_to_funnel' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                                  Funil de Destino:
+                                  Funil Comercial de Destino:
                                 </label>
                                 <select
                                   value={selectedTargetFunnelId}
@@ -2318,8 +2430,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                     outline: 'none',
                                   }}
                                 >
-                                  <option value="">Selecione o funil de destino...</option>
-                                  {funnels.filter(f => f.id !== activeFunnel?.id).map(f => (
+                                  <option value="">Selecione o funil comercial de destino...</option>
+                                  {funnels.filter(f => f.id !== activeFunnel?.id && !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>
                                   ))}
                                 </select>
@@ -2352,6 +2464,73 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </div>
                             )}
 
+                            {/* Conteúdo: Vincular ao Pós-Venda (Exclusivo Etapa de Ganho) */}
+                            {selectedTriggerType === 'create_post_sale_client' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                  Funil de Pós-Venda de Destino:
+                                </label>
+                                <select
+                                  value={selectedTargetFunnelId}
+                                  onChange={(e) => {
+                                    setSelectedTargetFunnelId(e.target.value);
+                                    const f = funnels.find(fun => fun.id === e.target.value);
+                                    setSelectedTargetStageId(f?.stages?.[0]?.id || 'onboarding');
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    background: 'var(--adm-bg-card)',
+                                    border: '1px solid var(--adm-border)',
+                                    borderRadius: '4px',
+                                    padding: '5px 8px',
+                                    fontSize: '0.72rem',
+                                    color: 'var(--adm-text-body)',
+                                    outline: 'none',
+                                  }}
+                                >
+                                  {postSaleFunnels.length === 0 ? (
+                                    <option value="">Nenhum funil de pós-venda cadastrado</option>
+                                  ) : (
+                                    postSaleFunnels.map(f => (
+                                      <option key={f.id} value={f.id}>{f.name}</option>
+                                    ))
+                                  )}
+                                </select>
+
+                                {selectedTargetFunnelId && (
+                                  <>
+                                    <label style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                      Etapa Inicial no Pós-Venda:
+                                    </label>
+                                    <select
+                                      value={selectedTargetStageId}
+                                      onChange={(e) => setSelectedTargetStageId(e.target.value)}
+                                      style={{
+                                        width: '100%',
+                                        background: 'var(--adm-bg-card)',
+                                        border: '1px solid var(--adm-border)',
+                                        borderRadius: '4px',
+                                        padding: '5px 8px',
+                                        fontSize: '0.72rem',
+                                        color: 'var(--adm-text-body)',
+                                        outline: 'none',
+                                      }}
+                                    >
+                                      {(funnels.find(f => f.id === selectedTargetFunnelId)?.stages || [
+                                        { id: 'onboarding', name: 'Onboarding & Boas-Vindas' },
+                                        { id: 'planning', name: 'Planejamento & Cronograma' }
+                                      ]).map(st => (
+                                        <option key={st.id} value={st.id}>{st.name}</option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}
+                                <p style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', margin: 0, lineHeight: 1.3 }}>
+                                  Ao mover o lead para esta etapa de Ganho, ele será duplicado automaticamente como Cliente no funil de pós-venda selecionado, mantendo todo o histórico comercial.
+                                </p>
+                              </div>
+                            )}
+
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
                               <button
                                 type="button"
@@ -2368,53 +2547,228 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               </button>
                               <button
                                 type="button"
-                                disabled={selectedTriggerType === 'move_to_funnel' && !selectedTargetFunnelId}
+                                disabled={
+                                  (selectedTriggerType === 'move_to_funnel' && !selectedTargetFunnelId) ||
+                                  (selectedTriggerType === 'create_post_sale_client' && !selectedTargetFunnelId)
+                                }
                                 onClick={() => handleSaveTrigger(stage.id)}
                                 style={{
-                                  background: (selectedTriggerType === 'open_schedule' || selectedTargetFunnelId) ? 'var(--adm-accent)' : 'var(--adm-border)',
+                                  background: (
+                                    selectedTriggerType === 'open_schedule' || 
+                                    (selectedTriggerType === 'move_to_funnel' && selectedTargetFunnelId) ||
+                                    (selectedTriggerType === 'create_post_sale_client' && selectedTargetFunnelId)
+                                  ) ? 'var(--adm-accent)' : 'var(--adm-border)',
                                   color: '#fff',
                                   border: 'none',
                                   borderRadius: '4px',
                                   padding: '4px 10px',
                                   fontSize: '0.68rem',
                                   fontWeight: 700,
-                                  cursor: (selectedTriggerType === 'open_schedule' || selectedTargetFunnelId) ? 'pointer' : 'not-allowed',
+                                  cursor: (
+                                    selectedTriggerType === 'open_schedule' || 
+                                    (selectedTriggerType === 'move_to_funnel' && selectedTargetFunnelId) ||
+                                    (selectedTriggerType === 'create_post_sale_client' && selectedTargetFunnelId)
+                                  ) ? 'pointer' : 'not-allowed',
                                 }}
                               >
                                 Salvar Gatilho
                               </button>
                             </div>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTriggerStageId(stage.id);
-                              setSelectedTriggerType('open_schedule');
-                              setSelectedScheduleType('visit');
-                              const otherFunnel = funnels.find(f => f.id !== activeFunnel?.id);
-                              setSelectedTargetFunnelId(otherFunnel?.id || '');
-                              setSelectedTargetStageId(otherFunnel?.stages?.[0]?.id || '');
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: '1px dashed var(--adm-border)',
-                              borderRadius: '6px',
-                              padding: '5px',
-                              color: 'var(--adm-accent)',
-                              fontSize: '0.70rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Plus size={11} />
-                            Adicionar Gatilho
-                          </button>
-                        )}
+                        ) : (() => {
+                          const hasSchedule = (stage.triggers || []).some(t => t.type === 'open_schedule');
+                          const hasMoveFunnel = (stage.triggers || []).some(t => t.type === 'move_to_funnel' || (t as any).type === 'transfer_funnel');
+                          const hasPostSale = (stage.triggers || []).some(t => t.type === 'create_post_sale_client');
+                          const isStageWon = Boolean(stage.isWon || stage.id === 'deal_closed' || stage.id === 'contrato_fechado' || stage.id === 'ganho' || stage.name?.toLowerCase().includes('ganho') || stage.name?.toLowerCase().includes('contrato fechado'));
+                          const canAddMoreTriggers = !hasSchedule || !hasMoveFunnel || (isStageWon && !hasPostSale);
+
+                          if (!canAddMoreTriggers) {
+                            return (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                padding: '5px',
+                                borderRadius: '6px',
+                                background: 'rgba(16, 185, 129, 0.06)',
+                                border: '1px solid rgba(16, 185, 129, 0.18)',
+                                color: '#10B981',
+                                fontSize: '0.64rem',
+                                fontWeight: 700,
+                              }}>
+                                <Check size={11} />
+                                Todos os gatilhos configurados
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                type="button"
+                                onClick={() => setTriggerMenuOpenStageId(triggerMenuOpenStageId === stage.id ? null : stage.id)}
+                                style={{
+                                  width: '100%',
+                                  background: 'transparent',
+                                  border: '1px dashed var(--adm-border)',
+                                  borderRadius: '6px',
+                                  padding: '5px',
+                                  color: 'var(--adm-accent)',
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Plus size={11} />
+                                Adicionar Gatilho
+                              </button>
+
+                              {/* Dropdown Popup suspenso de tipos de gatilhos */}
+                              {triggerMenuOpenStageId === stage.id && (
+                                <>
+                                  <div 
+                                    onClick={() => setTriggerMenuOpenStageId(null)}
+                                    style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+                                  />
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      bottom: 'calc(100% + 4px)',
+                                      left: 0,
+                                      right: 0,
+                                      background: 'var(--adm-bg-surface, #1E222B)',
+                                      border: '1px solid var(--adm-border)',
+                                      borderRadius: '8px',
+                                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                      padding: '6px',
+                                      zIndex: 999,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '4px',
+                                    }}
+                                  >
+                                    <span style={{ fontSize: '0.60rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', padding: '4px 6px' }}>
+                                      Tipo de Gatilho
+                                    </span>
+
+                                    {/* Opção 1: Agendamento Automático */}
+                                    <button
+                                      type="button"
+                                      disabled={hasSchedule}
+                                      onClick={() => {
+                                        setSelectedTriggerType('open_schedule');
+                                        setSelectedScheduleType('visit');
+                                        setActiveTriggerStageId(stage.id);
+                                        setTriggerMenuOpenStageId(null);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '6px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid transparent',
+                                        background: hasSchedule ? 'transparent' : 'rgba(59, 130, 246, 0.08)',
+                                        cursor: hasSchedule ? 'not-allowed' : 'pointer',
+                                        opacity: hasSchedule ? 0.4 : 1,
+                                        textAlign: 'left',
+                                        transition: 'all 0.15s ease',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Calendar size={13} color="#3B82F6" />
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Agendamento</span>
+                                          <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Visita ou Degustação</span>
+                                        </div>
+                                      </div>
+                                      {hasSchedule && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
+                                    </button>
+
+                                    {/* Opção 2: Transferência de Funil */}
+                                    <button
+                                      type="button"
+                                      disabled={hasMoveFunnel}
+                                      onClick={() => {
+                                        setSelectedTriggerType('move_to_funnel');
+                                        const otherFunnel = funnels.find(f => f.id !== activeFunnel?.id && !f.isPostSale && f.category !== 'Pós-Venda');
+                                        setSelectedTargetFunnelId(otherFunnel?.id || '');
+                                        setSelectedTargetStageId(otherFunnel?.stages?.[0]?.id || '');
+                                        setActiveTriggerStageId(stage.id);
+                                        setTriggerMenuOpenStageId(null);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '6px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid transparent',
+                                        background: hasMoveFunnel ? 'transparent' : 'rgba(139, 92, 246, 0.08)',
+                                        cursor: hasMoveFunnel ? 'not-allowed' : 'pointer',
+                                        opacity: hasMoveFunnel ? 0.4 : 1,
+                                        textAlign: 'left',
+                                        transition: 'all 0.15s ease',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Zap size={13} color="#8B5CF6" />
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Mudar Funil</span>
+                                          <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Transferir lead para outro funil</span>
+                                        </div>
+                                      </div>
+                                      {hasMoveFunnel && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
+                                    </button>
+
+                                    {/* Opção 3: Vincular ao Pós-Venda (Exclusivo Etapas de Ganho) */}
+                                    {isStageWon && (
+                                      <button
+                                        type="button"
+                                        disabled={hasPostSale}
+                                        onClick={() => {
+                                          setSelectedTriggerType('create_post_sale_client');
+                                          const firstPostSale = postSaleFunnels[0] || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda');
+                                          setSelectedTargetFunnelId(firstPostSale?.id || '');
+                                          setSelectedTargetStageId(firstPostSale?.stages?.[0]?.id || 'onboarding');
+                                          setActiveTriggerStageId(stage.id);
+                                          setTriggerMenuOpenStageId(null);
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          padding: '6px 8px',
+                                          borderRadius: '6px',
+                                          border: '1px solid transparent',
+                                          background: hasPostSale ? 'transparent' : 'rgba(6, 182, 212, 0.08)',
+                                          cursor: hasPostSale ? 'not-allowed' : 'pointer',
+                                          opacity: hasPostSale ? 0.4 : 1,
+                                          textAlign: 'left',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <ShieldCheck size={13} color="#06B6D4" />
+                                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Vincular Pós-Venda</span>
+                                            <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Duplica lead ganho para cliente</span>
+                                          </div>
+                                        </div>
+                                        {hasPostSale && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 

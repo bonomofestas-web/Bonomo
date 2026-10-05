@@ -52,6 +52,7 @@ export const clientService = {
         paymentTerms: row.payment_terms,
         paymentStatus: row.payment_status,
         stage: row.stage || 'onboarding',
+        funnelId: (row as any).funnel_id || (row.commercial_history as any)?.funnelId || undefined,
         contacts: (row.contacts as any) || [],
         assignedSuccessManagerId: row.assigned_success_manager_id,
         assignedSuccessManagerName: row.assigned_success_manager_name,
@@ -127,6 +128,12 @@ export const clientService = {
       if (client.commercialLeadId !== undefined) payload.commercial_lead_id = isUuid(client.commercialLeadId) ? client.commercialLeadId : null;
       if (client.commercialLeadCode !== undefined) payload.commercial_lead_code = client.commercialLeadCode;
       if (client.commercialHistory !== undefined) payload.commercial_history = client.commercialHistory;
+      if (client.funnelId !== undefined) {
+        payload.commercial_history = {
+          ...((payload.commercial_history as any) || (client.commercialHistory as any) || {}),
+          funnelId: client.funnelId,
+        };
+      }
       if (client.notes !== undefined) payload.notes = client.notes;
       if (client.documents !== undefined) payload.documents = client.documents;
       if (client.activities !== undefined) payload.activities = client.activities;

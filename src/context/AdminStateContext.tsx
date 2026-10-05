@@ -3755,23 +3755,91 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const source = funnels.find(f => f.id === funnelId);
     if (!source) return '';
     const newId = generateUuid();
+    
+    // Clonagem profunda de estágios
+    const clonedStages = source.stages ? JSON.parse(JSON.stringify(source.stages)) : undefined;
+
+    // Clonagem profunda de regras e configurações
+    const clonedDuplicateRuleConfig = source.duplicateRuleConfig 
+      ? JSON.parse(JSON.stringify(source.duplicateRuleConfig)) 
+      : undefined;
+
+    const clonedCustomFields = source.customFields 
+      ? JSON.parse(JSON.stringify(source.customFields)) 
+      : [];
+
+    const clonedVenueDistConfig = source.venueDistributionConfig 
+      ? JSON.parse(JSON.stringify(source.venueDistributionConfig)) 
+      : undefined;
+
     const clonedFunnel: CommercialFunnel = {
       ...source,
       id: newId,
       name: `${source.name} (Cópia)`,
+      category: source.category || (source.isPostSale ? 'Pós-Venda' : 'Vendas & Atendimento'),
+      description: source.description || '',
+      isPostSale: Boolean(source.isPostSale || source.category === 'Pós-Venda'),
       venueId: targetVenueId || source.venueId,
+      sharedVenueIds: source.sharedVenueIds ? [...source.sharedVenueIds] : (source.venueId && source.venueId !== 'all' ? [source.venueId] : []),
+      masterId: source.masterId || scopedMasterId || currentUser?.masterId || 'default',
       isPrimary: false,
       isPinned: false,
+      pinnedAt: undefined,
       createdAt: new Date().toISOString().split('T')[0],
-      stages: source.stages ? JSON.parse(JSON.stringify(source.stages)) : undefined,
-      customFields: source.customFields ? JSON.parse(JSON.stringify(source.customFields)) : undefined,
+      stages: clonedStages,
+      stagesCount: clonedStages ? clonedStages.length : (source.stagesCount || 0),
+      isEntryStageActive: Boolean(source.isEntryStageActive),
+      isWonStageEnabled: source.isWonStageEnabled !== false,
+      detectDuplicates: source.detectDuplicates !== false,
+      duplicateRuleConfig: clonedDuplicateRuleConfig,
+      customFields: clonedCustomFields,
+      predefinedTags: source.predefinedTags ? [...source.predefinedTags] : [],
+      allowCollaboratorsCreateTags: Boolean(source.allowCollaboratorsCreateTags),
+      packageOptions: source.packageOptions ? [...source.packageOptions] : [],
+      paymentOptions: source.paymentOptions ? [...source.paymentOptions] : [],
+      allowedRoles: source.allowedRoles ? [...source.allowedRoles] : [],
+      allowedCollaboratorIds: source.allowedCollaboratorIds ? [...source.allowedCollaboratorIds] : [],
+      venueDistributionConfig: clonedVenueDistConfig,
+      priorityWhatsappPerVenue: source.priorityWhatsappPerVenue ? JSON.parse(JSON.stringify(source.priorityWhatsappPerVenue)) : undefined,
+      disabledVenueIds: source.disabledVenueIds ? [...source.disabledVenueIds] : [],
+      icon: source.icon,
+      badge: source.badge,
+      badgeColor: source.badgeColor,
     };
+
+    // Clonar perguntas MQL específicas deste funil (se houver)
+    const sourceQuestions = mqlQuestions.filter(q => 
+      q.funnelId === source.id || (q.funnelIds && q.funnelIds.includes(source.id))
+    );
+    if (sourceQuestions.length > 0) {
+      const clonedQuestions: MqlQuestion[] = sourceQuestions.map(sq => {
+        const qId = generateUuid();
+        const clonedQ: MqlQuestion = {
+          ...JSON.parse(JSON.stringify(sq)),
+          id: qId,
+          funnelId: newId,
+          funnelIds: [newId],
+        };
+        mqlService.upsert(clonedQ);
+        return clonedQ;
+      });
+      setMqlQuestions(prev => {
+        const updated = [...prev, ...clonedQuestions];
+        safeLocalStorageSet(STORAGE_KEY_MQL_QUESTIONS, JSON.stringify(updated));
+        return updated;
+      });
+    }
+
     setFunnels(prev => {
       const updated = [clonedFunnel, ...prev];
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
       return updated;
     });
-    funnelService.upsert(clonedFunnel);
+
+    funnelService.upsert(clonedFunnel).catch(err => {
+      console.error('Erro ao persistir funil duplicado no Supabase:', err);
+    });
+
     return newId;
   };
 
@@ -4807,6 +4875,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (targetLead) {
         setClients(prevClients => {
           const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === targetLead.phone));
+
+          // Verificar gatilho de pós-venda configurado na etapa de ganho
+          const postSaleTrigger = (destStageConfig?.triggers || []).find(t => t.type === 'create_post_sale_client');
+          
+          let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
+          let targetPostSaleStageId = postSaleTrigger?.targetStageId;
+
+          if (!targetPostSaleFunnelId) {
+            const defaultPostSale = funnels.find(f => 
+              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
+              (!f.venueId || f.venueId === 'all' || f.venueId === targetLead.venueId || (f.sharedVenueIds && f.sharedVenueIds.includes(targetLead.venueId || '')))
+            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
+            targetPostSaleFunnelId = defaultPostSale?.id;
+            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+          }
+
           if (existingIdx < 0) {
             const newCliId = generateUuid();
             const targetVenueId = targetLead.venueId || venues[0]?.id || '';
@@ -4824,6 +4908,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               name: birthdayName,
               birthdayPersonName: birthdayName,
               commercialLeadId: leadId,
+              funnelId: targetPostSaleFunnelId,
+              stage: (targetPostSaleStageId || 'onboarding') as any,
               venueId: targetVenueId,
               venueName: venueObj?.name || 'Unidade Principal',
               eventType: targetLead.eventType || '15_anos',
@@ -4845,7 +4931,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               signalValue: 0,
               hasCreditCard: false,
               contacts: targetLead.contacts || [],
-              stage: 'onboarding',
+              commercialHistory: {
+                origin: targetLead.sourceName || targetLead.source || '',
+                closedBy: targetLead.closerName || targetLead.assignedTo || author,
+                closerName: targetLead.closerName,
+                sdrName: targetLead.sdrName,
+                closedAt: new Date().toISOString(),
+                originalNotes: targetLead.notes || '',
+                closerReport: (targetLead as any).closerReport || '',
+              },
+              notes: targetLead.notes || '',
               activities: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString().split('T')[0],
@@ -4853,6 +4948,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify([newClient, ...prevClients]));
             clientService.upsert(newClient).catch(() => {});
             return [newClient, ...prevClients];
+          } else {
+            const existingClient = prevClients[existingIdx];
+            if (targetPostSaleFunnelId && !existingClient.funnelId) {
+              const updatedClient = {
+                ...existingClient,
+                funnelId: targetPostSaleFunnelId,
+                stage: targetPostSaleStageId || existingClient.stage,
+                updatedAt: new Date().toISOString().split('T')[0],
+              };
+              const updatedList = [...prevClients];
+              updatedList[existingIdx] = updatedClient;
+              safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updatedList));
+              clientService.upsert(updatedClient).catch(() => {});
+              return updatedList;
+            }
           }
           return prevClients;
         });
@@ -6858,14 +6968,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             {
               id: generateUuid(),
               type: 'status_change' as const,
-              description: `📋 Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              description: `Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
               createdAt: new Date().toISOString(),
               createdBy: author,
             }
           ] : [];
 
+          // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
+          const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
+          const wonStage = currentLeadFunnel?.stages?.find(s => s.isWon || s.id === 'deal_closed' || s.id === 'contrato_fechado');
+          const postSaleTrigger = (wonStage?.triggers || []).find(t => t.type === 'create_post_sale_client');
+
+          let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
+          let targetPostSaleStageId = postSaleTrigger?.targetStageId;
+
+          if (!targetPostSaleFunnelId) {
+            const defaultPostSale = funnels.find(f => 
+              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
+              (!f.venueId || f.venueId === 'all' || f.venueId === currentLead.venueId || (f.sharedVenueIds && f.sharedVenueIds.includes(currentLead.venueId || '')))
+            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
+            targetPostSaleFunnelId = defaultPostSale?.id;
+            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+          }
+
           updated[existingIdx] = {
             ...updated[existingIdx],
+            funnelId: targetPostSaleFunnelId || updated[existingIdx].funnelId,
+            stage: targetPostSaleStageId || updated[existingIdx].stage,
             dealValue,
             baseContractValue: dealValue,
             packageSold,
@@ -6901,12 +7030,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const payerPhone = primaryDecisor?.phone || currentLead.phone.trim();
           const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'mother';
 
+          // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
+          const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
+          const wonStage = currentLeadFunnel?.stages?.find(s => s.isWon || s.id === 'deal_closed' || s.id === 'contrato_fechado');
+          const postSaleTrigger = (wonStage?.triggers || []).find(t => t.type === 'create_post_sale_client');
+
+          let targetPostSaleFunnelId = postSaleTrigger?.targetFunnelId;
+          let targetPostSaleStageId = postSaleTrigger?.targetStageId;
+
+          if (!targetPostSaleFunnelId) {
+            const defaultPostSale = funnels.find(f => 
+              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
+              (!f.venueId || f.venueId === 'all' || f.venueId === targetVenueId || (f.sharedVenueIds && f.sharedVenueIds.includes(targetVenueId)))
+            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
+            targetPostSaleFunnelId = defaultPostSale?.id;
+            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+          }
+
           const initialActivities = [];
           if (closerNotes) {
             initialActivities.push({
               id: generateUuid(),
               type: 'status_change' as const,
-              description: `📋 Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              description: `Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
               createdAt: new Date().toISOString(),
               createdBy: author,
             });
@@ -6959,7 +7105,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
             paymentTerms: (currentLead as any).paymentTerms || `${downPay > 0 ? `Entrada R$ ${downPay.toLocaleString('pt-BR')} + ` : ''}${installCount}x`,
             paymentStatus: downPay > 0 ? 'up_to_date' : 'pending',
-            stage: 'onboarding',
+            funnelId: targetPostSaleFunnelId,
+            stage: (targetPostSaleStageId || 'onboarding') as any,
             contacts: currentLead.contacts || [],
             assignedSuccessManagerId: undefined,
             assignedSuccessManagerName: undefined,
