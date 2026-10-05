@@ -180,6 +180,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     const closerRole = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
 
     setActiveReceiptModal({
+      id: commitment.id,
+      leadId: lead.id,
       type,
       code: commitment.id ? `#AG${type === 'visit' ? 'V' : 'D'}-${commitment.id.slice(0, 5).toUpperCase()}` : '#AGV-10294',
       leadName: lead.name,

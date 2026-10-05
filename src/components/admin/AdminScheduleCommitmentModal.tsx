@@ -359,6 +359,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const closerRoleTitle = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
 
       setCompletedReceipt({
+        id: receiptCode,
+        leadId: currentLead.id,
         type,
         code: receiptCode,
         leadName: currentLead.name,

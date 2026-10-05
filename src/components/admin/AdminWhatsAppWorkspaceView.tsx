@@ -247,6 +247,8 @@ interface WhatsAppMessageInputBoxProps {
   onTriggerComposing: () => void;
   onStartAudioRecording: () => void;
   isSpectator?: boolean;
+  hasPendingAttachment?: boolean;
+  pendingAttachmentCaption?: string;
 }
 
 const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.memo(({
@@ -257,14 +259,16 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   onTriggerComposing,
   onStartAudioRecording,
   isSpectator,
+  hasPendingAttachment,
+  pendingAttachmentCaption,
 }) => {
   const [localText, setLocalText] = useState('');
   const lastComposingCallRef = useRef<number>(0);
 
-  // Limpa o texto local ao trocar de lead
+  // Limpa o texto local ao trocar de lead ou preenche com a legenda inicial do anexo
   useEffect(() => {
-    setLocalText('');
-  }, [leadId]);
+    setLocalText(pendingAttachmentCaption || '');
+  }, [leadId, pendingAttachmentCaption]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -281,7 +285,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (localText.trim() && !disabled && !isSpectator) {
+      if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
         const text = localText.trim();
         setLocalText('');
         onSendMessageText(text);
@@ -291,7 +295,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
 
   const handleSendClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (localText.trim() && !disabled && !isSpectator) {
+    if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
       const text = localText.trim();
       setLocalText('');
       onSendMessageText(text);
@@ -305,7 +309,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         value={localText}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        placeholder={isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem"}
+        placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem"}
         disabled={disabled || isSpectator}
         style={{
           flex: 1,
@@ -319,7 +323,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         }}
       />
 
-      {localText.trim().length > 0 ? (
+      {(localText.trim().length > 0 || hasPendingAttachment) ? (
         <button
           type="button"
           onClick={handleSendClick}
@@ -673,6 +677,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   });
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
+
+  // Anexo pendente no chat (ex: comprovante de agendamento compartilhado)
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    leadId: string;
+    dataUrl: string;
+    fileName: string;
+    caption?: string;
+    timestamp: number;
+  } | null>(null);
+
+  // Escuta anexos do sessionStorage ou evento customizado ao carregar/trocar lead
+  useEffect(() => {
+    const checkPending = () => {
+      try {
+        const raw = sessionStorage.getItem('f5_pending_chat_attachment');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (!parsed.leadId || parsed.leadId === selectedLeadId)) {
+            setPendingAttachment(parsed);
+            sessionStorage.removeItem('f5_pending_chat_attachment');
+          }
+        }
+      } catch {}
+    };
+
+    checkPending();
+
+    const handleCustomAttach = (e: any) => {
+      if (e.detail) {
+        if (!e.detail.leadId || e.detail.leadId === selectedLeadId) {
+          setPendingAttachment(e.detail);
+        }
+      }
+    };
+
+    window.addEventListener('f5_attach_to_chat', handleCustomAttach);
+    return () => window.removeEventListener('f5_attach_to_chat', handleCustomAttach);
+  }, [selectedLeadId]);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const attachmentButtonRef = useRef<HTMLButtonElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
@@ -2262,10 +2304,82 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     };
   }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar]);
 
+  // Envio do anexo pendente no chat (ex: comprovante de agendamento compartilhado)
+  const handleSendPendingAttachment = async (customCaption?: string) => {
+    if (!pendingAttachment || !selectedLead || isLeadSpectator) return;
+    const attachmentToSend = pendingAttachment;
+    setPendingAttachment(null);
+
+    const caption = customCaption !== undefined ? customCaption : (messageText.trim() || attachmentToSend.caption || '');
+    setMessageText('');
+
+    const targetPhone = selectedRecipientPhone || selectedLead.phone;
+    const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
+
+    const activityId = generateUuid();
+    const existingActs = selectedLead.activities || [];
+    const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
+    const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000)).toISOString();
+
+    const newActivity: LeadActivity = {
+      id: activityId,
+      leadId: selectedLead.id,
+      timestamp: finalTimestampIso,
+      type: 'contact',
+      title: 'Foto enviada',
+      text: caption || undefined,
+      mediaUrl: attachmentToSend.dataUrl,
+      mediaType: 'image',
+      authorName: author,
+      authorId: currentUser?.id,
+      authorAvatarUrl: currentUser?.avatarUrl,
+      metadata: {
+        ...getAppSenderMetadata(),
+        fileName: attachmentToSend.fileName,
+        caption: caption || undefined,
+        isAppointmentReceipt: true,
+      },
+    } as any;
+
+    const updatedActivities = mergeAndSortActivities(selectedLead.activities || [], [newActivity], selectedLead.id);
+    updateLeadData(selectedLead.id, {
+      activities: updatedActivities,
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
+
+    if (isSupabaseConfigured) {
+      leadService.addActivity(selectedLead.id, newActivity)
+        .catch(err => console.error('Erro ao salvar comprovante no Supabase:', err));
+    }
+
+    if (targetPhone && activeSenderToken) {
+      try {
+        await uazapiService.sendMedia(activeSenderToken, {
+          number: targetPhone,
+          file: attachmentToSend.dataUrl,
+          type: 'image',
+          fileName: attachmentToSend.fileName,
+          caption: caption || undefined,
+          ptt: false,
+          delay: 0,
+        });
+      } catch (err) {
+        console.error('Falha no envio de comprovante UAZAPI:', err);
+      }
+    }
+  };
+
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
     if (e) e.preventDefault();
     const textToUse = directText !== undefined ? directText : messageText;
+
+    // Se houver anexo pendente no chat, encaminha para o envio de mídia
+    if (pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead?.id)) {
+      await handleSendPendingAttachment(textToUse.trim());
+      return;
+    }
+
     if (!selectedLead || !textToUse.trim() || isLeadSpectator) return;
 
     if (presenceTimerRef.current) clearTimeout(presenceTimerRef.current);
@@ -10184,12 +10298,121 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         </div>
                       )}
 
+                      {/* Barra de Pré-Visualização de Anexo no Chat (ex: Comprovante Oficial de Agendamento) */}
+                      {pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id) && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          background: isDarkMode ? '#233138' : '#e9edef',
+                          border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #d1d7db',
+                          borderBottom: 'none',
+                          borderRadius: '16px 16px 0 0',
+                          padding: '10px 14px',
+                          marginBottom: '-1px',
+                          boxShadow: '0 -2px 10px rgba(0,0,0,0.06)',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            <div style={{
+                              width: '52px',
+                              height: '52px',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '1px solid rgba(0,0,0,0.15)',
+                              background: '#ffffff',
+                              flexShrink: 0,
+                              boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                            }}>
+                              <img
+                                src={pendingAttachment.dataUrl}
+                                alt={pendingAttachment.fileName}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </div>
+
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.82rem',
+                                fontWeight: 800,
+                                color: isDarkMode ? '#e9edef' : '#111b21',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                <Sparkles size={14} color="#10B981" />
+                                <span>{pendingAttachment.fileName}</span>
+                              </div>
+                              <div style={{
+                                fontSize: '0.72rem',
+                                color: isDarkMode ? '#8696a0' : '#667781',
+                                marginTop: '2px',
+                              }}>
+                                Comprovante oficial anexado no chat • Pronto para envio ao lead
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSendPendingAttachment()}
+                              disabled={!activeSenderToken || isSenderDisconnected}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '7px 14px',
+                                borderRadius: '8px',
+                                background: '#00a884',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 6px rgba(0,168,132,0.3)',
+                                transition: 'all 0.15s ease',
+                              }}
+                              title="Enviar foto anexada agora para o lead"
+                            >
+                              <Send size={13} />
+                              <span>Enviar Foto</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPendingAttachment(null)}
+                              style={{
+                                background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '28px',
+                                height: '28px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: isDarkMode ? '#8696a0' : '#54656f',
+                                cursor: 'pointer',
+                              }}
+                              title="Remover anexo do chat"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Cápsula Arredondada Estilo WhatsApp Web */}
                       <form onSubmit={handleSendMessage} style={{
                         display: 'flex',
                         alignItems: 'center',
                         background: isDarkMode ? '#202c33' : '#ffffff',
-                        borderRadius: '24px',
+                        borderRadius: (pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) ? '0 0 16px 16px' : '24px',
                         padding: '4px 8px 4px 10px',
                         border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
                         boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(11,20,26,0.08)',
@@ -10255,6 +10478,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           isDarkMode={isDarkMode}
                           disabled={!activeSenderToken || isSenderDisconnected}
                           isSpectator={isLeadSpectator}
+                          hasPendingAttachment={Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id))}
+                          pendingAttachmentCaption={pendingAttachment?.caption}
                           onSendMessageText={(text) => handleSendMessage(undefined, text)}
                           onTriggerComposing={triggerComposingPresence}
                           onStartAudioRecording={startAudioRecording}

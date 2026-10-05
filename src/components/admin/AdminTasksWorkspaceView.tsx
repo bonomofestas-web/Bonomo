@@ -366,6 +366,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       const fallbackCode = `#${prefix}-${task.id.slice(0, 5).toUpperCase()}`;
 
       setSelectedReceipt({
+        id: task.id,
+        leadId: task.leadId || (task.customProperties as any)?.leadId || (task.customProperties as any)?.relatedLeadId,
         type: isTasting ? 'tasting' : 'visit',
         code: task.customProperties?.receiptCode || fallbackCode,
         leadName: cleanLeadName || 'Cliente',

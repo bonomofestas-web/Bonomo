@@ -398,13 +398,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   useEffect(() => {
     const handleSwitchTab = (e: any) => {
       if (e.detail?.tab) {
-        setActiveTab(e.detail.tab);
-        try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch {}
+        if (e.detail.tab === 'whatsapp' && e.detail.leadId) {
+          handleOpenLeadInWhatsApp(e.detail.leadId);
+        } else {
+          setActiveTab(e.detail.tab);
+          try { localStorage.setItem('bonomo_admin_active_tab', e.detail.tab); } catch {}
+        }
       }
     };
     window.addEventListener('admin_switch_tab', handleSwitchTab);
     return () => window.removeEventListener('admin_switch_tab', handleSwitchTab);
-  }, []);
+  }, [handleOpenLeadInWhatsApp]);
 
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);

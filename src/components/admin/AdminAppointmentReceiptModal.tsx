@@ -1,12 +1,16 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   X, Check, Download, Share2, Calendar, 
-  MapPin, Users, User, Building2
+  MapPin, Users, User, Building2, ShieldCheck, Loader2
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { useAdminState } from '../../context/AdminStateContext';
+import { isPhoneMatch } from '../../services/leadService';
 import type { CommercialCommitmentType } from '../../types/admin';
 
 export interface AppointmentReceiptData {
   id?: string;
+  leadId?: string;
   type: CommercialCommitmentType;
   code: string; // Ex: AGV-10492 ou AGD-30291
   leadName: string;
@@ -35,16 +39,61 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   receipt,
   onClose,
 }) => {
-  const cardRef = useRef<HTMLDivElement>(null);
+  const printableCardRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  const { leads } = useAdminState();
 
   const isVisit = receipt.type === 'visit';
   const themeColor = isVisit ? '#10B981' : '#D97706';
   const typeLabel = isVisit ? 'Visita Comercial' : 'Degustação Gastronômica';
   const formattedCode = receipt.code.startsWith('#') ? receipt.code : `#${receipt.code}`;
 
+  // Pre-conversão das imagens em data URL para garantir que o html2canvas capture 100% sem erros de CORS
+  const [closerPhotoDataUrl, setCloserPhotoDataUrl] = useState<string | null>(receipt.closerPhotoUrl || null);
+  const [venueLogoDataUrl, setVenueLogoDataUrl] = useState<string | null>(receipt.venueLogoUrl || null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    // Helper para converter URL remota para Data URL base64
+    const convertUrlToDataUrl = async (url: string): Promise<string> => {
+      if (url.startsWith('data:')) return url;
+      try {
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) return url;
+        const blob = await res.blob();
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string) || url);
+          reader.onerror = () => resolve(url);
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return url;
+      }
+    };
+
+    if (receipt.closerPhotoUrl) {
+      convertUrlToDataUrl(receipt.closerPhotoUrl).then(data => {
+        if (isMounted && data) setCloserPhotoDataUrl(data);
+      });
+    }
+
+    if (receipt.venueLogoUrl) {
+      convertUrlToDataUrl(receipt.venueLogoUrl).then(data => {
+        if (isMounted && data) setVenueLogoDataUrl(data);
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [receipt.closerPhotoUrl, receipt.venueLogoUrl]);
+
   // Formata a data por extenso
-  const formattedDate = React.useMemo(() => {
+  const formattedDate = useMemo(() => {
     if (!receipt.dateStr) return '';
     try {
       const [y, m, d] = receipt.dateStr.split('-').map(Number);
@@ -60,181 +109,103 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     }
   }, [receipt.dateStr]);
 
-  // Função para baixar a imagem PNG gerada via Canvas nativo
+  // Localiza o lead correspondente com fallback inteligente por telefone ou nome
+  const targetLeadId = useMemo(() => {
+    if (receipt.leadId) return receipt.leadId;
+    const match = leads.find(l => 
+      (receipt.leadPhone && isPhoneMatch(l.phone, receipt.leadPhone)) ||
+      (receipt.leadName && l.name.trim().toLowerCase() === receipt.leadName.trim().toLowerCase())
+    );
+    return match?.id || '';
+  }, [receipt.leadId, receipt.leadPhone, receipt.leadName, leads]);
+
+  // Função para baixar a imagem PNG idêntica ao que está na tela via html2canvas (Resolução Retina 2x)
   const handleDownloadImage = async () => {
+    if (!printableCardRef.current || isDownloading) return;
     setIsDownloading(true);
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      // Pequena pausa para garantir renderização estável
+      await new Promise(r => setTimeout(r, 100));
 
-      const width = 800;
-      const height = 1000;
-      canvas.width = width;
-      canvas.height = height;
+      const canvas = await html2canvas(printableCardRef.current, {
+        scale: 2, // 2x para nitidez cristalina
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#FFFFFF',
+        logging: false,
+      });
 
-      // Fundo elegante
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, width, height);
-
-      // Top bar com cor do tema
-      ctx.fillStyle = themeColor;
-      ctx.fillRect(0, 0, width, 16);
-
-      // Header com círculo de confirmação
-      ctx.fillStyle = isVisit ? '#ECFDF5' : '#FFFBEB';
-      ctx.beginPath();
-      ctx.arc(width / 2, 90, 44, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = themeColor;
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      // Checkmark no círculo
-      ctx.strokeStyle = themeColor;
-      ctx.lineWidth = 5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(width / 2 - 16, 90);
-      ctx.lineTo(width / 2 - 4, 102);
-      ctx.lineTo(width / 2 + 18, 78);
-      ctx.stroke();
-
-      // Título
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 30px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Agendamento de ${typeLabel} Confirmado`, width / 2, 175);
-
-      // Código do comprovante
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 18px sans-serif';
-      ctx.fillText(`CÓDIGO: ${formattedCode}`, width / 2, 210);
-
-      // Linha divisória tracejada
-      ctx.setLineDash([8, 6]);
-      ctx.strokeStyle = '#E2E8F0';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(60, 240);
-      ctx.lineTo(width - 60, 240);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Bloco de Informações
-      ctx.textAlign = 'left';
-
-      // 1. Cliente / Lead
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('CLIENTE / CONTRATANTE', 80, 280);
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 22px sans-serif';
-      ctx.fillText(receipt.leadName, 80, 310);
-      if (receipt.leadPhone) {
-        ctx.fillStyle = '#64748B';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(`Telefone: ${receipt.leadPhone}`, 80, 336);
-      }
-
-      // 2. Data e Horário
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('DATA E HORÁRIO', 80, 390);
-      ctx.fillStyle = themeColor;
-      ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(`${receipt.timeStr} • ${formattedDate}`, 80, 422);
-
-      // 3. Unidade e Endereço
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('LOCAL DO COMPROMISSO', 80, 480);
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 22px sans-serif';
-      ctx.fillText(receipt.venueName, 80, 510);
-      if (receipt.venueAddress) {
-        ctx.fillStyle = '#64748B';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(receipt.venueAddress, 80, 536);
-      }
-
-      // 4. Anfitrião / Closer Responsável
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('ANFITRIÃO / RESPONSÁVEL', 80, 595);
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 20px sans-serif';
-      const roleTxt = receipt.closerRoleTitle ? ` (${receipt.closerRoleTitle})` : '';
-      ctx.fillText(`${receipt.closerName}${roleTxt}`, 80, 625);
-
-      // 5. Convidados / PAX
-      ctx.fillStyle = '#64748B';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('LIMITE DE CONVIDADOS (PAX)', 80, 680);
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(`${receipt.pax} ${receipt.pax === 1 ? 'pessoa' : 'pessoas'}`, 80, 710);
-
-      // Card de Segurança / F5 System
-      ctx.fillStyle = '#F8FAFC';
-      ctx.fillRect(60, 760, width - 120, 140);
-      ctx.strokeStyle = '#E2E8F0';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(60, 760, width - 120, 140);
-
-      ctx.fillStyle = '#334155';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.fillText('CONFIRMAÇÃO OFICIAL DE PRESENÇA', 80, 800);
-      ctx.fillStyle = '#64748B';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Apresente este cartão ou mencione seu código na recepção da casa.', 80, 830);
-      if (receipt.createdAtStr) {
-        ctx.fillText(`Emitido em: ${receipt.createdAtStr} por ${receipt.createdByName || 'F5 System'}`, 80, 860);
-      }
-
-      // Rodapé
-      ctx.fillStyle = '#94A3B8';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('F5 System • Plataforma de Gestão Multi-Unidades', width / 2, 950);
-
-      // Converte para blob e faz o download
       const imageURL = canvas.toDataURL('image/png');
+      const cleanCode = receipt.code.replace(/[^a-zA-Z0-9_-]/g, '');
       const link = document.createElement('a');
-      link.download = `comprovante_${receipt.code.replace('#', '')}.png`;
+      link.download = `comprovante_${cleanCode || 'agendamento'}.png`;
       link.href = imageURL;
       link.click();
     } catch (err) {
       console.error('Erro ao gerar imagem:', err);
-      alert('Não foi possível gerar a imagem.');
+      alert('Não foi possível gerar a imagem idêntica do comprovante.');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  // Monta a mensagem para envio via WhatsApp
-  const handleShareWhatsApp = () => {
-    const roleTxt = receipt.closerRoleTitle ? ` (${receipt.closerRoleTitle})` : '';
-    const cleanPhone = (receipt.leadPhone || '').replace(/\D/g, '');
-    
-    const message = 
-      `*AGENDAMENTO CONFIRMADO • ${receipt.venueName.toUpperCase()}*\n\n` +
-      `Olá, *${receipt.leadName}*! Seu agendamento de *${typeLabel}* foi confirmado com sucesso!\n\n` +
-      `*Código:* ${formattedCode}\n` +
-      `*Data:* ${formattedDate}\n` +
-      `*Horário:* ${receipt.timeStr}\n` +
-      `*Local:* ${receipt.venueName}\n` +
-      (receipt.venueAddress ? `*Endereço:* ${receipt.venueAddress}\n` : '') +
-      `*Anfitrião(a):* ${receipt.closerName}${roleTxt}\n` +
-      `*Acompanhantes:* Até ${receipt.pax} pessoas\n\n` +
-      `Aguardamos você para viver uma experiência inesquecível!`;
+  // Função para compartilhar a foto anexada dentro do chat do lead no sistema (sem abrir WhatsApp Web externo)
+  const handleShareToChat = async () => {
+    if (!printableCardRef.current || isSharing) return;
+    setIsSharing(true);
+    try {
+      await new Promise(r => setTimeout(r, 100));
 
-    const encoded = encodeURIComponent(message);
-    const targetUrl = cleanPhone 
-      ? `https://wa.me/55${cleanPhone}?text=${encoded}`
-      : `https://wa.me/?text=${encoded}`;
+      // 1. Gera a imagem PNG do comprovante idêntica ao que está na tela
+      const canvas = await html2canvas(printableCardRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#FFFFFF',
+        logging: false,
+      });
 
-    window.open(targetUrl, '_blank');
+      const dataUrl = canvas.toDataURL('image/png');
+      const cleanCode = receipt.code.replace(/[^a-zA-Z0-9_-]/g, '');
+      const fileName = `comprovante_${cleanCode || 'agendamento'}.png`;
+
+      const defaultCaption = `Olá, ${receipt.leadName}! Segue o seu comprovante oficial de agendamento de ${typeLabel} (${formattedCode}) na ${receipt.venueName}.`;
+
+      const attachmentPayload = {
+        leadId: targetLeadId || '',
+        leadPhone: receipt.leadPhone,
+        leadName: receipt.leadName,
+        dataUrl,
+        fileName,
+        caption: defaultCaption,
+        timestamp: Date.now(),
+      };
+
+      // 2. Salva no sessionStorage para que o chat do WhatsApp leia de forma persistente
+      try {
+        sessionStorage.setItem('f5_pending_chat_attachment', JSON.stringify(attachmentPayload));
+      } catch (e) {
+        console.warn('Erro ao salvar no sessionStorage:', e);
+      }
+
+      // 3. Dispara evento customizado para o chat anexar a foto imediatamente
+      window.dispatchEvent(new CustomEvent('f5_attach_to_chat', { detail: attachmentPayload }));
+
+      // 4. Se tivermos o ID do lead, direciona o operador para a conversa no WhatsApp
+      if (targetLeadId) {
+        window.dispatchEvent(new CustomEvent('admin_switch_tab', { 
+          detail: { tab: 'whatsapp', leadId: targetLeadId } 
+        }));
+      }
+
+      // 5. Fecha o modal de comprovante para exibir o chat com o anexo pronto
+      onClose();
+    } catch (err) {
+      console.error('Erro ao anexar comprovante no chat:', err);
+      alert('Não foi possível anexar o comprovante no chat.');
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   return (
@@ -251,7 +222,6 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
       <div 
-        ref={cardRef}
         style={{
           background: '#FFFFFF',
           borderRadius: '20px',
@@ -265,10 +235,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
           position: 'relative',
         }}
       >
-        {/* Top Accent Stripe */}
-        <div style={{ height: '6px', background: themeColor, width: '100%' }} />
-
-        {/* Botão Fechar no Topo Direito */}
+        {/* Botão Fechar no Topo Direito (Fora da Área Imprimível) */}
         <button
           type="button"
           onClick={onClose}
@@ -287,241 +254,286 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             color: '#64748B',
             cursor: 'pointer',
             transition: 'all 0.15s ease',
+            zIndex: 10,
           }}
           title="Fechar comprovante"
         >
           <X size={18} />
         </button>
 
-        {/* Conteúdo do Cartão */}
-        <div style={{ padding: '32px 32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {/* Círculo com Ícone de Confirmação */}
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: isVisit ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: themeColor,
-            marginBottom: '16px',
-            border: `2px solid ${isVisit ? 'rgba(16,185,129,0.3)' : 'rgba(217,119,6,0.3)'}`,
-            boxShadow: `0 8px 20px ${themeColor}22`,
-          }}>
-            <Check size={32} strokeWidth={3} />
-          </div>
-
-          <h2 style={{ margin: '0 0 4px', fontSize: '1.35rem', fontWeight: 900, color: '#0F172A', textAlign: 'center' }}>
-            Agendamento de {typeLabel} Confirmado
-          </h2>
-
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: '#F1F5F9',
-            padding: '4px 12px',
-            borderRadius: '20px',
-            fontSize: '0.78rem',
-            fontWeight: 800,
-            color: '#475569',
-            marginTop: '6px',
-          }}>
-            <span>CÓDIGO:</span>
-            <span style={{ color: themeColor, letterSpacing: '0.5px' }}>{formattedCode}</span>
-          </div>
-
-          {/* Cartão de Detalhes Estilo Ticket */}
-          <div style={{
+        {/* ═══════════════════════════════════════════════════════════════════
+            ÁREA IMPRIMÍVEL DO COMPROVANTE (CAPTURA EXATA VIA HTML2CANVAS)
+            ═══════════════════════════════════════════════════════════════════ */}
+        <div 
+          ref={printableCardRef}
+          style={{
+            background: '#FFFFFF',
             width: '100%',
-            marginTop: '24px',
-            borderRadius: '16px',
-            border: '1px solid #E2E8F0',
-            background: '#F8FAFC',
-            overflow: 'hidden',
-          }}>
-            {/* Header do Local com Logo */}
+            display: 'flex',
+            flexDirection: 'column',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Top Accent Stripe */}
+          <div style={{ height: '8px', background: themeColor, width: '100%' }} />
+
+          {/* Conteúdo Central do Cartão */}
+          <div style={{ padding: '32px 32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {/* Círculo com Ícone de Confirmação */}
             <div style={{
-              padding: '14px 18px',
-              background: '#FFFFFF',
-              borderBottom: '1px solid #E2E8F0',
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: isVisit ? 'rgba(16,185,129,0.12)' : 'rgba(217,119,6,0.12)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
+              justifyContent: 'center',
+              color: themeColor,
+              marginBottom: '16px',
+              border: `2px solid ${isVisit ? 'rgba(16,185,129,0.3)' : 'rgba(217,119,6,0.3)'}`,
+              boxShadow: `0 8px 20px ${themeColor}22`,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '10px',
-                  background: '#000000',
-                  padding: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-                }}>
-                  {receipt.venueLogoUrl ? (
-                    <img src={receipt.venueLogoUrl} alt={receipt.venueName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <Building2 size={22} color="#D4AF37" />
-                  )}
-                </div>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
-                    {receipt.venueName}
-                  </h4>
-                  {receipt.venueAddress && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                      <MapPin size={11} color="#94A3B8" />
-                      <span>{receipt.venueAddress}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div style={{
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                color: themeColor,
-                background: isVisit ? 'rgba(16,185,129,0.1)' : 'rgba(217,119,6,0.1)',
-                padding: '4px 8px',
-                borderRadius: '6px',
-              }}>
-                {isVisit ? 'VISITA' : 'DEGUSTAÇÃO'}
-              </div>
+              <Check size={32} strokeWidth={3} />
             </div>
 
-            {/* Grid de Informações Chave */}
-            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* Data e Horário em Destaque */}
+            <h2 style={{ margin: '0 0 4px', fontSize: '1.35rem', fontWeight: 900, color: '#0F172A', textAlign: 'center' }}>
+              Agendamento de {typeLabel} Confirmado
+            </h2>
+
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#F1F5F9',
+              padding: '4px 12px',
+              borderRadius: '20px',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              color: '#475569',
+              marginTop: '6px',
+            }}>
+              <span>CÓDIGO:</span>
+              <span style={{ color: themeColor, letterSpacing: '0.5px' }}>{formattedCode}</span>
+            </div>
+
+            {/* Cartão de Detalhes Estilo Ticket */}
+            <div style={{
+              width: '100%',
+              marginTop: '24px',
+              borderRadius: '16px',
+              border: '1px solid #E2E8F0',
+              background: '#F8FAFC',
+              overflow: 'hidden',
+            }}>
+              {/* Header do Local com Logo */}
               <div style={{
+                padding: '14px 18px',
+                background: '#FFFFFF',
+                borderBottom: '1px solid #E2E8F0',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '12px',
-                padding: '10px 14px',
-                borderRadius: '10px',
-                background: '#FFFFFF',
-                border: '1px solid #E2E8F0',
               }}>
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '8px',
-                  background: `${themeColor}14`,
-                  color: themeColor,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Calendar size={20} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                    Data & Horário Confirmado
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '10px',
+                    background: '#000000',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                  }}>
+                    {venueLogoDataUrl || receipt.venueLogoUrl ? (
+                      <img 
+                        src={venueLogoDataUrl || receipt.venueLogoUrl} 
+                        crossOrigin="anonymous" 
+                        alt={receipt.venueName} 
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                      />
+                    ) : (
+                      <Building2 size={22} color="#D4AF37" />
+                    )}
                   </div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
-                    {receipt.timeStr} • <span style={{ textTransform: 'capitalize' }}>{formattedDate}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Informações do Cliente e Acompanhantes */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
-                    CONTRATANTE / LEAD
-                  </span>
-                  <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0F172A', marginTop: '2px' }}>
-                    {receipt.leadName}
-                  </strong>
-                  {receipt.leadPhone && (
-                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{receipt.leadPhone}</span>
-                  )}
-                </div>
-
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
-                  <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
-                    ACOMPANHANTES (PAX)
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                    <Users size={16} color={themeColor} />
-                    <strong style={{ fontSize: '0.85rem', color: '#0F172A' }}>
-                      Até {receipt.pax} {receipt.pax === 1 ? 'pessoa' : 'pessoas'}
-                    </strong>
-                  </div>
-                  <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>Limite liberado</span>
-                </div>
-              </div>
-
-              {/* Closer / Anfitrião com Foto e Cargo entre Parênteses */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '10px 14px',
-                borderRadius: '10px',
-                background: '#FFFFFF',
-                border: '1px solid #E2E8F0',
-              }}>
-                <div style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '50%',
-                  background: '#E2E8F0',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#64748B',
-                  flexShrink: 0,
-                  border: '2px solid #FFFFFF',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                }}>
-                  {receipt.closerPhotoUrl ? (
-                    <img src={receipt.closerPhotoUrl} alt={receipt.closerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <User size={22} />
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                    Anfitrião da Recepção
-                  </div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A', marginTop: '1px' }}>
-                    {receipt.closerName} {receipt.closerRoleTitle && (
-                      <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B' }}>
-                        ({receipt.closerRoleTitle})
-                      </span>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
+                      {receipt.venueName}
+                    </h4>
+                    {receipt.venueAddress && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                        <MapPin size={11} color="#94A3B8" />
+                        <span>{receipt.venueAddress}</span>
+                      </div>
                     )}
                   </div>
                 </div>
+
+                <div style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  color: themeColor,
+                  background: isVisit ? 'rgba(16,185,129,0.1)' : 'rgba(217,119,6,0.1)',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                }}>
+                  {isVisit ? 'VISITA' : 'DEGUSTAÇÃO'}
+                </div>
+              </div>
+
+              {/* Grid de Informações Chave */}
+              <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Data e Horário em Destaque */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  background: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: `${themeColor}14`,
+                    color: themeColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <Calendar size={20} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.70rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                      Data & Horário Confirmado
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
+                      {receipt.timeStr} • <span style={{ textTransform: 'capitalize' }}>{formattedDate}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informações do Cliente e Acompanhantes */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
+                      CONTRATANTE / LEAD
+                    </span>
+                    <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0F172A', marginTop: '2px' }}>
+                      {receipt.leadName}
+                    </strong>
+                    {receipt.leadPhone && (
+                      <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{receipt.leadPhone}</span>
+                    )}
+                  </div>
+
+                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                    <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
+                      ACOMPANHANTES (PAX)
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                      <Users size={16} color={themeColor} />
+                      <strong style={{ fontSize: '0.85rem', color: '#0F172A' }}>
+                        Até {receipt.pax} {receipt.pax === 1 ? 'pessoa' : 'pessoas'}
+                      </strong>
+                    </div>
+                    <span style={{ fontSize: '0.70rem', color: '#94A3B8' }}>Limite liberado</span>
+                  </div>
+                </div>
+
+                {/* Closer / Anfitrião com Foto Real e Cargo entre Parênteses */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  background: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                }}>
+                  <div style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '50%',
+                    background: '#E2E8F0',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748B',
+                    flexShrink: 0,
+                    border: '2px solid #FFFFFF',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                  }}>
+                    {closerPhotoDataUrl || receipt.closerPhotoUrl ? (
+                      <img 
+                        src={closerPhotoDataUrl || receipt.closerPhotoUrl} 
+                        crossOrigin="anonymous" 
+                        alt={receipt.closerName} 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                      />
+                    ) : (
+                      <User size={24} />
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                      Anfitrião da Recepção
+                    </div>
+                    <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A', marginTop: '1px' }}>
+                      {receipt.closerName} {receipt.closerRoleTitle && (
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B' }}>
+                          ({receipt.closerRoleTitle})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rodapé Interno com Emissão */}
+              <div style={{
+                padding: '10px 18px',
+                borderTop: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '0.70rem',
+                color: '#94A3B8',
+              }}>
+                <span>Agendado por: {receipt.createdByName || 'Equipe Comercial'}</span>
+                <span>{receipt.createdAtStr ? `Criado em: ${receipt.createdAtStr}` : 'F5 System Oficial'}</span>
               </div>
             </div>
 
-            {/* Rodapé Interno com Emissão */}
+            {/* Selo Oficial de Autenticidade F5 System no Comprovante */}
             <div style={{
-              padding: '10px 18px',
-              borderTop: '1px solid #E2E8F0',
+              marginTop: '16px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '0.70rem',
+              gap: '6px',
+              fontSize: '0.68rem',
+              fontWeight: 700,
               color: '#94A3B8',
+              letterSpacing: '0.3px',
             }}>
-              <span>Agendado por: {receipt.createdByName || 'Equipe Comercial'}</span>
-              <span>{receipt.createdAtStr ? `Criado em: ${receipt.createdAtStr}` : 'F5 System Oficial'}</span>
+              <ShieldCheck size={14} color={themeColor} />
+              <span>Documento Oficial de Confirmação • F5 System</span>
             </div>
           </div>
         </div>
 
-        {/* Barra de Ações Inferior em Linha Única */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            BARRA DE AÇÕES INFERIOR EM LINHA ÚNICA
+            ═══════════════════════════════════════════════════════════════════ */}
         <div style={{
           padding: '16px 24px',
           background: '#F8FAFC',
@@ -549,11 +561,11 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end' }}>
-            {/* Botão Baixar Imagem PNG */}
+            {/* Botão Baixar Imagem PNG Idêntica */}
             <button
               type="button"
               onClick={handleDownloadImage}
-              disabled={isDownloading}
+              disabled={isDownloading || isSharing}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -566,19 +578,21 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 color: '#0284C7',
                 fontSize: '0.82rem',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: (isDownloading || isSharing) ? 'not-allowed' : 'pointer',
+                opacity: (isDownloading || isSharing) ? 0.7 : 1,
                 transition: 'all 0.15s ease',
               }}
-              title="Baixar comprovante oficial em imagem PNG idêntica"
+              title="Baixar comprovante oficial em imagem PNG exatamente igual ao que vê na tela"
             >
-              <Download size={16} />
+              {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               <span>{isDownloading ? 'Gerando...' : 'Baixar (PNG)'}</span>
             </button>
 
-            {/* Botão Compartilhar */}
+            {/* Botão Compartilhar: Envia para o Chat dentro do Sistema */}
             <button
               type="button"
-              onClick={handleShareWhatsApp}
+              onClick={handleShareToChat}
+              disabled={isDownloading || isSharing}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -591,14 +605,15 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 color: '#FFFFFF',
                 fontSize: '0.82rem',
                 fontWeight: 800,
-                cursor: 'pointer',
+                cursor: (isDownloading || isSharing) ? 'not-allowed' : 'pointer',
+                opacity: (isDownloading || isSharing) ? 0.7 : 1,
                 boxShadow: '0 4px 14px rgba(16,185,129,0.3)',
                 transition: 'all 0.15s ease',
               }}
-              title="Enviar mensagem oficial de confirmação no WhatsApp"
+              title="Anexar a foto do comprovante no chat para enviar ao lead dentro do sistema"
             >
-              <Share2 size={16} />
-              <span>Compartilhar</span>
+              {isSharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
+              <span>{isSharing ? 'Anexando no Chat...' : 'Compartilhar'}</span>
             </button>
           </div>
         </div>
