@@ -48,7 +48,7 @@ import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage'
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
-import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb } from '../services/leadService';
+import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb, formatLeadFromDb } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
@@ -1081,7 +1081,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const results = await Promise.allSettled([
           venueService.getAll(),             // 0
           funnelService.getAll(),            // 1
-          leadService.getAll(),              // 2
+          leadService.getAll({ includeActivities: false }), // 2 - Levíssimo (não baixa 5.000 mensagens de WhatsApp)
           debutanteService.getAll(),         // 3
           taskService.getAll(),              // 4
           collaboratorService.getAll(),      // 5
@@ -1485,9 +1485,59 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updated = await funnelService.getAll();
         if (isMounted && updated.length > 0) setFunnels(updated);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, async (payload: any) => {
+        if (!isMounted) return;
+        const eventType = payload?.eventType;
+        const newRow = payload?.new;
+        const oldRow = payload?.old;
+
+        // BLINDAGEM SUPREMA DE EGRESS: Atualização cirúrgica em memória (evita download de ~3.5MB de dados)
+        if (eventType === 'UPDATE' && newRow?.id) {
+          if (deletedLeadIdsRef.current.has(newRow.id)) return;
+          const freshLead = formatLeadFromDb(newRow);
+          setLeads(prev => {
+            const updated = prev.map(currentLead => {
+              if (currentLead.id !== newRow.id) return currentLead;
+              return {
+                ...freshLead,
+                activities: currentLead.activities || [],
+                tasks: currentLead.tasks || [],
+                participants: currentLead.participants || [],
+              };
+            });
+            leadsRef.current = updated;
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+            return updated;
+          });
+          return;
+        }
+
+        if (eventType === 'DELETE' && oldRow?.id) {
+          setLeads(prev => {
+            const updated = prev.filter(l => l.id !== oldRow.id);
+            leadsRef.current = updated;
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+            return updated;
+          });
+          return;
+        }
+
+        if (eventType === 'INSERT' && newRow?.id) {
+          if (deletedLeadIdsRef.current.has(newRow.id)) return;
+          const freshLead = formatLeadFromDb(newRow);
+          setLeads(prev => {
+            if (prev.some(l => l.id === freshLead.id)) return prev;
+            const updated = [freshLead, ...prev];
+            leadsRef.current = updated;
+            safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+            return updated;
+          });
+          return;
+        }
+
+        // Fallback defensivo com payload leve caso o evento venha sem dados completos
         triggerDebouncedSync(async () => {
-          const updated = await leadService.getAll();
+          const updated = await leadService.getAll({ includeActivities: false });
           if (isMounted) {
             const filtered = updated.filter(l => !deletedLeadIdsRef.current.has(l.id));
             const merged = filtered.map(freshLead => {
@@ -1495,20 +1545,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (!currentLead || !currentLead.activities || currentLead.activities.length === 0) {
                 return freshLead;
               }
-              if (!freshLead.activities || freshLead.activities.length === 0) {
-                return { ...freshLead, activities: currentLead.activities };
-              }
-              const freshIds = new Set(freshLead.activities.map(a => a.id));
-              const missingActs = currentLead.activities.filter(a => !freshIds.has(a.id));
-              if (missingActs.length > 0) {
-                return {
-                  ...freshLead,
-                  activities: [...freshLead.activities, ...missingActs].sort(
-                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                  ),
-                };
-              }
-              return freshLead;
+              return { ...freshLead, activities: currentLead.activities };
             });
             leadsRef.current = merged;
             setLeads(merged);
@@ -1529,7 +1566,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         triggerDebouncedSync(async () => {
           const [updatedDebs, updatedLeads] = await Promise.all([
             debutanteService.getAll(),
-            leadService.getAll(),
+            leadService.getAll({ includeActivities: false }),
           ]);
           if (isMounted) {
             const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
@@ -1642,7 +1679,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lead_participants' }, async () => {
         triggerDebouncedSync(async () => {
-          const updated = await leadService.getAll();
+          const updated = await leadService.getAll({ includeActivities: false });
           if (isMounted && updated.length > 0) setLeads(updated);
         });
       })
@@ -1760,17 +1797,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
     window.addEventListener('bonomo_feature_flag_changed', handleLocalFlagChanged);
 
-    // Sincronização sob demanda ao retornar à aba (o Realtime WebSocket cuida das alterações em tempo real)
+    // Sincronização sob demanda ao retornar à aba protegida por Throttling estrito de 5 minutos
+    let lastFocusSyncTime = Date.now();
     const handleWindowFocus = () => {
+      const now = Date.now();
+      // Se o usuário alternou de aba há menos de 5 minutos, NÃO faz download (WebSocket Realtime já cuida de tudo)
+      if (now - lastFocusSyncTime < 5 * 60 * 1000) return;
       if (document.visibilityState === 'visible' && isMounted) {
+        lastFocusSyncTime = now;
         Promise.all([
-          leadService.getAll(),
+          leadService.getAll({ includeActivities: false }),
           debutanteService.getAll(),
           clientService.getAll(),
           supportService.getAll(),
         ]).then(([updatedLeads, updatedDebs, updatedClients, updatedTickets]) => {
           if (isMounted) {
-            if (updatedLeads.length > 0) setLeads(updatedLeads);
+            if (updatedLeads.length > 0) {
+              setLeads(prev => {
+                const actsMap = new Map(prev.map(l => [l.id, l.activities || []]));
+                const merged = updatedLeads.map(l => ({
+                  ...l,
+                  activities: (l.activities && l.activities.length > 0) ? l.activities : (actsMap.get(l.id) || []),
+                }));
+                leadsRef.current = merged;
+                safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(merged));
+                return merged;
+              });
+            }
             if (updatedDebs.length > 0) setDebutantes(updatedDebs);
             if (updatedClients && updatedClients.length > 0) {
               setClients(updatedClients);

@@ -311,7 +311,7 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
 }
 
 export const leadService = {
-  async getAll(options?: { messageDays?: number }): Promise<Lead[]> {
+  async getAll(options?: { messageDays?: number; includeActivities?: boolean }): Promise<Lead[]> {
     if (!isSupabaseConfigured) return [];
     try {
       const { data: leadsData, error: leadsError } = await supabase
@@ -324,42 +324,45 @@ export const leadService = {
         return [];
       }
 
-      // Limita o carregamento inicial de mensagens do WhatsApp aos últimos 3 dias (reduz brutalmente payload e memória)
-      const messageDays = options?.messageDays ?? 3;
-      const cutoffIso = new Date(Date.now() - messageDays * 24 * 60 * 60 * 1000).toISOString();
-
-      // Paginação completa de atividades dos últimos 3 dias (ou registros internos de CRM de qualquer data)
+      // Por padrão NÃO baixa todas as mensagens de WhatsApp de uma vez (economiza até 98% de Egress no Supabase).
+      // As mensagens de cada conversa são carregadas sob demanda via loadLeadConversation() ao abrir o chat.
       const activitiesData: any[] = [];
-      let actFrom = 0;
-      const actStep = 1000;
-      while (true) {
-        let query = supabase
-          .from('lead_activities')
-          .select('*')
-          .order('timestamp', { ascending: true })
-          .range(actFrom, actFrom + actStep - 1);
+      const includeActivities = options?.includeActivities === true;
 
-        if (messageDays > 0) {
-          query = query.or(`timestamp.gte.${cutoffIso},type.not.in.(contact,whatsapp),type.is.null`);
-        }
-
-        let { data: pageData, error: pageErr } = await query;
-        if (pageErr && messageDays > 0) {
-          // Fallback defensivo caso a sintaxe .or() encontre restrição no driver
-          const fallback = await supabase
+      if (includeActivities) {
+        const messageDays = options?.messageDays ?? 3;
+        const cutoffIso = new Date(Date.now() - messageDays * 24 * 60 * 60 * 1000).toISOString();
+        let actFrom = 0;
+        const actStep = 1000;
+        while (true) {
+          let query = supabase
             .from('lead_activities')
             .select('*')
-            .gte('timestamp', cutoffIso)
             .order('timestamp', { ascending: true })
             .range(actFrom, actFrom + actStep - 1);
-          pageData = fallback.data;
-          pageErr = fallback.error;
-        }
 
-        if (pageErr || !pageData || pageData.length === 0) break;
-        activitiesData.push(...pageData);
-        if (pageData.length < actStep) break;
-        actFrom += actStep;
+          if (messageDays > 0) {
+            query = query.or(`timestamp.gte.${cutoffIso},type.not.in.(contact,whatsapp),type.is.null`);
+          }
+
+          let { data: pageData, error: pageErr } = await query;
+          if (pageErr && messageDays > 0) {
+            // Fallback defensivo caso a sintaxe .or() encontre restrição no driver
+            const fallback = await supabase
+              .from('lead_activities')
+              .select('*')
+              .gte('timestamp', cutoffIso)
+              .order('timestamp', { ascending: true })
+              .range(actFrom, actFrom + actStep - 1);
+            pageData = fallback.data;
+            pageErr = fallback.error;
+          }
+
+          if (pageErr || !pageData || pageData.length === 0) break;
+          activitiesData.push(...pageData);
+          if (pageData.length < actStep) break;
+          actFrom += actStep;
+        }
       }
 
       // Paginação completa de participantes
@@ -399,6 +402,23 @@ export const leadService = {
     } catch (err) {
       console.error('Falha em leadService.getAll:', err);
       return [];
+    }
+  },
+
+  async getById(id: string): Promise<Lead | null> {
+    if (!isSupabaseConfigured || !id) return null;
+    try {
+      let query = supabase.from('leads').select('*');
+      if (isUuid(id)) {
+        query = query.eq('id', id);
+      } else {
+        query = query.eq('code', id);
+      }
+      const { data, error } = await query.maybeSingle();
+      if (error || !data) return null;
+      return formatLeadFromDb(data);
+    } catch {
+      return null;
     }
   },
 
