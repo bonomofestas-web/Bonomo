@@ -8,12 +8,14 @@ import {
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
-  ArrowRightLeft, GitBranch, UserX, AlertCircle, Repeat
+  ArrowRightLeft, GitBranch, UserX, Repeat
 } from 'lucide-react';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
+import { AdminAgendaUnavailableModal } from './AdminAgendaUnavailableModal';
+import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
 import { AdminAppointmentReceiptModal } from './AdminAppointmentReceiptModal';
 import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
@@ -133,6 +135,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     reassignLeadFunnel,
     closeLeadSaleWithValue,
     venueAgendaConfigs,
+    appointments,
   } = useAdminState();
 
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
@@ -207,13 +210,40 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     return venueAgendaConfigs.find(c => c.venueId === lead.venueId);
   }, [venueAgendaConfigs, lead.venueId]);
 
-  const isVisitConfigured = useMemo(() => {
-    return agendaAvailabilityService.isCommitmentTypeConfigured(leadVenueConfig, 'visit');
-  }, [leadVenueConfig]);
+  // Modal de Aviso: Agenda sem horários / Não configurada
+  const [unavailableModal, setUnavailableModal] = useState<{
+    isOpen: boolean;
+    type: 'visit' | 'tasting';
+  } | null>(null);
 
-  const isTastingConfigured = useMemo(() => {
-    return agendaAvailabilityService.isCommitmentTypeConfigured(leadVenueConfig, 'tasting');
-  }, [leadVenueConfig]);
+  // Modal de Planejamento de Agenda aberto direto do pop-up
+  const [planningModal, setPlanningModal] = useState<{
+    isOpen: boolean;
+    venueId?: string;
+    type?: 'visit' | 'tasting';
+  } | null>(null);
+
+  // Manipulador prévio para requisição de agendamento/remarcação (Anti-frustração)
+  const handleRequestSchedule = useCallback((reqType: 'visit' | 'tasting') => {
+    const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
+      leadVenueConfig,
+      reqType,
+      appointments
+    );
+
+    if (!availabilityCheck.available) {
+      // NÃO abre a tela do PAX, dispara imediatamente o pop-up com a mensagem padronizada
+      setUnavailableModal({
+        isOpen: true,
+        type: reqType,
+      });
+      return;
+    }
+
+    // Se houver horários, abre a tela do modal normalmente
+    setScheduleCommitmentType(reqType);
+  }, [leadVenueConfig, appointments]);
+
   const [completingCommitmentType, setCompletingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completionFeedback, setCompletionFeedback] = useState<string>('');
   const [cancellingCommitmentType, setCancellingCommitmentType] = useState<CommercialCommitmentType | null>(null);
@@ -505,7 +535,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     const scheduleTrigger = targetStageConfig?.triggers?.find(t => t.type === 'open_schedule');
     if (scheduleTrigger || targetStageConfig?.isMeetingStage) {
       const initialType: CommercialCommitmentType = scheduleTrigger?.scheduleType === 'tasting' ? 'tasting' : 'visit';
-      setScheduleCommitmentType(initialType);
+      handleRequestSchedule(initialType);
     }
 
     setIsStageDropdownOpen(false);
@@ -4667,7 +4697,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setScheduleCommitmentType('visit');
+                            handleRequestSchedule('visit');
                           }}
                           style={{
                             padding: '5px 12px',
@@ -4692,88 +4722,55 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
                     {!effectiveReadOnly && (lead.visitCommitment.status === 'no_show' || lead.visitCommitment.status === 'cancelled') && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        {isVisitConfigured ? (
-                          <button
-                            type="button"
-                            onClick={() => setScheduleCommitmentType('visit')}
-                            style={{
-                              padding: '5px 12px',
-                              borderRadius: '6px',
-                              background: 'rgba(56, 189, 248, 0.12)',
-                              border: '1px solid rgba(56, 189, 248, 0.4)',
-                              color: '#38BDF8',
-                              fontSize: '0.70rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Plus size={11} /> Reagendar Visita
-                          </button>
-                        ) : (
-                          <span
-                            title="A agenda de visitas comerciais não está configurada para esta casa de festas."
-                            style={{ fontSize: '0.70rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.75, cursor: 'not-allowed' }}
-                          >
-                            Reagendamento indisponível (Casa não configurada)
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRequestSchedule('visit')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38BDF8',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Visita
+                        </button>
                       </div>
                     )}
                   </div>
                 ) : (
                   !effectiveReadOnly && (
-                    isVisitConfigured ? (
-                      <button
-                        type="button"
-                        onClick={() => setScheduleCommitmentType('visit')}
-                        style={{
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px dashed rgba(56, 189, 248, 0.4)',
-                          color: '#38BDF8',
-                          borderRadius: '6px',
-                          padding: '6px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          width: 'fit-content',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
-                      >
-                        <Plus size={12} />
-                        <span>Agendar Visita</span>
-                      </button>
-                    ) : (
-                      <div
-                        title="A agenda de visitas comerciais não está configurada para esta casa de festas."
-                        style={{
-                          background: 'rgba(100, 116, 139, 0.08)',
-                          border: '1px dashed rgba(100, 116, 139, 0.25)',
-                          color: 'var(--adm-text-muted)',
-                          borderRadius: '6px',
-                          padding: '6px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          width: 'fit-content',
-                          cursor: 'not-allowed',
-                          opacity: 0.75,
-                        }}
-                      >
-                        <AlertCircle size={12} />
-                        <span>Visita Indisponível (Não configurada)</span>
-                      </div>
-                    )
+                    <button
+                      type="button"
+                      onClick={() => handleRequestSchedule('visit')}
+                      style={{
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        border: '1px dashed rgba(56, 189, 248, 0.4)',
+                        color: '#38BDF8',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        width: 'fit-content',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; }}
+                    >
+                      <Plus size={12} />
+                      <span>Agendar Visita</span>
+                    </button>
                   )
                 )}
               </div>
@@ -4882,7 +4879,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setScheduleCommitmentType('tasting');
+                            handleRequestSchedule('tasting');
                           }}
                           style={{
                             padding: '5px 12px',
@@ -4907,88 +4904,55 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
                     {!effectiveReadOnly && (lead.tastingCommitment.status === 'no_show' || lead.tastingCommitment.status === 'cancelled') && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid var(--adm-border)' }}>
-                        {isTastingConfigured ? (
-                          <button
-                            type="button"
-                            onClick={() => setScheduleCommitmentType('tasting')}
-                            style={{
-                              padding: '5px 12px',
-                              borderRadius: '6px',
-                              background: 'rgba(212, 175, 55, 0.12)',
-                              border: '1px solid rgba(212, 175, 55, 0.4)',
-                              color: '#D4AF37',
-                              fontSize: '0.70rem',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Plus size={11} /> Reagendar Degustação
-                          </button>
-                        ) : (
-                          <span
-                            title="A agenda de degustações gastronômicas não está configurada para esta casa de festas."
-                            style={{ fontSize: '0.70rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.75, cursor: 'not-allowed' }}
-                          >
-                            Reagendamento indisponível (Casa não configurada)
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRequestSchedule('tasting')}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            border: '1px solid rgba(212, 175, 55, 0.4)',
+                            color: '#D4AF37',
+                            fontSize: '0.70rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Plus size={11} /> Reagendar Degustação
+                        </button>
                       </div>
                     )}
                   </div>
                 ) : (
                   !effectiveReadOnly && (
-                    isTastingConfigured ? (
-                      <button
-                        type="button"
-                        onClick={() => setScheduleCommitmentType('tasting')}
-                        style={{
-                          background: 'rgba(212, 175, 55, 0.1)',
-                          border: '1px dashed rgba(212, 175, 55, 0.4)',
-                          color: '#D4AF37',
-                          borderRadius: '6px',
-                          padding: '6px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          width: 'fit-content',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
-                      >
-                        <Plus size={12} />
-                        <span>Agendar Degustação</span>
-                      </button>
-                    ) : (
-                      <div
-                        title="A agenda de degustações gastronômicas não está configurada para esta casa de festas."
-                        style={{
-                          background: 'rgba(100, 116, 139, 0.08)',
-                          border: '1px dashed rgba(100, 116, 139, 0.25)',
-                          color: 'var(--adm-text-muted)',
-                          borderRadius: '6px',
-                          padding: '6px 10px',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          width: 'fit-content',
-                          cursor: 'not-allowed',
-                          opacity: 0.75,
-                        }}
-                      >
-                        <AlertCircle size={12} />
-                        <span>Degustação Indisponível (Não configurada)</span>
-                      </div>
-                    )
+                    <button
+                      type="button"
+                      onClick={() => handleRequestSchedule('tasting')}
+                      style={{
+                        background: 'rgba(212, 175, 55, 0.1)',
+                        border: '1px dashed rgba(212, 175, 55, 0.4)',
+                        color: '#D4AF37',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        width: 'fit-content',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(212, 175, 55, 0.1)'; }}
+                    >
+                      <Plus size={12} />
+                      <span>Agendar Degustação</span>
+                    </button>
                   )
                 )}
               </div>
@@ -5941,6 +5905,30 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           lead={lead}
           initialType={scheduleCommitmentType}
           onClose={() => setScheduleCommitmentType(null)}
+        />
+      )}
+
+      {/* ── MODAL DE AVISO: AGENDA SEM HORÁRIOS / NÃO CONFIGURADA ── */}
+      {unavailableModal?.isOpen && (
+        <AdminAgendaUnavailableModal
+          isOpen={unavailableModal.isOpen}
+          type={unavailableModal.type}
+          venueId={lead.venueId}
+          venueName={venues.find(v => v.id === lead.venueId)?.name}
+          onClose={() => setUnavailableModal(null)}
+          onOpenPlanning={(vId, typ) => {
+            setUnavailableModal(null);
+            setPlanningModal({ isOpen: true, venueId: vId || lead.venueId, type: typ });
+          }}
+        />
+      )}
+
+      {/* ── MODAL DE PLANEJAMENTO DE AGENDA (CASO ABRA PELO ATALHO DO AVISO) ── */}
+      {planningModal?.isOpen && (
+        <AdminAgendaAvailabilityModal
+          venueId={planningModal.venueId}
+          initialType={planningModal.type}
+          onClose={() => setPlanningModal(null)}
         />
       )}
 

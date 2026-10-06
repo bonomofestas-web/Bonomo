@@ -120,17 +120,39 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return currentLead?.closerId || currentUser?.id || '';
   });
   const [sdrId, setSdrId] = useState<string>(() => {
-    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || '';
+    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
   });
   const [reminder1, setReminder1] = useState<string>('24h');
   const [reminder2, setReminder2] = useState<string>('2h');
   const [notes, setNotes] = useState<string>('');
 
+  // ── ESTADOS DE CONFIGURAÇÃO DE FOLLOW-UP COMERCIAL ──
+  const [createFollowUpTask, setCreateFollowUpTask] = useState<boolean>(true);
+  const [followUpTiming, setFollowUpTiming] = useState<'1d' | '2d' | 'same_day' | 'custom'>('1d');
+  const [customFollowUpDate, setCustomFollowUpDate] = useState<string>('');
+  const [followUpTime, setFollowUpTime] = useState<string>('10:00');
+  const [followUpResponsibleId, setFollowUpResponsibleId] = useState<string>(() => {
+    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
+  });
+  const [followUpNotes, setFollowUpNotes] = useState<string>('');
+
+  // Sincroniza Closer e SDR automaticamente a partir do Lead
   useEffect(() => {
+    if (currentLead?.closerId) {
+      setResponsibleId(currentLead.closerId);
+    }
     if (currentLead?.sdrId) {
       setSdrId(currentLead.sdrId);
+      setFollowUpResponsibleId(currentLead.sdrId);
     }
-  }, [currentLead?.sdrId]);
+  }, [currentLead?.closerId, currentLead?.sdrId]);
+
+  // Se o SDR mudar e o responsável pelo follow-up ainda não foi alterado manualmente, sincroniza
+  useEffect(() => {
+    if (sdrId) {
+      setFollowUpResponsibleId(sdrId);
+    }
+  }, [sdrId]);
 
   const isReminderOptionRetroactive = useCallback((hoursBefore: number) => {
     if (!selectedDate || !selectedTime || hoursBefore === 0) return false;
@@ -138,6 +160,24 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     if (isNaN(aptTime)) return false;
     return aptTime - (hoursBefore * 3600 * 1000) < Date.now();
   }, [selectedDate, selectedTime]);
+
+  // Helper para calcular a data efetiva da tarefa de follow-up
+  const calculateFollowUpDate = useCallback(() => {
+    if (!selectedDate) return new Date().toISOString().split('T')[0];
+    if (followUpTiming === 'custom' && customFollowUpDate) {
+      return customFollowUpDate;
+    }
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    if (followUpTiming === '1d') {
+      dateObj.setDate(dateObj.getDate() - 1);
+    } else if (followUpTiming === '2d') {
+      dateObj.setDate(dateObj.getDate() - 2);
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const target = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    return target < today ? today : target;
+  }, [selectedDate, followUpTiming, customFollowUpDate]);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -300,7 +340,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const assignedUser = collaborators.find(c => c.id === responsibleId);
       const sdrUser = collaborators.find(c => c.id === sdrId);
 
-      // Agenda no Lead / Supabase
+      // Agenda no Lead / Supabase (atualiza Closer e SDR no lead automaticamente)
       if (scheduleCommercialCommitment) {
         await scheduleCommercialCommitment(currentLead.id, type, {
           date: selectedDate,
@@ -317,13 +357,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         } as any);
       }
 
-      // Cria a tarefa no mural de agendamentos
+      // Cria a tarefa no mural de agendamentos (db_visits_tastings)
       const titlePrefix = type === 'visit' ? 'Visita Comercial' : 'Degustação Gastronômica';
       const taskTitle = `${titlePrefix}: ${currentLead.name} (${targetVenue?.name || 'Unidade'})`;
 
       await addTask({
         title: taskTitle,
-        description: `Agendamento confirmado (${receiptCode})\nLocal: ${targetVenue?.name}\nHorário: ${selectedTime}\nAcompanhantes: Até ${pax} pessoas\nResponsável: ${assignedUser?.name || 'Equipe'}\nObs: ${notes || 'Sem observações.'}`,
+        description: `Agendamento confirmado (${receiptCode})\nLocal: ${targetVenue?.name}\nHorário: ${selectedTime}\nAcompanhantes: Até ${pax} pessoas\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nSDR: ${sdrUser?.name || 'Equipe'}\nObs: ${notes || 'Sem observações.'}`,
         dueDate: selectedDate,
         dueTime: selectedTime,
         venueId: targetVenueId,
@@ -333,7 +373,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         leadName: currentLead.name,
         createdById: currentUser?.id || 'admin',
         createdByName: currentUser?.name || 'Administrador',
-        type: 'meeting', customType: type === 'visit' ? 'Visita' : 'Degustação',
+        type: 'meeting', 
+        customType: type === 'visit' ? 'Visita' : 'Degustação',
         status: 'todo',
         priority: 'high',
         
@@ -348,8 +389,46 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           receiptCode,
           venueName: targetVenue?.name,
           venueAddress: targetVenue?.address,
+          closerId: responsibleId,
+          closerName: assignedUser?.name,
+          sdrId,
+          sdrName: sdrUser?.name,
         },
       });
+
+      // Se configurado, cria a tarefa de Follow-up prévio na esteira vinculada ao SDR
+      if (createFollowUpTask) {
+        const targetFollowUpDate = calculateFollowUpDate();
+        const followUpAssignee = collaborators.find(c => c.id === followUpResponsibleId) || sdrUser || currentUser;
+        const followUpTitle = `Follow-up: Confirmar ${type === 'visit' ? 'Visita Comercial' : 'Degustação'} • ${currentLead.name}`;
+
+        await addTask({
+          title: followUpTitle,
+          description: `Follow-up prévio de alinhamento e confirmação de presença com a família de ${currentLead.name}.\nCompromisso marcado para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer da Recepção: ${assignedUser?.name || 'Equipe'}\nSDR Responsável: ${followUpAssignee?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Entrar em contato para confirmar a presença dos convidados e alinhar detalhes preliminares da reunião.'}`,
+          dueDate: targetFollowUpDate,
+          dueTime: followUpTime,
+          venueId: targetVenueId,
+          assignedToIds: followUpResponsibleId ? [followUpResponsibleId] : (sdrId ? [sdrId] : [currentUser?.id || 'admin']),
+          databaseId: 'db_follow_ups',
+          leadId: currentLead.id,
+          leadName: currentLead.name,
+          createdById: currentUser?.id || 'admin',
+          createdByName: currentUser?.name || 'Administrador',
+          type: 'call',
+          customType: 'Follow-up',
+          status: 'todo',
+          priority: 'high',
+          customProperties: {
+            isFollowUp: true,
+            commitmentType: type,
+            commitmentDate: selectedDate,
+            commitmentTime: selectedTime,
+            closerName: assignedUser?.name,
+            sdrName: sdrUser?.name,
+            leadPhone: currentLead.phone,
+          },
+        });
+      }
 
       // Sincroniza cache de appointments para refletir a nova vaga ocupada
       await refreshAppointments();
@@ -918,15 +997,17 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   gap: '12px',
                 }}>
                   <AlertCircle size={38} color="#EF4444" />
-                  <div style={{ fontSize: '1rem', fontWeight: 800, color: '#991B1B' }}>
-                    {type === 'visit' ? 'Visitas Comerciais' : 'Degustações'} Não Configuradas
+                  <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#991B1B' }}>
+                    Agendamento Indisponível
                   </div>
-                  <div style={{ fontSize: '0.84rem', color: '#B91C1C', maxWidth: '480px', lineHeight: 1.5 }}>
-                    A unidade <strong>"{targetVenue?.name || 'Casa selecionada'}"</strong> não possui horários e dias de {type === 'visit' ? 'visita comercial' : 'degustação'} configurados em sua agenda. Por este motivo, o agendamento está indisponível.
+                  <div style={{ fontSize: '0.88rem', color: '#B91C1C', maxWidth: '480px', lineHeight: 1.5, fontWeight: 700 }}>
+                    Não é possível fazer agendamento pois não há datas e nem horários disponíveis. Acesse a central de planejamento ou fale com seu gestor.
                   </div>
-                  <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '4px' }}>
-                    Acesse o menu de <strong>Disponibilidade da Agenda</strong> desta casa para cadastrar a grade de atendimento.
-                  </div>
+                  {targetVenue?.name && (
+                    <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '2px' }}>
+                      Unidade: <strong>{targetVenue.name}</strong>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -1168,14 +1249,20 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 </div>
               </div>
 
-              {/* Responsável / Anfitrião com CARGO ENTRE PARÊNTESES */}
+              {/* Responsável / Anfitrião / Closer da Recepção */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                  ANFITRIÃO / RESPONSÁVEL DA RECEPÇÃO *
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                    ANFITRIÃO / CLOSER DA RECEPÇÃO *
+                  </label>
+                  <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                    Define automaticamente o Closer deste lead ao agendar
+                  </span>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
                   {collaborators.map(c => {
                     const isSelected = responsibleId === c.id;
+                    const isLeadCloser = currentLead?.closerId === c.id;
                     const roleTitle = (c as any)?.roleTitle || c.role || 'Anfitrião';
                     return (
                       <div
@@ -1184,7 +1271,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         style={{
                           padding: '10px 12px',
                           borderRadius: '10px',
-                          border: '1px solid',
+                          border: '1.5px solid',
                           borderColor: isSelected ? themeColor : '#CBD5E1',
                           background: isSelected ? `${themeColor}0D` : '#FFFFFF',
                           display: 'flex',
@@ -1192,6 +1279,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           gap: '10px',
                           cursor: 'pointer',
                           boxShadow: isSelected ? `0 2px 8px ${themeColor}22` : 'none',
+                          transition: 'all 0.15s ease',
                         }}
                       >
                         <div style={{
@@ -1211,9 +1299,16 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                             <User size={18} color="#64748B" />
                           )}
                         </div>
-                        <div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                            {c.name}
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {c.name}
+                            </span>
+                            {isLeadCloser && (
+                              <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: `${themeColor}20`, color: themeColor }}>
+                                Lead
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: themeColor }}>
                             ({roleTitle})
@@ -1227,12 +1322,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
               {/* SDR Vinculado */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                  SDR RESPONSÁVEL DO ATENDIMENTO
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                    SDR RESPONSÁVEL DO ATENDIMENTO
+                  </label>
+                  <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                    Pré-vincula o SDR do lead (clique para trocar se necessário)
+                  </span>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                   {collaborators.map(c => {
                     const isSelected = sdrId === c.id;
+                    const isLeadSdr = currentLead?.sdrId === c.id;
                     const isSdrRole = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
                     return (
                       <div
@@ -1241,13 +1342,14 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         style={{
                           padding: '8px 10px',
                           borderRadius: '8px',
-                          border: '1px solid',
+                          border: '1.5px solid',
                           borderColor: isSelected ? '#3B82F6' : '#E2E8F0',
                           background: isSelected ? 'rgba(59, 130, 246, 0.08)' : '#FFFFFF',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px',
                           cursor: 'pointer',
+                          transition: 'all 0.15s ease',
                         }}
                       >
                         <div style={{
@@ -1268,8 +1370,15 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           )}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {c.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {c.name}
+                            </span>
+                            {isLeadSdr && (
+                              <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 4px', borderRadius: '4px', background: 'rgba(59,130,246,0.18)', color: '#2563EB' }}>
+                                Lead
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.68rem', fontWeight: 600, color: isSdrRole ? '#3B82F6' : '#64748B' }}>
                             {isSdrRole ? '(SDR)' : `(${(c as any)?.roleTitle || c.role || 'Equipe'})`}
@@ -1279,6 +1388,193 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     );
                   })}
                 </div>
+              </div>
+
+              {/* ── SEÇÃO: CONFIGURAÇÃO DE FOLLOW-UP COMERCIAL (ESTEIRA DE ATENDIMENTO) ── */}
+              <div style={{
+                padding: '16px 18px',
+                borderRadius: '12px',
+                background: createFollowUpTask ? 'rgba(59, 130, 246, 0.04)' : '#F8FAFC',
+                border: `1.5px solid ${createFollowUpTask ? 'rgba(59, 130, 246, 0.35)' : '#E2E8F0'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                transition: 'all 0.15s ease',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '8px',
+                      background: createFollowUpTask ? 'rgba(59, 130, 246, 0.12)' : '#E2E8F0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: createFollowUpTask ? '#2563EB' : '#64748B',
+                    }}>
+                      <Clock size={17} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                        Tarefa de Follow-up / Confirmação Prévia
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                        Gera tarefa na esteira do SDR para confirmar a presença dos anfitriões
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCreateFollowUpTask(!createFollowUpTask)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: createFollowUpTask ? '#3B82F6' : '#CBD5E1',
+                      background: createFollowUpTask ? '#3B82F6' : '#FFFFFF',
+                      color: createFollowUpTask ? '#FFFFFF' : '#64748B',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {createFollowUpTask ? 'Ativo' : 'Desativado'}
+                  </button>
+                </div>
+
+                {createFollowUpTask && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '10px', borderTop: '1px dashed #CBD5E1' }}>
+                    {/* Timing do Follow-up */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        QUANDO REALIZAR O FOLLOW-UP / CONTATO?
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {[
+                          { id: '1d', label: '1 dia antes da visita' },
+                          { id: '2d', label: '2 dias antes' },
+                          { id: 'same_day', label: 'No dia da visita (manhã)' },
+                          { id: 'custom', label: 'Data personalizada' },
+                        ].map(opt => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setFollowUpTiming(opt.id as any)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid',
+                              borderColor: followUpTiming === opt.id ? '#3B82F6' : '#CBD5E1',
+                              background: followUpTiming === opt.id ? 'rgba(59, 130, 246, 0.12)' : '#FFFFFF',
+                              color: followUpTiming === opt.id ? '#1D4ED8' : '#334155',
+                              fontSize: '0.74rem',
+                              fontWeight: followUpTiming === opt.id ? 800 : 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {followUpTiming === 'custom' && (
+                        <div style={{ marginTop: '8px' }}>
+                          <input
+                            type="date"
+                            value={customFollowUpDate}
+                            onChange={e => setCustomFollowUpDate(e.target.value)}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #CBD5E1',
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              color: '#0F172A',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      {/* Horário */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                          HORÁRIO DO FOLLOW-UP
+                        </label>
+                        <input
+                          type="time"
+                          value={followUpTime}
+                          onChange={e => setFollowUpTime(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                          }}
+                        />
+                      </div>
+
+                      {/* Responsável pelo Follow-up (Pré-vinculado ao SDR com opção de troca) */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                          RESPONSÁVEL PELO FOLLOW-UP (SDR)
+                        </label>
+                        <select
+                          value={followUpResponsibleId}
+                          onChange={e => setFollowUpResponsibleId(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                          }}
+                        >
+                          {collaborators.map(c => {
+                            const isSdr = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
+                            return (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {isSdr ? '(SDR)' : `(${(c as any)?.roleTitle || c.role || 'Equipe'})`}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Instruções */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                        ORIENTAÇÕES PARA A TAREFA (OPCIONAL)
+                      </label>
+                      <input
+                        type="text"
+                        value={followUpNotes}
+                        onChange={e => setFollowUpNotes(e.target.value)}
+                        placeholder={`Ex: Ligar para confirmar presença da família de ${currentLead?.name || 'cliente'}...`}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #CBD5E1',
+                          fontSize: '0.76rem',
+                          color: '#0F172A',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Lembretes / Notificações Automáticas */}

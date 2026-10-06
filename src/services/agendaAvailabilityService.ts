@@ -234,14 +234,9 @@ export const agendaAvailabilityService = {
 
     const rule = type === 'visit' ? config.visitsRule : config.tastingsRule;
     if (!rule) return false;
-    if (rule.enabled === false) return false;
-    if (rule.isFreeMode) return true;
 
-    // Checa se há pelo menos um dia ativo na recorrência semanal
-    const hasActiveRecurringDays = Boolean(
-      (rule.enabledDays && rule.enabledDays.length > 0) ||
-      (rule.daySchedules && Object.values(rule.daySchedules).some(s => s && s.enabled))
-    );
+    // Modo Livre ativado para este tipo de compromisso
+    if (rule.isFreeMode) return true;
 
     // Checa se há blocos de período cobrindo este compromisso
     const targetBlockType = type === 'visit' ? 'visits' : 'tastings';
@@ -254,7 +249,65 @@ export const agendaAvailabilityService = {
       config.dateOverrides && config.dateOverrides.some(o => !o.isBlocked)
     );
 
+    // Se a regra semanal estiver explicitamente desativada, ainda assim pode haver blocos ou datas pontuais
+    if (rule.enabled === false) {
+      return hasActiveBlocks || hasOpenOverrides;
+    }
+
+    // Checa se há pelo menos um dia ativo na recorrência semanal
+    const hasActiveRecurringDays = Boolean(
+      (rule.enabledDays && rule.enabledDays.length > 0) ||
+      (rule.daySchedules && Object.values(rule.daySchedules).some(s => s && s.enabled))
+    );
+
     return hasActiveRecurringDays || hasActiveBlocks || hasOpenOverrides;
+  },
+
+  /**
+   * Verifica se a casa possui datas e horários disponíveis nos próximos dias/semanas.
+   * Retorna { available: boolean, reason?: string }
+   */
+  hasUpcomingAvailableSlots(
+    config: VenueAgendaConfig | null | undefined,
+    type: CommercialCommitmentType,
+    appointments: Appointment[] = []
+  ): { available: boolean; reason?: string } {
+    if (!config || !this.isCommitmentTypeConfigured(config, type)) {
+      return {
+        available: false,
+        reason: 'Não é possível fazer agendamento pois não há datas e nem horários disponíveis. Acesse a central de planejamento ou fale com seu gestor.',
+      };
+    }
+
+    const rule = type === 'visit' ? config.visitsRule : config.tastingsRule;
+    if (rule?.isFreeMode || config.isFreeMode) {
+      return { available: true };
+    }
+
+    // Verifica disponibilidade nos próximos 30 dias
+    const today = new Date();
+    let foundAvailableSlot = false;
+
+    for (let i = 1; i <= 30; i++) {
+      const nextDate = new Date(today);
+      nextDate.setDate(today.getDate() + i);
+      const dateStr = nextDate.toISOString().split('T')[0];
+
+      const avail = this.getAvailableSlots(dateStr, type, config.venueId, appointments, config);
+      if (avail.isDayAvailable && avail.slots.some(s => s.isAvailable)) {
+        foundAvailableSlot = true;
+        break;
+      }
+    }
+
+    if (!foundAvailableSlot) {
+      return {
+        available: false,
+        reason: 'Não é possível fazer agendamento pois não há datas e nem horários disponíveis. Acesse a central de planejamento ou fale com seu gestor.',
+      };
+    }
+
+    return { available: true };
   },
 
   /**

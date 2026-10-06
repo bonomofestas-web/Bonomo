@@ -188,25 +188,19 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const [overrideMaxConcurrent, setOverrideMaxConcurrent] = useState(3);
   const [overrideMaxPax, setOverrideMaxPax] = useState(15);
 
-  // Regras de Visitas e Degustações
+  // Regras de Visitas e Degustações com preservação integral de isFreeMode e enabled
   const [visitsRule, setVisitsRule] = useState<AgendaRecurringRule>(() => ({
+    ...DEFAULT_VISITS_RULE,
+    ...(existingConfig.visitsRule || {}),
     enabled: existingConfig.visitsRule?.enabled ?? true,
-    enabledDays: existingConfig.visitsRule?.enabledDays || DEFAULT_VISITS_RULE.enabledDays,
-    timeSlots: existingConfig.visitsRule?.timeSlots || DEFAULT_VISITS_RULE.timeSlots,
-    durationMinutes: existingConfig.visitsRule?.durationMinutes || DEFAULT_VISITS_RULE.durationMinutes,
-    maxConcurrentPerSlot: existingConfig.visitsRule?.maxConcurrentPerSlot || DEFAULT_VISITS_RULE.maxConcurrentPerSlot,
-    maxPaxPerSlot: existingConfig.visitsRule?.maxPaxPerSlot || DEFAULT_VISITS_RULE.maxPaxPerSlot,
-    daySchedules: existingConfig.visitsRule?.daySchedules || DEFAULT_VISITS_RULE.daySchedules,
+    isFreeMode: Boolean(existingConfig.visitsRule?.isFreeMode),
   }));
 
   const [tastingsRule, setTastingsRule] = useState<AgendaRecurringRule>(() => ({
+    ...DEFAULT_TASTINGS_RULE,
+    ...(existingConfig.tastingsRule || {}),
     enabled: existingConfig.tastingsRule?.enabled ?? true,
-    enabledDays: existingConfig.tastingsRule?.enabledDays || DEFAULT_TASTINGS_RULE.enabledDays,
-    timeSlots: existingConfig.tastingsRule?.timeSlots || DEFAULT_TASTINGS_RULE.timeSlots,
-    durationMinutes: existingConfig.tastingsRule?.durationMinutes || DEFAULT_TASTINGS_RULE.durationMinutes,
-    maxConcurrentPerSlot: existingConfig.tastingsRule?.maxConcurrentPerSlot || DEFAULT_TASTINGS_RULE.maxConcurrentPerSlot,
-    maxPaxPerSlot: existingConfig.tastingsRule?.maxPaxPerSlot || DEFAULT_TASTINGS_RULE.maxPaxPerSlot,
-    daySchedules: existingConfig.tastingsRule?.daySchedules || DEFAULT_TASTINGS_RULE.daySchedules,
+    isFreeMode: Boolean(existingConfig.tastingsRule?.isFreeMode),
   }));
 
   // Sincroniza regras quando seleciona outra casa no fluxo
@@ -214,22 +208,16 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     const fresh = venueAgendaConfigs.find(c => c.venueId === selectedVenueId) 
       || agendaAvailabilityService.getDefaultConfig(selectedVenueId);
     setVisitsRule({
+      ...DEFAULT_VISITS_RULE,
+      ...(fresh.visitsRule || {}),
       enabled: fresh.visitsRule?.enabled ?? true,
-      enabledDays: fresh.visitsRule?.enabledDays || DEFAULT_VISITS_RULE.enabledDays,
-      timeSlots: fresh.visitsRule?.timeSlots || DEFAULT_VISITS_RULE.timeSlots,
-      durationMinutes: fresh.visitsRule?.durationMinutes || DEFAULT_VISITS_RULE.durationMinutes,
-      maxConcurrentPerSlot: fresh.visitsRule?.maxConcurrentPerSlot || DEFAULT_VISITS_RULE.maxConcurrentPerSlot,
-      maxPaxPerSlot: fresh.visitsRule?.maxPaxPerSlot || DEFAULT_VISITS_RULE.maxPaxPerSlot,
-      daySchedules: fresh.visitsRule?.daySchedules || DEFAULT_VISITS_RULE.daySchedules,
+      isFreeMode: Boolean(fresh.visitsRule?.isFreeMode),
     });
     setTastingsRule({
+      ...DEFAULT_TASTINGS_RULE,
+      ...(fresh.tastingsRule || {}),
       enabled: fresh.tastingsRule?.enabled ?? true,
-      enabledDays: fresh.tastingsRule?.enabledDays || DEFAULT_TASTINGS_RULE.enabledDays,
-      timeSlots: fresh.tastingsRule?.timeSlots || DEFAULT_TASTINGS_RULE.timeSlots,
-      durationMinutes: fresh.tastingsRule?.durationMinutes || DEFAULT_TASTINGS_RULE.durationMinutes,
-      maxConcurrentPerSlot: fresh.tastingsRule?.maxConcurrentPerSlot || DEFAULT_TASTINGS_RULE.maxConcurrentPerSlot,
-      maxPaxPerSlot: fresh.tastingsRule?.maxPaxPerSlot || DEFAULT_TASTINGS_RULE.maxPaxPerSlot,
-      daySchedules: fresh.tastingsRule?.daySchedules || DEFAULT_TASTINGS_RULE.daySchedules,
+      isFreeMode: Boolean(fresh.tastingsRule?.isFreeMode),
     });
     setBlockRules(fresh.blockRules || []);
     setDateOverrides(fresh.dateOverrides || []);
@@ -255,50 +243,52 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const setCurrentRule = activeType === 'visit' ? setVisitsRule : setTastingsRule;
   const themeColor = activeType === 'visit' ? '#10B981' : '#D97706';
 
-  // Auto-Save reativo ao alternar o Modo Livre no Hub com mútua exclusão
-  const handleToggleFreeModeAutoSave = (willBeFree: boolean) => {
+  // Auto-Save reativo ao alternar o Modo Livre no Hub
+  const handleToggleFreeModeAutoSave = async (willBeFree: boolean) => {
     const updatedRule: AgendaRecurringRule = {
       ...currentRule,
       isFreeMode: willBeFree,
-      enabled: willBeFree ? false : currentRule.enabled,
+      // Se ligar Modo Livre, suspende a grade fixa semanal; se desligar, reativa a grade
+      enabled: willBeFree ? false : (currentRule.enabled !== false),
     };
     setCurrentRule(updatedRule);
 
     const updatedConfig: VenueAgendaConfig = {
       ...existingConfig,
       venueId: selectedVenueId,
-      visitsRule: activeType === 'visit' ? updatedRule : existingConfig.visitsRule,
-      tastingsRule: activeType === 'tasting' ? updatedRule : existingConfig.tastingsRule,
-      blockRules: existingConfig.blockRules || [],
+      visitsRule: activeType === 'visit' ? updatedRule : visitsRule,
+      tastingsRule: activeType === 'tasting' ? updatedRule : tastingsRule,
+      blockRules,
       dateOverrides,
       updatedAt: new Date().toISOString(),
     };
 
-    updateVenueAgendaConfig(updatedConfig);
+    await updateVenueAgendaConfig(updatedConfig);
     setSaveSuccessToast(true);
     setTimeout(() => setSaveSuccessToast(false), 2000);
   };
 
-  // Auto-Save reativo ao alternar a Recorrência Semanal no Hub com mútua exclusão
-  const handleToggleRecurringAutoSave = (willBeActive: boolean) => {
+  // Auto-Save reativo ao alternar a Recorrência Semanal no Hub
+  const handleToggleRecurringAutoSave = async (willBeActive: boolean) => {
     const updatedRule: AgendaRecurringRule = {
       ...currentRule,
       enabled: willBeActive,
-      isFreeMode: willBeActive ? false : currentRule.isFreeMode,
+      // Se ligar a grade semanal, desliga o Modo Livre
+      isFreeMode: willBeActive ? false : Boolean(currentRule.isFreeMode),
     };
     setCurrentRule(updatedRule);
 
     const updatedConfig: VenueAgendaConfig = {
       ...existingConfig,
       venueId: selectedVenueId,
-      visitsRule: activeType === 'visit' ? updatedRule : existingConfig.visitsRule,
-      tastingsRule: activeType === 'tasting' ? updatedRule : existingConfig.tastingsRule,
-      blockRules: existingConfig.blockRules || [],
+      visitsRule: activeType === 'visit' ? updatedRule : visitsRule,
+      tastingsRule: activeType === 'tasting' ? updatedRule : tastingsRule,
+      blockRules,
       dateOverrides,
       updatedAt: new Date().toISOString(),
     };
 
-    updateVenueAgendaConfig(updatedConfig);
+    await updateVenueAgendaConfig(updatedConfig);
     setSaveSuccessToast(true);
     setTimeout(() => setSaveSuccessToast(false), 2000);
   };
@@ -1505,8 +1495,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         {activeMode === 'hub' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '860px', margin: '0 auto', width: '100%' }}>
             
-            {/* Banner Moderno e Suave quando Ambos estão Desativados */}
-            {!currentRule.isFreeMode && currentRule.enabled === false && (
+            {/* Banner Moderno quando Nenhuma Modalidade está Ativa */}
+            {!currentRule.isFreeMode && currentRule.enabled === false && activeTypeBlockRules.length === 0 && (
               <div style={{
                 background: 'rgba(239, 68, 68, 0.05)',
                 border: '1px solid rgba(239, 68, 68, 0.25)',
@@ -1570,35 +1560,22 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   <Sparkles size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
                     <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Modo Livre (Qualquer Horário)
                     </span>
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      background: currentRule.isFreeMode ? 'rgba(16,185,129,0.12)' : 'rgba(100,116,139,0.10)',
-                      color: currentRule.isFreeMode ? '#059669' : '#64748B',
-                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(16,185,129,0.25)' : 'rgba(100,116,139,0.18)'}`,
-                    }}>
-                      {currentRule.isFreeMode ? 'ATIVADO' : 'DESATIVADO'}
-                    </span>
+                    {/* Switch On/Off Elegante Inline junto ao título sem texto redundante */}
+                    <ToggleSwitch
+                      checked={Boolean(currentRule.isFreeMode)}
+                      onChange={handleToggleFreeModeAutoSave}
+                      activeColor={themeColor}
+                      size="sm"
+                    />
                   </div>
                   <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
                     Permite agendar em qualquer horário livremente sem travas na grade semanal fixa. Blocos especiais continuam prevalecendo com prioridade.
                   </p>
                 </div>
-              </div>
-
-              {/* Switch On/Off Elegante */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <ToggleSwitch
-                  checked={Boolean(currentRule.isFreeMode)}
-                  onChange={handleToggleFreeModeAutoSave}
-                  activeColor={themeColor}
-                />
               </div>
             </div>
 
@@ -1630,41 +1607,32 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   <Repeat size={22} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
                     <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
                       Recorrência Semanal
                     </span>
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      background: currentRule.isFreeMode ? 'rgba(217,119,6,0.12)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)'),
-                      color: currentRule.isFreeMode ? '#D97706' : (currentRule.enabled !== false ? '#059669' : '#DC2626'),
-                      border: `1px solid ${currentRule.isFreeMode ? 'rgba(217,119,6,0.25)' : (currentRule.enabled !== false ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.20)')}`,
-                    }}>
-                      {currentRule.isFreeMode ? 'SUSPENSA (MODO LIVRE)' : (currentRule.enabled !== false ? 'ATIVO NA SEMANA' : 'DESATIVADO')}
-                    </span>
+                    {/* Switch On/Off Elegante Inline junto ao título sem texto redundante */}
+                    <ToggleSwitch
+                      checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
+                      onChange={handleToggleRecurringAutoSave}
+                      activeColor={themeColor}
+                      size="sm"
+                    />
                   </div>
                   <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
                     {currentRule.enabled !== false && !currentRule.isFreeMode ? (
                       <>Grade fixa ativa em <strong>{currentRule.enabledDays.length} dia(s) da semana</strong> com horários, vagas e limites configurados por dia.</>
                     ) : currentRule.isFreeMode ? (
-                      <span style={{ color: '#D97706', fontWeight: 600 }}>Suspensa enquanto o Modo Livre estiver ativo acima.</span>
+                      <span style={{ color: '#D97706', fontWeight: 600 }}>Grade semanal suspensa temporariamente enquanto o Modo Livre estiver ativo.</span>
                     ) : (
-                      <span style={{ color: '#DC2626', fontWeight: 600 }}>Recorrência desativada. Ligue a chavinha para reativar.</span>
+                      <span style={{ color: '#DC2626', fontWeight: 600 }}>Recorrência desativada. Ligue o interruptor para ativar.</span>
                     )}
                   </p>
                 </div>
               </div>
 
-              {/* Switch On/Off + Botão Configurar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
-                <ToggleSwitch
-                  checked={Boolean(currentRule.enabled !== false && !currentRule.isFreeMode)}
-                  onChange={handleToggleRecurringAutoSave}
-                  activeColor={themeColor}
-                />
+              {/* Botão Configurar Grade */}
+              <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={() => setActiveMode('recurring')}

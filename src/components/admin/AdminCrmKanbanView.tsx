@@ -33,6 +33,9 @@ import { AdminLostReasonModal } from './AdminLostReasonModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { AdminLeadDetailModal } from './AdminLeadDetailModal';
 import { AdminScheduleCommitmentModal } from './AdminScheduleCommitmentModal';
+import { AdminAgendaUnavailableModal } from './AdminAgendaUnavailableModal';
+import { AdminAgendaAvailabilityModal } from './AdminAgendaAvailabilityModal';
+import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { validateLeadForWon } from '../../utils/leadValidation';
@@ -204,6 +207,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     activeVenueId,
     funnels,
     tasks,
+    venueAgendaConfigs,
+    appointments,
     addFunnel,
     duplicateFunnel,
     updateLeadStage,
@@ -221,6 +226,19 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     reassignLeadFunnel,
     viewingAsCollaborator,
   } = useAdminState();
+
+  const [unavailableModal, setUnavailableModal] = useState<{
+    isOpen: boolean;
+    type: 'visit' | 'tasting';
+    venueId?: string;
+    venueName?: string;
+  } | null>(null);
+
+  const [planningModal, setPlanningModal] = useState<{
+    isOpen: boolean;
+    venueId?: string;
+    type?: 'visit' | 'tasting';
+  } | null>(null);
 
   const [showRemovedLeads, setShowRemovedLeads] = useState(false);
 
@@ -1400,7 +1418,24 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       const scheduleTrigger = targetStageConfig?.triggers?.find(t => t.type === 'open_schedule');
       if (scheduleTrigger || targetStageConfig?.isMeetingStage) {
         const scheduleType: CommercialCommitmentType = scheduleTrigger?.scheduleType === 'tasting' ? 'tasting' : 'visit';
-        setAutoScheduleLead({ lead, type: scheduleType });
+        
+        const leadVenueConfig = venueAgendaConfigs.find(c => c.venueId === lead.venueId);
+        const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
+          leadVenueConfig,
+          scheduleType,
+          appointments
+        );
+
+        if (!availabilityCheck.available) {
+          setUnavailableModal({
+            isOpen: true,
+            type: scheduleType,
+            venueId: lead.venueId,
+            venueName: venues.find(v => v.id === lead.venueId)?.name,
+          });
+        } else {
+          setAutoScheduleLead({ lead, type: scheduleType });
+        }
       }
     }
     setDraggedLeadId(null);
@@ -5048,6 +5083,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           initialType={autoScheduleLead.type}
           onClose={() => setAutoScheduleLead(null)}
           onScheduled={() => setAutoScheduleLead(null)}
+        />
+      )}
+
+      {/* Modal de Aviso: Agenda sem horários / Não configurada */}
+      {unavailableModal?.isOpen && (
+        <AdminAgendaUnavailableModal
+          isOpen={unavailableModal.isOpen}
+          type={unavailableModal.type}
+          venueId={unavailableModal.venueId}
+          venueName={unavailableModal.venueName}
+          onClose={() => setUnavailableModal(null)}
+          onOpenPlanning={(vId, typ) => {
+            setUnavailableModal(null);
+            setPlanningModal({ isOpen: true, venueId: vId || unavailableModal.venueId, type: typ });
+          }}
+        />
+      )}
+
+      {/* Modal de Planejamento de Agenda aberto direto do pop-up */}
+      {planningModal?.isOpen && (
+        <AdminAgendaAvailabilityModal
+          venueId={planningModal.venueId}
+          initialType={planningModal.type}
+          onClose={() => setPlanningModal(null)}
         />
       )}
 
