@@ -87,7 +87,10 @@ export interface UazapiSendMediaPayload {
   type: UazapiMediaType;
   file: string; // URL pública ou Base64
   caption?: string;
+  text?: string;
   fileName?: string;
+  docName?: string;
+  mimetype?: string;
   ptt?: boolean; // Se true e type='audio', envia como mensagem de voz
   delay?: number;
   async?: boolean;

@@ -549,6 +549,7 @@ export const uazapiService = {
       finalNumber = normalizeWhatsAppNumber(cleanDigits);
     }
 
+    const captionText = payload.text || payload.caption || undefined;
     const res = await fetch(`${baseUrl}/send/media`, {
       method: 'POST',
       headers: {
@@ -557,6 +558,8 @@ export const uazapiService = {
       },
       body: JSON.stringify({
         ...payload,
+        text: captionText,
+        caption: captionText,
         number: finalNumber,
       }),
     });

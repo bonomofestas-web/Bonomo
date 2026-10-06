@@ -2354,12 +2354,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     if (targetPhone && activeSenderToken) {
       try {
+        const captionText = caption || undefined;
         await uazapiService.sendMedia(activeSenderToken, {
           number: targetPhone,
           file: attachmentToSend.dataUrl,
           type: 'image',
           fileName: attachmentToSend.fileName,
-          caption: caption || undefined,
+          text: captionText,
+          caption: captionText,
           ptt: false,
           delay: 0,
         });
@@ -5691,11 +5693,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                           src={effectiveMediaUrl}
                                           alt={act.text || 'Foto'}
                                           style={{
-                                            maxWidth: '280px',
-                                            maxHeight: '280px',
+                                            maxWidth: '340px',
+                                            maxHeight: '380px',
                                             width: '100%',
+                                            height: 'auto',
                                             borderRadius: '8px',
-                                            objectFit: 'cover',
+                                            objectFit: 'contain',
                                             display: 'block',
                                             background: 'rgba(0,0,0,0.05)',
                                           }}
@@ -6147,11 +6150,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         src={act.mediaUrl || effectiveMediaUrl}
                                         alt={act.text || 'Foto'}
                                         style={{
-                                          maxWidth: '280px',
-                                          maxHeight: '280px',
+                                          maxWidth: '340px',
+                                          maxHeight: '380px',
                                           width: '100%',
+                                          height: 'auto',
                                           borderRadius: '8px',
-                                          objectFit: 'cover',
+                                          objectFit: 'contain',
                                           display: 'block',
                                           background: 'rgba(0,0,0,0.05)',
                                         }}
@@ -6826,11 +6830,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   alt="Anexo"
                                   onClick={() => setLightboxMedia({ url: act.mediaUrl!, type: 'image', title: act.title || 'Foto em anotação' })}
                                   style={{
-                                    maxWidth: '280px',
-                                    maxHeight: '220px',
+                                    maxWidth: '340px',
+                                    maxHeight: '340px',
+                                    width: '100%',
+                                    height: 'auto',
                                     borderRadius: '8px',
                                     cursor: 'pointer',
-                                    objectFit: 'cover',
+                                    objectFit: 'contain',
                                     border: '1px solid var(--adm-border)',
                                   }}
                                 />
