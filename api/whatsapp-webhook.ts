@@ -608,7 +608,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Cria um novo Lead automaticamente com telefone real na casa da instância do WhatsApp
           const finalPhone = resolvedPhone || cleanPhone;
           const leadId = crypto.randomUUID();
-          const leadCode = `LD-${Math.floor(1000 + Math.random() * 9000)}`;
+          const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          let randomPart = '';
+          for (let i = 0; i < 6; i++) {
+            randomPart += alphabet[Math.floor(Math.random() * alphabet.length)];
+          }
+          const leadCode = `LEAD-${randomPart}`;
           const cleanLeadName = (senderName && senderName !== 'Cliente (WhatsApp)' && senderName !== 'WhatsApp App / Web') ? senderName.trim() : leadCode;
           let venueId = matchedSource?.venue_id;
           let funnelId = matchedSource?.funnel_id;
@@ -674,7 +679,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const newLead: any = {
             id: leadId,
-            code: isPostSaleTarget ? `CLI-${leadCode.replace('LD-', '')}` : leadCode,
+            code: isPostSaleTarget ? `CLI-${randomPart}` : leadCode,
             name: cleanLeadName,
             phone: finalPhone,
             venue_id: venueId,

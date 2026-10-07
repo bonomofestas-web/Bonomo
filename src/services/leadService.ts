@@ -363,6 +363,33 @@ export const leadService = {
           if (pageData.length < actStep) break;
           actFrom += actStep;
         }
+      } else {
+        // Pré-carrega de forma leve e automática as últimas 5 trocas de conversa/atividades de cada lead
+        // Garante que o preview no WhatsApp, os timers de SLA e histórico de encerramento funcionem de imediato
+        try {
+          const { data: recentActs, error: recentErr } = await supabase
+            .from('lead_activities')
+            .select('*')
+            .in('type', ['contact', 'creation', 'note', 'stage_change', 'status_change'])
+            .order('timestamp', { ascending: false })
+            .limit(1500);
+
+          if (!recentErr && recentActs && recentActs.length > 0) {
+            const leadActsCount = new Map<string, number>();
+            const selectedRecent: any[] = [];
+            for (const act of recentActs) {
+              const count = leadActsCount.get(act.lead_id) || 0;
+              if (count < 5) {
+                selectedRecent.push(act);
+                leadActsCount.set(act.lead_id, count + 1);
+              }
+            }
+            selectedRecent.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            activitiesData.push(...selectedRecent);
+          }
+        } catch (err) {
+          console.warn('Erro ao pré-carregar atividades recentes dos leads:', err);
+        }
       }
 
       // Paginação completa de participantes

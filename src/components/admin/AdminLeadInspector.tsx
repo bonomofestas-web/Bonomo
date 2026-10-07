@@ -8,8 +8,10 @@ import {
   Building2, PhoneCall, Eye, MessageSquare,
   User, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
-  ArrowRightLeft, GitBranch, UserX, Repeat
+  ArrowRightLeft, GitBranch, UserX, Repeat,
+  Route, MapPin, Trophy, History
 } from 'lucide-react';
+import { CRM_STAGE_LABELS } from '../../utils/leadUtils';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -155,7 +157,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   }, [shouldHighlightMissing, lead]);
   const [isFunnelPickerOpen, setIsFunnelPickerOpen] = useState(false);
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'mql' | 'comercial' | 'tasks'>('principal');
+  const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'jornada' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [deletePermanently, setDeletePermanently] = useState(false);
@@ -493,6 +495,125 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       icon: (effectiveStage as string) || 'layers',
     };
   }, [funnelStages, currentStageId, lead.stage]);
+
+  // ── DADOS DA JORNADA DO LEAD (MARCOS CRÍTICOS E TEMPO DE PERMANÊNCIA) ──
+  const journeyData = useMemo(() => {
+    const leadCreatedTime = new Date(lead.createdAt || (lead as any).created_at || lead.updatedAt || Date.now()).getTime();
+
+    // 1. Compromissos vinculados (Visita e Degustação)
+    const relatedAppointments = (appointments || []).filter(a => 
+      a.leadId === lead.id || 
+      (a.leadName && a.leadName.toLowerCase() === lead.name.toLowerCase()) ||
+      Boolean(lead.phone && (a as any).phone && isPhoneMatch((a as any).phone, lead.phone)) ||
+      Boolean(lead.phone && (a as any).leadPhone && isPhoneMatch((a as any).leadPhone, lead.phone))
+    );
+
+    // Visita Comercial Oficial
+    const visitAppointment = relatedAppointments.find(a => (a as any).category === 'visit' || (a as any).type === 'visit');
+    const visitTask = (lead.activities || []).find(a => 
+      (a as any).customProperties?.commitmentType === 'visit' || 
+      a.title?.toLowerCase().includes('visita agendada') ||
+      a.text?.toLowerCase().includes('visita comercial')
+    );
+    const hasVisit = Boolean(visitAppointment || visitTask);
+    const visitDateStr = visitAppointment ? `${visitAppointment.date} às ${visitAppointment.time}` : (visitTask ? visitTask.timestamp : null);
+    const visitTimestamp = visitAppointment ? new Date(`${visitAppointment.date}T${visitAppointment.time || '12:00'}`).getTime() : (visitTask ? new Date(visitTask.timestamp).getTime() : null);
+    const daysToVisit = visitTimestamp ? Math.max(0, Math.round((visitTimestamp - leadCreatedTime) / (1000 * 60 * 60 * 24))) : null;
+
+    // Degustação Gastronômica Oficial
+    const tastingAppointment = relatedAppointments.find(a => (a as any).category === 'tasting' || (a as any).type === 'tasting');
+    const tastingTask = (lead.activities || []).find(a => 
+      (a as any).customProperties?.commitmentType === 'tasting' || 
+      a.title?.toLowerCase().includes('degustação agendada') ||
+      a.text?.toLowerCase().includes('degustação')
+    );
+    const hasTasting = Boolean(tastingAppointment || tastingTask);
+    const tastingDateStr = tastingAppointment ? `${tastingAppointment.date} às ${tastingAppointment.time}` : (tastingTask ? tastingTask.timestamp : null);
+    const tastingTimestamp = tastingAppointment ? new Date(`${tastingAppointment.date}T${tastingAppointment.time || '12:00'}`).getTime() : (tastingTask ? new Date(tastingTask.timestamp).getTime() : null);
+    const daysToTasting = tastingTimestamp ? Math.max(0, Math.round((tastingTimestamp - leadCreatedTime) / (1000 * 60 * 60 * 24))) : null;
+
+    // Fechamento Comercial (Venda)
+    const isWon = lead.stage === 'contract_signed' || Boolean(lead.isClient) || Boolean((lead as any).status === 'won') || Boolean((lead as any).isWon);
+    const isLost = lead.stage === 'lost' || Boolean((lead as any).status === 'lost') || Boolean((lead as any).isLost);
+    const wonActivity = (lead.activities || []).find(a => 
+      a.type === 'status_change' && (a.text?.toLowerCase().includes('ganho') || a.title?.toLowerCase().includes('venda'))
+    );
+    const wonTimestamp = isWon ? (wonActivity ? new Date(wonActivity.timestamp).getTime() : new Date(lead.updatedAt || Date.now()).getTime()) : null;
+    const daysToClose = wonTimestamp ? Math.max(0, Math.round((wonTimestamp - leadCreatedTime) / (1000 * 60 * 60 * 24))) : null;
+    const activePipelineDays = Math.max(0, Math.round((Date.now() - leadCreatedTime) / (1000 * 60 * 60 * 24)));
+
+    // 2. Trajetória de Etapas e Permanência
+    const targetFunnel = (funnels || []).find(f => f.id === lead.funnelId) || funnels?.[0];
+    const getStageName = (sId: string) => {
+      const stageObj = targetFunnel?.stages?.find((s: any) => s.id === sId);
+      return stageObj?.name || CRM_STAGE_LABELS[sId] || sId;
+    };
+
+    const stageChanges = (lead.activities || [])
+      .filter(a => (a.type as string) === 'stage_change' || a.type === 'status_change' || (a.type === 'creation' && (a as any).stage))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    interface StageJourneyItem {
+      funnelName: string;
+      stageId: string;
+      stageName: string;
+      enteredAt: string;
+      exitedAt?: string;
+      durationDays: number;
+      isCurrent: boolean;
+    }
+
+    const stageItems: StageJourneyItem[] = [];
+
+    if (stageChanges.length > 0) {
+      for (let i = 0; i < stageChanges.length; i++) {
+        const cur = stageChanges[i];
+        const next = stageChanges[i + 1];
+        const enteredTime = new Date(cur.timestamp).getTime();
+        const exitedTime = next ? new Date(next.timestamp).getTime() : Date.now();
+        const durationDays = Math.max(1, Math.round((exitedTime - enteredTime) / (1000 * 60 * 60 * 24)));
+        const sId = (cur as any).stage || cur.metadata?.toStage || cur.title || lead.stage;
+
+        stageItems.push({
+          funnelName: targetFunnel?.name || 'Comercial',
+          stageId: sId,
+          stageName: getStageName(sId),
+          enteredAt: cur.timestamp,
+          exitedAt: next ? next.timestamp : undefined,
+          durationDays,
+          isCurrent: !next,
+        });
+      }
+    } else {
+      const durationDays = Math.max(1, Math.round((Date.now() - leadCreatedTime) / (1000 * 60 * 60 * 24)));
+      stageItems.push({
+        funnelName: targetFunnel?.name || 'Comercial',
+        stageId: lead.stage,
+        stageName: getStageName(lead.stage),
+        enteredAt: lead.createdAt || new Date().toISOString(),
+        durationDays,
+        isCurrent: true,
+      });
+    }
+
+    return {
+      leadCreatedTime,
+      activePipelineDays,
+      hasVisit,
+      visitAppointment,
+      visitDateStr,
+      daysToVisit,
+      hasTasting,
+      tastingAppointment,
+      tastingDateStr,
+      daysToTasting,
+      isWon,
+      isLost,
+      daysToClose,
+      stageItems,
+      targetFunnel,
+    };
+  }, [lead, appointments, funnels]);
 
   const handleSelectStage = (newStageId: string) => {
     if (readOnly) return;
@@ -2274,6 +2395,37 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
             >
               <Globe size={12} color={activeTab === 'origem' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
               <span>Origem</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('jornada')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: activeTab === 'jornada' ? '2px solid #14A9D7' : '2px solid transparent',
+                padding: '3px 8px',
+                color: activeTab === 'jornada' ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.70rem',
+                fontWeight: activeTab === 'jornada' ? 800 : 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Route size={12} color={activeTab === 'jornada' ? '#14A9D7' : 'rgba(255,255,255,0.6)'} />
+              <span>Jornada</span>
+              {(journeyData.hasVisit || journeyData.hasTasting || journeyData.isWon) && (
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: journeyData.isWon ? '#10B981' : '#14A9D7',
+                  boxShadow: '0 0 6px rgba(20,169,215,0.6)'
+                }} />
+              )}
             </button>
 
             {venueMqlQuestions.length > 0 && (
@@ -5477,6 +5629,453 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 )}
               </div>
             )}
+
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* ABA: 🧭 JORNADA DO LEAD (MARCOS CRÍTICOS & PERMANÊNCIA POR ESTÁGIO)   */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'jornada' && (
+          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Banner Executivo de Entrada e Idade no Pipeline */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.90) 100%)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '14px',
+              padding: '16px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Route size={16} color="#14A9D7" />
+                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#14A9D7', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Ciclo de Conversão Comercial
+                  </span>
+                </div>
+                <h4 style={{ margin: '4px 0 2px', fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF' }}>
+                  Jornada de {lead.name || lead.code}
+                </h4>
+                <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
+                  Funil Atual: <strong style={{ color: '#F8FAFC' }}>{journeyData.targetFunnel?.name || 'Comercial'}</strong> • Casa: <strong style={{ color: '#F8FAFC' }}>{leadVenue?.name || 'Unidade Geral'}</strong>
+                </div>
+              </div>
+
+              <div style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '10px',
+                padding: '8px 14px',
+                textAlign: 'right',
+              }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>
+                  Tempo Total no Pipeline
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                  <Clock size={16} />
+                  <span>{journeyData.activePipelineDays} {journeyData.activePipelineDays === 1 ? 'dia' : 'dias'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3 MARCOS CRÍTICOS DE CONVERSÃO (VISITA, DEGUSTAÇÃO, FECHAMENTO) */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  Marcos Vitais de Decisão
+                </span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                  Gargalos e velocidade até o agendamento
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                
+                {/* 1. VISITA COMERCIAL */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: `1.5px solid ${journeyData.hasVisit ? '#10B981' : 'var(--adm-border)'}`,
+                  borderRadius: '12px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: journeyData.hasVisit ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.12)',
+                        color: journeyData.hasVisit ? '#10B981' : '#94A3B8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-heading)' }}>
+                          Visita Comercial
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                          Apresentação do espaço
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '0.64rem',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: journeyData.hasVisit ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                      color: journeyData.hasVisit ? '#10B981' : '#94A3B8',
+                    }}>
+                      {journeyData.hasVisit ? 'Agendada' : 'Pendente'}
+                    </span>
+                  </div>
+
+                  {journeyData.hasVisit ? (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px 10px',
+                      background: 'rgba(16,185,129,0.06)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                    }}>
+                      <div style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
+                        {journeyData.visitDateStr || 'Data confirmada'}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', marginTop: '2px' }}>
+                        Velocidade: <strong style={{ color: '#10B981' }}>{journeyData.daysToVisit} {journeyData.daysToVisit === 1 ? 'dia' : 'dias'}</strong> após entrada
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px 10px',
+                      background: 'var(--adm-bg-surface, #F1F5F9)',
+                      borderRadius: '8px',
+                      fontSize: '0.70rem',
+                      color: 'var(--adm-text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <span>Nenhuma visita realizada ainda</span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestSchedule('visit')}
+                          style={{
+                            background: '#10B981',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Agendar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. DEGUSTAÇÃO GASTRONÔMICA */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: `1.5px solid ${journeyData.hasTasting ? '#F59E0B' : 'var(--adm-border)'}`,
+                  borderRadius: '12px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: journeyData.hasTasting ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.12)',
+                        color: journeyData.hasTasting ? '#F59E0B' : '#94A3B8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Utensils size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-heading)' }}>
+                          Degustação
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                          Experiência do Buffet
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '0.64rem',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: journeyData.hasTasting ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.15)',
+                      color: journeyData.hasTasting ? '#F59E0B' : '#94A3B8',
+                    }}>
+                      {journeyData.hasTasting ? 'Agendada' : 'Pendente'}
+                    </span>
+                  </div>
+
+                  {journeyData.hasTasting ? (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px 10px',
+                      background: 'rgba(245,158,11,0.06)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                    }}>
+                      <div style={{ fontSize: '0.68rem', color: '#F59E0B', fontWeight: 700 }}>
+                        {journeyData.tastingDateStr || 'Data confirmada'}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', marginTop: '2px' }}>
+                        Velocidade: <strong style={{ color: '#F59E0B' }}>{journeyData.daysToTasting} {journeyData.daysToTasting === 1 ? 'dia' : 'dias'}</strong> após entrada
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px 10px',
+                      background: 'var(--adm-bg-surface, #F1F5F9)',
+                      borderRadius: '8px',
+                      fontSize: '0.70rem',
+                      color: 'var(--adm-text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <span>Nenhuma degustação realizada</span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestSchedule('tasting')}
+                          style={{
+                            background: '#F59E0B',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Agendar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. FECHAMENTO / VENDA */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: `1.5px solid ${journeyData.isWon ? '#10B981' : journeyData.isLost ? '#EF4444' : '#14A9D7'}`,
+                  borderRadius: '12px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: journeyData.isWon ? 'rgba(16,185,129,0.15)' : journeyData.isLost ? 'rgba(239,68,68,0.15)' : 'rgba(20,169,215,0.15)',
+                        color: journeyData.isWon ? '#10B981' : journeyData.isLost ? '#EF4444' : '#14A9D7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Trophy size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-heading)' }}>
+                          Fechamento
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                          Resultado Comercial
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '0.64rem',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: journeyData.isWon ? 'rgba(16,185,129,0.15)' : journeyData.isLost ? 'rgba(239,68,68,0.15)' : 'rgba(20,169,215,0.15)',
+                      color: journeyData.isWon ? '#10B981' : journeyData.isLost ? '#EF4444' : '#14A9D7',
+                    }}>
+                      {journeyData.isWon ? 'Contrato Fechado' : journeyData.isLost ? 'Perdido' : 'Em Negociação'}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    marginTop: '4px',
+                    padding: '8px 10px',
+                    background: journeyData.isWon ? 'rgba(16,185,129,0.06)' : 'var(--adm-bg-surface, #F1F5F9)',
+                    borderRadius: '8px',
+                    border: `1px solid ${journeyData.isWon ? 'rgba(16,185,129,0.2)' : 'var(--adm-border)'}`,
+                  }}>
+                    {journeyData.isWon ? (
+                      <>
+                        <div style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: 700 }}>
+                          Ciclo de Vendas: {journeyData.daysToClose} {journeyData.daysToClose === 1 ? 'dia' : 'dias'}
+                        </div>
+                        {lead.dealValue && lead.dealValue > 0 && (
+                          <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-heading)', marginTop: '2px' }}>
+                            Valor: {formatCurrency(lead.dealValue)}
+                          </div>
+                        )}
+                      </>
+                    ) : journeyData.isLost ? (
+                      <div style={{ fontSize: '0.70rem', color: '#EF4444' }}>
+                        Motivo: {(lead as any).lostReason || (lead as any).metadata?.lostReason || 'Não informado'}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+                        Negociação ativa há <strong style={{ color: 'var(--adm-text-heading)' }}>{journeyData.activePipelineDays} dias</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* TABELA / TIMELINE: TRAJETÓRIA E TEMPO DE PERMANÊNCIA POR ETAPA */}
+            <div style={{
+              background: 'var(--adm-bg-card)',
+              border: '1px solid var(--adm-border)',
+              borderRadius: '12px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <History size={16} color="var(--adm-accent)" />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-heading)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Permanência em Cada Etapa do Funil
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+                  Total de estágios: <strong>{journeyData.stageItems.length}</strong>
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {journeyData.stageItems.map((item, idx) => (
+                  <div
+                    key={`${item.stageId}-${idx}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: item.isCurrent ? 'rgba(20,169,215,0.08)' : 'var(--adm-bg-surface, #F8FAFC)',
+                      border: item.isCurrent ? '1.5px solid #14A9D7' : '1px solid var(--adm-border)',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <div style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: item.isCurrent ? '#14A9D7' : 'rgba(148,163,184,0.2)',
+                        color: item.isCurrent ? '#FFFFFF' : '#64748B',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        flexShrink: 0,
+                      }}>
+                        {idx + 1}
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-heading)' }}>
+                            {item.stageName}
+                          </span>
+                          {item.isCurrent && (
+                            <span style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              background: '#14A9D7',
+                              color: '#FFFFFF',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                            }}>
+                              Etapa Atual
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                          Entrada: {new Date(item.enteredAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {item.exitedAt && ` • Saída: ${new Date(item.exitedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        background: item.isCurrent ? 'rgba(20,169,215,0.15)' : 'rgba(148,163,184,0.15)',
+                        color: item.isCurrent ? '#14A9D7' : 'var(--adm-text-body)',
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                      }}>
+                        <Clock size={12} />
+                        <span>{item.durationDays} {item.durationDays === 1 ? 'dia' : 'dias'}</span>
+                      </div>
+                      <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                        {item.isCurrent ? 'permanência até agora' : 'tempo na etapa'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
           </div>
         )}
