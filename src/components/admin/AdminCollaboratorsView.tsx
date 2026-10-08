@@ -6,7 +6,7 @@ import {
   CheckCircle2, Clock, Check, ArrowLeft,
   UserX, AlertTriangle, CheckSquare, Target, X,
   Power, Lock, UserCheck, Shield, SlidersHorizontal,
-  ArrowRightLeft, Search, KeyRound
+  ArrowRightLeft, Search, KeyRound, List, LayoutGrid, ArrowUpDown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ImageUploadField } from './ImageUploadField';
@@ -38,6 +38,11 @@ export const AdminCollaboratorsView: React.FC = () => {
   const [collabForInviteModal, setCollabForInviteModal] = useState<Collaborator | null>(null);
   const [sendingInviteEmail, setSendingInviteEmail] = useState<string | null>(null);
   const [inviteSentEmail, setInviteSentEmail] = useState<string | null>(null);
+
+  // Modos de Exibição (Lista primária como padrão, Cards) e Ordenação (Audio 6)
+  const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
+  const [collabSearchQuery, setCollabSearchQuery] = useState('');
+  const [collabSortBy, setCollabSortBy] = useState<'name_asc' | 'name_desc' | 'created_desc' | 'created_asc' | 'role_priority'>('name_asc');
 
   // Estados do Formulário em Área de Conteúdo
   const [formName, setFormName] = useState('');
@@ -111,13 +116,44 @@ export const AdminCollaboratorsView: React.FC = () => {
   };
 
   const sortedCollaborators = useMemo(() => {
-    return [...collaborators].sort((a, b) => {
+    let list = [...collaborators];
+
+    if (collabSearchQuery.trim()) {
+      const q = collabSearchQuery.toLowerCase().trim();
+      list = list.filter(c => 
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.customJobTitle || '').toLowerCase().includes(q) ||
+        (c.phone || '').includes(q)
+      );
+    }
+
+    list.sort((a, b) => {
+      if (collabSortBy === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+      }
+      if (collabSortBy === 'name_desc') {
+        return (b.name || '').localeCompare(a.name || '', 'pt-BR');
+      }
+      if (collabSortBy === 'created_desc') {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      }
+      if (collabSortBy === 'created_asc') {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeA - timeB;
+      }
+      // role_priority (padrão)
       const priorityA = rolePriority[a.role] || 99;
       const priorityB = rolePriority[b.role] || 99;
       if (priorityA !== priorityB) return priorityA - priorityB;
-      return a.name.localeCompare(b.name);
+      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
     });
-  }, [collaborators]);
+
+    return list;
+  }, [collaborators, collabSearchQuery, collabSortBy]);
 
   const isPendingFirstAccess = (c: Collaborator): boolean => {
     if (c.role === 'master') return false;
@@ -275,7 +311,33 @@ export const AdminCollaboratorsView: React.FC = () => {
     }
     if (collab.role === 'master') return 'Diretoria Geral';
     if (collab.isDev || collab.role === 'dev') return 'Desenvolvedor';
+    if (collab.role === 'admin') return 'Administrador';
+    if (collab.role === 'gerencia') return 'Gerência Geral';
+    if (collab.role === 'closer') return 'Closer (Fechamento)';
+    if (collab.role === 'sdr') return 'SDR (Pré-Vendas)';
+    if (collab.role === 'pos_venda') return 'Pós-Venda (Sucesso do Cliente)';
     return '';
+  };
+
+  const getRoleBadge = (role: AdminRole) => {
+    switch (role) {
+      case 'master':
+        return { label: 'Master', color: 'var(--adm-gold, #D4AF37)', bg: 'rgba(212, 175, 55, 0.15)' };
+      case 'dev':
+        return { label: 'Desenvolvedor', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
+      case 'admin':
+        return { label: 'Administrador', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)' };
+      case 'gerencia':
+        return { label: 'Gerente', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
+      case 'closer':
+        return { label: 'Closer', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.15)' };
+      case 'sdr':
+        return { label: 'SDR', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.15)' };
+      case 'pos_venda':
+        return { label: 'Pós-Venda', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
+      default:
+        return { label: role, color: 'var(--adm-text-muted)', bg: 'rgba(100, 116, 139, 0.15)' };
+    }
   };
 
   const getCollabSectors = (collab: Collaborator): ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] => {
@@ -1015,6 +1077,163 @@ export const AdminCollaboratorsView: React.FC = () => {
         </button>
       </div>
 
+      {/* Barra de Filtros, Ordenação e Alternador de Modos (Lista / Cards) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        background: 'var(--adm-bg-card)',
+        border: '1px solid var(--adm-border)',
+        borderRadius: '14px',
+        padding: '10px 14px',
+      }}>
+        {/* Lado Esquerdo: Campo de Busca */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'var(--adm-bg-input)',
+          border: '1px solid var(--adm-border)',
+          borderRadius: '10px',
+          padding: '0 12px',
+          height: '38px',
+          minWidth: '240px',
+          maxWidth: '360px',
+          flex: 1,
+        }}>
+          <Search size={15} color="var(--adm-text-muted)" />
+          <input
+            type="text"
+            value={collabSearchQuery}
+            onChange={(e) => setCollabSearchQuery(e.target.value)}
+            placeholder="Buscar por nome, cargo, e-mail..."
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              width: '100%',
+            }}
+          />
+          {collabSearchQuery && (
+            <button
+              type="button"
+              onClick={() => setCollabSearchQuery('')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-text-muted)',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
+        {/* Lado Direito: Seletor de Ordenação + Alternador de Visualização (Lista / Cards) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Ordenação */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '10px',
+            padding: '0 10px',
+            height: '38px',
+          }}>
+            <ArrowUpDown size={14} color="var(--adm-text-muted)" />
+            <select
+              value={collabSortBy}
+              onChange={(e) => setCollabSortBy(e.target.value as any)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: 'var(--adm-text-title)',
+                fontSize: '0.80rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="name_asc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Nome: A → Z</option>
+              <option value="name_desc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Nome: Z → A</option>
+              <option value="created_desc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Mais Recente</option>
+              <option value="created_asc" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Mais Antigo</option>
+              <option value="role_priority" style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>Hierarquia de Cargo</option>
+            </select>
+          </div>
+
+          {/* Alternador Lista / Cards (Audio 6: Lista Primário) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'var(--adm-bg-input)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '10px',
+            padding: '3px',
+            gap: '2px',
+          }}>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              title="Visualização em Lista (Padrão)"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: viewMode === 'list' ? 'var(--adm-bg-card)' : 'transparent',
+                color: viewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                boxShadow: viewMode === 'list' ? '0 1px 4px rgba(0, 0, 0, 0.12)' : 'none',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <List size={14} />
+              <span>Lista</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('card')}
+              title="Visualização em Cards"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: viewMode === 'card' ? 'var(--adm-bg-card)' : 'transparent',
+                color: viewMode === 'card' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                boxShadow: viewMode === 'card' ? '0 1px 4px rgba(0, 0, 0, 0.12)' : 'none',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <LayoutGrid size={14} />
+              <span>Cards</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Collaborators List */}
       {collaborators.length === 0 ? (
         <div style={{
@@ -1070,7 +1289,415 @@ export const AdminCollaboratorsView: React.FC = () => {
             <span>Cadastrar Primeiro Colaborador</span>
           </button>
         </div>
+      ) : sortedCollaborators.length === 0 ? (
+        <div style={{
+          background: 'var(--adm-bg-card)',
+          border: '1px dashed var(--adm-border)',
+          borderRadius: '16px',
+          padding: '36px 20px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px',
+        }}>
+          <Search size={24} color="var(--adm-text-muted)" />
+          <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: 0 }}>
+            Nenhum colaborador encontrado
+          </h4>
+          <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', margin: 0 }}>
+            Tente buscar com outro termo ou limpe o campo de busca.
+          </p>
+        </div>
+      ) : viewMode === 'list' ? (
+        /* MODO LISTA PRIMÁRIO (Tabela elegante) */
+        <div className="saas-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--adm-border)', borderRadius: '16px' }}>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '920px' }}>
+              <thead>
+                <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+                  <th style={{ padding: '14px 18px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Colaborador & Função
+                  </th>
+                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Cargo Corporativo
+                  </th>
+                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Setores / Acesso
+                  </th>
+                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Unidade(s)
+                  </th>
+                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
+                    Leads & Tarefas
+                  </th>
+                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Status
+                  </th>
+                  <th style={{ padding: '14px 18px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
+                    Ações
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedCollaborators.map(collab => {
+                  const venue = venues.find(v => v.id === collab.venueId);
+                  const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
+                  const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
+                  const isMasterRole = collab.role === 'master';
+                  const isManagerRole = isMasterRole || collab.role === 'admin' || collab.role === 'gerencia';
+                  const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
+                  const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
+                  const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
+                  const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
+                  const collabLeads = getCollabLeads(collab);
+                  const collabTasks = getCollabTasks(collab);
+                  const collabSectors = getCollabSectors(collab);
+                  const roleBadge = getRoleBadge(collab.role);
+                  const roleTitle = getCollabRoleTitle(collab);
+                  const isPending = isPendingFirstAccess(collab);
+
+                  return (
+                    <tr
+                      key={collab.id}
+                      style={{
+                        borderBottom: '1px solid var(--adm-border)',
+                        opacity: collab.active ? 1 : 0.65,
+                        transition: 'background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      {/* 1. Colaborador: Foto, Nome e Função abaixo */}
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <img
+                            src={(collab.avatarUrl && !collab.avatarUrl.includes('unsplash.com')) ? collab.avatarUrl : createMonogramAvatar(collab.name)}
+                            alt={collab.name}
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: `1.5px solid ${collab.active ? (isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-accent)') : 'rgba(100, 116, 139, 0.4)'}`,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{
+                              fontSize: '0.88rem',
+                              fontWeight: 800,
+                              color: 'var(--adm-text-title)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}>
+                              {collab.name}
+                            </div>
+                            <div style={{
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              color: isMasterRole ? 'var(--adm-gold, #D4AF37)' : 'var(--adm-text-muted)',
+                              marginTop: '1px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}>
+                              {roleTitle || 'Cargo não informado'}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>{collab.email}</span>
+                              {collab.phone && <span>• {formatPhone(collab.phone)}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 2. Cargo Corporativo */}
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          background: roleBadge.bg,
+                          color: roleBadge.color,
+                          border: `1px solid ${roleBadge.color}35`,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {isMasterRole && <ShieldCheck size={12} />}
+                          {roleBadge.label}
+                        </span>
+                      </td>
+
+                      {/* 3. Setores */}
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                          {isManagerRole ? (
+                            <span style={{
+                              background: 'rgba(212, 175, 55, 0.12)',
+                              color: 'var(--adm-gold, #D4AF37)',
+                              border: '1px solid rgba(212, 175, 55, 0.35)',
+                              borderRadius: '6px',
+                              padding: '2px 7px',
+                              fontSize: '0.66rem',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}>
+                              <ShieldCheck size={11} />
+                              Gerência
+                            </span>
+                          ) : (
+                            <>
+                              {collabSectors.includes('comercial') && (
+                                <span style={{
+                                  background: 'rgba(20, 169, 215, 0.12)',
+                                  color: '#14A9D7',
+                                  border: '1px solid rgba(20, 169, 215, 0.35)',
+                                  borderRadius: '6px',
+                                  padding: '2px 7px',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 800,
+                                }}>
+                                  Comercial
+                                </span>
+                              )}
+                              {collabSectors.includes('pos_venda') && (
+                                <span style={{
+                                  background: 'rgba(6, 182, 212, 0.12)',
+                                  color: '#06B6D4',
+                                  border: '1px solid rgba(6, 182, 212, 0.35)',
+                                  borderRadius: '6px',
+                                  padding: '2px 7px',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 800,
+                                }}>
+                                  Pós-Venda
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 4. Unidades */}
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: 'var(--adm-text-title)' }}>
+                          <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
+                          <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {venueName}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 5. Leads & Tarefas */}
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSuperManagement(collab, 'leads')}
+                            title="Ver leads vinculados"
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '8px',
+                              background: 'rgba(20, 169, 215, 0.1)',
+                              border: '1px solid rgba(20, 169, 215, 0.25)',
+                              color: 'var(--adm-accent)',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Target size={12} />
+                            <span>{collabLeads.length}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSuperManagement(collab, 'tasks')}
+                            title="Ver tarefas vinculadas"
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '8px',
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              border: '1px solid rgba(139, 92, 246, 0.25)',
+                              color: '#8B5CF6',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <CheckSquare size={12} />
+                            <span>{collabTasks.length}</span>
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* 6. Status */}
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {canToggle ? (
+                            <button
+                              type="button"
+                              onClick={() => updateCollaborator(collab.id, { active: !collab.active })}
+                              title={collab.active ? 'Ativo • Clique para desativar' : 'Inativo • Clique para reativar'}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '8px',
+                                background: collab.active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                                border: `1.5px solid ${collab.active ? 'rgba(16, 185, 129, 0.5)' : 'rgba(100, 116, 139, 0.35)'}`,
+                                color: collab.active ? '#10B981' : '#64748B',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Power size={13} />
+                            </button>
+                          ) : (
+                            <span style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: collab.active ? '#10B981' : '#64748B',
+                              display: 'inline-block',
+                            }} />
+                          )}
+                          <div>
+                            <span style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: collab.active ? '#10B981' : '#64748B',
+                            }}>
+                              {collab.active ? 'Ativo' : 'Inativo'}
+                            </span>
+                            {isPending && (
+                              <span style={{ display: 'block', fontSize: '0.62rem', color: '#F59E0B', fontWeight: 700 }}>
+                                Convite Pendente
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 7. Ações */}
+                      <td style={{ padding: '12px 18px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          {isPending && (
+                            <button
+                              type="button"
+                              onClick={() => setCollabForInviteModal(collab)}
+                              title="Link de Acesso"
+                              style={{
+                                padding: '5px 8px',
+                                borderRadius: '7px',
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                color: '#F59E0B',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <KeyRound size={12} />
+                              <span>Link</span>
+                            </button>
+                          )}
+
+                          {(isSelf || isMasterRole) ? (
+                            <button
+                              type="button"
+                              onClick={handleOpenMasterProfile}
+                              title="Editar Meu Perfil"
+                              style={{
+                                padding: '5px 10px',
+                                borderRadius: '7px',
+                                background: 'rgba(212, 175, 55, 0.12)',
+                                border: '1px solid rgba(212, 175, 55, 0.35)',
+                                color: 'var(--adm-gold, #D4AF37)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <UserCheck size={12} />
+                              <span>Meu Perfil</span>
+                            </button>
+                          ) : canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(collab)}
+                              title="Editar Colaborador"
+                              style={{
+                                padding: '5px 8px',
+                                borderRadius: '7px',
+                                background: 'var(--adm-bg-input)',
+                                border: '1px solid var(--adm-border)',
+                                color: 'var(--adm-text-title)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Edit3 size={12} />
+                              <span>Editar</span>
+                            </button>
+                          ) : null}
+
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDelete(collab)}
+                              title="Remover Colaborador"
+                              style={{
+                                padding: '5px 8px',
+                                borderRadius: '7px',
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                color: 'var(--adm-red)',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* MODO CARDS */
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',

@@ -2421,7 +2421,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
 
-    // 2. Leads existentes no funil (se uma casa tem leads neste funil, o funil atende a essa casa)
+    // 2. Leads e Clientes existentes no funil (se uma casa tem leads ou clientes de pós-venda neste funil, o funil atende a essa casa)
     leads.forEach(l => {
       if (l.funnelId && l.venueId) {
         if (!map.has(l.funnelId)) map.set(l.funnelId, new Set());
@@ -2429,20 +2429,32 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
 
+    (clients || []).forEach(c => {
+      const cFunnelId = (c as any).funnelId || (c as any).funnel_id;
+      if (cFunnelId && c.venueId) {
+        if (!map.has(cFunnelId)) map.set(cFunnelId, new Set());
+        map.get(cFunnelId)!.add(c.venueId);
+      }
+    });
+
     // 3. Casas configuradas no funil (venueId e sharedVenueIds)
     funnels.forEach(f => {
       if (!map.has(f.id)) map.set(f.id, new Set());
-      if (f.venueId) map.get(f.id)!.add(f.venueId);
+      if (f.venueId && f.venueId !== 'all') map.get(f.id)!.add(f.venueId);
       if (Array.isArray(f.sharedVenueIds)) {
-        f.sharedVenueIds.forEach(vid => map.get(f.id)!.add(vid));
+        f.sharedVenueIds.forEach(vid => {
+          if (vid && vid !== 'all') map.get(f.id)!.add(vid);
+        });
       }
       if (Array.isArray((f as any).shared_venue_ids)) {
-        (f as any).shared_venue_ids.forEach((vid: string) => map.get(f.id)!.add(vid));
+        (f as any).shared_venue_ids.forEach((vid: string) => {
+          if (vid && vid !== 'all') map.get(f.id)!.add(vid);
+        });
       }
     });
 
     return map;
-  }, [sources, leads, funnels]);
+  }, [sources, leads, clients, funnels]);
 
   // Funis do Tenant Ativo (Estritamente isolados por masterId e casas do Master)
   const scopedFunnels = useMemo(() => {
@@ -2466,7 +2478,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!f.masterId) {
         const belongsToMasterVenues = (f.venueId && masterVenueIds.has(f.venueId)) ||
           (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => masterVenueIds.has(vid))) ||
-          (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.some((vid: string) => masterVenueIds.has(vid)));
+          (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.some((vid: string) => masterVenueIds.has(vid))) ||
+          (!f.venueId || f.venueId === 'all');
         if (!belongsToMasterVenues) {
           return false;
         }
@@ -2479,7 +2492,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!isMasterNative && userVenueIds.size > 0) {
         const matchesUserVenues = Array.from(connectedVenues).some(vid => userVenueIds.has(vid))
           || (f.venueId && userVenueIds.has(f.venueId))
-          || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.some(vid => userVenueIds.has(vid)))
+          || (f.venueId === 'all')
+          || (Array.isArray(f.sharedVenueIds) && (f.sharedVenueIds.some(vid => userVenueIds.has(vid)) || f.sharedVenueIds.includes('all')))
           || (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.some((vid: string) => userVenueIds.has(vid)));
         if (!matchesUserVenues) return false;
       }
@@ -2488,9 +2502,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
         if (!masterVenueIds.has(activeVenueId)) return false;
 
+        // Se a unidade estiver explicitamente desabilitada para este funil
+        if (Array.isArray(f.disabledVenueIds) && f.disabledVenueIds.includes(activeVenueId)) {
+          return false;
+        }
+
         const isLinkedToActive = connectedVenues.has(activeVenueId)
           || (f.venueId === activeVenueId)
-          || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(activeVenueId))
+          || (f.venueId === 'all')
+          || (Array.isArray(f.sharedVenueIds) && (f.sharedVenueIds.includes(activeVenueId) || f.sharedVenueIds.includes('all') || f.sharedVenueIds.length === 0))
           || (Array.isArray((f as any).shared_venue_ids) && (f as any).shared_venue_ids.includes(activeVenueId));
 
         return isLinkedToActive;

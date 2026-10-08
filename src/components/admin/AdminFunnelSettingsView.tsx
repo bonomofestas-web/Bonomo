@@ -1309,55 +1309,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               </div>
             </div>
 
-              {/* Seletor de Unidade Principal do Funil */}
-              <div style={{
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '10px',
-                padding: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px',
-                marginBottom: '12px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>
-                    Unidade Proprietária do Funil
-                  </label>
-                  <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
-                    Casa de ancoragem
-                  </span>
-                </div>
-                <select
-                  value={funnelVenueId}
-                  onChange={(e) => setFunnelVenueId(e.target.value)}
-                  style={{
-                    background: 'var(--adm-bg-card)',
-                    border: '1px solid var(--adm-border)',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    fontSize: '0.80rem',
-                    fontWeight: 700,
-                    color: 'var(--adm-text-title)',
-                    outline: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="all">Geral da Rede (Multi-Casas)</option>
-                  {venues.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-                <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
-                  Define a qual unidade física este funil pertence primordialmente.
-                </span>
-              </div>
-
               {(() => {
                 const targetVenues = venues.filter(venue => {
                   if (venue.active === false) return false;
-                  const isOwner = funnelVenueId === venue.id;
-                  const isExplicitlyAdded = explicitlyAddedVenueIds.includes(venue.id);
+                  const isExplicitlyAdded = explicitlyAddedVenueIds.includes(venue.id) 
+                    || sharedVenueIds.includes(venue.id)
+                    || (activeFunnel?.venueId === venue.id && venue.id !== 'all');
                   const isDisabled = disabledVenueIds.includes(venue.id);
                   const hasFunnelSources = (sources || []).some(
                     s => s.venueId === venue.id && (s.funnelId === activeFunnel?.id || enabledWhatsAppSourceIds.includes(s.id))
@@ -1366,7 +1323,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     l => (l.funnelId === activeFunnel?.id || l.funnelId === activeFunnel?.name) && l.venueId === venue.id
                   );
 
-                  return isOwner || isExplicitlyAdded || isDisabled || hasFunnelSources || hasLeadsInFunnel;
+                  return isExplicitlyAdded || isDisabled || hasFunnelSources || hasLeadsInFunnel;
                 });
 
                 const unlinkedVenues = venues.filter(v => v.active !== false && !targetVenues.some(tv => tv.id === v.id));
@@ -1443,7 +1400,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {targetVenues.map(venue => {
                       const isDisabled = disabledVenueIds.includes(venue.id);
-                      const isOwner = funnelVenueId === venue.id;
                       const venueFunnelSources = (sources || []).filter(
                         s => s.venueId === venue.id && (s.funnelId === activeFunnel.id || enabledWhatsAppSourceIds.includes(s.id))
                       );
@@ -1482,18 +1438,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                   <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                                     {venue.name}
                                   </span>
-                                  {isOwner && (
-                                    <span style={{
-                                      fontSize: '0.58rem',
-                                      fontWeight: 800,
-                                      padding: '1px 5px',
-                                      borderRadius: '4px',
-                                      background: 'rgba(59, 130, 246, 0.15)',
-                                      color: 'var(--adm-accent)',
-                                    }}>
-                                      Proprietária
-                                    </span>
-                                  )}
                                 </div>
                                 <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
                                   {venueLeadsCount} {venueLeadsCount === 1 ? 'lead ativo' : 'leads ativos'} no funil

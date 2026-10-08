@@ -13,6 +13,7 @@ import { AdminNewClientModal } from './AdminNewClientModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminClientInspector } from './AdminClientInspector';
+import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -237,7 +238,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     togglePinFunnel,
     isFunnelPinned,
     tasks,
-    appointments
+    appointments,
+    sources
   } = useAdminState();
 
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(initialFunnelId || null);
@@ -248,6 +250,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [inspectorClientId, setInspectorClientId] = useState<string | null>(null);
+  const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSettingsFunnelId, setActiveSettingsFunnelId] = useState<string | null>(null);
@@ -346,17 +349,39 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     return null;
   }, [funnels, selectedFunnelId]);
 
-  // Recupera unidades vinculadas manualmente a qualquer funil
+  // Recupera unidades vinculadas a qualquer funil de pós-venda (origens, clientes e sharedVenueIds)
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
+    const disabledSet = new Set<string>(targetFunnel.disabledVenueIds || []);
     const venueIdSet = new Set<string>();
+
+    // 1. Unidades explicitamente associadas (sharedVenueIds ou targetFunnel.venueId)
     if (targetFunnel.venueId && targetFunnel.venueId !== 'all') {
-      venueIdSet.add(targetFunnel.venueId);
+      if (!disabledSet.has(targetFunnel.venueId)) {
+        venueIdSet.add(targetFunnel.venueId);
+      }
     }
-    if (Array.isArray(targetFunnel.sharedVenueIds)) {
-      targetFunnel.sharedVenueIds.forEach(id => {
-        if (id && id !== 'all') venueIdSet.add(id);
+    const funnelAny = targetFunnel as unknown as { venueIds?: string[]; sharedVenueIds?: string[] };
+    const sharedIds = funnelAny.sharedVenueIds || funnelAny.venueIds;
+    if (Array.isArray(sharedIds)) {
+      sharedIds.forEach((id: string) => {
+        if (id && id !== 'all' && !disabledSet.has(id)) venueIdSet.add(id);
       });
     }
+
+    // 2. Origens ativas conectadas a este funil
+    (sources || []).filter(s => s.funnelId === targetFunnel.id).forEach(s => {
+      if (s.venueId && s.venueId !== 'all' && !disabledSet.has(s.venueId)) {
+        venueIdSet.add(s.venueId);
+      }
+    });
+
+    // 3. Clientes vinculados a este funil
+    (clients || []).filter(c => (c.funnelId === targetFunnel.id || (!c.funnelId && targetFunnel.id === 'post_sale_default'))).forEach(c => {
+      if (c.venueId && c.venueId !== 'all' && !disabledSet.has(c.venueId)) {
+        venueIdSet.add(c.venueId);
+      }
+    });
+
     return venues.filter(v => venueIdSet.has(v.id));
   };
 
@@ -781,13 +806,106 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   };
 
   if (inspectorClientId) {
+    const previewLead = previewLeadId ? (leads || []).find(l => l.id === previewLeadId) : null;
+    const handleOpenLead = (leadId: string) => {
+      const userRole = currentUser?.role;
+      const isCommercialAllowed = userRole === 'master' || userRole === 'dev' || userRole === 'admin' || userRole === 'closer' || userRole === 'sdr' || currentUser?.sectors?.includes('comercial');
+      if (!isCommercialAllowed) {
+        setPreviewLeadId(leadId);
+      } else if (onOpenCommercialLead) {
+        onOpenCommercialLead(leadId);
+      } else if (onOpenLead) {
+        onOpenLead(leadId);
+      } else {
+        setPreviewLeadId(leadId);
+      }
+    };
+
     return (
-      <AdminClientInspector
-        clientId={inspectorClientId}
-        onClose={() => setInspectorClientId(null)}
-        onOpenDebutanteApp={onOpenDebutanteApp}
-        onOpenCommercialLead={onOpenCommercialLead || onOpenLead}
-      />
+      <>
+        <AdminClientInspector
+          clientId={inspectorClientId}
+          onClose={() => {
+            setInspectorClientId(null);
+            setPreviewLeadId(null);
+          }}
+          onOpenDebutanteApp={onOpenDebutanteApp}
+          onOpenCommercialLead={handleOpenLead}
+        />
+        {previewLead && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}>
+            <div style={{
+              width: '100%',
+              maxWidth: '1100px',
+              maxHeight: '92vh',
+              background: 'var(--adm-bg-card)',
+              borderRadius: '16px',
+              border: '1px solid var(--adm-border)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+            }}>
+              <div style={{
+                padding: '12px 20px',
+                borderBottom: '1px solid var(--adm-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(234, 179, 8, 0.08)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={16} color="#EAB308" />
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Ficha Comercial do Lead (Modo Somente Leitura • Espectador)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewLeadId(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--adm-text-muted)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <AdminLeadInspector
+                  lead={previewLead}
+                  readOnly={true}
+                  isModal={true}
+                  isPostSale={true}
+                  onClose={() => setPreviewLeadId(null)}
+                  onStageChange={() => {}}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -2375,8 +2493,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             if (isMultiSelectMode) {
                               toggleClientSelection(client.id);
                             } else {
-                              setSelectedClientId(client.id);
-                              setViewMode('inbox');
+                              setInspectorClientId(client.id);
                             }
                           }}
                           style={{
@@ -2479,7 +2596,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                         type="button"
                                         onClick={() => {
                                           setActiveClientMenuId(null);
-                                          setSelectedClientId(client.id);
+                                          setInspectorClientId(client.id);
                                         }}
                                         style={{
                                           display: 'flex',
@@ -2508,6 +2625,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                         onClick={() => {
                                           setActiveClientMenuId(null);
                                           setSelectedClientId(client.id);
+                                          setViewMode('inbox');
                                         }}
                                         style={{
                                           display: 'flex',
@@ -3489,6 +3607,85 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           setIsCreateModalOpen(false);
         }}
       />
+
+      {/* ── Modal de Visualização Preview do Lead Comercial (Modo Somente Leitura • Espectador) ── */}
+      {(() => {
+        const previewLead = previewLeadId ? (leads || []).find(l => l.id === previewLeadId) : null;
+        if (!previewLead) return null;
+        return (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}>
+            <div style={{
+              width: '100%',
+              maxWidth: '1100px',
+              maxHeight: '92vh',
+              background: 'var(--adm-bg-card)',
+              borderRadius: '16px',
+              border: '1px solid var(--adm-border)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+            }}>
+              <div style={{
+                padding: '12px 20px',
+                borderBottom: '1px solid var(--adm-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(234, 179, 8, 0.08)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={16} color="#EAB308" />
+                  <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                    Ficha Comercial do Lead (Modo Somente Leitura • Espectador)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewLeadId(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--adm-text-muted)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <AdminLeadInspector
+                  lead={previewLead}
+                  readOnly={true}
+                  isModal={true}
+                  isPostSale={true}
+                  onClose={() => setPreviewLeadId(null)}
+                  onStageChange={() => {}}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

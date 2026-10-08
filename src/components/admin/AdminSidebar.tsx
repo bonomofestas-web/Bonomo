@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
   CheckSquare, Home,
@@ -11,8 +11,7 @@ import {
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
-import { APP_VERSION, type FeatureFlagId } from '../../types/admin';
-import type { Venue } from '../../types/admin';
+import { APP_VERSION, type FeatureFlagId, type Venue, type CommercialFunnel } from '../../types/admin';
 import { getLeadPendingWaitingTime } from '../../utils/leadSorting';
 
 export type AdminTabType = 
@@ -170,7 +169,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       return (effectiveUser as any).sectors;
     }
     if (userRole === 'admin') return ['gerencia', 'comercial', 'pos_venda'];
-    if (userRole === 'pos_venda') return ['pos_venda', 'comercial'];
+    if (userRole === 'pos_venda') return ['pos_venda'];
     return ['comercial'];
   }, [effectiveUser, isDevUser, userRole]);
 
@@ -246,6 +245,15 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   }, [venues, effectiveUser, userRole]);
 
 
+  const isPostSaleFunnel = useCallback((f: CommercialFunnel) => Boolean(
+    f.isPostSale || 
+    f.category === 'Pós-Venda' || 
+    f.category === 'pos_venda' ||
+    f.name?.toLowerCase().includes('pós-venda') || 
+    f.name?.toLowerCase().includes('pos venda') || 
+    f.name?.toLowerCase().includes('sucesso')
+  ), []);
+
   const visiblePinnedFunnels = useMemo(() => {
     const pinnedIds = userPinnedFunnelIds || [];
     const filtered = funnels.filter(funnel => {
@@ -254,8 +262,154 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     return filtered.sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
   }, [funnels, userPinnedFunnelIds]);
 
+  const pinnedCommercialFunnels = useMemo(() => {
+    if (!effectiveSectors.includes('comercial')) return [];
+    return visiblePinnedFunnels.filter(f => !isPostSaleFunnel(f));
+  }, [visiblePinnedFunnels, effectiveSectors, isPostSaleFunnel]);
+
+  const pinnedPostSaleFunnels = useMemo(() => {
+    if (!effectiveSectors.includes('pos_venda')) return [];
+    return visiblePinnedFunnels.filter(f => isPostSaleFunnel(f));
+  }, [visiblePinnedFunnels, effectiveSectors, isPostSaleFunnel]);
+
   const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
     return renderFunnelOrStageIcon(iconName, size, color, 'target');
+  };
+
+  const renderPinnedFunnelButton = (f: CommercialFunnel) => {
+    const isPostSale = isPostSaleFunnel(f);
+    const targetTab: AdminTabType = isPostSale ? 'post-sale-crm' : 'crm';
+    const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
+    const funnelColor = isPostSale ? '#06B6D4' : (f.badgeColor || '#D4AF37');
+    
+    if (isCollapsed && !isMobileOverlay) {
+      return (
+        <button
+          key={`pinned-${f.id}`}
+          type="button"
+          onClick={() => handleTabClick(targetTab, f.id)}
+          title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name}`}
+          style={{
+            width: '38px',
+            height: '38px',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '10px',
+            background: isFunnelActive ? `${funnelColor}22` : 'transparent',
+            border: isFunnelActive ? `1.5px solid ${funnelColor}` : '1px solid transparent',
+            color: isFunnelActive ? funnelColor : '#8096A8',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            position: 'relative',
+          }}
+        >
+          {renderSidebarFunnelIcon(f.icon, 15, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
+          {isFunnelActive && (
+            <span style={{
+              position: 'absolute',
+              right: '-5px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '3px',
+              height: '14px',
+              borderRadius: '2px',
+              background: funnelColor,
+              boxShadow: `0 0 8px ${funnelColor}AA`,
+            }} />
+          )}
+        </button>
+      );
+    }
+
+    const isDraggingThis = draggedFunnelId === f.id;
+    const isDragOverThis = dragOverFunnelId === f.id;
+    const displayTitle = f.name.length > 14 ? f.name.split(' ')[0] : f.name;
+
+    return (
+      <button
+        key={`pinned-${f.id}`}
+        type="button"
+        draggable={!isCollapsed}
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/plain', f.id);
+          setDraggedFunnelId(f.id);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragOverFunnelId !== f.id) setDragOverFunnelId(f.id);
+        }}
+        onDragLeave={() => {
+          if (dragOverFunnelId === f.id) setDragOverFunnelId(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          handleFunnelDrop(f.id);
+        }}
+        onDragEnd={() => {
+          setDraggedFunnelId(null);
+          setDragOverFunnelId(null);
+        }}
+        onClick={() => handleTabClick(targetTab, f.id)}
+        title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name} (Arraste para reordenar)`}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '7px',
+          padding: '6px 10px',
+          paddingLeft: '16px',
+          borderRadius: '8px',
+          background: isFunnelActive ? `${funnelColor}18` : isDragOverThis ? 'rgba(212, 175, 55, 0.12)' : 'transparent',
+          border: isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
+          borderTop: isDragOverThis ? '2px solid var(--adm-accent)' : isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
+          color: isFunnelActive ? funnelColor : 'rgba(255, 255, 255, 0.75)',
+          fontSize: '0.72rem',
+          fontWeight: isFunnelActive ? 700 : 500,
+          cursor: 'pointer',
+          textAlign: 'left',
+          transition: 'all 0.15s ease',
+          opacity: isDraggingThis ? 0.35 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (!isFunnelActive) {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+            e.currentTarget.style.color = '#FFFFFF';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isFunnelActive) {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)';
+          }
+        }}
+      >
+        <GripVertical size={11} style={{ opacity: 0.35, cursor: 'grab', flexShrink: 0, marginRight: '-3px' }} />
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          {renderSidebarFunnelIcon(f.icon, 13, isFunnelActive ? funnelColor : (f.badgeColor || '#9E988D'))}
+        </span>
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {displayTitle}
+        </span>
+        <span style={{
+          fontSize: '8px',
+          padding: '1px 4px',
+          borderRadius: '4px',
+          background: isPostSale 
+            ? (isFunnelActive ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.12)')
+            : (isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)'),
+          color: isPostSale ? '#06B6D4' : (isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)')),
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          letterSpacing: '0.2px',
+          flexShrink: 0,
+        }}>
+          {isPostSale ? 'PÓS' : 'FUNIL'}
+        </span>
+      </button>
+    );
   };
 
   // Helper to render Venue Logo / Icon with Square Background
@@ -1218,144 +1372,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {workspaceItems.map(item => renderNavButton(item))}
-
-              {/* Funis Fixados no Workspace deste Usuário */}
-              {visiblePinnedFunnels.map(f => {
-                const isPostSale = Boolean(f.isPostSale || f.category === 'Pós-Venda' || f.name?.toLowerCase().includes('pós-venda') || f.name?.toLowerCase().includes('pos venda') || f.name?.toLowerCase().includes('sucesso'));
-                const targetTab: AdminTabType = isPostSale ? 'post-sale-crm' : 'crm';
-                const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
-                const funnelColor = isPostSale ? '#06B6D4' : (f.badgeColor || '#D4AF37');
-                
-                if (isCollapsed && !isMobileOverlay) {
-                  return (
-                    <button
-                      key={`pinned-${f.id}`}
-                      type="button"
-                      onClick={() => handleTabClick(targetTab, f.id)}
-                      title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name}`}
-                      style={{
-                        width: '38px',
-                        height: '38px',
-                        margin: '0 auto',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '10px',
-                        background: isFunnelActive ? `${funnelColor}22` : 'transparent',
-                        border: isFunnelActive ? `1.5px solid ${funnelColor}` : '1px solid transparent',
-                        color: isFunnelActive ? funnelColor : '#8096A8',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        position: 'relative',
-                      }}
-                    >
-                      {renderSidebarFunnelIcon(f.icon, 15, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
-                      {isFunnelActive && (
-                        <span style={{
-                          position: 'absolute',
-                          right: '-5px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          width: '3px',
-                          height: '14px',
-                          borderRadius: '2px',
-                          background: funnelColor,
-                          boxShadow: `0 0 8px ${funnelColor}AA`,
-                        }} />
-                      )}
-                    </button>
-                  );
-                }
-
-                const isDraggingThis = draggedFunnelId === f.id;
-                const isDragOverThis = dragOverFunnelId === f.id;
-
-                // Título: se for muito longo, usa a primeira palavra para nunca quebrar o layout
-                const displayTitle = f.name.length > 14 ? f.name.split(' ')[0] : f.name;
-
-                return (
-                  <button
-                    key={`pinned-${f.id}`}
-                    type="button"
-                    draggable={!isCollapsed}
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/plain', f.id);
-                      setDraggedFunnelId(f.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (dragOverFunnelId !== f.id) setDragOverFunnelId(f.id);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverFunnelId === f.id) setDragOverFunnelId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleFunnelDrop(f.id);
-                    }}
-                    onDragEnd={() => {
-                      setDraggedFunnelId(null);
-                      setDragOverFunnelId(null);
-                    }}
-                    onClick={() => handleTabClick(targetTab, f.id)}
-                    title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name} (Arraste para reordenar)`}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '7px',
-                      padding: '7px 10px',
-                      borderRadius: '8px',
-                      background: isFunnelActive ? `${funnelColor}18` : isDragOverThis ? 'rgba(212, 175, 55, 0.12)' : 'transparent',
-                      border: isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
-                      borderTop: isDragOverThis ? '2px solid var(--adm-accent)' : isFunnelActive ? `1px solid ${funnelColor}77` : '1px solid transparent',
-                      color: isFunnelActive ? funnelColor : 'rgba(255, 255, 255, 0.75)',
-                      fontSize: '0.74rem',
-                      fontWeight: isFunnelActive ? 700 : 500,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.15s ease',
-                      opacity: isDraggingThis ? 0.35 : 1,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isFunnelActive) {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                        e.currentTarget.style.color = '#FFFFFF';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isFunnelActive) {
-                        e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)';
-                      }
-                    }}
-                  >
-                    <GripVertical size={11} style={{ opacity: 0.35, cursor: 'grab', flexShrink: 0, marginRight: '-3px' }} />
-                    <span style={{ display: 'flex', alignItems: 'center' }}>
-                      {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#9E988D'))}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {displayTitle}
-                    </span>
-                    <span style={{
-                      fontSize: '8.5px',
-                      padding: '1px 5px',
-                      borderRadius: '4px',
-                      background: isPostSale 
-                        ? (isFunnelActive ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.12)')
-                        : (isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)'),
-                      color: isPostSale ? '#06B6D4' : (isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)')),
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.2px',
-                      flexShrink: 0,
-                    }}>
-                      {isPostSale ? 'PÓS' : 'COMERCIAL'}
-                    </span>
-                  </button>
-                );
-              })}
             </div>
           </div>
 
@@ -1375,12 +1391,23 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {commercialItems.map(item => renderNavButton(item))}
+                {commercialItems.map(item => {
+                  const btn = renderNavButton(item);
+                  if (item.id === 'crm' && pinnedCommercialFunnels.length > 0) {
+                    return (
+                      <React.Fragment key={item.id}>
+                        {btn}
+                        {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
+                      </React.Fragment>
+                    );
+                  }
+                  return btn;
+                })}
               </div>
             </div>
           )}
 
-          {/* 3. Setor Pós-Venda: Aniversariantes */}
+          {/* 3. Setor Pós-Venda: Sucesso do Cliente, App Aniversariantes, Compromissos */}
           {effectiveSectors.includes('pos_venda') && (
             <div>
               {!isCollapsed && (
@@ -1396,7 +1423,18 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {postSaleItems.map(item => renderNavButton(item))}
+                {postSaleItems.map(item => {
+                  const btn = renderNavButton(item);
+                  if (item.id === 'post-sale-crm' && pinnedPostSaleFunnels.length > 0) {
+                    return (
+                      <React.Fragment key={item.id}>
+                        {btn}
+                        {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
+                      </React.Fragment>
+                    );
+                  }
+                  return btn;
+                })}
               </div>
             </div>
           )}

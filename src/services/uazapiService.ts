@@ -299,10 +299,7 @@ export const uazapiService = {
     if (!baseUrl) throw new Error('URL do servidor UAZAPI não configurada.');
     if (!instanceToken) throw new Error('Token da instância não fornecido.');
 
-    const body: Record<string, any> = {
-      browser: ['F5 System', 'Desktop', '1.0.0'],
-      systemName: 'F5 System',
-    };
+    const body: Record<string, any> = {};
 
     if (typeof options === 'string') {
       const clean = options.replace(/\D/g, '');
@@ -312,10 +309,6 @@ export const uazapiService = {
         const clean = options.phone.replace(/\D/g, '');
         if (clean) body.phone = clean;
       }
-      if (options.browser && options.browser !== 'auto') {
-        body.browser = options.browser;
-      }
-      if (options.systemName) body.systemName = options.systemName;
       if (options.proxy_managed_country) body.proxy_managed_country = options.proxy_managed_country;
       if (options.proxy_managed_state) body.proxy_managed_state = options.proxy_managed_state;
       if (options.proxy_managed_city) body.proxy_managed_city = options.proxy_managed_city;

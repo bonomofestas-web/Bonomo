@@ -343,15 +343,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     const effectiveRole = effectiveUser?.role || 'master';
     const effectiveSectors = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
       ? (effectiveUser as any).sectors
-      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda'] : ['comercial']);
 
     const menuTabsInOrder: AdminTabType[] = [
       'home',
       'tasks',
-      'dashboard',
+      'post-sale-crm',
+      'debutantes',
       'crm',
       'whatsapp',
-      'debutantes',
+      'leads',
+      'followups',
+      'dashboard',
       'venue-goals',
       'sources',
       'mql',
@@ -361,11 +364,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     ];
 
     for (const tab of menuTabsInOrder) {
+      if (['crm', 'whatsapp', 'leads', 'followups', 'dashboard'].includes(tab)) {
+        if (!effectiveSectors.includes('comercial')) continue;
+      }
+      if (['post-sale-crm', 'debutantes'].includes(tab)) {
+        if (!effectiveSectors.includes('pos_venda')) continue;
+      }
       if (tab === 'master-dashboard' || tab === 'collaborators' || tab === 'venues' || tab === 'sources' || tab === 'mql' || tab === 'venue-goals') {
         if (effectiveRole !== 'master' && !effectiveSectors.includes('gerencia')) continue;
-      }
-      if (tab === 'debutantes') {
-        if (effectiveRole !== 'master' && !effectiveSectors.includes('pos_venda')) continue;
       }
 
       const flag = TAB_FEATURE_FLAG[tab];
@@ -376,29 +382,35 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return tab;
       }
     }
-    return 'crm';
+    return effectiveSectors.includes('pos_venda') ? 'post-sale-crm' : 'home';
   }, [viewingAsCollaborator, currentUser, getFeatureStatus]);
 
-  // Guarda de setores e telas proibidas durante visualização com os olhos de um colaborador
+  // Guarda de setores e telas proibidas durante visualização com os olhos de um colaborador ou perfil logado
   useEffect(() => {
-    if (!viewingAsCollaborator) return;
-    const effectiveUser = viewingAsCollaborator;
+    const effectiveUser = viewingAsCollaborator || currentUser;
+    if (!effectiveUser) return;
     const effectiveRole = effectiveUser.role || 'master';
+    if (effectiveRole === 'master' || effectiveUser.isDev) return;
+
     const effectiveSectors: string[] = (effectiveUser.sectors && effectiveUser.sectors.length > 0)
       ? effectiveUser.sectors
-      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+      : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda'] : ['comercial']);
 
+    const commercialTabs: AdminTabType[] = ['dashboard', 'whatsapp', 'crm', 'leads', 'followups'];
     const gerenciaTabs: AdminTabType[] = ['collaborators', 'venues', 'master-dashboard', 'sources', 'mql', 'venue-goals', 'templates', 'dev-features', 'dev-users', 'dev-announcements', 'dev-support'];
     const posVendaTabs: AdminTabType[] = ['post-sale-crm', 'debutantes'];
 
-    if (gerenciaTabs.includes(activeTab) && effectiveRole !== 'master' && !effectiveSectors.includes('gerencia')) {
+    if (commercialTabs.includes(activeTab) && !effectiveSectors.includes('comercial')) {
       const fallback = getFirstAvailableTab();
       handleSelectTab(fallback);
-    } else if (posVendaTabs.includes(activeTab) && effectiveRole !== 'master' && !effectiveSectors.includes('pos_venda')) {
+    } else if (gerenciaTabs.includes(activeTab) && !effectiveSectors.includes('gerencia')) {
+      const fallback = getFirstAvailableTab();
+      handleSelectTab(fallback);
+    } else if (posVendaTabs.includes(activeTab) && !effectiveSectors.includes('pos_venda')) {
       const fallback = getFirstAvailableTab();
       handleSelectTab(fallback);
     }
-  }, [viewingAsCollaborator, activeTab, getFirstAvailableTab]);
+  }, [viewingAsCollaborator, currentUser, activeTab, getFirstAvailableTab]);
 
   // Audio 2: Redirecionamento automático se a aba ativa estiver desativada por feature flag
   useEffect(() => {

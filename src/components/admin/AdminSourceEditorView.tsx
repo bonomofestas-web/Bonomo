@@ -1001,7 +1001,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                             <Target size={14} />
                           </div>
                           <span style={{ fontWeight: 600, color: 'var(--adm-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            ⚪ Sem Funil Definido (Desvinculado)
+                            Sem Funil Definido (Desvinculado)
                           </span>
                         </>
                       ) : isPostSale ? (
@@ -1010,8 +1010,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                             width: '24px',
                             height: '24px',
                             borderRadius: '6px',
-                            background: 'rgba(139, 92, 246, 0.18)',
-                            color: '#8B5CF6',
+                            background: `${funnelColor}22`,
+                            color: funnelColor,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -1019,8 +1019,8 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                           }}>
                             <Crown size={14} />
                           </div>
-                          <span style={{ fontWeight: 800, color: '#8B5CF6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            👑 Sucesso do Cliente (Pós-Venda)
+                          <span style={{ fontWeight: 800, color: funnelColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {selectedF?.name || 'Sucesso do Cliente (Pós-Venda)'}
                           </span>
                         </>
                       ) : (
@@ -1100,7 +1100,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Target size={14} color="var(--adm-text-muted)" />
-                          <span>⚪ Sem Funil Definido (Desvincular)</span>
+                          <span>Sem Funil Definido (Desvincular)</span>
                         </div>
                         {!funnelId && <Check size={14} color="var(--adm-accent)" />}
                       </button>
@@ -1108,9 +1108,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                       {/* Divisor */}
                       <div style={{ height: '1px', background: 'var(--adm-border)', margin: '2px 0' }} />
 
+                      {/* Header Comerciais */}
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--adm-text-muted)', padding: '4px 8px 2px 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Funis Comerciais
+                      </div>
+
                       {/* Opção 2: Funis Comerciais */}
                       {(funnels || []).filter(f => {
-                        if (f.isPostSale || f.category === 'Pós-Venda') return false;
+                        if (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.id === 'post_sale_default' || f.name?.toLowerCase().includes('pós-venda')) return false;
                         if (venueId) {
                           const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
                           if (disabled.includes(venueId)) return false;
@@ -1171,60 +1176,85 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                         );
                       })}
 
-                      {/* Opção 3: Sucesso do Cliente (Pós-Venda) */}
+                      {/* Divisor */}
+                      <div style={{ height: '1px', background: 'var(--adm-border)', margin: '4px 0' }} />
+
+                      {/* Header Pós-Venda */}
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#8B5CF6', padding: '4px 8px 2px 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Funis de Pós-Venda
+                      </div>
+
+                      {/* Opção 3: Todos os Funis de Pós-Venda */}
                       {(() => {
-                        const postSaleFunnel = funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.id === 'post_sale_default');
-                        const isSelected = funnelId === 'post_sale_default' || funnelId === postSaleFunnel?.id;
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFunnelId(postSaleFunnel?.id || 'post_sale_default');
-                              setIsFunnelDropdownOpen(false);
-                            }}
-                            style={{
-                              padding: '8px 12px',
-                              borderRadius: '10px',
-                              background: isSelected ? 'rgba(139, 92, 246, 0.16)' : 'transparent',
-                              border: isSelected ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
-                              color: isSelected ? '#8B5CF6' : 'var(--adm-text-title)',
-                              fontSize: '0.80rem',
-                              fontWeight: isSelected ? 800 : 600,
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              transition: 'all 0.12s ease',
-                              marginTop: '2px',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!isSelected) e.currentTarget.style.background = 'transparent';
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                              <div style={{
-                                width: '22px',
-                                height: '22px',
-                                borderRadius: '6px',
-                                background: 'rgba(139, 92, 246, 0.2)',
+                        const postSaleFunnels = (funnels || []).filter(f => {
+                          const isPS = f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.id === 'post_sale_default' || f.name?.toLowerCase().includes('pós-venda');
+                          if (!isPS) return false;
+                          if (venueId) {
+                            const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
+                            if (disabled.includes(venueId)) return false;
+                          }
+                          return true;
+                        });
+
+                        // Se não houver funis de pós-venda cadastrados além do default, assegura opção padrão
+                        const items = postSaleFunnels.length > 0 ? postSaleFunnels : [
+                          { id: 'post_sale_default', name: 'Sucesso do Cliente (Pós-Venda)', badgeColor: '#8B5CF6' } as any
+                        ];
+
+                        return items.map(f => {
+                          const isSelected = funnelId === f.id;
+                          const fColor = f.badgeColor || '#8B5CF6';
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => {
+                                setFunnelId(f.id);
+                                setIsFunnelDropdownOpen(false);
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '10px',
+                                background: isSelected ? 'rgba(139, 92, 246, 0.16)' : 'transparent',
+                                border: isSelected ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
+                                color: isSelected ? fColor : 'var(--adm-text-title)',
+                                fontSize: '0.80rem',
+                                fontWeight: isSelected ? 800 : 600,
+                                textAlign: 'left',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}>
-                                <Crown size={12} color="#8B5CF6" />
+                                justifyContent: 'space-between',
+                                transition: 'all 0.12s ease',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isSelected) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                <div style={{
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(139, 92, 246, 0.2)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}>
+                                  <Crown size={12} color={fColor} />
+                                </div>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {f.name}
+                                </span>
                               </div>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                Sucesso do Cliente (Pós-Venda)
-                              </span>
-                            </div>
-                            {isSelected && <Check size={14} color="#8B5CF6" />}
-                          </button>
-                        );
+                              {isSelected && <Check size={14} color={fColor} />}
+                            </button>
+                          );
+                        });
                       })()}
                     </div>
                   )}
