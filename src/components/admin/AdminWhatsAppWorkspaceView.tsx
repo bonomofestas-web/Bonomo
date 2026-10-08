@@ -4128,17 +4128,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const venue = venues.find(v => v.id === lead.venueId);
               const lastActivity = lead.activities?.[lead.activities.length - 1];
 
-              // Apenas mensagens REAIS de chat (tipo contact com texto ou mídia) aparecem no preview da caixa de entrada
+              // Busca mensagem real de chat nas atividades do lead
               const lastMessageActivity = (lead.activities || [])
                 .slice()
                 .reverse()
-                .find(a => a.type === 'contact' && (a.text || a.mediaUrl));
-              const rawMessageText = lastMessageActivity?.text || '';
+                .find(a => (a.type === 'contact' || (a.type === 'creation' && Boolean(a.text))) && (a.text || a.mediaUrl));
+              let rawMessageText = lastMessageActivity?.text || '';
+
+              // Fallback 1: Se não houver mensagem em activities, recuperar do lead.notes (onde webhooks de WhatsApp gravam a mensagem inicial)
+              if (!rawMessageText && lead.notes && typeof lead.notes === 'string') {
+                const trimmedNotes = lead.notes.trim();
+                const webhookMatch = trimmedNotes.match(/(?:Conversa iniciada via WhatsApp|Primeira mensagem via WhatsApp|Mensagem recebida via WhatsApp):\s*["“]?([\s\S]*?)["”]?(\n|$)/i);
+                if (webhookMatch && webhookMatch[1]) {
+                  rawMessageText = webhookMatch[1].trim();
+                } else if (!trimmedNotes.includes('{') && !trimmedNotes.includes('}') && trimmedNotes.length > 0) {
+                  rawMessageText = trimmedNotes.split('\n')[0].trim();
+                }
+              }
+
+              // Fallback 2: Se ainda não tiver texto, recuperar qualquer anotação/atividade recente com texto (exceto auditoria de status)
+              if (!rawMessageText && lead.activities && lead.activities.length > 0) {
+                const fallbackAct = lead.activities
+                  .slice()
+                  .reverse()
+                  .find(a => a.text && a.type !== 'status_change' && a.type !== 'assignment');
+                if (fallbackAct?.text) {
+                  rawMessageText = fallbackAct.text;
+                }
+              }
+
               // Limpa tags internas como [media:...] ou [failed:...]
               let cleanedText = rawMessageText
                 .replace(/^\[media:[^\]]+\]\s*/i, '')
                 .replace(/^\[failed:[^\]]+\]\s*/i, '')
                 .trim();
+
+              if (cleanedText.startsWith('[Undecryptable]')) {
+                cleanedText = 'Mensagem recebida';
+              }
 
               const isAudioMsg = (
                 lastMessageActivity?.mediaType === 'audio' ||
@@ -4207,7 +4234,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 cleanPreviewText = cleanedText || 'Nenhuma mensagem recente';
               }
 
-              const lastTime = lastMessageActivity?.timestamp || lead.updatedAt;
+              const lastTime = lastMessageActivity?.timestamp || lead.updatedAt || lead.createdAt;
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
               const sla = getLeadWaitTimeSla(pendingWaitMs);
 

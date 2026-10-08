@@ -364,26 +364,51 @@ export const leadService = {
           actFrom += actStep;
         }
       } else {
-        // Pré-carrega de forma leve e automática as últimas 5 trocas de conversa/atividades de cada lead
+        // Pré-carrega de forma leve e otimizada as últimas mensagens de conversa e auditoria de cada lead
         // Garante que o preview no WhatsApp, os timers de SLA e histórico de encerramento funcionem de imediato
         try {
-          const { data: recentActs, error: recentErr } = await supabase
-            .from('lead_activities')
-            .select('*')
-            .in('type', ['contact', 'creation', 'note', 'stage_change', 'status_change'])
-            .order('timestamp', { ascending: false })
-            .limit(1500);
+          // Busca em paralelo: 2 páginas de mensagens de chat (até 2000 contatos) + 1 página de auditoria do sistema (1000 registros)
+          const [chatRes1, chatRes2, auditRes] = await Promise.all([
+            supabase
+              .from('lead_activities')
+              .select('*')
+              .in('type', ['contact', 'whatsapp'])
+              .order('timestamp', { ascending: false })
+              .range(0, 999),
+            supabase
+              .from('lead_activities')
+              .select('*')
+              .in('type', ['contact', 'whatsapp'])
+              .order('timestamp', { ascending: false })
+              .range(1000, 1999),
+            supabase
+              .from('lead_activities')
+              .select('*')
+              .in('type', ['creation', 'note', 'stage_change', 'status_change'])
+              .order('timestamp', { ascending: false })
+              .range(0, 999)
+          ]);
 
-          if (!recentErr && recentActs && recentActs.length > 0) {
+          const combinedActs = [
+            ...(chatRes1.data || []),
+            ...(chatRes2.data || []),
+            ...(auditRes.data || [])
+          ];
+
+          if (combinedActs.length > 0) {
+            // Ordena descrescentemente por timestamp para priorizar as atividades mais recentes de cada lead
+            combinedActs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
             const leadActsCount = new Map<string, number>();
             const selectedRecent: any[] = [];
-            for (const act of recentActs) {
+            for (const act of combinedActs) {
               const count = leadActsCount.get(act.lead_id) || 0;
-              if (count < 5) {
+              if (count < 6) {
                 selectedRecent.push(act);
                 leadActsCount.set(act.lead_id, count + 1);
               }
             }
+            // Reordena crescentemente por timestamp para exibição cronológica nos históricos
             selectedRecent.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             activitiesData.push(...selectedRecent);
           }
