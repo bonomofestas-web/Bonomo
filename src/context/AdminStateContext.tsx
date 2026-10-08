@@ -262,7 +262,7 @@ export interface AdminContextType {
   addCollaborator: (data: Omit<Collaborator, 'id' | 'createdAt'>) => string;
   updateCollaborator: (id: string, data: Partial<Collaborator>) => void;
   deleteCollaborator: (id: string, reassignToId?: string | null) => void;
-  activateCollabFirstAccess: (collabIdOrEmail: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  activateCollabFirstAccess: (collabIdOrEmail: string, password: string, fallbackEmail?: string) => Promise<{ success: boolean; message?: string }>;
   showSystemAlert: (message: string, title?: string, type?: 'error' | 'warning' | 'info' | 'success') => void;
 
   // Venue Management
@@ -1936,17 +1936,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       throw new Error('Acesso desativado. Entre em contato com o administrador da sua conta.');
     }
 
-    // 3. Verificação de primeiro acesso (e-mail que ainda não acessou o sistema)
-    const hasNeverAccessed = Boolean(
-      foundCollab.isFirstAccess ||
-      (!foundCollab.activatedAt && !foundCollab.lastLoginAt && (!foundCollab.password || foundCollab.password.includes('••') || foundCollab.password === '123456' || foundCollab.password === 'Bonomo#2026'))
-    );
-
-    if (hasNeverAccessed && foundCollab.role !== 'master') {
-      throw new Error('Esse e-mail ainda não acessou o sistema. Para conseguir acessar, recupere a sua senha ou solicite o link de primeiro acesso para o seu gestor.');
+    // 3. Verificação de primeiro acesso: apenas bloqueia se o colaborador ainda não possuir nenhuma senha configurada
+    const hasNoCustomPassword = !foundCollab.password || foundCollab.password.includes('••') || foundCollab.password === '123456';
+    if (hasNoCustomPassword && foundCollab.isFirstAccess && foundCollab.role !== 'master') {
+      throw new Error('Sua conta ainda não possui uma senha definitiva cadastrada. Utilize o link oficial de primeiro acesso enviado pela gerência ou acesse "Esqueci minha senha".');
     }
 
-    // 3. Validação de senha via hash pgcrypto RPC
+    // 4. Validação de senha via hash pgcrypto RPC ou texto plano
     const storedPass = foundCollab.password || 'Bonomo#2026';
     const isBcrypt = storedPass.startsWith('$2a$') || storedPass.startsWith('$2b$') || storedPass.startsWith('$2y$');
 
@@ -1973,11 +1969,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       throw new Error('E-mail ou senha incorreta.');
     }
 
-    // 4. Criação do AdminUser estritamente com o role cadastrado no banco
+    // Se a senha confere, sincroniza sessão no Supabase Auth em segundo plano
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPass,
+        });
+      } catch (authErr) {
+        console.warn('[Login] Sessão Supabase Auth paralela:', authErr);
+      }
+    }
+
+    // 5. Criação do AdminUser: se logou com sucesso, desativa a flag de primeiro acesso
     const nowIso = new Date().toISOString();
-    const isFirst = optUser?.isFirstAccess !== undefined 
-      ? Boolean(optUser.isFirstAccess) 
-      : Boolean(foundCollab.isFirstAccess);
+    const isFirst = false;
 
     const user: AdminUser = {
       id: optUser?.id || foundCollab.id,
@@ -2810,22 +2816,108 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  const activateCollabFirstAccess = async (collabIdOrEmail: string, newPassword: string): Promise<{ success: boolean; message?: string }> => {
+  const activateCollabFirstAccess = async (collabIdOrEmail: string, newPassword: string, fallbackEmail?: string): Promise<{ success: boolean; message?: string }> => {
     try {
       const cleanTarget = (collabIdOrEmail || '').trim().toLowerCase();
-      if (!cleanTarget) {
-        return { success: false, message: 'Identificador do colaborador não fornecido.' };
+      const cleanFallback = (fallbackEmail || '').trim().toLowerCase();
+      const cleanPassword = (newPassword || '').trim();
+
+      if (!cleanPassword || cleanPassword.length < 6) {
+        return { success: false, message: 'A senha deve conter no mínimo 6 caracteres.' };
       }
 
-      let target = collaborators.find(c => c.id === collabIdOrEmail || c.email.toLowerCase().trim() === cleanTarget);
+      if (!cleanTarget && !cleanFallback) {
+        return { success: false, message: 'Identificador ou e-mail do colaborador não fornecido.' };
+      }
+
+      // 1. Tenta acionar a API de ativação com Service Role (Vercel ou Dev Server)
+      try {
+        const resp = await fetch('/api/activate-collaborator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanFallback || (cleanTarget.includes('@') ? cleanTarget : ''),
+            collabId: !cleanTarget.includes('@') ? cleanTarget : '',
+            password: cleanPassword,
+          }),
+        });
+
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success) {
+            const effEmail = (json.email || cleanFallback || cleanTarget).trim().toLowerCase();
+
+            // Autentica a sessão client-side no Supabase Auth
+            if (isSupabaseConfigured) {
+              try {
+                await supabase.auth.signInWithPassword({
+                  email: effEmail,
+                  password: cleanPassword,
+                });
+              } catch (signInErr) {
+                console.warn('[FirstAccess] Sessão client auth:', signInErr);
+              }
+            }
+
+            // Recarrega colaboradores do banco
+            const freshList = await collaboratorService.getAll();
+            setCollaborators(freshList);
+            safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(freshList));
+
+            const activated = freshList.find(c => 
+              c.id === json.collabId || 
+              c.email.toLowerCase().trim() === effEmail
+            );
+
+            if (activated) {
+              const userPayload: AdminUser = {
+                id: activated.id,
+                name: activated.name,
+                email: activated.email,
+                role: activated.role,
+                venueIds: activated.venueIds || (activated.venueId && activated.venueId !== 'all' ? [activated.venueId] : []),
+                avatarUrl: activated.avatarUrl,
+                isDev: activated.isDev,
+                masterId: activated.masterId,
+                theme: activated.theme || 'light',
+              };
+
+              setCurrentUser(userPayload);
+              safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(userPayload));
+              safeLocalStorageSet('f5_current_user', JSON.stringify(userPayload));
+              safeLocalStorageSet('f5_active_role', userPayload.role);
+              if (userPayload.masterId) {
+                safeLocalStorageSet('f5_scoped_master_id', userPayload.masterId);
+              }
+            }
+
+            return { success: true };
+          } else if (json.error) {
+            console.warn('[FirstAccess] API retornou erro:', json.error);
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[FirstAccess] Falha na chamada da API /api/activate-collaborator, acionando fallback direto:', apiErr);
+      }
+
+      // 2. Fallback direto (Client-Side)
+      let target = collaborators.find(c => 
+        c.id === collabIdOrEmail || 
+        c.email.toLowerCase().trim() === cleanTarget ||
+        (cleanFallback && c.email.toLowerCase().trim() === cleanFallback)
+      );
 
       if (!target && isSupabaseConfigured) {
         const freshList = await collaboratorService.getAll();
-        target = freshList.find(c => c.id === collabIdOrEmail || c.email.toLowerCase().trim() === cleanTarget);
+        target = freshList.find(c => 
+          c.id === collabIdOrEmail || 
+          c.email.toLowerCase().trim() === cleanTarget ||
+          (cleanFallback && c.email.toLowerCase().trim() === cleanFallback)
+        );
       }
 
       if (!target) {
-        return { success: false, message: 'Colaborador não encontrado na base de dados.' };
+        return { success: false, message: 'Colaborador não encontrado na base de dados. Verifique a digitação do e-mail ou contate a gerência.' };
       }
 
       if (target.active === false) {
@@ -2833,7 +2925,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       const updatedPayload: Partial<Collaborator> = {
-        password: newPassword.trim(),
+        password: cleanPassword,
         isFirstAccess: false,
         active: true,
         activatedAt: new Date().toISOString(),
@@ -2850,7 +2942,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         try {
           const { error: signUpErr } = await supabase.auth.signUp({
             email: target.email.toLowerCase().trim(),
-            password: newPassword.trim(),
+            password: cleanPassword,
             options: {
               data: {
                 name: target.name,
@@ -2860,7 +2952,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             }
           });
           if (signUpErr) {
-            await supabase.auth.updateUser({ password: newPassword.trim() });
+            await supabase.auth.signInWithPassword({
+              email: target.email.toLowerCase().trim(),
+              password: cleanPassword,
+            });
           }
         } catch (authErr) {
           console.warn('[FirstAccess] Aviso na sincronização do Supabase Auth:', authErr);

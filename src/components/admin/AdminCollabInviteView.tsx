@@ -85,13 +85,14 @@ export const AdminCollabInviteView: React.FC<AdminCollabInviteViewProps> = ({ to
     setIsLoading(true);
 
     try {
-      const collabId = targetCollab?.id || tokenData?.id || registeredEmail;
-      if (!collabId) {
+      const collabId = targetCollab?.id || tokenData?.id || '';
+      const emailFallback = registeredEmail || inputEmail || tokenData?.email || '';
+      if (!collabId && !emailFallback) {
         throw new Error('Identificador do colaborador não encontrado.');
       }
 
       // Ativa o primeiro acesso com a senha, grava no Supabase e autentica automaticamente
-      const activationResult = await activateCollabFirstAccess(collabId, password.trim());
+      const activationResult = await activateCollabFirstAccess(collabId, password.trim(), emailFallback);
       if (!activationResult.success) {
         throw new Error(activationResult.message || 'Erro ao registrar sua senha de acesso.');
       }

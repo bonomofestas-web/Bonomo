@@ -374,7 +374,162 @@ function r2ImageProxyPlugin() {
   };
 }
 
+function activateDevPlugin() {
+  return {
+    name: 'activate-dev-middleware',
+    configureServer(server: any) {
+      server.middlewares.use('/api/activate-collaborator', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 200;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', '*');
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        const env = loadEnv('development', process.cwd(), '');
+        const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+        const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { email, collabId, password } = JSON.parse(body || '{}');
+            const cleanEmail = (email && typeof email === 'string') ? email.trim().toLowerCase() : '';
+            const cleanId = (collabId && typeof collabId === 'string') ? collabId.trim() : '';
+            const cleanPassword = (password && typeof password === 'string') ? password.trim() : '';
+
+            if (!cleanPassword || cleanPassword.length < 6) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'A senha deve conter no mínimo 6 caracteres.' }));
+              return;
+            }
+
+            if (!cleanEmail && !cleanId) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Identificador ou e-mail do colaborador é obrigatório.' }));
+              return;
+            }
+
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(supabaseUrl, supabaseKey, {
+              auth: { autoRefreshToken: false, persistSession: false }
+            });
+
+            // 1. Localiza colaborador por e-mail ou por ID
+            let collabRecord: any = null;
+            if (cleanEmail) {
+              const { data: byEmail } = await supabase
+                .from('collaborators')
+                .select('*')
+                .ilike('email', cleanEmail)
+                .limit(1);
+              if (byEmail && byEmail.length > 0) collabRecord = byEmail[0];
+            }
+
+            if (!collabRecord && cleanId) {
+              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+              if (isUuid) {
+                const { data: byId } = await supabase
+                  .from('collaborators')
+                  .select('*')
+                  .eq('id', cleanId)
+                  .limit(1);
+                if (byId && byId.length > 0) collabRecord = byId[0];
+              }
+            }
+
+            if (!collabRecord) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Colaborador não encontrado na base de dados.' }));
+              return;
+            }
+
+            if (collabRecord.active === false) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Esta conta de colaborador foi desativada pela gerência.' }));
+              return;
+            }
+
+            const effectiveEmail = (collabRecord.email || cleanEmail).trim().toLowerCase();
+
+            // 2. Atualiza ou cria usuário no Auth
+            try {
+              const { data: listData } = await supabase.auth.admin.listUsers();
+              const existingAuthUser = listData?.users?.find((u: any) => u.email?.toLowerCase() === effectiveEmail);
+              if (existingAuthUser) {
+                await supabase.auth.admin.updateUserById(existingAuthUser.id, {
+                  password: cleanPassword,
+                  email_confirm: true,
+                  user_metadata: {
+                    name: collabRecord.name,
+                    role: collabRecord.role,
+                    master_id: collabRecord.master_id,
+                  }
+                });
+              } else {
+                await supabase.auth.admin.createUser({
+                  email: effectiveEmail,
+                  password: cleanPassword,
+                  email_confirm: true,
+                  user_metadata: {
+                    name: collabRecord.name,
+                    role: collabRecord.role,
+                    master_id: collabRecord.master_id,
+                  }
+                });
+              }
+            } catch (authErr) {
+              console.warn('[vite-activate] Erro auth:', authErr);
+            }
+
+            // 3. Atualiza tabela collaborators
+            const nowIso = new Date().toISOString();
+            await supabase.from('collaborators').update({
+              password: cleanPassword,
+              is_first_access: false,
+              active: true,
+              activated_at: nowIso,
+              last_login_at: nowIso,
+              updated_at: nowIso,
+            }).eq('id', collabRecord.id);
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({
+              success: true,
+              message: 'Conta ativada com sucesso!',
+              email: effectiveEmail,
+              collabId: collabRecord.id,
+              name: collabRecord.name,
+              role: collabRecord.role,
+            }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err.message || 'Erro interno' }));
+          }
+        });
+      });
+    }
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), r2DevUploadPlugin(), inviteDevPlugin(), r2ImageProxyPlugin()],
+  plugins: [react(), r2DevUploadPlugin(), inviteDevPlugin(), r2ImageProxyPlugin(), activateDevPlugin()],
 });

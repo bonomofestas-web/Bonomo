@@ -73,7 +73,7 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
         const { data: dbRow } = await supabase
           .from('collaborators')
           .select('id, name, email, active, is_first_access, role')
-          .eq('email', clean)
+          .ilike('email', clean)
           .maybeSingle();
 
         if (!dbRow || dbRow.active === false) {
@@ -466,7 +466,21 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       const target = matchedCollab || collaborators.find(c => c.email.toLowerCase() === cleanEmail);
       const nowIso = new Date().toISOString();
 
-      // 1. Se estiver sob sessão de recuperação do Supabase Auth, atualiza a senha na nuvem
+      // 1. Atualiza a senha via endpoint dedicado com service_role (tanto no Auth quanto no DB)
+      try {
+        await fetch('/api/activate-collaborator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password: newPassword,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('[AdminLoginView] Falha na API activate-collaborator:', apiErr);
+      }
+
+      // Se estiver sob sessão de recuperação do Supabase Auth, também atualiza client-side
       if (isDirectRecoverySession && isSupabaseConfigured) {
         try {
           const { error: authUpdateErr } = await supabase.auth.updateUser({ password: newPassword });
