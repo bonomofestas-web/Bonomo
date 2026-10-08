@@ -249,13 +249,10 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   const visiblePinnedFunnels = useMemo(() => {
     const pinnedIds = userPinnedFunnelIds || [];
     const filtered = funnels.filter(funnel => {
-      if (!pinnedIds.includes(funnel.id)) return false;
-      if (funnel.isPostSale || funnel.category === 'Pós-Venda' || funnel.name?.toLowerCase().includes('pós-venda') || funnel.name?.toLowerCase().includes('pos venda')) return false;
-      if (!activeVenueId) return true;
-      return funnel.venueId === activeVenueId || funnel.venueId === 'all';
+      return pinnedIds.includes(funnel.id);
     });
     return filtered.sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
-  }, [funnels, userPinnedFunnelIds, activeVenueId]);
+  }, [funnels, userPinnedFunnelIds]);
 
   const renderSidebarFunnelIcon = (iconName?: string, size = 15, color = '#D4AF37') => {
     return renderFunnelOrStageIcon(iconName, size, color, 'target');
@@ -1224,16 +1221,18 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
               {/* Funis Fixados no Workspace deste Usuário */}
               {visiblePinnedFunnels.map(f => {
-                const isFunnelActive = activeTab === 'crm' && activeFunnelId === f.id;
-                const funnelColor = f.badgeColor || '#D4AF37';
+                const isPostSale = Boolean(f.isPostSale || f.category === 'Pós-Venda' || f.name?.toLowerCase().includes('pós-venda') || f.name?.toLowerCase().includes('pos venda') || f.name?.toLowerCase().includes('sucesso'));
+                const targetTab: AdminTabType = isPostSale ? 'post-sale-crm' : 'crm';
+                const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
+                const funnelColor = isPostSale ? '#06B6D4' : (f.badgeColor || '#D4AF37');
                 
                 if (isCollapsed && !isMobileOverlay) {
                   return (
                     <button
                       key={`pinned-${f.id}`}
                       type="button"
-                      onClick={() => handleTabClick('crm', f.id)}
-                      title={`Funil: ${f.name}`}
+                      onClick={() => handleTabClick(targetTab, f.id)}
+                      title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name}`}
                       style={{
                         width: '38px',
                         height: '38px',
@@ -1271,6 +1270,9 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 const isDraggingThis = draggedFunnelId === f.id;
                 const isDragOverThis = dragOverFunnelId === f.id;
 
+                // Título: se for muito longo, usa a primeira palavra para nunca quebrar o layout
+                const displayTitle = f.name.length > 14 ? f.name.split(' ')[0] : f.name;
+
                 return (
                   <button
                     key={`pinned-${f.id}`}
@@ -1296,8 +1298,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                       setDraggedFunnelId(null);
                       setDragOverFunnelId(null);
                     }}
-                    onClick={() => handleTabClick('crm', f.id)}
-                    title={`Funil: ${f.name} (Arraste para reordenar)`}
+                    onClick={() => handleTabClick(targetTab, f.id)}
+                    title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name} (Arraste para reordenar)`}
                     style={{
                       width: '100%',
                       display: 'flex',
@@ -1333,19 +1335,23 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                     <span style={{ display: 'flex', alignItems: 'center' }}>
                       {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#9E988D'))}
                     </span>
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {f.name}
+                    <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {displayTitle}
                     </span>
                     <span style={{
-                      fontSize: '9px',
+                      fontSize: '8.5px',
                       padding: '1px 5px',
                       borderRadius: '4px',
-                      background: isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)',
-                      color: isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)'),
-                      fontWeight: 700,
+                      background: isPostSale 
+                        ? (isFunnelActive ? 'rgba(6, 182, 212, 0.28)' : 'rgba(6, 182, 212, 0.12)')
+                        : (isFunnelActive ? `${funnelColor}30` : 'rgba(255, 255, 255, 0.08)'),
+                      color: isPostSale ? '#06B6D4' : (isFunnelActive ? funnelColor : (f.badgeColor || 'var(--adm-text-muted)')),
+                      fontWeight: 800,
                       textTransform: 'uppercase',
+                      letterSpacing: '0.2px',
+                      flexShrink: 0,
                     }}>
-                      FUNIL
+                      {isPostSale ? 'PÓS' : 'COMERCIAL'}
                     </span>
                   </button>
                 );

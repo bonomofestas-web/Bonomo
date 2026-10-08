@@ -34,6 +34,8 @@ export const collaboratorService = {
         sectors: row.sectors || (row.department ? [row.department] : undefined),
         isDev: Boolean(row.is_dev),
         masterId: row.master_id || undefined,
+        permissions: Array.isArray(row.permissions) ? row.permissions : [],
+        pinnedFunnelIds: Array.isArray(row.pinned_funnel_ids) ? row.pinned_funnel_ids : [],
         theme: row.theme || 'light',
         createdAt: row.created_at || new Date().toISOString(),
       }));
@@ -67,6 +69,7 @@ export const collaboratorService = {
       if (collab.isFirstAccess !== undefined) payload.is_first_access = collab.isFirstAccess;
       if (collab.activatedAt !== undefined) payload.activated_at = collab.activatedAt;
       if (collab.lastLoginAt !== undefined) payload.last_login_at = collab.lastLoginAt;
+      if (collab.pinnedFunnelIds !== undefined) payload.pinned_funnel_ids = collab.pinnedFunnelIds;
 
       // Preserva metadados de setores na coluna permissions (que é array no Supabase)
       if (collab.sectors || collab.department || collab.permissions) {

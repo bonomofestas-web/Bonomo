@@ -100,6 +100,7 @@ export interface Collaborator {
   sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[]; // Setores que o colaborador participa
   primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'; // Setor prioritário de abertura
   permissions?: string[]; // Permissões e metadados persistidos no Supabase
+  pinnedFunnelIds?: string[]; // IDs dos funis fixados no menu lateral pelo usuário
   theme?: ThemeMode;
   masterId?: string; // ID da conta Master a que este colaborador está vinculado
   createdAt: string;

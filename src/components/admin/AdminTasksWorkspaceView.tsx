@@ -357,10 +357,16 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       const isVisit = typeStr.includes('visita') || titleStr.includes('visita');
       const isTasting = typeStr.includes('degust') || typeStr.includes('jantar') || titleStr.includes('degust');
       
-      const vObj = venues.find(v => v.id === task.venueId);
-      const assignedId = (task as any).assignedTo || task.assignedToIds?.[0];
-      const cObj = collaborators.find(c => c.id === assignedId || (task.assignedToIds || []).includes(c.id));
-      const closerRoleTitle = (cObj as any)?.roleTitle || cObj?.role || 'Anfitrião';
+      const vObj = venues.find(v => v.id === task.venueId) ||
+        venues.find(v => task.customProperties?.venueName && (v.name || '').trim().toLowerCase() === (task.customProperties.venueName || '').trim().toLowerCase());
+      const assignedId = (task as any).assignedTo || task.assignedToIds?.[0] || task.customProperties?.closerId;
+      const closerNameInTask = task.customProperties?.closerName || task.createdByName;
+      const cObj = collaborators.find(c => 
+        (assignedId && c.id === assignedId) || 
+        (task.assignedToIds || []).includes(c.id) ||
+        (Boolean(closerNameInTask) && (c.name || '').trim().toLowerCase() === (closerNameInTask || '').trim().toLowerCase())
+      );
+      const closerRoleTitle = (cObj as any)?.roleTitle || (cObj as any)?.customJobTitle || cObj?.role || 'Anfitrião';
       const cleanLeadName = task.customProperties?.leadName || task.leadName || task.title.replace(/^(Visita Comercial|Degustação Gastronômica|Visita|Degustação):\s*/i, '').replace(/\s*\(.*\)$/, '');
       const prefix = isVisit ? 'AGV' : 'AGD';
       const fallbackCode = `#${prefix}-${task.id.slice(0, 5).toUpperCase()}`;
@@ -375,11 +381,11 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         leadEmail: task.customProperties?.leadEmail,
         venueName: vObj?.name || task.customProperties?.venueName || 'Unidade F5 System',
         venueAddress: vObj?.address || task.customProperties?.venueAddress,
-        venueLogoUrl: vObj?.logoUrl,
+        venueLogoUrl: vObj?.logoUrl || (vObj as any)?.logo_url,
         dateStr: task.dueDate || new Date().toISOString().split('T')[0],
         timeStr: task.dueTime || '14:00',
         pax: task.customProperties?.pax || 2,
-        closerName: cObj?.name || task.createdByName || 'Equipe',
+        closerName: cObj?.name || task.customProperties?.closerName || task.createdByName || 'Equipe',
         closerRoleTitle,
         closerPhotoUrl: (cObj as any)?.photoUrl || cObj?.avatarUrl,
         createdByName: task.createdByName || 'F5 System',

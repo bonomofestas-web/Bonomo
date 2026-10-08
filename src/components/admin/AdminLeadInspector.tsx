@@ -180,9 +180,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const handleOpenReceipt = useCallback((type: 'visit' | 'tasting') => {
     const commitment = type === 'visit' ? lead.visitCommitment : lead.tastingCommitment;
     if (!commitment) return;
-    const venue = venues.find(v => v.id === (commitment.venueId || lead.venueId));
-    const closerObj = collaborators.find(c => c.id === (commitment.responsibleCollaboratorId || lead.closerId));
-    const closerRole = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
+    const venue = venues.find(v => v.id === (commitment.venueId || lead.venueId)) ||
+      venues.find(v => (v.name || '').trim().toLowerCase() === (lead.venueName || '').trim().toLowerCase());
+    const closerObj = collaborators.find(c => 
+      c.id === (commitment.responsibleCollaboratorId || lead.closerId) ||
+      (Boolean(commitment.responsibleName) && (c.name || '').trim().toLowerCase() === (commitment.responsibleName || '').trim().toLowerCase())
+    ) || (currentUser && (currentUser.id === commitment.responsibleCollaboratorId || (currentUser.name || '').trim().toLowerCase() === (commitment.responsibleName || '').trim().toLowerCase()) ? currentUser : undefined);
+    const closerRole = (closerObj as any)?.roleTitle || (closerObj as any)?.customJobTitle || closerObj?.role || 'Anfitrião';
 
     setActiveReceiptModal({
       id: commitment.id,
@@ -194,7 +198,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       leadEmail: lead.email,
       venueName: venue?.name || 'Casa de Festas',
       venueAddress: venue?.address || '',
-      venueLogoUrl: venue?.logoUrl,
+      venueLogoUrl: venue?.logoUrl || (venue as any)?.logo_url,
       dateStr: commitment.date || '',
       timeStr: commitment.time || '',
       pax: commitment.pax || 2,

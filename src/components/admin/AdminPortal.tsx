@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAdminState } from '../../context/AdminStateContext';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { createMonogramAvatar } from '../../utils/avatarUtils';
 import { AdminSidebar, type AdminTabType } from './AdminSidebar';
 import { AdminHomeView } from './AdminHomeView';
@@ -247,10 +248,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
   });
 
+  // Carrega preferência de sidebar do banco de dados para o usuário autenticado
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const currentCollab = collaborators.find(c => c.id === currentUser.id);
+    if (currentCollab?.permissions && currentCollab.permissions.length > 0) {
+      const hasDbCollapsed = Boolean(currentCollab.permissions.includes('ui:sidebar_collapsed'));
+      setIsSidebarCollapsed(hasDbCollapsed);
+      try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(hasDbCollapsed)); } catch {}
+    }
+  }, [currentUser?.id, collaborators]);
+
   const toggleSidebarCollapse = () => {
     setIsSidebarCollapsed(prev => {
       const next = !prev;
       try { localStorage.setItem('bonomo_admin_sidebar_collapsed', String(next)); } catch {}
+
+      // Persiste no Supabase na coluna permissions
+      if (isSupabaseConfigured && currentUser?.id) {
+        const currentCollab = collaborators.find(c => c.id === currentUser.id);
+        const perms = Array.isArray(currentCollab?.permissions) ? [...currentCollab.permissions] : [];
+        const nextPerms = next 
+          ? Array.from(new Set([...perms, 'ui:sidebar_collapsed']))
+          : perms.filter(p => p !== 'ui:sidebar_collapsed');
+        void supabase.from('collaborators').update({ permissions: nextPerms }).eq('id', currentUser.id);
+      }
       return next;
     });
   };
@@ -1020,6 +1042,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             onClick={() => {
                               setViewingAsCollaborator(c);
                               setIsEyeExpanded(false);
+                              // Retoma imediatamente para a tela inicial / CRM do colaborador
+                              const targetTab = getFirstAvailableTab() || 'crm';
+                              handleSelectTab(targetTab);
                             }}
                             style={{
                               display: 'flex',

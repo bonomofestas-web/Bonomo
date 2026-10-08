@@ -434,8 +434,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       await refreshAppointments();
 
       // Monta o comprovante oficial para exibição imediata
-      const closerObj = collaborators.find(c => c.id === responsibleId);
-      const closerRoleTitle = (closerObj as any)?.roleTitle || closerObj?.role || 'Anfitrião';
+      const closerObj = collaborators.find(c => c.id === responsibleId) ||
+        collaborators.find(c => Boolean(responsibleId) && (c.name || '').trim().toLowerCase() === (responsibleId || '').trim().toLowerCase()) ||
+        currentUser;
+      const closerRoleTitle = (closerObj as any)?.roleTitle || (closerObj as any)?.customJobTitle || closerObj?.role || 'Anfitrião';
 
       setCompletedReceipt({
         id: receiptCode,
@@ -447,7 +449,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         leadEmail: currentLead.email,
         venueName: targetVenue?.name || 'Unidade F5 System',
         venueAddress: targetVenue?.address || '',
-        venueLogoUrl: targetVenue?.logoUrl,
+        venueLogoUrl: targetVenue?.logoUrl || (targetVenue as any)?.logo_url,
         dateStr: selectedDate,
         timeStr: selectedTime,
         pax,

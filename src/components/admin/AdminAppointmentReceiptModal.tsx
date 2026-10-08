@@ -43,12 +43,32 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
 
-  const { leads } = useAdminState();
+  const { leads, venues, collaborators } = useAdminState();
 
   const isVisit = receipt.type === 'visit';
   const themeColor = isVisit ? '#10B981' : '#D97706';
   const typeLabel = isVisit ? 'Visita Comercial' : 'Degustação Gastronômica';
   const formattedCode = receipt.code.startsWith('#') ? receipt.code : `#${receipt.code}`;
+
+  // Localização inteligente com fallback nos dados globais caso a URL venha ausente no payload
+  const effectiveVenueLogo = useMemo(() => {
+    if (receipt.venueLogoUrl) return receipt.venueLogoUrl;
+    const v = venues.find(v => 
+      (receipt.venueName && v.name.trim().toLowerCase() === receipt.venueName.trim().toLowerCase()) ||
+      v.id === (receipt as any).venueId
+    );
+    return v?.logoUrl || (v as any)?.logo_url || '';
+  }, [receipt.venueLogoUrl, receipt.venueName, venues]);
+
+  const effectiveCloserPhoto = useMemo(() => {
+    if (receipt.closerPhotoUrl) return receipt.closerPhotoUrl;
+    const c = collaborators.find(c => 
+      (receipt.closerName && c.name.trim().toLowerCase() === receipt.closerName.trim().toLowerCase()) ||
+      c.id === (receipt as any).closerId ||
+      c.id === (receipt as any).responsibleCollaboratorId
+    );
+    return c?.avatarUrl || (c as any)?.photoUrl || '';
+  }, [receipt.closerPhotoUrl, receipt.closerName, collaborators]);
 
   // Estados de imagem pré-convertida para Data URL (evita tainted canvas) e controle de erro
   const [closerPhotoDataUrl, setCloserPhotoDataUrl] = useState<string | null>(null);
@@ -61,7 +81,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     if (!url) return '';
     if (url.startsWith('data:')) return url;
 
-    // 1. Tenta fetch com mode: 'cors' direto (Cloudflare R2 tem Access-Control-Allow-Origin: *)
+    // 1. Tenta fetch com mode: 'cors' direto (Cloudflare R2 agora com CORS habilitado)
     try {
       const res = await fetch(url, { mode: 'cors', cache: 'force-cache' });
       if (res.ok) {
@@ -74,10 +94,27 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         });
       }
     } catch {
-      // Fallback para canvas offscreen com Image element
+      // Fallback
     }
 
-    // 2. Fallback via elemento Image nativo com canvas offscreen
+    // 2. Se falhar, tenta via proxy de imagens se disponível
+    if (url.includes('r2.dev') || url.includes('cloudflarestorage.com')) {
+      try {
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+        const res = await fetch(proxyUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          return await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string) || url);
+            reader.onerror = () => resolve(url);
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch {}
+    }
+
+    // 3. Fallback via elemento Image nativo com canvas offscreen
     return new Promise<string>((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -105,14 +142,14 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   useEffect(() => {
     let isMounted = true;
 
-    if (receipt.closerPhotoUrl) {
-      convertRemoteUrlToBase64(receipt.closerPhotoUrl).then(data => {
+    if (effectiveCloserPhoto) {
+      convertRemoteUrlToBase64(effectiveCloserPhoto).then(data => {
         if (isMounted && data) setCloserPhotoDataUrl(data);
       });
     }
 
-    if (receipt.venueLogoUrl) {
-      convertRemoteUrlToBase64(receipt.venueLogoUrl).then(data => {
+    if (effectiveVenueLogo) {
+      convertRemoteUrlToBase64(effectiveVenueLogo).then(data => {
         if (isMounted && data) setVenueLogoDataUrl(data);
       });
     }
@@ -120,7 +157,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     return () => {
       isMounted = false;
     };
-  }, [receipt.closerPhotoUrl, receipt.venueLogoUrl]);
+  }, [effectiveCloserPhoto, effectiveVenueLogo]);
 
   // Formata a data por extenso
   const formattedDate = useMemo(() => {
@@ -152,8 +189,8 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   // Assegura que todas as imagens estejam em Base64 antes de invocar html2canvas
   const ensureImagesConverted = async () => {
     const [resolvedVenueLogo, resolvedCloserPhoto] = await Promise.all([
-      receipt.venueLogoUrl ? convertRemoteUrlToBase64(receipt.venueLogoUrl) : Promise.resolve(null),
-      receipt.closerPhotoUrl ? convertRemoteUrlToBase64(receipt.closerPhotoUrl) : Promise.resolve(null),
+      effectiveVenueLogo ? convertRemoteUrlToBase64(effectiveVenueLogo) : Promise.resolve(null),
+      effectiveCloserPhoto ? convertRemoteUrlToBase64(effectiveCloserPhoto) : Promise.resolve(null),
     ]);
     if (resolvedVenueLogo) setVenueLogoDataUrl(resolvedVenueLogo);
     if (resolvedCloserPhoto) setCloserPhotoDataUrl(resolvedCloserPhoto);
@@ -171,7 +208,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       const canvas = await html2canvas(printableCardRef.current, {
         scale: 2, // 2x para nitidez cristalina
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#FFFFFF',
         logging: false,
         imageTimeout: 15000,
@@ -202,7 +239,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       const canvas = await html2canvas(printableCardRef.current, {
         scale: 2,
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: '#FFFFFF',
         logging: false,
         imageTimeout: 15000,
@@ -393,11 +430,10 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     border: '1.5px solid #E2E8F0',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
                   }}>
-                    {!venueLogoFailed && (venueLogoDataUrl || receipt.venueLogoUrl) ? (
+                    {!venueLogoFailed && (venueLogoDataUrl || effectiveVenueLogo) ? (
                       <img 
-                        crossOrigin="anonymous"
-                        src={venueLogoDataUrl || receipt.venueLogoUrl} 
-                        alt="" 
+                        src={venueLogoDataUrl || effectiveVenueLogo} 
+                        alt={receipt.venueName || 'Unidade'} 
                         onError={() => setVenueLogoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} 
                       />
@@ -520,11 +556,10 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     border: '2px solid #E2E8F0',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
                   }}>
-                    {!closerPhotoFailed && (closerPhotoDataUrl || receipt.closerPhotoUrl) ? (
+                    {!closerPhotoFailed && (closerPhotoDataUrl || effectiveCloserPhoto) ? (
                       <img 
-                        crossOrigin="anonymous"
-                        src={closerPhotoDataUrl || receipt.closerPhotoUrl} 
-                        alt="" 
+                        src={closerPhotoDataUrl || effectiveCloserPhoto} 
+                        alt={receipt.closerName || 'Anfitrião'} 
                         onError={() => setCloserPhotoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
                       />

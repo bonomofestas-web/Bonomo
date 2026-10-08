@@ -1317,12 +1317,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '8px',
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap',
         flexShrink: 0,
-        zIndex: 30,
+        position: 'relative',
+        zIndex: 100,
       }}>
         {/* Left Side: Funnel Pill + Search + Inline Filters + Ownership Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'nowrap' }}>
           
           {/* Botão Voltar para Central de Funis */}
           <button
@@ -1350,7 +1351,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           </button>
 
           {/* Active Funnel Indicator Pill com Dropdown Switcher */}
-          <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-block' }}>
+          <div ref={funnelSwitcherRef} style={{ position: 'relative', display: 'inline-block', zIndex: isFunnelSwitcherOpen ? 999 : 2 }}>
             <button
               type="button"
               onClick={() => setIsFunnelSwitcherOpen(!isFunnelSwitcherOpen)}
@@ -1387,12 +1388,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 position: 'absolute',
                 top: 'calc(100% + 4px)',
                 left: 0,
-                zIndex: 1000,
+                zIndex: 9999,
                 minWidth: '240px',
                 background: 'var(--adm-bg-card)',
                 border: '1px solid var(--adm-border)',
                 borderRadius: '10px',
-                boxShadow: '0 10px 28px rgba(0,0,0,0.25)',
+                boxShadow: '0 10px 28px rgba(0,0,0,0.45)',
                 padding: '6px',
                 display: 'flex',
                 flexDirection: 'column',
@@ -1530,111 +1531,121 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             />
           </div>
 
-          {/* Botão de Filtros Inline */}
-          <button
-            type="button"
-            onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
-            title="Filtros avançados dentro da barra"
-            style={{
-              background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
-              border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
-              color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-              borderRadius: '6px',
-              padding: '4px 10px',
-              fontSize: '0.74rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              transition: 'all 0.15s ease',
-              flexShrink: 0,
-            }}
-          >
-            <Settings size={13} />
-            <span>Filtros</span>
-            <ChevronDown size={11} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-          </button>
-
-          {/* Filtros Inline Diretos na Barra */}
-          {isFilterBarExpanded && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              flexWrap: 'wrap',
-              animation: 'fadeIn 0.15s ease-out',
-            }}>
-              {/* Período */}
-              <AdminFilterDropdown
-                value={filterState.period}
-                options={periodOptions}
-                onChange={(val) => setFilterState(prev => ({ ...prev, period: val as any }))}
-                maxWidth="130px"
-              />
-
-              {/* Casa de Festas */}
-              {venues.length > 1 && (
-                <AdminFilterDropdown
-                  value={filterState.venueId}
-                  options={[
-                    { id: 'all', label: 'Todas as Casas' },
-                    ...venues.map(v => ({ id: v.id, label: v.name }))
-                  ]}
-                  onChange={(val) => setFilterState(prev => ({ ...prev, venueId: val }))}
-                  maxWidth="140px"
-                />
-              )}
-
-              {/* Colaborador */}
-              <AdminFilterDropdown
-                value={filterState.collaboratorId}
-                options={[
-                  { id: 'all', label: 'Todos Colab.' },
-                  ...collaborators.filter(c => c.active).map(c => ({ id: c.id, label: c.name }))
-                ]}
-                onChange={(val) => setFilterState(prev => ({ ...prev, collaboratorId: val }))}
-                maxWidth="130px"
-              />
-
-              {/* Ordenação */}
-              <AdminFilterDropdown
-                value={filterState.sortBy || 'recent'}
-                options={sortOptions}
-                onChange={(val) => setFilterState(prev => ({ ...prev, sortBy: val as any }))}
-                maxWidth="165px"
-              />
-
-              {/* Limpar Filtros */}
+          {/* Botão de Filtros com Popover Flutuante (Anti-quebra de linha) */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setIsFilterBarExpanded(!isFilterBarExpanded)}
+              title="Filtros avançados do funil"
+              style={{
+                background: isFilterBarExpanded ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                border: isFilterBarExpanded ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                color: isFilterBarExpanded ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}
+            >
+              <Settings size={13} />
+              <span>Filtros</span>
               {(filterState.period !== 'all' || filterState.venueId !== 'all' || filterState.collaboratorId !== 'all' || filterState.sortBy !== 'recent') && (
-                <button
-                  type="button"
-                  onClick={() => setFilterState({
-                    period: 'all',
-                    venueId: 'all',
-                    collaboratorId: 'all',
-                    sortBy: 'recent',
-                  })}
-                  title="Limpar filtros"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--adm-border)',
-                    color: 'var(--adm-text-muted)',
-                    borderRadius: '5px',
-                    padding: '3px 6px',
-                    fontSize: '0.68rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '3px',
-                  }}
-                >
-                  <X size={11} />
-                  <span>Limpar</span>
-                </button>
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--adm-accent, #06B6D4)',
+                }} />
               )}
-            </div>
-          )}
+              <ChevronDown size={11} style={{ transform: isFilterBarExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {/* Popover Flutuante de Filtros */}
+            {isFilterBarExpanded && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                zIndex: 9999,
+                background: 'var(--adm-bg-card, #1E1A29)',
+                border: '1px solid var(--adm-border)',
+                borderRadius: '12px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                minWidth: '220px',
+                animation: 'fadeIn 0.15s ease-out',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border)', paddingBottom: '6px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>Filtros</span>
+                  {(filterState.period !== 'all' || filterState.venueId !== 'all' || filterState.collaboratorId !== 'all' || filterState.sortBy !== 'recent') && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterState({ period: 'all', venueId: 'all', collaboratorId: 'all', sortBy: 'recent' })}
+                      style={{ background: 'transparent', border: 'none', color: '#EF4444', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                    >
+                      <X size={11} />
+                      <span>Limpar</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '3px' }}>Período:</div>
+                    <AdminFilterDropdown
+                      value={filterState.period}
+                      options={periodOptions}
+                      onChange={(val) => setFilterState(prev => ({ ...prev, period: val as any }))}
+                    />
+                  </div>
+
+                  {venues.length > 1 && (
+                    <div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '3px' }}>Unidade:</div>
+                      <AdminFilterDropdown
+                        value={filterState.venueId}
+                        options={[
+                          { id: 'all', label: 'Todas as Casas' },
+                          ...venues.map(v => ({ id: v.id, label: v.name }))
+                        ]}
+                        onChange={(val) => setFilterState(prev => ({ ...prev, venueId: val }))}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '3px' }}>Responsável:</div>
+                    <AdminFilterDropdown
+                      value={filterState.collaboratorId}
+                      options={[
+                        { id: 'all', label: 'Todos Colab.' },
+                        ...collaborators.filter(c => c.active).map(c => ({ id: c.id, label: c.name }))
+                      ]}
+                      onChange={(val) => setFilterState(prev => ({ ...prev, collaboratorId: val }))}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700, marginBottom: '3px' }}>Ordenar por:</div>
+                    <AdminFilterDropdown
+                      value={filterState.sortBy || 'recent'}
+                      options={sortOptions}
+                      onChange={(val) => setFilterState(prev => ({ ...prev, sortBy: val as any }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Toggle Rápido: Todos vs Em Aberto vs Meus Clientes */}
           <div style={{
@@ -1835,6 +1846,31 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             >
               <List size={14} />
             </button>
+
+            {currentFunnel && (
+              <button
+                type="button"
+                onClick={() => togglePinFunnel(currentFunnel.id)}
+                title={isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral"}
+                style={{
+                  background: isFunnelPinned(currentFunnel.id) ? 'rgba(6, 182, 212, 0.18)' : 'var(--adm-bg-input)',
+                  color: isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-text-title)',
+                  borderRadius: '6px',
+                  border: `1px solid ${isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-border)'}`,
+                  padding: '4px 9px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Pin size={13} style={{ transform: isFunnelPinned(currentFunnel.id) ? 'rotate(45deg)' : 'none' }} />
+                <span>{isFunnelPinned(currentFunnel.id) ? 'Fixado' : 'Fixar'}</span>
+              </button>
+            )}
 
             {canConfigurePostSale && currentFunnel && (
               <button

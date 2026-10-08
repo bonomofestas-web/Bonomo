@@ -2078,9 +2078,33 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const setViewingAsCollaborator = (collab: Collaborator | null) => {
     setViewingAsCollaboratorState(collab);
     if (collab) {
+      // Guarda a casa que o Master estava visualizando antes de entrar na visão do colaborador
+      if (!sessionStorage.getItem('f5_pre_spectator_venue')) {
+        sessionStorage.setItem('f5_pre_spectator_venue', activeVenueId || 'all');
+      }
       sessionStorage.setItem('f5_viewing_as_collaborator', JSON.stringify(collab));
+
+      // Se o colaborador possui casas atribuídas, ajusta activeVenueId para a primeira casa permitida
+      const userVids = Array.isArray(collab.venueIds) && collab.venueIds.length > 0
+        ? collab.venueIds
+        : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : []);
+      if (userVids.length > 0 && (!activeVenueId || !userVids.includes(activeVenueId))) {
+        setActiveVenueIdState(userVids[0]);
+        safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, userVids[0]);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('f5_spectator_mode_changed', { detail: { isSpectator: true, collaborator: collab } }));
+      }
     } else {
       sessionStorage.removeItem('f5_viewing_as_collaborator');
+      // Restaura a casa original que o Master estava antes de inspecionar
+      const preVenue = sessionStorage.getItem('f5_pre_spectator_venue') || 'all';
+      sessionStorage.removeItem('f5_pre_spectator_venue');
+      setActiveVenueIdState(preVenue);
+      safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, preVenue);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('f5_spectator_mode_changed', { detail: { isSpectator: false } }));
+      }
     }
   };
 
@@ -3492,6 +3516,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     if (!currentUser?.id) return;
+    const currentCollab = collaborators.find(c => c.id === currentUser.id);
+    if (currentCollab?.pinnedFunnelIds && currentCollab.pinnedFunnelIds.length > 0) {
+      setUserPinnedFunnelIds(currentCollab.pinnedFunnelIds);
+      safeLocalStorageSet(`f5_pinned_funnels_${currentUser.id}`, JSON.stringify(currentCollab.pinnedFunnelIds));
+      return;
+    }
     const stored = safeLocalStorageGet(`f5_pinned_funnels_${currentUser.id}`);
     if (stored) {
       try {
@@ -3500,7 +3530,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setUserPinnedFunnelIds([]);
       }
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, collaborators]);
 
   const togglePinFunnel = (funnelId: string) => {
     const userId = currentUser?.id || 'default';
@@ -3509,6 +3539,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ? prev.filter(id => id !== funnelId)
         : [...prev, funnelId];
       safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(next));
+
+      // Persistência direta no banco de dados (zero perda entre dispositivos)
+      if (isSupabaseConfigured && currentUser?.id) {
+        void supabase.from('collaborators').update({ pinned_funnel_ids: next }).eq('id', currentUser.id);
+      }
       return next;
     });
   };
@@ -3517,12 +3552,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const userId = currentUser?.id || 'default';
     setUserPinnedFunnelIds(reorderedIds);
     safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(reorderedIds));
+    if (isSupabaseConfigured && currentUser?.id) {
+      void supabase.from('collaborators').update({ pinned_funnel_ids: reorderedIds }).eq('id', currentUser.id);
+    }
   };
 
   const isFunnelPinned = (funnelId: string): boolean => {
-    if (userPinnedFunnelIds.length === 0 && scopedFunnels.length > 0) {
-      return funnelId === scopedFunnels[0].id;
-    }
     return userPinnedFunnelIds.includes(funnelId);
   };
 
