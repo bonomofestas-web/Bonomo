@@ -1796,7 +1796,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           return (
                             <button
                               type="button"
-                              title={isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace"}
+                              disabled={Boolean(viewingAsCollaborator)}
+                              title={viewingAsCollaborator ? "Fixação desabilitada no modo Ver como..." : (isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace")}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 togglePinFunnel(funnel.id);
@@ -1807,7 +1808,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 borderRadius: '7px',
                                 padding: '4px 7px',
                                 color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                                cursor: 'pointer',
+                                cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                                opacity: viewingAsCollaborator ? 0.4 : 1,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '3px',
@@ -2868,15 +2870,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             {currentFunnel && (
               <button
                 type="button"
+                disabled={Boolean(viewingAsCollaborator)}
                 onClick={() => togglePinFunnel(currentFunnel.id)}
-                title={isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral"}
+                title={viewingAsCollaborator ? "Fixação desabilitada no modo Ver como..." : (isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral")}
                 style={{
                   background: isFunnelPinned(currentFunnel.id) ? 'var(--adm-accent-bg, rgba(20, 169, 215, 0.18))' : 'var(--adm-bg-input)',
                   color: isFunnelPinned(currentFunnel.id) ? 'var(--adm-accent, #14A9D7)' : 'var(--adm-text-title)',
                   borderRadius: '6px',
                   border: `1px solid ${isFunnelPinned(currentFunnel.id) ? 'var(--adm-accent, #14A9D7)' : 'var(--adm-border)'}`,
                   padding: '4px 9px',
-                  cursor: 'pointer',
+                  cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                  opacity: viewingAsCollaborator ? 0.4 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '5px',
@@ -3388,7 +3392,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 boxShadow: isSelectedInMulti 
                                   ? '0 2px 8px rgba(99, 102, 241, 0.15)' 
                                   : (hasSlaAlert ? `0 0 0 1px ${sla.cardBorder}33, 0 2px 6px rgba(0,0,0,0.04)` : '0 1px 3px rgba(0,0,0,0.03)'),
-                                zIndex: activeLeadMenuId === lead.id ? 100 : 1,
+                                zIndex: (activeLeadMenuId === lead.id || addTagLead?.id === lead.id || activeValueLeadId === lead.id) ? 100 : 1,
                               }}
                               onMouseEnter={(e) => {
                                 if (!isSelectedInMulti) {
@@ -4114,7 +4118,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     ))}
 
                                     {/* Botão (+) Tracejado para Adicionar Tag Rápida com Popover Inline */}
-                                    <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                    <div style={{ position: 'relative', display: 'inline-flex', zIndex: addTagLead?.id === lead.id ? 1000 : 'auto' }}>
                                       <button
                                         type="button"
                                         data-tag-trigger

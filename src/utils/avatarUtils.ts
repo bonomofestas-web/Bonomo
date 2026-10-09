@@ -1,9 +1,19 @@
 /**
- * Generates an ultra-luxurious gold monogram avatar (SVG Data URL)
- * featuring the debutante's initial inside a gold-bordered medallion with a crown.
+ * Generates a clean, professional monogram avatar (SVG Data URL)
+ * featuring the user's clean two initials (first name + last name) on a sophisticated dark gradient.
  */
 export const createMonogramAvatar = (name: string): string => {
-  const initial = name && name.trim() ? name.trim().charAt(0).toUpperCase() : 'D';
+  let initials = 'F5';
+  if (name && name.trim()) {
+    const clean = name.replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').trim();
+    const parts = clean.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) {
+      initials = parts[0].slice(0, 2).toUpperCase();
+    } else if (parts.length > 1) {
+      initials = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+  }
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
     <defs>
       <radialGradient id="goldGrad" cx="50%" cy="50%" r="50%">
@@ -12,15 +22,13 @@ export const createMonogramAvatar = (name: string): string => {
         <stop offset="100%" stop-color="#99771F"/>
       </radialGradient>
       <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#140B1F"/>
-        <stop offset="100%" stop-color="#050308"/>
+        <stop offset="0%" stop-color="#1A1324"/>
+        <stop offset="100%" stop-color="#09060E"/>
       </linearGradient>
     </defs>
     <rect width="256" height="256" rx="128" fill="url(#bgGrad)"/>
-    <circle cx="128" cy="128" r="116" fill="none" stroke="url(#goldGrad)" stroke-width="4"/>
-    <circle cx="128" cy="128" r="106" fill="rgba(212,175,55,0.08)"/>
-    <path d="M112 90 L128 74 L144 90 L138 102 L118 102 Z" fill="url(#goldGrad)"/>
-    <text x="128" y="168" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-size="80" font-weight="900" fill="url(#goldGrad)" text-anchor="middle">${initial}</text>
+    <circle cx="128" cy="128" r="118" fill="none" stroke="url(#goldGrad)" stroke-width="3" opacity="0.6"/>
+    <text x="128" y="162" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-size="92" font-weight="800" fill="url(#goldGrad)" text-anchor="middle" letter-spacing="1.5">${initials}</text>
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };

@@ -78,6 +78,8 @@ export interface AdminUser {
   masterId?: string; // ID da conta Master proprietária (caso subordinado)
   sectors?: ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[];
   primarySector?: 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro';
+  permissions?: string[];
+  pinnedFunnelIds?: string[];
 }
 
 export interface Collaborator {

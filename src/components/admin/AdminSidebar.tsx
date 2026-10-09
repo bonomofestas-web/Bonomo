@@ -255,12 +255,15 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   ), []);
 
   const visiblePinnedFunnels = useMemo(() => {
+    // No modo "Ver como...", nada fica fixado para evitar confusão ou inconsistência visual
+    if (viewingAsCollaborator) return [];
+
     const pinnedIds = userPinnedFunnelIds || [];
     const filtered = funnels.filter(funnel => {
       return pinnedIds.includes(funnel.id);
     });
     return filtered.sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
-  }, [funnels, userPinnedFunnelIds]);
+  }, [funnels, userPinnedFunnelIds, viewingAsCollaborator]);
 
   const pinnedCommercialFunnels = useMemo(() => {
     if (!effectiveSectors.includes('comercial')) return [];

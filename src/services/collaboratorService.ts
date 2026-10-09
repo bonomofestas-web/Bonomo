@@ -15,30 +15,36 @@ export const collaboratorService = {
         return [];
       }
 
-      return (data || []).map(row => ({
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        role: row.role || 'sdr',
-        venueId: row.venue_id || 'all',
-        venueIds: row.venue_ids || [],
-        avatarUrl: row.avatar_url,
-        phone: row.phone,
-        active: row.active ?? true,
-        isFirstAccess: row.is_first_access ?? false,
-        activatedAt: row.activated_at || undefined,
-        lastLoginAt: row.last_login_at || undefined,
-        password: row.password,
-        customJobTitle: row.custom_job_title || row.job_title || undefined,
-        department: row.department || undefined,
-        sectors: row.sectors || (row.department ? [row.department] : undefined),
-        isDev: Boolean(row.is_dev),
-        masterId: row.master_id || undefined,
-        permissions: Array.isArray(row.permissions) ? row.permissions : [],
-        pinnedFunnelIds: Array.isArray(row.pinned_funnel_ids) ? row.pinned_funnel_ids : [],
-        theme: row.theme || 'light',
-        createdAt: row.created_at || new Date().toISOString(),
-      }));
+      return (data || []).map(row => {
+        const rawPerms: string[] = Array.isArray(row.permissions) ? row.permissions : [];
+        const jobTitlePerm = rawPerms.find(p => p.startsWith('job_title:'));
+        const resolvedJobTitle = row.custom_job_title || row.job_title || (jobTitlePerm ? decodeURIComponent(jobTitlePerm.replace('job_title:', '')) : undefined);
+
+        return {
+          id: row.id,
+          name: row.name,
+          email: row.email,
+          role: row.role || 'sdr',
+          venueId: row.venue_id || 'all',
+          venueIds: row.venue_ids || [],
+          avatarUrl: row.avatar_url,
+          phone: row.phone,
+          active: row.active ?? true,
+          isFirstAccess: row.is_first_access ?? false,
+          activatedAt: row.activated_at || undefined,
+          lastLoginAt: row.last_login_at || undefined,
+          password: row.password,
+          customJobTitle: resolvedJobTitle,
+          department: row.department || undefined,
+          sectors: row.sectors || (row.department ? [row.department] : undefined),
+          isDev: Boolean(row.is_dev),
+          masterId: row.master_id || undefined,
+          permissions: rawPerms,
+          pinnedFunnelIds: Array.isArray(row.pinned_funnel_ids) ? row.pinned_funnel_ids : [],
+          theme: row.theme || 'light',
+          createdAt: row.created_at || new Date().toISOString(),
+        };
+      });
     } catch (err) {
       console.error('Falha em collaboratorService.getAll:', err);
       return [];
@@ -71,9 +77,9 @@ export const collaboratorService = {
       if (collab.lastLoginAt !== undefined) payload.last_login_at = collab.lastLoginAt;
       if (collab.pinnedFunnelIds !== undefined) payload.pinned_funnel_ids = collab.pinnedFunnelIds;
 
-      // Preserva metadados de setores na coluna permissions (que é array no Supabase)
-      if (collab.sectors || collab.department || collab.permissions) {
-        const perms = Array.isArray(collab.permissions) ? [...collab.permissions] : [];
+      // Preserva metadados de setores e cargo na coluna permissions (que é array no Supabase)
+      if (collab.sectors || collab.department || collab.permissions || collab.customJobTitle !== undefined) {
+        let perms = Array.isArray(collab.permissions) ? [...collab.permissions] : [];
         if (collab.department && !perms.includes(`dept:${collab.department}`)) {
           perms.push(`dept:${collab.department}`);
         }
@@ -81,6 +87,12 @@ export const collaboratorService = {
           collab.sectors.forEach(s => {
             if (!perms.includes(`sector:${s}`)) perms.push(`sector:${s}`);
           });
+        }
+        if (collab.customJobTitle !== undefined) {
+          perms = perms.filter(p => !p.startsWith('job_title:'));
+          if (collab.customJobTitle && collab.customJobTitle.trim()) {
+            perms.push(`job_title:${encodeURIComponent(collab.customJobTitle.trim())}`);
+          }
         }
         payload.permissions = perms;
       }

@@ -21,6 +21,7 @@ import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
   initialFunnelId?: string | null;
+  onSelectFunnel?: (funnelId: string | null) => void;
   onOpenDebutanteApp?: (slug: string) => void;
   onOpenCommercialLead?: (leadId: string) => void;
   onOpenLead?: (leadId: string) => void;
@@ -218,6 +219,7 @@ const POST_SALE_ENTRY_COLUMN: StageColumn = {
 
 export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = ({
   initialFunnelId = null,
+  onSelectFunnel,
   onOpenDebutanteApp,
   onOpenCommercialLead,
   onOpenLead,
@@ -228,6 +230,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     venues, 
     collaborators, 
     currentUser,
+    viewingAsCollaborator,
     activeVenueId, 
     updateClient, 
     deleteClient, 
@@ -243,6 +246,19 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   } = useAdminState();
 
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(initialFunnelId || null);
+
+  useEffect(() => {
+    if (initialFunnelId !== undefined) {
+      setSelectedFunnelId(initialFunnelId);
+    }
+  }, [initialFunnelId]);
+
+  const handleSelectFunnel = (id: string | null) => {
+    setSelectedFunnelId(id);
+    if (onSelectFunnel) {
+      onSelectFunnel(id);
+    }
+  };
   const [viewMode, setViewMode] = useState<'kanban' | 'inbox' | 'list'>('kanban');
   const [search, setSearch] = useState('');
   const [funnelSearch, setFunnelSearch] = useState('');
@@ -1093,7 +1109,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               return (
                 <div
                   key={funnel.id}
-                  onClick={() => setSelectedFunnelId(funnel.id)}
+                  onClick={() => handleSelectFunnel(funnel.id)}
                   className="saas-card"
                   style={{
                     borderRadius: '16px',
@@ -1165,7 +1181,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
                         <button
                           type="button"
-                          title={isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace"}
+                          disabled={Boolean(viewingAsCollaborator)}
+                          title={viewingAsCollaborator ? "Fixação desabilitada no modo Ver como..." : (isPinned ? "Desafixar do meu Workspace" : "Fixar no meu Workspace")}
                           onClick={(e) => {
                             e.stopPropagation();
                             togglePinFunnel(funnel.id);
@@ -1176,7 +1193,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             borderRadius: '7px',
                             padding: '4px 7px',
                             color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                            cursor: 'pointer',
+                            cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                            opacity: viewingAsCollaborator ? 0.4 : 1,
                             display: 'flex',
                             alignItems: 'center',
                             gap: '3px',
@@ -1968,15 +1986,17 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             {currentFunnel && (
               <button
                 type="button"
+                disabled={Boolean(viewingAsCollaborator)}
                 onClick={() => togglePinFunnel(currentFunnel.id)}
-                title={isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral"}
+                title={viewingAsCollaborator ? "Fixação desabilitada no modo Ver como..." : (isFunnelPinned(currentFunnel.id) ? "Desafixar do menu lateral" : "Fixar no menu lateral")}
                 style={{
                   background: isFunnelPinned(currentFunnel.id) ? 'rgba(6, 182, 212, 0.18)' : 'var(--adm-bg-input)',
                   color: isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-text-title)',
                   borderRadius: '6px',
                   border: `1px solid ${isFunnelPinned(currentFunnel.id) ? '#06B6D4' : 'var(--adm-border)'}`,
                   padding: '4px 9px',
-                  cursor: 'pointer',
+                  cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                  opacity: viewingAsCollaborator ? 0.4 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '5px',
@@ -2508,6 +2528,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             flexDirection: 'column',
                             gap: '5px',
                             position: 'relative',
+                            zIndex: (activeClientMenuId === client.id || addTagClientId === client.id) ? 100 : 1,
                           }}
                           onMouseEnter={(e) => {
                             if (!isSelectedInMulti) {

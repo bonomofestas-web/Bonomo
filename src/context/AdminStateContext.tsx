@@ -998,6 +998,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         email: currentUser.email,
         theme: newTheme,
       });
+      setCollaborators(prev => prev.map(c => c.id === currentUser.id ? { ...c, theme: newTheme } : c));
+      setCurrentUser(prev => prev ? { ...prev, theme: newTheme } : prev);
     }
   };
 
@@ -1245,6 +1247,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   setThemeState(matched.theme as ThemeMode);
                   safeLocalStorageSet(STORAGE_KEY_THEME, matched.theme);
                 }
+                if (matched.pinnedFunnelIds && matched.pinnedFunnelIds.length > 0) {
+                  setUserPinnedFunnelIds(matched.pinnedFunnelIds);
+                  safeLocalStorageSet(`f5_pinned_funnels_${matched.id}`, JSON.stringify(matched.pinnedFunnelIds));
+                }
                 // Sincroniza currentUser com os dados mais recentes do banco (Single Source of Truth)
                 setCurrentUser(prev => {
                   if (!prev) return null;
@@ -1258,6 +1264,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     venueIds: matched.venueId === 'all' ? [] : (matched.venueIds || [matched.venueId]),
                     isFirstAccess: Boolean(matched.isFirstAccess),
                     masterId: matched.masterId || prev.masterId,
+                    permissions: matched.permissions || (prev as any).permissions,
+                    theme: (matched.theme as ThemeMode) || prev.theme,
                   };
                   safeLocalStorageSet(STORAGE_KEY_USER, JSON.stringify(updatedUser));
                   return updatedUser;
@@ -3648,6 +3656,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [currentUser?.id, collaborators]);
 
   const togglePinFunnel = (funnelId: string) => {
+    // No modo "Ver como...", a função de fixar/desafixar fica desabilitada para evitar confusão/bugs visuais
+    if (viewingAsCollaborator) return;
+
     const userId = currentUser?.id || 'default';
     setUserPinnedFunnelIds(prev => {
       const next = prev.includes(funnelId)
@@ -3658,21 +3669,30 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Persistência direta no banco de dados (zero perda entre dispositivos)
       if (isSupabaseConfigured && currentUser?.id) {
         void supabase.from('collaborators').update({ pinned_funnel_ids: next }).eq('id', currentUser.id);
+        setCollaborators(prevCollabs => 
+          prevCollabs.map(c => c.id === currentUser.id ? { ...c, pinnedFunnelIds: next } : c)
+        );
       }
       return next;
     });
   };
 
   const reorderPinnedFunnels = (reorderedIds: string[]) => {
+    if (viewingAsCollaborator) return;
+
     const userId = currentUser?.id || 'default';
     setUserPinnedFunnelIds(reorderedIds);
     safeLocalStorageSet(`f5_pinned_funnels_${userId}`, JSON.stringify(reorderedIds));
     if (isSupabaseConfigured && currentUser?.id) {
       void supabase.from('collaborators').update({ pinned_funnel_ids: reorderedIds }).eq('id', currentUser.id);
+      setCollaborators(prevCollabs => 
+        prevCollabs.map(c => c.id === currentUser.id ? { ...c, pinnedFunnelIds: reorderedIds } : c)
+      );
     }
   };
 
   const isFunnelPinned = (funnelId: string): boolean => {
+    if (viewingAsCollaborator) return false;
     return userPinnedFunnelIds.includes(funnelId);
   };
 

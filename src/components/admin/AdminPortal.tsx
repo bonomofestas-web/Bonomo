@@ -36,12 +36,41 @@ import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
 import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
 import { AdminLeadsListView } from './AdminLeadsListView';
+import { SafeAvatar } from './SafeAvatar';
 import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut, Eye } from 'lucide-react';
 import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
 
 interface AdminPortalProps {
   onOpenDebutanteApp: (slug?: string) => void;
 }
+
+const getCollaboratorDisplayJobTitle = (collab: Collaborator): string => {
+  if (collab.customJobTitle && collab.customJobTitle.trim()) {
+    return collab.customJobTitle.trim();
+  }
+  switch (collab.role) {
+    case 'master':
+      return 'Diretoria Executiva';
+    case 'dev':
+      return 'Desenvolvedor';
+    case 'admin':
+    case 'gerencia':
+      return 'Gerência Geral';
+    case 'closer':
+      return 'Closer • Fechamento Comercial';
+    case 'sdr':
+      return 'SDR • Pré-Vendas';
+    case 'crm':
+    case 'comercial':
+      return 'Especialista Comercial';
+    case 'pos_venda':
+      return 'Pós-Venda & Sucesso do Cliente';
+    case 'financeiro':
+      return 'Financeiro';
+    default:
+      return 'Colaborador';
+  }
+};
 
 const ROLE_LABELS: Record<string, string> = {
   dev: 'Desenvolvedor',
@@ -80,6 +109,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     markAnnouncementAsRead,
     supportTickets,
     isInitialSyncComplete,
+    updateCollaborator,
   } = useAdminState();
   
   // Track active focus time for collaborators
@@ -272,6 +302,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           ? Array.from(new Set([...perms, 'ui:sidebar_collapsed']))
           : perms.filter(p => p !== 'ui:sidebar_collapsed');
         void supabase.from('collaborators').update({ permissions: nextPerms }).eq('id', currentUser.id);
+        if (updateCollaborator) {
+          updateCollaborator(currentUser.id, { permissions: nextPerms });
+        }
       }
       return next;
     });
@@ -284,9 +317,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.set('tab', tab);
-        if (tab === 'crm' && funnelId) {
+        if ((tab === 'crm' || tab === 'post-sale-crm') && funnelId) {
           url.searchParams.set('funnel_id', funnelId);
-        } else if (tab !== 'crm') {
+        } else if (tab !== 'crm' && tab !== 'post-sale-crm') {
           url.searchParams.delete('funnel_id');
         }
         if (tab !== 'whatsapp') {
@@ -295,7 +328,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         window.history.replaceState({}, '', url.toString());
       }
     } catch {}
-    if (tab === 'crm') {
+    if (tab === 'crm' || tab === 'post-sale-crm') {
       setActiveFunnelId(funnelId !== undefined ? funnelId : null);
       if (funnelId) {
         try { localStorage.setItem('f5_active_funnel_id', funnelId); } catch {}
@@ -628,7 +661,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'post-sale-crm':
-        return <AdminPostSaleKanbanView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+        return (
+          <AdminPostSaleKanbanView
+            initialFunnelId={activeFunnelId}
+            onSelectFunnel={(id) => setActiveFunnelId(id)}
+            onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)}
+            onOpenLead={handleOpenLeadFromTask}
+          />
+        );
       case 'vip-journey':
         return <AdminVipJourneyUnifiedView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
       case 'post-sale-appointments':
@@ -792,7 +832,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          zIndex: 40,
+          zIndex: 1000,
           boxSizing: 'border-box',
           gap: '12px',
         }}>
@@ -873,7 +913,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <div
                 ref={eyeMenuRef}
                 className="admin-header-eye-view"
-                style={{ position: 'relative' }}
+                style={{ position: 'relative', zIndex: isEyeExpanded ? 10000 : 'auto' }}
                 onMouseEnter={() => setIsEyeHovered(true)}
                 onMouseLeave={() => setIsEyeHovered(false)}
               >
@@ -916,12 +956,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   }
                 >
                   {viewingAsCollaborator ? (
-                    // Círculo com a Foto do Colaborador selecionado + Mini Ícone de Olho
+                    // Círculo com a Foto/Avatar do Colaborador selecionado + Mini Ícone de Olho
                     <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
-                      <img
-                        src={(viewingAsCollaborator.avatarUrl && !viewingAsCollaborator.avatarUrl.includes('unsplash.com')) ? viewingAsCollaborator.avatarUrl : createMonogramAvatar(viewingAsCollaborator.name)}
-                        alt={viewingAsCollaborator.name}
-                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                      <SafeAvatar
+                        src={viewingAsCollaborator.avatarUrl}
+                        name={viewingAsCollaborator.name}
+                        size={28}
+                        borderRadius="50%"
                       />
                       <span style={{
                         position: 'absolute',
@@ -1012,7 +1053,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       borderRadius: '16px',
                       boxShadow: '0 16px 40px rgba(0,0,0,0.75), 0 0 20px rgba(20, 169, 215, 0.15)',
                       padding: '10px',
-                      zIndex: 9999,
+                      zIndex: 10000,
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '8px',
@@ -1078,17 +1119,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               e.currentTarget.style.borderColor = 'transparent';
                             }}
                           >
-                            <img
-                              src={(c.avatarUrl && !c.avatarUrl.includes('unsplash.com')) ? c.avatarUrl : createMonogramAvatar(c.name)}
-                              alt={c.name}
-                              style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }}
+                            <SafeAvatar
+                              src={c.avatarUrl}
+                              name={c.name}
+                              size={28}
+                              borderRadius="50%"
                             />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {c.name}
                               </div>
-                              <div style={{ fontSize: '0.64rem', color: '#14A9D7', textTransform: 'uppercase', fontWeight: 600 }}>
-                                {ROLE_LABELS[c.role] || c.role}
+                              <div style={{ fontSize: '0.64rem', color: '#14A9D7', fontWeight: 600 }}>
+                                {getCollaboratorDisplayJobTitle(c)}
                               </div>
                             </div>
                           </div>
