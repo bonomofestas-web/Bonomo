@@ -55,6 +55,9 @@ export const funnelService = {
         priorityWhatsappPerVenue: row.priority_whatsapp_per_venue || row.duplicate_rule_config?._priorityWhatsappPerVenue || {},
         venueDistributionConfig: row.venue_distribution_config || row.duplicate_rule_config?._venueDistributionConfig || {},
         isWonStageEnabled: row.is_won_stage_enabled ?? true,
+        enableInboxStage: row.enable_inbox_stage ?? row.is_entry_stage_active ?? row.duplicate_rule_config?._enableInboxStage ?? false,
+        postSaleChannels: Array.isArray(row.post_sale_channels) ? row.post_sale_channels : (row.duplicate_rule_config?._postSaleChannels || []),
+        postSaleCustomStageNames: row.post_sale_custom_stage_names || row.duplicate_rule_config?._postSaleCustomStageNames || undefined,
         distributionMode: row.distribution_mode || 'manual',
         assignedSdrIds: Array.isArray(row.assigned_sdr_ids) ? row.assigned_sdr_ids : [],
         roundRobinNextIndex: row.round_robin_next_index || 0,
@@ -105,8 +108,16 @@ export const funnelService = {
         ...(funnel.defaultWhatsAppSourceId !== undefined ? { _defaultWhatsAppSourceId: funnel.defaultWhatsAppSourceId } : {}),
         ...(funnel.venueDistributionConfig !== undefined ? { _venueDistributionConfig: funnel.venueDistributionConfig } : {}),
         ...(funnel.disabledVenueIds !== undefined ? { _disabledVenueIds: funnel.disabledVenueIds } : {}),
+        ...(funnel.postSaleChannels !== undefined ? { _postSaleChannels: funnel.postSaleChannels } : {}),
+        ...(funnel.postSaleCustomStageNames !== undefined ? { _postSaleCustomStageNames: funnel.postSaleCustomStageNames } : {}),
+        ...(funnel.enableInboxStage !== undefined ? { _enableInboxStage: funnel.enableInboxStage } : {}),
       };
 
+      if (funnel.enableInboxStage !== undefined) {
+        payload.is_entry_stage_active = funnel.enableInboxStage;
+      }
+      if (funnel.postSaleChannels !== undefined) payload.post_sale_channels = funnel.postSaleChannels;
+      if (funnel.postSaleCustomStageNames !== undefined) payload.post_sale_custom_stage_names = funnel.postSaleCustomStageNames;
       if (funnel.priorityWhatsappPerVenue !== undefined) payload.priority_whatsapp_per_venue = funnel.priorityWhatsappPerVenue;
       if (funnel.defaultWhatsAppSourceId !== undefined) payload.default_whatsapp_source_id = funnel.defaultWhatsAppSourceId;
       if (funnel.venueDistributionConfig !== undefined) payload.venue_distribution_config = funnel.venueDistributionConfig;

@@ -335,6 +335,9 @@ export interface LeadActivity {
   errorMessage?: string;
   metadata?: Record<string, any>;
   needsManualDownload?: boolean;
+  channelId?: string;
+  channelName?: string;
+  instanceId?: string;
 }
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';
@@ -710,6 +713,9 @@ export interface ClientActivity {
   authorName?: string;
   createdAt: string;
   createdBy: string;
+  channelId?: string;
+  channelName?: string;
+  instanceId?: string;
 }
 
 export type ClientStage =
@@ -810,20 +816,40 @@ export interface Client {
 }
 
 
+export interface PostSaleChannelConfig {
+  id: string; // ex: 'decoracao', 'pos_venda_sucesso', 'producao'
+  name: string; // Nome exibido na aba, ex: 'Decoração', 'Sucesso do Cliente'
+  icon?: string; // Nome do ícone Lucide
+  color?: string; // Cor temática da aba (hex)
+  instanceId?: string; // Instância exclusiva de WhatsApp vinculada
+  instanceName?: string; // Nome descritivo da instância
+  instancePhone?: string; // Telefone formatado da instância
+  allowedCollaboratorIds: string[]; // Colaboradores autorizados
+  isGeneral?: boolean; // Se é a aba geral padrão
+  createdAt?: string;
+}
+
 export interface CommercialFunnel {
   id: string;
   masterId?: string; // ID do Master proprietário deste funil
   name: string;
   category: string;
   description?: string;
-  venueId: string; // ID específico da casa
-  sharedVenueIds?: string[]; // IDs de casas adicionais que compartilham este funil
-  disabledVenueIds?: string[]; // IDs de casas desativadas manualmente de visualizar este funil
+  venueId: string; // ID específico da casa/unidade
+  sharedVenueIds?: string[]; // IDs de unidades adicionais que compartilham este funil
+  disabledVenueIds?: string[]; // IDs de unidades desativadas manualmente de visualizar este funil
   allowedCollaboratorIds?: string[]; // IDs dos colaboradores permitidos (vazio = todos)
   allowedRoles?: AdminRole[]; // Cargos que podem interagir neste funil
   isPostSale?: boolean; // Se é um funil com objetivo de Pós-Venda
   isWonStageEnabled?: boolean; // Se a etapa de Ganho está ativada neste funil (padrão: true)
   isEntryStageActive?: boolean; // Etapa de leads de entrada ativada (estilo Como CRM)
+  enableInboxStage?: boolean; // Etapa de Caixa de Entrada ativada
+  postSaleChannels?: PostSaleChannelConfig[]; // Canais setoriais de WhatsApp no Pós-Venda
+  postSaleCustomStageNames?: {
+    entry?: string;
+    won?: string;
+    lost?: string;
+  }; // Customização de nomes das etapas fixas no Pós-Venda
   detectDuplicates?: boolean; // Detectar leads duplicados
   duplicateRules?: string; // Regras de duplicidade (legado)
   duplicateRuleConfig?: FunnelDuplicateRuleConfig; // Configurações detalhadas de regras de duplicidade

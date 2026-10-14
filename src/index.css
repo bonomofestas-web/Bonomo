@@ -531,6 +531,39 @@ p { margin: 0; }
   background: var(--adm-accent, rgba(255, 255, 255, 0.3));
 }
 
+/* Scrollbar ultrafina (4px) e discreta para colunas de Kanban (F5 Clean) */
+.kanban-column-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+}
+.kanban-column-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.kanban-column-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kanban-column-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+.kanban-column-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.50);
+}
+
+.dark .kanban-column-scrollbar,
+[data-theme="dark"] .kanban-column-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.dark .kanban-column-scrollbar::-webkit-scrollbar-thumb,
+[data-theme="dark"] .kanban-column-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+.dark .kanban-column-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .kanban-column-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
 /* Modal overlay mobile-first touch optimization */
 .modal-overlay-responsive {
   position: fixed;

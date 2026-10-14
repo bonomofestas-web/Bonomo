@@ -189,7 +189,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
-  const [explicitlyAddedVenueIds, setExplicitlyAddedVenueIds] = useState<string[]>([]);
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -282,7 +281,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       : (activeFunnel.venueId && activeFunnel.venueId !== 'all' ? [activeFunnel.venueId] : []);
     setSharedVenueIds(initialShared);
     setDisabledVenueIds(activeFunnel.disabledVenueIds || (activeFunnel as any)?.duplicateRuleConfig?._disabledVenueIds || []);
-    setExplicitlyAddedVenueIds([]);
     setPackageOptions(activeFunnel.packageOptions || []);
     setPaymentOptions(activeFunnel.paymentOptions || []);
     setPredefinedTags(activeFunnel.predefinedTags || []);
@@ -384,6 +382,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       ? sharedVenueIds[0] 
       : (sharedVenueIds.length > 1 ? sharedVenueIds[0] : (funnelVenueId === 'all' ? 'all' : funnelVenueId));
 
+    const wonStage = finalStages.find(s => s.isWon);
+    const lostStage = finalStages.find(s => s.isLoss);
+    const customStageNames = isPostSale ? {
+      won: wonStage?.name || undefined,
+      lost: lostStage?.name || undefined,
+    } : undefined;
+
     updateFunnel(activeFunnel.id, {
       name: funnelName.trim() || activeFunnel.name,
       venueId: effectiveVenueId,
@@ -393,6 +398,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
       badgeColor: funnelBadgeColor,
       description: funnelDescription,
       isEntryStageActive,
+      enableInboxStage: isEntryStageActive,
+      postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
       isWonStageEnabled,
       distributionMode,
       assignedSdrIds,
@@ -402,6 +409,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         ...duplicateRuleConfig,
         _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
         _disabledVenueIds: disabledVenueIds,
+        _enableInboxStage: isEntryStageActive,
+        _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
       },
       enabledWhatsAppSourceIds,
       stages: finalStages,
@@ -501,8 +510,20 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setStages(prev => {
       const stageIdx = prev.findIndex(s => s.id === stageId);
       if (stageIdx === -1) return prev;
+      const targetStage = prev[stageIdx];
+      // Etapas fixas (Entrada, Ganho e Perda) são invioláveis e não podem ser movidas
+      if (targetStage.isFixed || targetStage.isWon || targetStage.isLoss || targetStage.id === 'new_lead' || targetStage.id === 'entry' || targetStage.id === 'onboarding') {
+        return prev;
+      }
+
       const targetIdx = direction === 'left' ? stageIdx - 1 : stageIdx + 1;
       if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+
+      // Não permite trocar de lugar com a etapa de entrada nem com Ganho/Perda
+      const destStage = prev[targetIdx];
+      if (destStage.isFixed || destStage.isWon || destStage.isLoss || destStage.id === 'new_lead' || destStage.id === 'entry' || destStage.id === 'onboarding') {
+        return prev;
+      }
 
       const next = [...prev];
       const temp = next[stageIdx];
@@ -1197,11 +1218,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 background: 'rgba(59, 130, 246, 0.15)',
                 color: 'var(--adm-accent)',
               }}>
-                {sharedVenueIds.length === 0 ? 'Todas as Casas' : `${sharedVenueIds.length} Vinculada(s)`}
+                {sharedVenueIds.length === 0 ? 'Exclusivo Master (Sem Unidade)' : `${sharedVenueIds.length} Unidade(s) Vinculada(s)`}
               </span>
             </div>
 
-            {/* Seletor Manual Multi-Casas */}
+            {/* Seletor Manual de Unidades */}
             <div style={{
               background: 'var(--adm-bg-input)',
               border: '1px solid var(--adm-border)',
@@ -1214,19 +1235,17 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase' }}>
-                  Casas Vinculadas a este Funil
+                  Unidades Vinculadas a este Funil
                 </label>
                 <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>
-                  Multi-Casas
+                  Multi-Unidades
                 </span>
               </div>
               <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: '1.3' }}>
-                {isPostSale
-                  ? 'Selecione manualmente quais casas de festa este funil atende. Clientes cadastrados nessas unidades físicas serão direcionados e acompanhados aqui.'
-                  : 'Selecione quais unidades físicas compartilham este funil comercial.'}
+                Selecione manualmente quais unidades físicas operam com este funil. Caso nenhuma unidade seja selecionada, o funil ficará visível exclusivamente para usuários Master.
               </span>
 
-              {/* Botão Geral: Todas as Casas da Rede */}
+              {/* Botão Sem Unidade Específica (Apenas Master) */}
               <button
                 type="button"
                 onClick={() => {
@@ -1251,7 +1270,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                   <Building2 size={12} />
-                  <span>Todas as Casas da Rede (Geral)</span>
+                  <span>Sem Unidade Específica (Exclusivo para Master)</span>
                 </div>
                 {sharedVenueIds.length === 0 && <Check size={12} />}
               </button>
@@ -1310,21 +1329,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             </div>
 
               {(() => {
-                const targetVenues = venues.filter(venue => {
-                  if (venue.active === false) return false;
-                  const isExplicitlyAdded = explicitlyAddedVenueIds.includes(venue.id) 
-                    || sharedVenueIds.includes(venue.id)
-                    || (activeFunnel?.venueId === venue.id && venue.id !== 'all');
-                  const isDisabled = disabledVenueIds.includes(venue.id);
-                  const hasFunnelSources = (sources || []).some(
-                    s => s.venueId === venue.id && (s.funnelId === activeFunnel?.id || enabledWhatsAppSourceIds.includes(s.id))
-                  );
-                  const hasLeadsInFunnel = (leads || []).some(
-                    l => (l.funnelId === activeFunnel?.id || l.funnelId === activeFunnel?.name) && l.venueId === venue.id
-                  );
-
-                  return isExplicitlyAdded || isDisabled || hasFunnelSources || hasLeadsInFunnel;
-                });
+                // Unidades alvo configuráveis (sem depender de leads ou etapa de entrada)
+                const targetVenues = sharedVenueIds.length > 0
+                  ? venues.filter(v => v.active !== false && sharedVenueIds.includes(v.id))
+                  : venues.filter(v => v.active !== false);
 
                 const unlinkedVenues = venues.filter(v => v.active !== false && !targetVenues.some(tv => tv.id === v.id));
 
@@ -1372,7 +1380,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           <select
                             value=""
                             onChange={(e) => {
-                              if (e.target.value) setExplicitlyAddedVenueIds(prev => [...prev, e.target.value]);
+                              if (e.target.value) setSharedVenueIds(prev => [...prev, e.target.value]);
                             }}
                             style={{
                               padding: '5px 8px',
@@ -1911,7 +1919,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                         <select
                           value=""
                           onChange={(e) => {
-                            if (e.target.value) setExplicitlyAddedVenueIds(prev => [...prev, e.target.value]);
+                            if (e.target.value) setSharedVenueIds(prev => [...prev, e.target.value]);
                           }}
                           style={{
                             width: '100%',
@@ -1994,70 +2002,87 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                     }}>
                       {/* Top Row: Icon Button + Stage Name Input + Meeting Toggle + Delete */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}>
-                        {/* Icon Picker Trigger */}
-                        <div style={{ position: 'relative', flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveIconPickerStageId(activeIconPickerStageId === stage.id ? null : stage.id)}
-                            title="Alterar ícone da etapa"
-                            style={{
-                              width: '24px',
-                              height: '24px',
-                              borderRadius: '6px',
-                              background: 'var(--adm-bg-input)',
-                              border: '1px solid var(--adm-border)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: stage.color || 'var(--adm-accent)',
-                              cursor: 'pointer',
-                              padding: 0,
-                              transition: 'all 0.15s ease',
-                            }}
-                          >
-                            {renderStageIcon(stage.icon || (stage.id === 'new_lead' ? 'inbox' : stage.isWon ? 'dollar' : stage.isLoss ? 'x-circle' : 'layers'), 13, stage.color || 'var(--adm-accent)')}
-                          </button>
+                        {(() => {
+                          const isEntry = stage.id === 'new_lead' || stage.id === 'entry' || stage.id === 'onboarding' || stage.name.toLowerCase().includes('entrada');
+                          const isWonOrLoss = isWon || isLoss;
+                          const isNameReadOnly = isEntry || (isWonOrLoss && !isPostSale);
+                          const isIconReadOnly = isEntry || (isWonOrLoss && !isPostSale);
 
-                          {/* Popover Icon Picker */}
-                          {activeIconPickerStageId === stage.id && (
-                            <FunnelIconPicker
-                              selectedIcon={stage.icon}
-                              onSelectIcon={(iconId) => {
-                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, icon: iconId } : s));
-                                setActiveIconPickerStageId(null);
-                              }}
-                              onClose={() => setActiveIconPickerStageId(null)}
-                              accentColor={stage.color || 'var(--adm-accent, #3B82F6)'}
-                              title={`Ícone da Etapa: ${stage.name}`}
-                            />
-                          )}
-                        </div>
+                          return (
+                            <>
+                              {/* Icon Picker Trigger */}
+                              <div style={{ position: 'relative', flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  disabled={isIconReadOnly}
+                                  onClick={() => !isIconReadOnly && setActiveIconPickerStageId(activeIconPickerStageId === stage.id ? null : stage.id)}
+                                  title={isIconReadOnly ? "Ícone padrão da etapa do sistema" : "Alterar ícone da etapa"}
+                                  style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '6px',
+                                    background: 'var(--adm-bg-input)',
+                                    border: '1px solid var(--adm-border)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: stage.color || 'var(--adm-accent)',
+                                    cursor: isIconReadOnly ? 'default' : 'pointer',
+                                    opacity: isIconReadOnly ? 0.8 : 1,
+                                    padding: 0,
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {renderStageIcon(stage.icon || (isEntry ? 'inbox' : stage.isWon ? 'dollar' : stage.isLoss ? 'x-circle' : 'layers'), 13, stage.color || 'var(--adm-accent)')}
+                                </button>
 
-                        {/* Stage Name Input (No Wrap, Ellipsis) */}
-                        <input
-                          type="text"
-                          value={stage.name}
-                          onChange={(e) => {
-                            const newName = e.target.value.toUpperCase();
-                            setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
-                          }}
-                          title={stage.name}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--adm-text-title)',
-                            fontSize: '0.78rem',
-                            fontWeight: 800,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.4px',
-                            outline: 'none',
-                            flex: 1,
-                            minWidth: 0,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        />
+                                {/* Popover Icon Picker */}
+                                {activeIconPickerStageId === stage.id && (
+                                  <FunnelIconPicker
+                                    selectedIcon={stage.icon}
+                                    onSelectIcon={(iconId) => {
+                                      setStages(prev => prev.map(s => s.id === stage.id ? { ...s, icon: iconId } : s));
+                                      setActiveIconPickerStageId(null);
+                                    }}
+                                    onClose={() => setActiveIconPickerStageId(null)}
+                                    accentColor={stage.color || 'var(--adm-accent, #3B82F6)'}
+                                    title={`Ícone da Etapa: ${stage.name}`}
+                                  />
+                                )}
+                              </div>
+
+                              {/* Stage Name Input (No Wrap, Ellipsis) */}
+                              <input
+                                type="text"
+                                readOnly={isNameReadOnly}
+                                value={isEntry ? 'CAIXA DE ENTRADA' : stage.name}
+                                onChange={(e) => {
+                                  if (isNameReadOnly) return;
+                                  const newName = e.target.value.toUpperCase();
+                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
+                                }}
+                                title={isNameReadOnly ? `Etapa padrão: ${stage.name}` : stage.name}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--adm-text-title)',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 800,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.4px',
+                                  outline: 'none',
+                                  flex: 1,
+                                  minWidth: 0,
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  cursor: isNameReadOnly ? 'default' : 'text',
+                                  opacity: isNameReadOnly ? 0.85 : 1,
+                                }}
+                              />
+                            </>
+                          );
+                        })()}
 
                         {/* Delete Stage Button (only for custom stages) */}
                         {!isFixed && (
@@ -2105,12 +2130,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           ))}
                         </div>
 
-                        {/* Reorder Buttons (Mover para esquerda / direita) */}
+                        {/* Reorder Buttons (Mover para esquerda / direita apenas etapas intermediárias customizáveis) */}
+                        {!isFixed && !stage.isWon && !stage.isLoss && stage.id !== 'new_lead' && stage.id !== 'entry' && stage.id !== 'onboarding' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                           <button
                             type="button"
                             onClick={() => handleMoveStage(stage.id, 'left')}
-                            disabled={index === 0}
+                            disabled={index <= 1}
                             title="Mover etapa para a esquerda"
                             style={{
                               width: '20px',
@@ -2118,12 +2144,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               borderRadius: '4px',
                               background: 'var(--adm-bg-input)',
                               border: '1px solid var(--adm-border)',
-                              color: index === 0 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                              color: index <= 1 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              cursor: index === 0 ? 'not-allowed' : 'pointer',
-                              opacity: index === 0 ? 0.4 : 1,
+                              cursor: index <= 1 ? 'not-allowed' : 'pointer',
+                              opacity: index <= 1 ? 0.4 : 1,
                               padding: 0,
                               transition: 'all 0.15s ease',
                             }}
@@ -2134,7 +2160,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           <button
                             type="button"
                             onClick={() => handleMoveStage(stage.id, 'right')}
-                            disabled={index === displayedStages.length - 1}
+                            disabled={index >= displayedStages.length - 2}
                             title="Mover etapa para a direita"
                             style={{
                               width: '20px',
@@ -2142,12 +2168,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               borderRadius: '4px',
                               background: 'var(--adm-bg-input)',
                               border: '1px solid var(--adm-border)',
-                              color: index === displayedStages.length - 1 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
+                              color: index >= displayedStages.length - 2 ? 'var(--adm-text-muted)' : 'var(--adm-text-title)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              cursor: index === displayedStages.length - 1 ? 'not-allowed' : 'pointer',
-                              opacity: index === displayedStages.length - 1 ? 0.4 : 1,
+                              cursor: index >= displayedStages.length - 2 ? 'not-allowed' : 'pointer',
+                              opacity: index >= displayedStages.length - 2 ? 0.4 : 1,
                               padding: 0,
                               transition: 'all 0.15s ease',
                             }}
@@ -2155,6 +2181,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             <ChevronRight size={11} />
                           </button>
                         </div>
+                        )}
                       </div>
                     </div>
 

@@ -1598,13 +1598,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, async () => {
-        // Agendamento criado ou atualizado
+        // Agendamento criado, atualizado ou cancelado (visitas e degustações)
         triggerDebouncedSync(async () => {
-          const updatedDebs = await debutanteService.getAll();
+          const [updatedApps, updatedDebs] = await Promise.all([
+            appointmentService.getAll(),
+            debutanteService.getAll(),
+          ]);
           if (isMounted) {
+            setAppointments(updatedApps);
+            safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(updatedApps));
+
             const filteredDebs = updatedDebs.filter(d => !deletedDebutanteIdsRef.current.has(d.id) && !deletedDebutanteIdsRef.current.has(d.slug));
             setDebutantes(filteredDebs);
             safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(filteredDebs));
+          }
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'venue_agenda_configs' }, async () => {
+        // Horários, bloqueios e novas datas criadas na agenda da unidade
+        triggerDebouncedSync(async () => {
+          const updatedConfigs = await agendaAvailabilityService.getAll();
+          if (isMounted) {
+            setVenueAgendaConfigs(updatedConfigs);
+            safeLocalStorageSet(STORAGE_KEY_AGENDA_CONFIGS, JSON.stringify(updatedConfigs));
           }
         });
       })

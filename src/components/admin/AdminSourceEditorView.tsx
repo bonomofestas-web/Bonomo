@@ -199,14 +199,14 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
     return funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda' || f.name?.toLowerCase().includes('pós-venda'));
   }, [funnels]);
 
-  // Lista de funis disponíveis para esta casa de festas (excluindo os que foram desativados para esta unidade)
+  // Lista de funis estritamente disponíveis para esta unidade (sem vazamento de funis de outras unidades)
   const availableVenueFunnels = useMemo(() => {
+    if (!venueId) return [];
     return funnels.filter(f => {
-      if (venueId) {
-        const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
-        if (disabled.includes(venueId)) return false;
-      }
-      return !venueId || f.venueId === venueId || f.venueId === 'all';
+      const disabled = f.disabledVenueIds || (f as any)?.duplicateRuleConfig?._disabledVenueIds || [];
+      if (disabled.includes(venueId)) return false;
+      const shared = Array.isArray(f.sharedVenueIds) ? f.sharedVenueIds : [];
+      return f.venueId === venueId || shared.includes(venueId);
     });
   }, [funnels, venueId]);
 
@@ -2139,7 +2139,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
             }
           }
         }}
-        funnels={availableVenueFunnels.length > 0 ? availableVenueFunnels : funnels}
+        funnels={availableVenueFunnels}
         venueName={venues.find(v => v.id === venueId)?.name}
       />
 

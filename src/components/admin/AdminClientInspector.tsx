@@ -12,7 +12,7 @@ import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
-import type { ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
+import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 
 interface AdminClientInspectorProps {
   clientId: string | null;
@@ -99,6 +99,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 }) => {
   const { 
     clients, 
+    leads,
     debutantes, 
     venues,
     sources,
@@ -167,7 +168,27 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
   if (!clientId) return null;
 
-  const client = clients.find(c => c.id === clientId);
+  const client: Client | null = clients.find(c => c.id === clientId) || (() => {
+    const l = (leads || []).find(lead => lead.id === clientId);
+    if (!l) return null;
+    return {
+      id: l.id,
+      code: l.code || `CLI-${l.id.slice(0, 5).toUpperCase()}`,
+      name: l.name,
+      payerName: (l as any).payerName || l.name,
+      payerPhone: l.phone,
+      stage: (l.stage || 'onboarding') as any,
+      venueId: l.venueId,
+      venueName: l.venueName,
+      dealValue: l.dealValue || 0,
+      assignedSuccessManagerId: l.sdrId || l.closerId,
+      assignedSuccessManagerName: l.assignedTo || l.sdrName || l.closerName,
+      activities: [],
+      createdAt: l.createdAt || new Date().toISOString(),
+      updatedAt: l.updatedAt || new Date().toISOString(),
+    } as unknown as Client;
+  })();
+
   if (!client) return null;
 
   const linkedDebutante = client.debutanteId ? debutantes.find(d => d.id === client.debutanteId) : null;

@@ -178,7 +178,7 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
                 </div>
                 <div>
                   <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.88rem' }}>
-                    ⚪ Sem Funil Definido (Desvincular Origem)
+                    Sem Funil Definido (Desvincular Origem)
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
                     Os contatos chegam como leads desindexados para que sua equipe faça a qualificação e direcionamento manual.
@@ -193,12 +193,38 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
             </div>
           </div>
 
+          {commercialFunnels.length === 0 && postSaleFunnels.length === 0 && (
+            <div style={{
+              padding: '30px 20px',
+              textAlign: 'center',
+              background: 'var(--adm-bg-input)',
+              borderRadius: '16px',
+              border: '1px dashed var(--adm-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px',
+            }}>
+              <ShieldAlert size={32} color="var(--adm-text-muted)" />
+              <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', fontSize: '0.90rem' }}>
+                Nenhum Funil Vinculado a Esta Unidade
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--adm-text-muted)', maxWidth: '420px', lineHeight: '1.4' }}>
+                Para atrelar esta origem a um funil, acesse a configuração dos funis e vincule esta unidade manualmente. Funis exclusivos de outras unidades ficam estritamente ocultos.
+              </div>
+            </div>
+          )}
+
           {/* Seção 1: Funis Comerciais */}
+          {commercialFunnels.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                🎯 Funis Comerciais (Pré-Vendas & Vendas)
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Target size={14} color="var(--adm-text-muted)" />
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Funis Comerciais (Pré-Vendas & Vendas)
+                </span>
+              </div>
               <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
                 {commercialFunnels.length} {commercialFunnels.length === 1 ? 'funil disponível' : 'funis disponíveis'}
               </span>
@@ -269,7 +295,7 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
                         fontWeight: 700,
                         color: f.isEntryStageActive === false ? '#F59E0B' : '#10B981',
                       }}>
-                        {f.isEntryStageActive === false ? '⚠️ Sem Caixa de Entrada' : '✓ Caixa de Entrada Ativa'}
+                        {f.isEntryStageActive === false ? 'Sem Caixa de Entrada' : 'Caixa de Entrada Ativa'}
                       </span>
                     </div>
                   </div>
@@ -277,27 +303,25 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
               })}
             </div>
           </div>
+          )}
 
           {/* Seção 2: Sucesso do Cliente (Pós-Venda) */}
+          {postSaleFunnels.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                👑 Sucesso do Cliente (Pós-Venda)
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Crown size={14} color="#8B5CF6" />
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Sucesso do Cliente (Pós-Venda)
+                </span>
+              </div>
               <span style={{ fontSize: '0.68rem', color: '#8B5CF6', fontWeight: 700 }}>
                 Geração Direta de Clientes
               </span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-              {(postSaleFunnels.length > 0 ? postSaleFunnels : [{
-                id: 'post_sale_default',
-                name: 'Sucesso do Cliente',
-                category: 'Pós-Venda',
-                badgeColor: '#8B5CF6',
-                isPostSale: true,
-                stages: [],
-              }]).map(f => {
+              {postSaleFunnels.map(f => {
                 const isSelected = selectedFunnelId === f.id || (selectedFunnelId === 'post_sale_default' && f.id === 'post_sale_default');
 
                 return (
@@ -357,6 +381,7 @@ export const AdminSourceFunnelSelectModal: React.FC<AdminSourceFunnelSelectModal
               })}
             </div>
           </div>
+          )}
 
         </div>
 

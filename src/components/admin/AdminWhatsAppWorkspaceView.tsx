@@ -7,13 +7,14 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck
+  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { SafeAvatar } from './SafeAvatar';
 import { WhatsAppAudioMessage } from './WhatsAppAudioMessage';
 import { WhatsAppDocumentMessage } from './WhatsAppDocumentMessage';
+import { AdminPostSaleChannelModal } from './AdminPostSaleChannelModal';
 
 const InstagramIcon: React.FC<{ size?: number; className?: string; color?: string }> = ({ size = 16, className = '', color = 'currentColor' }) => (
   <svg
@@ -55,7 +56,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument } from '../../types/admin';
+import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
   if (!timestamp) return '';
@@ -419,6 +420,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     deleteTask,
     completeTaskWithFeedback,
     updateSource,
+    updateFunnel,
     addLeadActivity,
     markLeadAsRead,
     loadOlderLeadActivities,
@@ -1498,6 +1500,102 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
 
+  // ── ABAS SETORIAIS DE WHATSAPP NO PÓS-VENDA ─────────────────────────────
+  const isPostSaleChat = Boolean(isPostSaleFunnel || selectedLead?.isClient);
+
+  const currentPostSaleFunnel = useMemo(() => {
+    if (activeFunnel && (activeFunnel.isPostSale || activeFunnel.category === 'Pós-Venda' || activeFunnel.category === 'pos_venda')) {
+      return activeFunnel;
+    }
+    if (selectedLead?.funnelId) {
+      const f = funnels.find(fun => fun.id === selectedLead.funnelId);
+      if (f && (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda')) return f;
+    }
+    const targetVenue = selectedLead?.venueId || activeVenueId;
+    return funnels.find(f => (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda') && (
+      !targetVenue || targetVenue === 'all' || f.venueId === targetVenue || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenue))
+    )) || null;
+  }, [activeFunnel, selectedLead?.funnelId, selectedLead?.venueId, activeVenueId, funnels]);
+
+  const [activePostSaleChannelId, setActivePostSaleChannelId] = useState<string>('geral');
+  const [isPostSaleChannelModalOpen, setIsPostSaleChannelModalOpen] = useState(false);
+  const [editingPostSaleChannel, setEditingPostSaleChannel] = useState<PostSaleChannelConfig | null>(null);
+
+  const isMasterOrManager = Boolean(
+    currentUser?.role === 'gerencia' || 
+    (currentUser as any)?.role === 'admin' || 
+    (currentUser as any)?.role === 'master'
+  );
+
+  const allPostSaleChannels = useMemo(() => {
+    const raw = (currentPostSaleFunnel?.postSaleChannels || (currentPostSaleFunnel as any)?.duplicateRuleConfig?._postSaleChannels || []) as PostSaleChannelConfig[];
+    return raw;
+  }, [currentPostSaleFunnel]);
+
+  const visiblePostSaleChannels = useMemo(() => {
+    if (isMasterOrManager) return allPostSaleChannels;
+    return allPostSaleChannels.filter(c => 
+      !c.allowedCollaboratorIds || 
+      c.allowedCollaboratorIds.length === 0 || 
+      c.allowedCollaboratorIds.includes(currentUser?.id || '')
+    );
+  }, [allPostSaleChannels, isMasterOrManager, currentUser?.id]);
+
+  const activePostSaleChannel = useMemo(() => {
+    if (activePostSaleChannelId === 'geral') return null;
+    return allPostSaleChannels.find(c => c.id === activePostSaleChannelId) || null;
+  }, [allPostSaleChannels, activePostSaleChannelId]);
+
+  const channelExclusiveSource = useMemo(() => {
+    if (!isPostSaleChat || !activePostSaleChannel?.instanceId) return null;
+    return (sources || []).find(s => s.id === activePostSaleChannel.instanceId) || null;
+  }, [isPostSaleChat, activePostSaleChannel?.instanceId, sources]);
+
+  // Se o canal ativo não for mais visível, reseta para 'geral'
+  useEffect(() => {
+    if (activePostSaleChannelId !== 'geral') {
+      const exists = visiblePostSaleChannels.some(c => c.id === activePostSaleChannelId);
+      if (!exists) {
+        setActivePostSaleChannelId('geral');
+      }
+    }
+  }, [visiblePostSaleChannels, activePostSaleChannelId]);
+
+  const handleSavePostSaleChannel = (channel: PostSaleChannelConfig) => {
+    if (!currentPostSaleFunnel) return;
+    const currentList = currentPostSaleFunnel.postSaleChannels || [];
+    const existingIndex = currentList.findIndex(c => c.id === channel.id);
+    let updated: PostSaleChannelConfig[];
+    if (existingIndex >= 0) {
+      updated = currentList.map(c => c.id === channel.id ? channel : c);
+    } else {
+      updated = [...currentList, channel];
+    }
+    updateFunnel(currentPostSaleFunnel.id, {
+      postSaleChannels: updated,
+      duplicateRuleConfig: {
+        ...(currentPostSaleFunnel.duplicateRuleConfig || {}),
+        _postSaleChannels: updated,
+      }
+    } as any);
+    setActivePostSaleChannelId(channel.id);
+  };
+
+  const handleDeletePostSaleChannel = (channelId: string) => {
+    if (!currentPostSaleFunnel) return;
+    const updated = (currentPostSaleFunnel.postSaleChannels || []).filter(c => c.id !== channelId);
+    updateFunnel(currentPostSaleFunnel.id, {
+      postSaleChannels: updated,
+      duplicateRuleConfig: {
+        ...(currentPostSaleFunnel.duplicateRuleConfig || {}),
+        _postSaleChannels: updated,
+      }
+    } as any);
+    if (activePostSaleChannelId === channelId) {
+      setActivePostSaleChannelId('geral');
+    }
+  };
+
   useEffect(() => {
     try {
       const openSection = localStorage.getItem('f5_wa_open_section');
@@ -2071,9 +2169,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   }, [selectedLead?.id, selectedLead?.venueId, selectedLead?.sourceId, activeFunnel, venueSenderSources]);
 
-  const activeSenderSource = useMemo(() => {
+  const baseSenderSource = useMemo(() => {
     return venueSenderSources.find(s => s.id === selectedSenderSourceId) || venueSenderSources[0] || null;
   }, [venueSenderSources, selectedSenderSourceId]);
+
+  const activeSenderSource = useMemo(() => {
+    if (isPostSaleChat && channelExclusiveSource) {
+      return channelExclusiveSource;
+    }
+    return baseSenderSource;
+  }, [isPostSaleChat, channelExclusiveSource, baseSenderSource]);
 
   const isSenderDisconnected = useMemo(() => {
     if (!activeSenderSource) return true;
@@ -2293,6 +2398,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const avatar = effectiveSender ? getSourceAvatar(effectiveSender) : undefined;
     const rawPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
     const senderName = cleanInfo?.cleanName || effectiveSender?.name || 'WhatsApp';
+    const isChannelActive = Boolean(isPostSaleChat && activePostSaleChannel);
 
     return {
       sentFromApp: true,
@@ -2301,8 +2407,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       senderPhone: rawPhone,
       senderAvatar: avatar || '',
       senderProfileName: (effectiveSender?.configuration as any)?.connectedProfileName || '',
+      channelId: (isPostSaleChat && activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
+      channelName: isChannelActive ? activePostSaleChannel?.name : undefined,
     };
-  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar]);
+  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar, isPostSaleChat, activePostSaleChannel, activePostSaleChannelId]);
 
   // Envio do anexo pendente no chat (ex: comprovante de agendamento compartilhado)
   const handleSendPendingAttachment = async (customCaption?: string) => {
@@ -2416,6 +2524,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sending',
+      channelId: (isPostSaleChat && activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
+      channelName: (isPostSaleChat && activePostSaleChannel) ? activePostSaleChannel.name : undefined,
+      instanceId: activeSenderSource?.id,
       metadata: getAppSenderMetadata(),
     } as any;
 
@@ -3319,12 +3430,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       );
     });
 
+    // Filtra pelo canal setorial selecionado no Pós-Venda
+    const filteredByChannel = chatOnly.filter(a => {
+      if (!isPostSaleChat) return true;
+      const isSessionMarker = Boolean((a as any).metadata?.isSessionEnd || (a as any).metadata?.isViewAudit || (a.title || '').toLowerCase().includes('conversa encerrada'));
+      if (isSessionMarker) return true;
+
+      const actChannelId = (a as any).channelId || (a as any).metadata?.channelId;
+      if (activePostSaleChannelId === 'geral') {
+        return !actChannelId || actChannelId === 'geral';
+      }
+      return actChannelId === activePostSaleChannelId;
+    });
+
     // Deduplicação inteligente de mensagens repetidas (por id e por conteúdo idêntico no mesmo minuto)
     const seenIds = new Set<string>();
     const seenFingerprints = new Set<string>();
     const deduped: LeadActivity[] = [];
 
-    const sorted = [...chatOnly].sort((a, b) => {
+    const sorted = [...filteredByChannel].sort((a, b) => {
       const timeA = new Date(a.timestamp || 0).getTime();
       const timeB = new Date(b.timestamp || 0).getTime();
       if (timeA !== timeB) return timeA - timeB;
@@ -3359,7 +3483,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
 
     return deduped;
-  }, [effectiveLeadActivities]);
+  }, [effectiveLeadActivities, isPostSaleChat, activePostSaleChannelId]);
 
   // Função para carregar lote anterior de mensagens do histórico (rolagem para o passado)
   const loadOlderMessages = useCallback(async () => {
@@ -5187,6 +5311,154 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               </div>
             )}
 
+            {/* Barra de Abas Setoriais de WhatsApp (Pós-Venda) */}
+            {isPostSaleChat && (
+              <div style={{
+                padding: '7px 20px',
+                borderBottom: '1px solid var(--adm-border)',
+                background: 'var(--adm-bg-input)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                overflowX: 'auto',
+                scrollbarWidth: 'none',
+              }}>
+                {/* Canal Geral (Fixo) */}
+                <button
+                  type="button"
+                  onClick={() => setActivePostSaleChannelId('geral')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    border: activePostSaleChannelId === 'geral'
+                      ? '1.5px solid var(--adm-accent)'
+                      : '1px solid var(--adm-border)',
+                    background: activePostSaleChannelId === 'geral'
+                      ? 'var(--adm-accent-bg)'
+                      : 'var(--adm-bg-card)',
+                    color: activePostSaleChannelId === 'geral'
+                      ? 'var(--adm-accent)'
+                      : 'var(--adm-text-title)',
+                    boxShadow: activePostSaleChannelId === 'geral' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                  }}
+                >
+                  <MessageSquare size={13} />
+                  <span>Geral</span>
+                </button>
+
+                {/* Demais canais setoriais configurados */}
+                {visiblePostSaleChannels.map(ch => {
+                  const isSelected = activePostSaleChannelId === ch.id;
+                  const channelColor = ch.color || '#8B5CF6';
+                  return (
+                    <div key={ch.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => setActivePostSaleChannelId(ch.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '5px 12px',
+                          borderRadius: isMasterOrManager ? '8px 0 0 8px' : '8px',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          border: isSelected
+                            ? `1.5px solid ${channelColor}`
+                            : '1px solid var(--adm-border)',
+                          background: isSelected
+                            ? `${channelColor}1A`
+                            : 'var(--adm-bg-card)',
+                          color: isSelected
+                            ? channelColor
+                            : 'var(--adm-text-title)',
+                          boxShadow: isSelected ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                        }}
+                      >
+                        <span style={{
+                          width: '7px',
+                          height: '7px',
+                          borderRadius: '50%',
+                          background: channelColor,
+                          display: 'inline-block',
+                        }} />
+                        <span>{ch.name}</span>
+                        {ch.instanceId && (
+                          <Smartphone size={11} color={channelColor} />
+                        )}
+                      </button>
+
+                      {/* Botão de Configurar Canal (Master e Gerente) */}
+                      {isMasterOrManager && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPostSaleChannel(ch);
+                            setIsPostSaleChannelModalOpen(true);
+                          }}
+                          title={`Configurar canal ${ch.name}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '5px 7px',
+                            borderRadius: '0 8px 8px 0',
+                            border: isSelected ? `1.5px solid ${channelColor}` : '1px solid var(--adm-border)',
+                            borderLeft: 'none',
+                            background: isSelected ? `${channelColor}1A` : 'var(--adm-bg-card)',
+                            color: isSelected ? channelColor : 'var(--adm-text-muted)',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                          }}
+                        >
+                          <Edit3 size={11} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Botão [+] Adicionar Novo Canal Setorial (Master ou Gerente) */}
+                {isMasterOrManager && currentPostSaleFunnel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPostSaleChannel(null);
+                      setIsPostSaleChannelModalOpen(true);
+                    }}
+                    title="Adicionar Novo Setor de Atendimento no Pós-Venda"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '5px 10px',
+                      borderRadius: '8px',
+                      border: '1px dashed var(--adm-accent)',
+                      background: 'var(--adm-accent-bg)',
+                      color: 'var(--adm-accent)',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Plus size={12} strokeWidth={2.5} />
+                    <span>Novo Setor</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* ── TIMELINE DINÂMICA CONECTADA À ABA DO COMPOSER ── */}
             <div
               ref={timelineContainerRef}
@@ -6022,6 +6294,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#d9fdd3' : '#008069') }}>
                                         {authorName}
                                       </span>
+                                      {Boolean((act as any).channelName || meta?.channelName) && (
+                                        <span style={{
+                                          fontSize: '0.62rem',
+                                          fontWeight: 700,
+                                          padding: '1px 5px',
+                                          borderRadius: '4px',
+                                          background: isDarkMode ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.12)',
+                                          color: isDarkMode ? '#93c5fd' : '#2563eb',
+                                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                                        }}>
+                                          {(act as any).channelName || meta?.channelName}
+                                        </span>
+                                      )}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
                                       <span style={{ fontSize: '0.62rem', color: isFailedMsg ? '#EF4444' : (isDarkMode ? '#8696a0' : '#667781') }}>
@@ -11648,6 +11933,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           isOpen={isTransferVenueModalOpen}
           onClose={() => setIsTransferVenueModalOpen(false)}
           lead={selectedLead}
+        />
+      )}
+
+      {/* ── MODAL: ABA SETORIAL DE WHATSAPP NO PÓS-VENDA ── */}
+      {currentPostSaleFunnel && (
+        <AdminPostSaleChannelModal
+          isOpen={isPostSaleChannelModalOpen}
+          onClose={() => {
+            setIsPostSaleChannelModalOpen(false);
+            setEditingPostSaleChannel(null);
+          }}
+          activeFunnel={currentPostSaleFunnel}
+          editingChannel={editingPostSaleChannel}
+          sources={sources}
+          collaborators={collaborators}
+          onSaveChannel={handleSavePostSaleChannel}
+          onDeleteChannel={handleDeletePostSaleChannel}
         />
       )}
 

@@ -215,7 +215,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     rejectLead,
     closeLeadSaleWithValue,
     mqlQuestions,
-    allSources,
     deleteLead,
     deleteMultipleLeads,
     archiveLead,
@@ -264,20 +263,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       });
     }
 
-    // 2. Origens ativas conectadas a este funil
-    (allSources || []).filter(s => s.funnelId === targetFunnel.id).forEach(s => {
-      if (s.venueId && s.venueId !== 'all' && !disabledSet.has(s.venueId)) {
-        venueIdSet.add(s.venueId);
-      }
-    });
-
-    // 3. Leads pertencentes àquela casa que estão dentro deste funil (pertence até que todos os leads saiam)
-    (leads || []).filter(l => (l.funnelId === targetFunnel.id || l.funnelId === targetFunnel.name)).forEach(l => {
-      if (l.venueId && l.venueId !== 'all' && !disabledSet.has(l.venueId)) {
-        venueIdSet.add(l.venueId);
-      }
-    });
-
+    // Vínculo estritamente manual: NÃO infere por origens nem por leads existentes
     return venues.filter(v => venueIdSet.has(v.id));
   };
 
@@ -3320,14 +3306,17 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </span>
                     </div>
 
-                    {/* Cards Container - Sem scroll interno, tudo rola junto no Kanban */}
+                    {/* Cards Container - Com scroll individual ultrafino de 4px */}
                     <div 
+                      className="kanban-column-scrollbar"
                       style={{
-                        padding: '4px 0 24px 0',
+                        padding: '4px 3px 24px 0',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '6px',
                         flex: 1,
+                        overflowY: 'auto',
+                        maxHeight: 'calc(100vh - 220px)',
                         opacity: isSlim ? 0 : 1,
                         transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
                         transition: 'opacity 0.20s ease, transform 0.20s ease',

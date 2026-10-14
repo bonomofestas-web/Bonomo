@@ -242,7 +242,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     isFunnelPinned,
     tasks,
     appointments,
-    sources
   } = useAdminState();
 
   const [selectedFunnelId, setSelectedFunnelId] = useState<string | null>(initialFunnelId || null);
@@ -365,7 +364,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     return null;
   }, [funnels, selectedFunnelId]);
 
-  // Recupera unidades vinculadas a qualquer funil de pós-venda (origens, clientes e sharedVenueIds)
+  // Recupera unidades vinculadas manualmente a este funil de pós-venda (vínculo estrito, sem inferência automática)
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
     const disabledSet = new Set<string>(targetFunnel.disabledVenueIds || []);
     const venueIdSet = new Set<string>();
@@ -384,27 +383,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       });
     }
 
-    // 2. Origens ativas conectadas a este funil
-    (sources || []).filter(s => s.funnelId === targetFunnel.id).forEach(s => {
-      if (s.venueId && s.venueId !== 'all' && !disabledSet.has(s.venueId)) {
-        venueIdSet.add(s.venueId);
-      }
-    });
-
-    // 3. Clientes vinculados a este funil
-    (clients || []).filter(c => (c.funnelId === targetFunnel.id || (!c.funnelId && targetFunnel.id === 'post_sale_default'))).forEach(c => {
-      if (c.venueId && c.venueId !== 'all' && !disabledSet.has(c.venueId)) {
-        venueIdSet.add(c.venueId);
-      }
-    });
-
+    // Vínculo estritamente manual: NÃO infere por origens nem por clientes existentes
     return venues.filter(v => venueIdSet.has(v.id));
   };
-
-  const currentFunnelLinkedVenues = useMemo(() => {
-    if (!currentFunnel) return [];
-    return getLinkedVenuesForFunnel(currentFunnel);
-  }, [currentFunnel, venues]);
 
   // Duplicar Funil (sem leads nem clientes, apenas configurações)
   const handleDuplicateFunnel = (funnelId: string, e?: React.MouseEvent) => {
@@ -531,19 +512,32 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   // Colunas Ativas (dinâmicas conforme configuração do funil)
   const activeStageColumns = useMemo(() => {
+    const customNames = currentFunnel?.postSaleCustomStageNames;
+    const formatTitle = (id: string, defaultTitle: string) => {
+      if (id === 'completed' && customNames?.won) return customNames.won.toUpperCase();
+      if (id === 'lost' && customNames?.lost) return customNames.lost.toUpperCase();
+      if ((id === 'entry' || id === 'onboarding') && customNames?.entry) return customNames.entry.toUpperCase();
+      return defaultTitle;
+    };
+
     if (currentFunnel?.stages && currentFunnel.stages.length > 0) {
       return currentFunnel.stages.map(st => ({
         id: st.id as any,
-        title: st.name,
+        title: formatTitle(st.id, st.name),
         color: st.color || '#3B82F6',
         bgColor: `${st.color || '#3B82F6'}14`,
         borderColor: `${st.color || '#3B82F6'}4D`,
       }));
     }
-    if (currentFunnel?.isEntryStageActive) {
-      return [POST_SALE_ENTRY_COLUMN, ...STAGE_COLUMNS];
+    const baseCols = STAGE_COLUMNS.map(col => ({
+      ...col,
+      title: formatTitle(col.id, col.title),
+    }));
+
+    if (currentFunnel?.isEntryStageActive || currentFunnel?.enableInboxStage) {
+      return [POST_SALE_ENTRY_COLUMN, ...baseCols];
     }
-    return STAGE_COLUMNS;
+    return baseCols;
   }, [currentFunnel]);
 
   const handleOpenSettings = async (targetFunnelId?: string, e?: React.MouseEvent) => {
@@ -614,14 +608,19 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
     let list = allClients.filter(client => {
-      // 0. Casas de Festas e Funil Vinculado
+      // 0. Funil Vinculado e Unidades (Isolamento Estrito de Funis de Pós-Venda)
       if (currentFunnel) {
-        if ((client as any).funnelId && (client as any).funnelId !== currentFunnel.id) {
-          return false;
-        }
-        if (currentFunnelLinkedVenues.length > 0 && !(client as any).funnelId) {
-          const belongsToFunnel = currentFunnelLinkedVenues.some(v => v.id === client.venueId);
-          if (!belongsToFunnel) return false;
+        const cFunnelId = (client as any).funnelId;
+        if (cFunnelId) {
+          if (cFunnelId !== currentFunnel.id) {
+            return false;
+          }
+        } else {
+          // Clientes antigos sem funnelId explícito: só aparecem no funil padrão de pós-venda
+          const isDefaultPostSale = currentFunnel.id === 'post_sale_default' || currentFunnel.isPrimary || currentFunnel.category === 'Pós-Venda';
+          if (!isDefaultPostSale) {
+            return false;
+          }
         }
       }
 
@@ -2439,17 +2438,19 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                     </span>
                   </div>
 
-                  {/* Cards Container - Sem scroll interno, altura completa até o chão para drop total */}
+                  {/* Cards Container - Com scroll individual ultrafino de 4px */}
                   <div 
+                    className="kanban-column-scrollbar"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, column.id)}
                     style={{
-                      padding: '4px 0 60px 0',
+                      padding: '4px 3px 60px 0',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '6px',
                       flex: 1,
-                      minHeight: 'calc(100vh - 200px)',
+                      overflowY: 'auto',
+                      maxHeight: 'calc(100vh - 220px)',
                       opacity: isSlim ? 0 : 1,
                       transform: isSlim ? 'translateY(-10px) scale(0.98)' : 'translateY(0) scale(1)',
                       transition: 'opacity 0.20s ease, transform 0.20s ease',
