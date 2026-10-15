@@ -844,7 +844,8 @@ export interface CommercialFunnel {
   isWonStageEnabled?: boolean; // Se a etapa de Ganho está ativada neste funil (padrão: true)
   isEntryStageActive?: boolean; // Etapa de leads de entrada ativada (estilo Como CRM)
   enableInboxStage?: boolean; // Etapa de Caixa de Entrada ativada
-  postSaleChannels?: PostSaleChannelConfig[]; // Canais setoriais de WhatsApp no Pós-Venda
+  postSaleChannels?: PostSaleChannelConfig[]; // Canais setoriais de WhatsApp (Comercial e Pós-Venda)
+  hideGeneralChannel?: boolean; // Se a aba [Geral] padrão está desabilitada/oculta neste funil
   postSaleCustomStageNames?: {
     entry?: string;
     won?: string;

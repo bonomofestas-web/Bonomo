@@ -1,4 +1,5 @@
 import type { Lead } from '../types/admin';
+import { leadService } from '../services/leadService';
 
 /**
  * Utilitário Centralizado de Ordenação e Cálculo de Tempo de Espera de Leads
@@ -11,8 +12,38 @@ import type { Lead } from '../types/admin';
  * - Retorna > 0 (Date.now() - timestamp) se e somente se o lead tem mensagem do cliente pendente de resposta.
  */
 export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<string>): number {
-  const acts = lead.activities || [];
-  if (acts.length === 0) return -1;
+  const acts = (lead.activities && lead.activities.length > 0)
+    ? lead.activities
+    : leadService.getActivitiesFromCache(lead.id);
+
+  if (!acts || acts.length === 0) {
+    const dir = lead.lastMessageDirection as string | undefined;
+    if (dir === 'incoming' || dir === 'inbound') {
+      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
+      if (timeRef) {
+        const msgTime = new Date(timeRef).getTime();
+        return Math.max(1, Date.now() - msgTime);
+      }
+      return 1;
+    }
+
+    if (dir === 'outgoing' || dir === 'outbound') {
+      return -1;
+    }
+
+    // Se a direção não está explícita, checa contagem de não lidas
+    const unread = Number(lead.unreadCount ?? (lead as any).unreadMessagesCount ?? 0);
+    if (unread > 0) {
+      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
+      if (timeRef) {
+        const msgTime = new Date(timeRef).getTime();
+        return Math.max(1, Date.now() - msgTime);
+      }
+      return 1;
+    }
+
+    return -1;
+  }
 
   // Filtra apenas atividades de mensagens reais no WhatsApp (exclui notas internas 'note', eventos de sistema e auditorias de visualização)
   const chatActivities = acts.filter(act => {
@@ -39,6 +70,13 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
   });
 
   if (chatActivities.length === 0) {
+    const dir = lead.lastMessageDirection as string | undefined;
+    if (dir === 'incoming' || dir === 'inbound' || (Number(lead.unreadCount ?? (lead as any).unreadMessagesCount ?? 0) > 0)) {
+      const timeRef = lead.lastInteractionAt || lead.updatedAt || lead.createdAt;
+      if (timeRef) {
+        return Math.max(1, Date.now() - new Date(timeRef).getTime());
+      }
+    }
     return -1;
   }
 
@@ -116,11 +154,12 @@ export function getLeadPendingWaitingTime(lead: Lead, collaboratorIdSet?: Set<st
  * Retorna o timestamp da última atividade/mensagem relevante do lead
  */
 export function getLastLeadMessageTime(l: Lead): number {
-  const contactActs = (l.activities || []).filter(a => a.type === 'contact' || a.type === 'note');
+  const acts = (l.activities && l.activities.length > 0) ? l.activities : leadService.getActivitiesFromCache(l.id);
+  const contactActs = (acts || []).filter(a => a.type === 'contact' || a.type === 'note');
   if (contactActs.length > 0) {
     return new Date(contactActs[contactActs.length - 1].timestamp || 0).getTime();
   }
-  return new Date(l.updatedAt || l.createdAt || 0).getTime();
+  return new Date(l.lastInteractionAt || l.updatedAt || l.createdAt || 0).getTime();
 }
 
 /**

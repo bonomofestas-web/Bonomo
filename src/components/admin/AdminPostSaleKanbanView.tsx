@@ -597,6 +597,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         venueId: l.venueId,
         venueName: l.venueName,
         dealValue: l.dealValue || 0,
+        funnelId: l.funnelId,
         assignedSuccessManagerId: l.sdrId || l.closerId,
         assignedSuccessManagerName: l.assignedTo || l.sdrName || l.closerName,
         createdAt: l.createdAt || new Date().toISOString(),
@@ -616,8 +617,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             return false;
           }
         } else {
-          // Clientes antigos sem funnelId explícito: só aparecem no funil padrão de pós-venda
-          const isDefaultPostSale = currentFunnel.id === 'post_sale_default' || currentFunnel.isPrimary || currentFunnel.category === 'Pós-Venda';
+          // Clientes antigos sem funnelId explícito: só aparecem no funil padrão de pós-venda (primário), NUNCA em outros funis como Decor
+          const isDefaultPostSale = currentFunnel.id === 'post_sale_default' || currentFunnel.isPrimary;
           if (!isDefaultPostSale) {
             return false;
           }
@@ -2514,7 +2515,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             if (isMultiSelectMode) {
                               toggleClientSelection(client.id);
                             } else {
-                              setInspectorClientId(client.id);
+                              setSelectedClientId(client.id);
+                              setViewMode('inbox');
                             }
                           }}
                           style={{
@@ -3255,6 +3257,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedClientId(client.id);
+                                        setViewMode('inbox');
                                       }}
                                       style={{
                                         width: '21px',
@@ -3306,6 +3309,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedClientId(client.id);
+                                        setViewMode('inbox');
                                       }}
                                       style={{
                                         width: '21px',
@@ -3508,7 +3512,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       key={client.id}
                       onClick={() => {
                         setSelectedClientId(client.id);
-                        setInspectorClientId(client.id);
+                        setViewMode('inbox');
                       }}
                       style={{
                         borderBottom: '1px solid var(--adm-border)',

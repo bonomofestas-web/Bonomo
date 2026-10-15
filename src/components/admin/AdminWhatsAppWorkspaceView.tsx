@@ -7,7 +7,7 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone
+  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone, QrCode
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -1500,19 +1500,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return sourceLeads.find(l => l.id === selectedLeadId) || null;
   }, [sourceLeads, selectedLeadId]);
 
-  // ── ABAS SETORIAIS DE WHATSAPP NO PÓS-VENDA ─────────────────────────────
+  // ── ABAS SETORIAIS DE WHATSAPP (COMERCIAL E PÓS-VENDA) ─────────────────────────────
   const isPostSaleChat = Boolean(isPostSaleFunnel || selectedLead?.isClient);
 
-  const currentPostSaleFunnel = useMemo(() => {
-    if (activeFunnel && (activeFunnel.isPostSale || activeFunnel.category === 'Pós-Venda' || activeFunnel.category === 'pos_venda')) {
+  // Funil ativo que contém as configurações de canais setoriais (tanto comercial quanto pós-venda)
+  const activeChannelsFunnel = useMemo(() => {
+    if (activeFunnel) {
       return activeFunnel;
     }
     if (selectedLead?.funnelId) {
       const f = funnels.find(fun => fun.id === selectedLead.funnelId);
-      if (f && (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda')) return f;
+      if (f) return f;
     }
     const targetVenue = selectedLead?.venueId || activeVenueId;
-    return funnels.find(f => (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda') && (
+    return funnels.find(f => (
       !targetVenue || targetVenue === 'all' || f.venueId === targetVenue || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(targetVenue))
     )) || null;
   }, [activeFunnel, selectedLead?.funnelId, selectedLead?.venueId, activeVenueId, funnels]);
@@ -1524,13 +1525,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const isMasterOrManager = Boolean(
     currentUser?.role === 'gerencia' || 
     (currentUser as any)?.role === 'admin' || 
-    (currentUser as any)?.role === 'master'
+    (currentUser as any)?.role === 'master' ||
+    (currentUser as any)?.isDev
   );
 
+  const isGeneralHidden = Boolean(activeChannelsFunnel?.hideGeneralChannel);
+
   const allPostSaleChannels = useMemo(() => {
-    const raw = (currentPostSaleFunnel?.postSaleChannels || (currentPostSaleFunnel as any)?.duplicateRuleConfig?._postSaleChannels || []) as PostSaleChannelConfig[];
+    const raw = (activeChannelsFunnel?.postSaleChannels || (activeChannelsFunnel as any)?.duplicateRuleConfig?._postSaleChannels || []) as PostSaleChannelConfig[];
     return raw;
-  }, [currentPostSaleFunnel]);
+  }, [activeChannelsFunnel]);
 
   const visiblePostSaleChannels = useMemo(() => {
     if (isMasterOrManager) return allPostSaleChannels;
@@ -1547,23 +1551,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [allPostSaleChannels, activePostSaleChannelId]);
 
   const channelExclusiveSource = useMemo(() => {
-    if (!isPostSaleChat || !activePostSaleChannel?.instanceId) return null;
+    if (!activePostSaleChannel?.instanceId) return null;
     return (sources || []).find(s => s.id === activePostSaleChannel.instanceId) || null;
-  }, [isPostSaleChat, activePostSaleChannel?.instanceId, sources]);
+  }, [activePostSaleChannel?.instanceId, sources]);
 
-  // Se o canal ativo não for mais visível, reseta para 'geral'
+  // Se a aba geral estiver oculta e estiver no 'geral', chaveia para o primeiro canal visível
   useEffect(() => {
-    if (activePostSaleChannelId !== 'geral') {
+    if (isGeneralHidden && activePostSaleChannelId === 'geral' && visiblePostSaleChannels.length > 0) {
+      setActivePostSaleChannelId(visiblePostSaleChannels[0].id);
+    } else if (activePostSaleChannelId !== 'geral') {
       const exists = visiblePostSaleChannels.some(c => c.id === activePostSaleChannelId);
       if (!exists) {
-        setActivePostSaleChannelId('geral');
+        setActivePostSaleChannelId(isGeneralHidden && visiblePostSaleChannels.length > 0 ? visiblePostSaleChannels[0].id : 'geral');
       }
     }
-  }, [visiblePostSaleChannels, activePostSaleChannelId]);
+  }, [isGeneralHidden, visiblePostSaleChannels, activePostSaleChannelId]);
 
   const handleSavePostSaleChannel = (channel: PostSaleChannelConfig) => {
-    if (!currentPostSaleFunnel) return;
-    const currentList = currentPostSaleFunnel.postSaleChannels || [];
+    if (!activeChannelsFunnel) return;
+    const currentList = activeChannelsFunnel.postSaleChannels || [];
     const existingIndex = currentList.findIndex(c => c.id === channel.id);
     let updated: PostSaleChannelConfig[];
     if (existingIndex >= 0) {
@@ -1571,10 +1577,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     } else {
       updated = [...currentList, channel];
     }
-    updateFunnel(currentPostSaleFunnel.id, {
+    updateFunnel(activeChannelsFunnel.id, {
       postSaleChannels: updated,
       duplicateRuleConfig: {
-        ...(currentPostSaleFunnel.duplicateRuleConfig || {}),
+        ...(activeChannelsFunnel.duplicateRuleConfig || {}),
         _postSaleChannels: updated,
       }
     } as any);
@@ -1582,17 +1588,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   const handleDeletePostSaleChannel = (channelId: string) => {
-    if (!currentPostSaleFunnel) return;
-    const updated = (currentPostSaleFunnel.postSaleChannels || []).filter(c => c.id !== channelId);
-    updateFunnel(currentPostSaleFunnel.id, {
+    if (!activeChannelsFunnel) return;
+    const updated = (activeChannelsFunnel.postSaleChannels || []).filter(c => c.id !== channelId);
+    updateFunnel(activeChannelsFunnel.id, {
       postSaleChannels: updated,
       duplicateRuleConfig: {
-        ...(currentPostSaleFunnel.duplicateRuleConfig || {}),
+        ...(activeChannelsFunnel.duplicateRuleConfig || {}),
         _postSaleChannels: updated,
       }
     } as any);
     if (activePostSaleChannelId === channelId) {
-      setActivePostSaleChannelId('geral');
+      setActivePostSaleChannelId(isGeneralHidden && updated.length > 0 ? updated[0].id : 'geral');
+    }
+  };
+
+  const handleToggleHideGeneralChannel = (hide: boolean) => {
+    if (!activeChannelsFunnel) return;
+    updateFunnel(activeChannelsFunnel.id, {
+      hideGeneralChannel: hide,
+    } as any);
+    if (hide && activePostSaleChannelId === 'geral' && visiblePostSaleChannels.length > 0) {
+      setActivePostSaleChannelId(visiblePostSaleChannels[0].id);
     }
   };
 
@@ -2174,11 +2190,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [venueSenderSources, selectedSenderSourceId]);
 
   const activeSenderSource = useMemo(() => {
-    if (isPostSaleChat && channelExclusiveSource) {
+    if (channelExclusiveSource) {
       return channelExclusiveSource;
     }
     return baseSenderSource;
-  }, [isPostSaleChat, channelExclusiveSource, baseSenderSource]);
+  }, [channelExclusiveSource, baseSenderSource]);
 
   const isSenderDisconnected = useMemo(() => {
     if (!activeSenderSource) return true;
@@ -2393,12 +2409,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Obtém metadados enriquecidos da origem / WhatsApp que disparou a mensagem internamente
   const getAppSenderMetadata = useCallback(() => {
-    const effectiveSender = (isSenderDisconnected && connectedAlternativeSource) ? connectedAlternativeSource : activeSenderSource;
+    const effectiveSender = (channelExclusiveSource || !isSenderDisconnected || !connectedAlternativeSource)
+      ? activeSenderSource
+      : connectedAlternativeSource;
     const cleanInfo = effectiveSender ? getSourceCleanLabel(effectiveSender) : null;
     const avatar = effectiveSender ? getSourceAvatar(effectiveSender) : undefined;
     const rawPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
     const senderName = cleanInfo?.cleanName || effectiveSender?.name || 'WhatsApp';
-    const isChannelActive = Boolean(isPostSaleChat && activePostSaleChannel);
+    const isChannelActive = Boolean(activePostSaleChannel);
 
     return {
       sentFromApp: true,
@@ -2407,10 +2425,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       senderPhone: rawPhone,
       senderAvatar: avatar || '',
       senderProfileName: (effectiveSender?.configuration as any)?.connectedProfileName || '',
-      channelId: (isPostSaleChat && activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
+      channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
       channelName: isChannelActive ? activePostSaleChannel?.name : undefined,
     };
-  }, [isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar, isPostSaleChat, activePostSaleChannel, activePostSaleChannelId]);
+  }, [channelExclusiveSource, isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar, activePostSaleChannel, activePostSaleChannelId]);
 
   // Envio do anexo pendente no chat (ex: comprovante de agendamento compartilhado)
   const handleSendPendingAttachment = async (customCaption?: string) => {
@@ -2540,8 +2558,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     let targetPhone = selectedRecipientPhone || selectedLead.phone;
     let effectiveToken = activeSenderToken;
 
-    // Se o remetente atual estiver desconectado mas houver outro online, auto-chaveia para entregar a mensagem
-    if (isSenderDisconnected && connectedAlternativeSource) {
+    // Se o remetente atual estiver desconectado mas houver outro online, auto-chaveia APENAS se NÃO for canal setorial com chip exclusivo
+    if (!channelExclusiveSource && isSenderDisconnected && connectedAlternativeSource) {
       const altToken = getSourceInstanceToken(connectedAlternativeSource);
       if (altToken) {
         effectiveToken = altToken;
@@ -5311,8 +5329,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               </div>
             )}
 
-            {/* Barra de Abas Setoriais de WhatsApp (Pós-Venda) */}
-            {isPostSaleChat && (
+            {/* Barra de Abas Setoriais de WhatsApp (Comercial e Pós-Venda) */}
+            {(isPostSaleChat || Boolean(activeChannelsFunnel) || visiblePostSaleChannels.length > 0) && (
               <div style={{
                 padding: '7px 20px',
                 borderBottom: '1px solid var(--adm-border)',
@@ -5323,35 +5341,37 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 overflowX: 'auto',
                 scrollbarWidth: 'none',
               }}>
-                {/* Canal Geral (Fixo) */}
-                <button
-                  type="button"
-                  onClick={() => setActivePostSaleChannelId('geral')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '5px 12px',
-                    borderRadius: '8px',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    border: activePostSaleChannelId === 'geral'
-                      ? '1.5px solid var(--adm-accent)'
-                      : '1px solid var(--adm-border)',
-                    background: activePostSaleChannelId === 'geral'
-                      ? 'var(--adm-accent-bg)'
-                      : 'var(--adm-bg-card)',
-                    color: activePostSaleChannelId === 'geral'
-                      ? 'var(--adm-accent)'
-                      : 'var(--adm-text-title)',
-                    boxShadow: activePostSaleChannelId === 'geral' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
-                  }}
-                >
-                  <MessageSquare size={13} />
-                  <span>Geral</span>
-                </button>
+                {/* Canal Geral (se não estiver desabilitado) */}
+                {!isGeneralHidden && (
+                  <button
+                    type="button"
+                    onClick={() => setActivePostSaleChannelId('geral')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: activePostSaleChannelId === 'geral'
+                        ? '1.5px solid var(--adm-accent)'
+                        : '1px solid var(--adm-border)',
+                      background: activePostSaleChannelId === 'geral'
+                        ? 'var(--adm-accent-bg)'
+                        : 'var(--adm-bg-card)',
+                      color: activePostSaleChannelId === 'geral'
+                        ? 'var(--adm-accent)'
+                        : 'var(--adm-text-title)',
+                      boxShadow: activePostSaleChannelId === 'geral' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                    }}
+                  >
+                    <MessageSquare size={13} />
+                    <span>Geral</span>
+                  </button>
+                )}
 
                 {/* Demais canais setoriais configurados */}
                 {visiblePostSaleChannels.map(ch => {
@@ -5428,14 +5448,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 })}
 
                 {/* Botão [+] Adicionar Novo Canal Setorial (Master ou Gerente) */}
-                {isMasterOrManager && currentPostSaleFunnel && (
+                {isMasterOrManager && activeChannelsFunnel && (
                   <button
                     type="button"
                     onClick={() => {
                       setEditingPostSaleChannel(null);
                       setIsPostSaleChannelModalOpen(true);
                     }}
-                    title="Adicionar Novo Setor de Atendimento no Pós-Venda"
+                    title="Adicionar Novo Setor de Atendimento no WhatsApp"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -9804,11 +9824,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
                       {/* Linha Superior: Remetente WhatsApp & Destinatário Decisor */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                        {/* Remetente WhatsApp Conectado (Isolado por Casa de Festa) */}
+                        {/* Remetente WhatsApp Conectado (Isolado por Casa de Festa / Fixo por Canal) */}
                         <div ref={senderDropdownRef} style={{ position: 'relative' }}>
                           <button
                             type="button"
-                            onClick={() => setIsSenderDropdownOpen(prev => !prev)}
+                            disabled={Boolean(channelExclusiveSource)}
+                            onClick={() => {
+                              if (!channelExclusiveSource) {
+                                setIsSenderDropdownOpen(prev => !prev);
+                              }
+                            }}
+                            title={channelExclusiveSource ? `Chip Dedicado do Setor "${activePostSaleChannel?.name}" (Fixo e Imutável)` : 'Selecionar instância de envio'}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -9816,8 +9842,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               background: 'var(--adm-bg-card)',
                               padding: '4px 10px',
                               borderRadius: '8px',
-                              border: isSenderDisconnected ? '1px solid rgba(239, 68, 68, 0.4)' : isSenderDropdownOpen ? '1px solid #10B981' : '1px solid var(--adm-border)',
-                              cursor: 'pointer',
+                              border: isSenderDisconnected 
+                                ? '1px solid rgba(239, 68, 68, 0.4)' 
+                                : channelExclusiveSource 
+                                ? '1px solid rgba(212, 175, 55, 0.4)'
+                                : isSenderDropdownOpen 
+                                ? '1px solid #10B981' 
+                                : '1px solid var(--adm-border)',
+                              cursor: channelExclusiveSource ? 'default' : 'pointer',
                               transition: 'all 0.15s ease',
                               boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                             }}
@@ -9886,21 +9918,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </span>
                             )}
 
-                            {venueSenderSources.length > 1 && (
-                              <ChevronDown
-                                size={13}
+                            {channelExclusiveSource ? (
+                              <span 
+                                title={`Chip Exclusivo do Setor ${activePostSaleChannel?.name}`}
                                 style={{
-                                  transform: isSenderDropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
-                                  transition: 'transform 0.15s ease',
-                                  color: 'var(--adm-text-muted)',
-                                  marginLeft: '2px'
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  background: 'rgba(212, 175, 55, 0.15)',
+                                  color: '#D4AF37',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.62rem',
+                                  fontWeight: 800,
+                                  marginLeft: '2px',
                                 }}
-                              />
+                              >
+                                <Lock size={10} />
+                                <span>Fixo</span>
+                              </span>
+                            ) : (
+                              venueSenderSources.length > 1 && (
+                                <ChevronDown
+                                  size={13}
+                                  style={{
+                                    transform: isSenderDropdownOpen ? 'rotate(180deg)' : 'rotate(0)',
+                                    transition: 'transform 0.15s ease',
+                                    color: 'var(--adm-text-muted)',
+                                    marginLeft: '2px'
+                                  }}
+                                />
+                              )
                             )}
                           </button>
 
-                          {/* Popup Dropdown de Instâncias */}
-                          {isSenderDropdownOpen && venueSenderSources.length > 0 && (
+                          {/* Popup Dropdown de Instâncias (bloqueado em canais com chip dedicado) */}
+                          {!channelExclusiveSource && isSenderDropdownOpen && venueSenderSources.length > 0 && (
                             <div style={{
                               position: 'absolute',
                               bottom: 'calc(100% + 6px)',
@@ -10286,35 +10339,75 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#EF4444', fontWeight: 700 }}>
                             <AlertTriangle size={14} color="#EF4444" />
                             <span>
-                              A instância <strong>{activeSenderSource.name}</strong> está desconectada do WhatsApp.
+                              {channelExclusiveSource 
+                                ? <>O chip dedicado do setor <strong>{activePostSaleChannel?.name}</strong> ({activeSenderSource.name}) está desconectado.</>
+                                : <>A instância <strong>{activeSenderSource.name}</strong> está desconectada do WhatsApp.</>
+                              }
                             </span>
                           </div>
-                          {connectedAlternativeSource && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedSenderSourceId(connectedAlternativeSource.id);
-                                if (selectedLead) {
-                                  manuallySelectedSenderLeadIdRef.current = selectedLead.id;
-                                }
-                              }}
-                              style={{
-                                background: '#10B981',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                borderRadius: '6px',
-                                padding: '3px 9px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                              }}
-                            >
-                              <Zap size={11} />
-                              <span>Mudar para {connectedAlternativeSource.name} (Online)</span>
-                            </button>
+
+                          {/* Se for canal setorial exclusivo com chip fixo: NÃO sugere mudar para outro número. Se for Master/Gerente, exibe botão de QR Code */}
+                          {channelExclusiveSource ? (
+                            isMasterOrManager ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  window.dispatchEvent(new CustomEvent('admin_switch_tab', { detail: { tab: 'sources' } }));
+                                }}
+                                title="Abrir Central de Origens para escanear o QR Code deste número"
+                                style={{
+                                  background: '#14A9D7',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '4px 10px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  boxShadow: '0 2px 6px rgba(20, 169, 215, 0.35)',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <QrCode size={13} />
+                                <span>Conectar no QR Code (Origens)</span>
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
+                                Solicite à gerência a reconexão deste chip.
+                              </span>
+                            )
+                          ) : (
+                            /* No Geral: permite alternar para outra instância online */
+                            connectedAlternativeSource && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSenderSourceId(connectedAlternativeSource.id);
+                                  if (selectedLead) {
+                                    manuallySelectedSenderLeadIdRef.current = selectedLead.id;
+                                  }
+                                }}
+                                style={{
+                                  background: '#10B981',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '3px 9px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Zap size={11} />
+                                <span>Mudar para {connectedAlternativeSource.name} (Online)</span>
+                              </button>
+                            )
                           )}
                         </div>
                       )}
@@ -11936,20 +12029,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         />
       )}
 
-      {/* ── MODAL: ABA SETORIAL DE WHATSAPP NO PÓS-VENDA ── */}
-      {currentPostSaleFunnel && (
+      {/* ── MODAL: ABA SETORIAL DE WHATSAPP (COMERCIAL E PÓS-VENDA) ── */}
+      {activeChannelsFunnel && (
         <AdminPostSaleChannelModal
           isOpen={isPostSaleChannelModalOpen}
           onClose={() => {
             setIsPostSaleChannelModalOpen(false);
             setEditingPostSaleChannel(null);
           }}
-          activeFunnel={currentPostSaleFunnel}
+          activeFunnel={activeChannelsFunnel}
           editingChannel={editingPostSaleChannel}
           sources={sources}
           collaborators={collaborators}
           onSaveChannel={handleSavePostSaleChannel}
           onDeleteChannel={handleDeletePostSaleChannel}
+          hideGeneralChannel={isGeneralHidden}
+          onToggleHideGeneralChannel={handleToggleHideGeneralChannel}
         />
       )}
 

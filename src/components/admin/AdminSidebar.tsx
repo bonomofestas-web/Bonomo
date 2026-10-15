@@ -494,8 +494,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   };
 
   const renderNavButton = (item: { id: AdminTabType; label: string; icon: React.ReactNode }, isSubItem = false) => {
-    const isActive = item.id === 'crm'
-      ? activeTab === 'crm' && (!activeFunnelId || activeFunnelId === null)
+    const isActive = (item.id === 'crm' || item.id === 'post-sale-crm')
+      ? activeTab === item.id && (!activeFunnelId || activeFunnelId === null)
       : activeTab === item.id;
 
     // Check Feature Flag for this item (Dev account always has active access)

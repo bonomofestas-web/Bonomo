@@ -26,6 +26,8 @@ interface AdminPostSaleChannelModalProps {
   collaborators: Collaborator[];
   onSaveChannel: (channel: PostSaleChannelConfig) => void;
   onDeleteChannel?: (channelId: string) => void;
+  hideGeneralChannel?: boolean;
+  onToggleHideGeneralChannel?: (hide: boolean) => void;
 }
 
 const AVAILABLE_ICONS = [
@@ -58,6 +60,8 @@ export const AdminPostSaleChannelModal: React.FC<AdminPostSaleChannelModalProps>
   collaborators,
   onSaveChannel,
   onDeleteChannel,
+  hideGeneralChannel = false,
+  onToggleHideGeneralChannel,
 }) => {
   if (!isOpen) return null;
 
@@ -189,7 +193,7 @@ export const AdminPostSaleChannelModal: React.FC<AdminPostSaleChannelModalProps>
                 {editingChannel ? 'Editar Aba Setorial' : 'Nova Aba Setorial de WhatsApp'}
               </h3>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
-                Canal exclusivo para comunicação do pós-venda ({activeFunnel.name})
+                Canal exclusivo para atendimento setorial ({activeFunnel.name})
               </p>
             </div>
           </div>
@@ -214,6 +218,47 @@ export const AdminPostSaleChannelModal: React.FC<AdminPostSaleChannelModalProps>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Gerenciamento da Aba Geral deste Funil */}
+          {onToggleHideGeneralChannel && (
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: '10px',
+              border: '1px solid var(--adm-border)',
+              background: 'var(--adm-bg-input)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Aba [Geral] do Funil
+                </div>
+                <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', lineHeight: 1.35 }}>
+                  O canal Geral permite selecionar qualquer número livremente. Ao desabilitar, a equipe atenderá exclusivamente pelos setores configurados.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onToggleHideGeneralChannel(!hideGeneralChannel)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: hideGeneralChannel ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)',
+                  background: hideGeneralChannel ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                  color: hideGeneralChannel ? '#EF4444' : '#10B981',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {hideGeneralChannel ? 'Desabilitada' : 'Ativa'}
+              </button>
+            </div>
+          )}
+
           {error && (
             <div style={{
               padding: '12px 16px',
