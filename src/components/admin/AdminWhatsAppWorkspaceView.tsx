@@ -705,6 +705,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     caption?: string;
     timestamp: number;
   } | null>(null);
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
 
   // Escuta anexos do sessionStorage ou evento customizado ao carregar/trocar lead
   useEffect(() => {
@@ -10962,16 +10963,26 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           boxSizing: 'border-box',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                            <div style={{
-                              width: '52px',
-                              height: '52px',
-                              borderRadius: '8px',
-                              overflow: 'hidden',
-                              border: '1px solid rgba(0,0,0,0.15)',
-                              background: '#ffffff',
-                              flexShrink: 0,
-                              boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                            }}>
+                            {/* Miniatura Clicável com Efeito de Preview */}
+                            <div 
+                              onClick={() => setPreviewAttachmentUrl(pendingAttachment.dataUrl)}
+                              title="Clique para visualizar o comprovante ampliado"
+                              style={{
+                                width: '52px',
+                                height: '52px',
+                                borderRadius: '8px',
+                                overflow: 'hidden',
+                                border: '1.5px solid var(--adm-accent, #10B981)',
+                                background: '#ffffff',
+                                flexShrink: 0,
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                                cursor: 'pointer',
+                                position: 'relative',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            >
                               <img
                                 src={pendingAttachment.dataUrl}
                                 alt={pendingAttachment.fileName}
@@ -10999,36 +11010,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 color: isDarkMode ? '#8696a0' : '#667781',
                                 marginTop: '2px',
                               }}>
-                                Comprovante oficial anexado no chat • Pronto para envio ao lead
+                                Comprovante oficial anexado • Clique na foto para ampliar
                               </div>
                             </div>
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                            <button
-                              type="button"
-                              onClick={() => handleSendPendingAttachment()}
-                              disabled={!activeSenderToken || isSenderDisconnected}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '7px 14px',
-                                borderRadius: '8px',
-                                background: '#00a884',
-                                color: '#ffffff',
-                                border: 'none',
-                                fontSize: '0.78rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 6px rgba(0,168,132,0.3)',
-                                transition: 'all 0.15s ease',
-                              }}
-                              title="Enviar foto anexada agora para o lead"
-                            >
-                              <Send size={13} />
-                              <span>Enviar Foto</span>
-                            </button>
+                            <span style={{
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              color: '#10B981',
+                              background: 'rgba(16, 185, 129, 0.12)',
+                              border: '1px solid rgba(16, 185, 129, 0.3)',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                            }}>
+                              Pronto para envio
+                            </span>
 
                             <button
                               type="button"
@@ -11044,11 +11042,88 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 justifyContent: 'center',
                                 color: isDarkMode ? '#8696a0' : '#54656f',
                                 cursor: 'pointer',
+                                transition: 'all 0.15s ease',
                               }}
-                              title="Remover anexo do chat"
+                              title="Remover comprovante do chat"
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                                e.currentTarget.style.color = '#EF4444';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+                                e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f';
+                              }}
                             >
                               <X size={15} />
                             </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modal de Pré-Visualização da Imagem Anexada em Tela Cheia */}
+                      {previewAttachmentUrl && (
+                        <div 
+                          onClick={() => setPreviewAttachmentUrl(null)}
+                          style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.85)',
+                            backdropFilter: 'blur(6px)',
+                            zIndex: 999999,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '24px',
+                            animation: 'fadeIn 0.2s ease-out',
+                          }}
+                        >
+                          <div 
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'relative',
+                              maxWidth: '90vw',
+                              maxHeight: '90vh',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setPreviewAttachmentUrl(null)}
+                              style={{
+                                position: 'absolute',
+                                top: '-40px',
+                                right: '0',
+                                background: 'rgba(255,255,255,0.15)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#ffffff',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                              title="Fechar visualização"
+                            >
+                              <X size={18} />
+                            </button>
+                            <img 
+                              src={previewAttachmentUrl} 
+                              alt="Pré-visualização do comprovante" 
+                              style={{
+                                maxWidth: '100%',
+                                maxHeight: '85vh',
+                                borderRadius: '12px',
+                                boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                objectFit: 'contain',
+                              }}
+                            />
                           </div>
                         </div>
                       )}

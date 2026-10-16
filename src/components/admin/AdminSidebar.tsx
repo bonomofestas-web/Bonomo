@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  CheckSquare, Home,
+  CheckSquare, Home, Briefcase,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
   Sparkles, Radio, PhoneCall, Compass,
@@ -126,18 +126,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const [draggedFunnelId, setDraggedFunnelId] = useState<string | null>(null);
   const [dragOverFunnelId, setDragOverFunnelId] = useState<string | null>(null);
 
-  // Popover / Flyout flutuante para funis fixados quando o menu está recuado (isCollapsed)
-  const [collapsedFlyoutTab, setCollapsedFlyoutTab] = useState<'crm' | 'post-sale-crm' | null>(null);
+  // Popover / Flyout flutuante para setores quando o menu está recuado (isCollapsed)
+  const [collapsedSectorFlyout, setCollapsedSectorFlyout] = useState<'comercial' | 'pos_venda' | 'gerencia' | null>(null);
   const flyoutCloseTimerRef = useRef<any>(null);
 
-  const handleFlyoutMouseEnter = (tab: 'crm' | 'post-sale-crm') => {
+  const handleSectorFlyoutMouseEnter = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
     if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
-    setCollapsedFlyoutTab(tab);
+    setCollapsedSectorFlyout(sector);
   };
 
-  const handleFlyoutMouseLeave = () => {
+  const handleSectorFlyoutMouseLeave = () => {
     flyoutCloseTimerRef.current = setTimeout(() => {
-      setCollapsedFlyoutTab(null);
+      setCollapsedSectorFlyout(null);
     }, 200);
   };
 
@@ -437,23 +437,36 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   };
 
   // Helper para renderizar o Popover/Flyout de funis quando a sidebar estiver colapsada
-  const renderCollapsedFunnelsFlyout = (type: 'crm' | 'post-sale-crm') => {
-    if (!isCollapsed || isMobileOverlay || collapsedFlyoutTab !== type) return null;
-    const isCommercial = type === 'crm';
-    const targetFunnels = isCommercial ? pinnedCommercialFunnels : pinnedPostSaleFunnels;
-    const accentColor = isCommercial ? '#14A9D7' : '#06B6D4';
-    const targetTab: AdminTabType = isCommercial ? 'crm' : 'post-sale-crm';
+  const renderSectorFlyout = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
+    if (!isCollapsed || isMobileOverlay || collapsedSectorFlyout !== sector) return null;
 
-    if (targetFunnels.length === 0) return null;
+    let title = 'Comercial';
+    let accentColor = '#14A9D7';
+    let items = commercialItems;
+    let pinnedFunnels = pinnedCommercialFunnels;
+    let targetFunnelTab: AdminTabType = 'crm';
+
+    if (sector === 'pos_venda') {
+      title = 'Pós-Venda';
+      accentColor = '#06B6D4';
+      items = postSaleItems;
+      pinnedFunnels = pinnedPostSaleFunnels;
+      targetFunnelTab = 'post-sale-crm';
+    } else if (sector === 'gerencia') {
+      title = 'Gerência';
+      accentColor = '#14A9D7';
+      items = masterItems;
+      pinnedFunnels = [];
+    }
 
     return (
       <div
-        onMouseEnter={() => handleFlyoutMouseEnter(type)}
-        onMouseLeave={handleFlyoutMouseLeave}
+        onMouseEnter={() => handleSectorFlyoutMouseEnter(sector)}
+        onMouseLeave={handleSectorFlyoutMouseLeave}
         style={{
           position: 'absolute',
           left: '46px',
-          top: '-6px',
+          top: '-10px',
           minWidth: '220px',
           maxWidth: '260px',
           background: '#120F18',
@@ -471,106 +484,209 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           fontSize: '0.62rem',
           fontWeight: 800,
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.6px',
           color: accentColor,
-          padding: '2px 6px 6px 6px',
+          padding: '4px 8px 6px 8px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <span>{isCommercial ? 'Funis Comerciais' : 'Funis de Pós-Venda'}</span>
-          <span style={{
-            fontSize: '0.52rem',
-            background: `${accentColor}22`,
-            color: accentColor,
-            padding: '1px 5px',
-            borderRadius: '4px',
-            fontWeight: 800,
-          }}>
-            {targetFunnels.length}
-          </span>
+          <span>{title}</span>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '240px', overflowY: 'auto' }}>
-          {targetFunnels.map(f => {
-            const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
-            const funnelColor = isCommercial ? (f.badgeColor || '#D4AF37') : '#06B6D4';
+        {/* Itens do Setor */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {items.map(item => {
+            const isActive = activeTab === item.id;
             return (
               <button
-                key={`flyout-${f.id}`}
+                key={item.id}
                 type="button"
                 onClick={() => {
-                  setCollapsedFlyoutTab(null);
-                  handleTabClick(targetTab, f.id);
+                  setCollapsedSectorFlyout(null);
+                  handleTabClick(item.id);
                 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  background: isFunnelActive ? `${funnelColor}22` : 'transparent',
-                  border: isFunnelActive ? `1px solid ${funnelColor}88` : '1px solid transparent',
-                  color: isFunnelActive ? funnelColor : '#E2E8F0',
-                  fontSize: '0.72rem',
-                  fontWeight: isFunnelActive ? 700 : 500,
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: isActive ? `${accentColor}22` : 'transparent',
+                  border: isActive ? `1px solid ${accentColor}88` : '1px solid transparent',
+                  color: isActive ? accentColor : '#E2E8F0',
+                  fontSize: '0.74rem',
+                  fontWeight: isActive ? 800 : 600,
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s ease',
                   width: '100%',
                 }}
                 onMouseEnter={(e) => {
-                  if (!isFunnelActive) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                  }
+                  if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
                 }}
                 onMouseLeave={(e) => {
-                  if (!isFunnelActive) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
+                  if (!isActive) e.currentTarget.style.background = 'transparent';
                 }}
               >
-                {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
+                <span style={{ display: 'flex', alignItems: 'center', color: isActive ? accentColor : '#8096A8' }}>
+                  {item.icon}
+                </span>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.name}
+                  {item.label}
                 </span>
               </button>
             );
           })}
         </div>
 
+        {/* Funis Fixados (Se houver) */}
+        {pinnedFunnels.length > 0 && (
+          <>
+            <div style={{
+              fontSize: '0.55rem',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: '#8096A8',
+              padding: '6px 8px 3px 8px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              marginTop: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <span>Funis Fixados</span>
+              <span style={{ fontSize: '0.50rem', background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '4px' }}>
+                {pinnedFunnels.length}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '180px', overflowY: 'auto' }}>
+              {pinnedFunnels.map(f => {
+                const isFunnelActive = activeTab === targetFunnelTab && activeFunnelId === f.id;
+                const funnelColor = sector === 'comercial' ? (f.badgeColor || '#D4AF37') : '#06B6D4';
+                return (
+                  <button
+                    key={`flyout-funnel-${f.id}`}
+                    type="button"
+                    onClick={() => {
+                      setCollapsedSectorFlyout(null);
+                      handleTabClick(targetFunnelTab, f.id);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      background: isFunnelActive ? `${funnelColor}22` : 'transparent',
+                      border: isFunnelActive ? `1px solid ${funnelColor}88` : '1px solid transparent',
+                      color: isFunnelActive ? funnelColor : '#E2E8F0',
+                      fontSize: '0.70rem',
+                      fontWeight: isFunnelActive ? 800 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                      width: '100%',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isFunnelActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isFunnelActive) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {renderSidebarFunnelIcon(f.icon, 13, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderCollapsedSectorButton = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
+    let icon = <Target size={18} />;
+    let label = 'Comercial';
+    let accentColor = '#14A9D7';
+    let isSectorActive = ['crm', 'leads', 'followups', 'appointments', 'commercial-dashboard'].includes(activeTab);
+
+    if (sector === 'pos_venda') {
+      icon = <ShieldCheck size={18} />;
+      label = 'Pós-Venda';
+      accentColor = '#06B6D4';
+      isSectorActive = ['post-sale-crm', 'post-sale-clients', 'debutantes', 'schedule'].includes(activeTab);
+    } else if (sector === 'gerencia') {
+      icon = <Briefcase size={18} />;
+      label = 'Gerência';
+      accentColor = '#14A9D7';
+      isSectorActive = ['tasks', 'mql', 'sources', 'venue-goals', 'dashboard', 'collaborators', 'venues'].includes(activeTab);
+    }
+
+    const isFlyoutOpen = collapsedSectorFlyout === sector;
+
+    return (
+      <div 
+        key={`collapsed-sector-${sector}`}
+        style={{ position: 'relative', width: '100%' }}
+        onMouseEnter={() => handleSectorFlyoutMouseEnter(sector)}
+        onMouseLeave={handleSectorFlyoutMouseLeave}
+      >
         <button
           type="button"
-          onClick={() => {
-            setCollapsedFlyoutTab(null);
-            handleTabClick(targetTab, null);
-          }}
+          onClick={() => setCollapsedSectorFlyout(isFlyoutOpen ? null : sector)}
+          title={label}
           style={{
-            marginTop: '4px',
-            padding: '5px 8px',
-            borderRadius: '6px',
-            background: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            color: '#94A3B8',
-            fontSize: '0.68rem',
-            fontWeight: 700,
+            width: '38px',
+            height: '38px',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '10px',
+            background: isSectorActive || isFlyoutOpen ? `${accentColor}22` : 'transparent',
+            border: isSectorActive || isFlyoutOpen ? `1.5px solid ${accentColor}` : '1px solid transparent',
+            color: isSectorActive || isFlyoutOpen ? accentColor : '#8096A8',
             cursor: 'pointer',
-            textAlign: 'center',
-            width: '100%',
             transition: 'all 0.15s ease',
+            position: 'relative',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#FFFFFF';
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            if (!isSectorActive && !isFlyoutOpen) {
+              e.currentTarget.style.color = '#FFFFFF';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#94A3B8';
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+            if (!isSectorActive && !isFlyoutOpen) {
+              e.currentTarget.style.color = '#8096A8';
+              e.currentTarget.style.borderColor = 'transparent';
+            }
           }}
         >
-          {isCommercial ? 'Ver todos os funis comerciais' : 'Ver todos os funis de pós-venda'}
+          {icon}
+          {isSectorActive && (
+            <span style={{
+              position: 'absolute',
+              right: '-5px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '3px',
+              height: '14px',
+              borderRadius: '2px',
+              background: accentColor,
+              boxShadow: `0 0 8px ${accentColor}AA`,
+            }} />
+          )}
         </button>
+        {renderSectorFlyout(sector)}
       </div>
     );
   };
@@ -1190,17 +1306,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           ) : isCollapsed && !isMobileOverlay ? (
             <button
               type="button"
-              onClick={() => {
-                if (onToggleCollapse) onToggleCollapse();
-                onSelectTab('venues');
-              }}
+              onClick={() => setIsVenueDropdownOpen(v => !v)}
               title={activeVenue?.name || (userRole === 'master' ? 'Todas as Casas (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`)}
               style={{
                 width: '38px',
                 height: '38px',
                 margin: '0 auto',
-                background: '#141118',
-                border: '1px solid rgba(20, 169, 215, 0.35)',
+                background: isVenueDropdownOpen ? 'rgba(212, 175, 55, 0.16)' : '#141118',
+                border: isVenueDropdownOpen ? '1.5px solid #D4AF37' : '1px solid rgba(20, 169, 215, 0.35)',
                 borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
@@ -1209,15 +1322,15 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 transition: 'all 0.15s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#14A9D7';
+                e.currentTarget.style.borderColor = '#D4AF37';
                 e.currentTarget.style.transform = 'scale(1.05)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(20, 169, 215, 0.35)';
+                e.currentTarget.style.borderColor = isVenueDropdownOpen ? '#D4AF37' : 'rgba(20, 169, 215, 0.35)';
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#14A9D7" />}
+              {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#D4AF37" />}
             </button>
           ) : (
             <button
@@ -1272,17 +1385,17 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           {isVenueDropdownOpen && (userRole === 'master' || allowedVenues.length > 1) && (
             <div style={{
               position: 'absolute',
-              top: '100%',
-              left: isCollapsed ? '50px' : 0,
+              top: isCollapsed ? '0px' : '100%',
+              left: isCollapsed ? '54px' : 0,
               right: isCollapsed ? undefined : 0,
-              width: isCollapsed ? '220px' : undefined,
-              marginTop: '6px',
+              width: isCollapsed ? '230px' : undefined,
+              marginTop: isCollapsed ? '0px' : '6px',
               background: '#141118',
-              border: '1px solid rgba(212, 175, 55, 0.35)',
+              border: '1.5px solid rgba(212, 175, 55, 0.4)',
               borderRadius: '12px',
               padding: '6px',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.8), 0 0 20px rgba(212, 175, 55, 0.15)',
-              zIndex: 9999,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.85), 0 0 20px rgba(212, 175, 55, 0.2)',
+              zIndex: 99999,
               display: 'flex',
               flexDirection: 'column',
               gap: '4px',
@@ -1565,8 +1678,10 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
           {/* 2. Setor Comercial: Dashboard, Funil Comercial, Leads, Follow-up, Agendamentos */}
           {effectiveSectors.includes('comercial') && (
-            <div>
-              {!isCollapsed && (
+            isCollapsed && !isMobileOverlay ? (
+              renderCollapsedSectorButton('comercial')
+            ) : (
+              <div>
                 <div style={{
                   fontSize: '0.56rem',
                   fontWeight: 800,
@@ -1577,43 +1692,32 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 }}>
                   Comercial
                 </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {commercialItems.map(item => {
-                  if (item.id === 'crm') {
-                    if (isCollapsed && !isMobileOverlay) {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {commercialItems.map(item => {
+                    if (item.id === 'crm') {
+                      const btn = renderNavButton(item);
                       return (
-                        <div 
-                          key={item.id} 
-                          style={{ position: 'relative' }}
-                          onMouseEnter={() => handleFlyoutMouseEnter('crm')}
-                          onMouseLeave={handleFlyoutMouseLeave}
-                        >
-                          {renderNavButton(item)}
-                          {renderCollapsedFunnelsFlyout('crm')}
-                        </div>
+                        <React.Fragment key={item.id}>
+                          {btn}
+                          {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
+                        </React.Fragment>
                       );
                     }
-                    const btn = renderNavButton(item);
-                    return (
-                      <React.Fragment key={item.id}>
-                        {btn}
-                        {!isCollapsed && pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
-                      </React.Fragment>
-                    );
-                  }
-                  return renderNavButton(item);
-                })}
+                    return renderNavButton(item);
+                  })}
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {isCollapsed && effectiveSectors.includes('comercial') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
           {/* 3. Setor Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos */}
           {effectiveSectors.includes('pos_venda') && (
-            <div>
-              {!isCollapsed && (
+            isCollapsed && !isMobileOverlay ? (
+              renderCollapsedSectorButton('pos_venda')
+            ) : (
+              <div>
                 <div style={{
                   fontSize: '0.56rem',
                   fontWeight: 800,
@@ -1624,43 +1728,32 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 }}>
                   Pós-Venda
                 </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {postSaleItems.map(item => {
-                  if (item.id === 'post-sale-crm') {
-                    if (isCollapsed && !isMobileOverlay) {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {postSaleItems.map(item => {
+                    if (item.id === 'post-sale-crm') {
+                      const btn = renderNavButton(item);
                       return (
-                        <div 
-                          key={item.id} 
-                          style={{ position: 'relative' }}
-                          onMouseEnter={() => handleFlyoutMouseEnter('post-sale-crm')}
-                          onMouseLeave={handleFlyoutMouseLeave}
-                        >
-                          {renderNavButton(item)}
-                          {renderCollapsedFunnelsFlyout('post-sale-crm')}
-                        </div>
+                        <React.Fragment key={item.id}>
+                          {btn}
+                          {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
+                        </React.Fragment>
                       );
                     }
-                    const btn = renderNavButton(item);
-                    return (
-                      <React.Fragment key={item.id}>
-                        {btn}
-                        {!isCollapsed && pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
-                      </React.Fragment>
-                    );
-                  }
-                  return renderNavButton(item);
-                })}
+                    return renderNavButton(item);
+                  })}
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {isCollapsed && effectiveSectors.includes('pos_venda') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
           {/* 4. Gerência: Tarefas, Qualificação, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa */}
           {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
-            <div>
-              {!isCollapsed && (
+            isCollapsed && !isMobileOverlay ? (
+              renderCollapsedSectorButton('gerencia')
+            ) : (
+              <div>
                 <div style={{
                   fontSize: '0.56rem',
                   fontWeight: 800,
@@ -1671,11 +1764,11 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 }}>
                   Gerência
                 </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {masterItems.map(item => renderNavButton(item))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {masterItems.map(item => renderNavButton(item))}
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* 5. Setor Financeiro: Preparado */}

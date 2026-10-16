@@ -62,20 +62,27 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   }, [receipt.venueLogoUrl, receipt.venueName, venues]);
 
   const effectiveCloserPhoto = useMemo(() => {
-    if (receipt.closerPhotoUrl) return receipt.closerPhotoUrl;
+    if (receipt.closerPhotoUrl && receipt.closerPhotoUrl.trim()) return receipt.closerPhotoUrl;
     const cleanCloserName = (receipt.closerName || '').trim().toLowerCase();
+    const closerFirstName = cleanCloserName.split(/\s+/)[0];
+
     const c = collaborators.find(c => {
       const cName = (c.name || '').trim().toLowerCase();
+      const cFirstName = cName.split(/\s+/)[0];
       return (
         c.id === (receipt as any).closerId ||
         c.id === (receipt as any).responsibleCollaboratorId ||
-        (cleanCloserName && (cName === cleanCloserName || cName.includes(cleanCloserName) || cleanCloserName.includes(cName)))
+        (cleanCloserName && (cName === cleanCloserName || cName.includes(cleanCloserName) || cleanCloserName.includes(cName))) ||
+        (closerFirstName && closerFirstName.length >= 3 && cFirstName === closerFirstName)
       );
     });
+
     if (c) return c.avatarUrl || (c as any)?.photoUrl || (c as any)?.avatar_url || '';
+
     if (currentUser?.name && cleanCloserName) {
       const curName = currentUser.name.trim().toLowerCase();
-      if (curName === cleanCloserName || curName.includes(cleanCloserName) || cleanCloserName.includes(curName)) {
+      const curFirstName = curName.split(/\s+/)[0];
+      if (curName === cleanCloserName || curName.includes(cleanCloserName) || cleanCloserName.includes(curName) || (closerFirstName && closerFirstName === curFirstName)) {
         return currentUser.avatarUrl || (currentUser as any)?.photoUrl || (currentUser as any)?.avatar_url || '';
       }
     }
@@ -280,17 +287,10 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         console.warn('Erro ao salvar no sessionStorage:', e);
       }
 
-      // 3. Dispara evento customizado para o chat anexar a foto imediatamente
+      // 3. Dispara evento customizado para o chat anexar a foto imediatamente na conversa ativa
       window.dispatchEvent(new CustomEvent('f5_attach_to_chat', { detail: attachmentPayload }));
 
-      // 4. Se tivermos o ID do lead, direciona o operador para a conversa no WhatsApp
-      if (targetLeadId) {
-        window.dispatchEvent(new CustomEvent('admin_switch_tab', { 
-          detail: { tab: 'whatsapp', leadId: targetLeadId } 
-        }));
-      }
-
-      // 5. Fecha o modal de comprovante para exibir o chat com o anexo pronto
+      // 4. Fecha o modal de comprovante para permitir que o atendente visualize o anexo na conversa onde já está
       onClose();
     } catch (err) {
       console.error('Erro ao anexar comprovante no chat:', err);
@@ -572,7 +572,15 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                       <img 
                         src={closerPhotoDataUrl || effectiveCloserPhoto} 
                         alt={receipt.closerName || 'Anfitrião'} 
-                        onError={() => setCloserPhotoFailed(true)}
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          if (closerPhotoDataUrl && effectiveCloserPhoto && e.currentTarget.src !== effectiveCloserPhoto) {
+                            e.currentTarget.src = effectiveCloserPhoto;
+                          } else {
+                            setCloserPhotoFailed(true);
+                          }
+                        }}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
                       />
                     ) : (
