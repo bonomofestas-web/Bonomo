@@ -265,7 +265,13 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setFunnelIcon(activeFunnel.icon || (isPostSale ? 'shield-check' : 'target'));
     setFunnelBadgeColor(activeFunnel.badgeColor || '#3B82F6');
     setFunnelDescription(activeFunnel.description || '');
-    const entryActive = Boolean(activeFunnel.isEntryStageActive);
+    const entryActive = Boolean(
+      activeFunnel.isEntryStageActive ?? 
+      activeFunnel.enableInboxStage ?? 
+      (activeFunnel as any)?.duplicateRuleConfig?._isEntryStageActive ?? 
+      (activeFunnel as any)?.duplicateRuleConfig?._enableInboxStage ?? 
+      false
+    );
     setIsEntryStageActive(entryActive);
     setIsWonStageEnabled(activeFunnel.isWonStageEnabled !== false);
     setDistributionMode(activeFunnel.distributionMode || 'manual');
@@ -2030,9 +2036,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}>
                         {(() => {
                           const isEntry = stage.id === 'new_lead' || stage.id === 'entry' || (!isPostSale && stage.id === 'onboarding') || stage.name.toLowerCase().includes('entrada');
-                          const isWonOrLoss = isWon || isLoss;
-                          const isNameReadOnly = isEntry || (isWonOrLoss && !isPostSale);
-                          const isIconReadOnly = isEntry || (isWonOrLoss && !isPostSale);
 
                           return (
                             <>
@@ -2040,9 +2043,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               <div style={{ position: 'relative', flexShrink: 0 }}>
                                 <button
                                   type="button"
-                                  disabled={isIconReadOnly}
-                                  onClick={() => !isIconReadOnly && setActiveIconPickerStageId(activeIconPickerStageId === stage.id ? null : stage.id)}
-                                  title={isIconReadOnly ? "Ícone padrão da etapa do sistema" : "Alterar ícone da etapa"}
+                                  onClick={() => setActiveIconPickerStageId(activeIconPickerStageId === stage.id ? null : stage.id)}
+                                  title="Alterar ícone da etapa"
                                   style={{
                                     width: '24px',
                                     height: '24px',
@@ -2053,8 +2055,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     color: stage.color || 'var(--adm-accent)',
-                                    cursor: isIconReadOnly ? 'default' : 'pointer',
-                                    opacity: isIconReadOnly ? 0.8 : 1,
+                                    cursor: 'pointer',
+                                    opacity: 1,
                                     padding: 0,
                                     transition: 'all 0.15s ease',
                                   }}
@@ -2080,14 +2082,12 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                               {/* Stage Name Input (No Wrap, Ellipsis) */}
                               <input
                                 type="text"
-                                readOnly={isNameReadOnly}
-                                value={isEntry ? 'CAIXA DE ENTRADA' : stage.name}
+                                value={stage.name}
                                 onChange={(e) => {
-                                  if (isNameReadOnly) return;
                                   const newName = e.target.value.toUpperCase();
                                   setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
                                 }}
-                                title={isNameReadOnly ? `Etapa padrão: ${stage.name}` : stage.name}
+                                title={stage.name}
                                 style={{
                                   background: 'transparent',
                                   border: 'none',
@@ -2102,8 +2102,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
-                                  cursor: isNameReadOnly ? 'default' : 'text',
-                                  opacity: isNameReadOnly ? 0.85 : 1,
+                                  cursor: 'text',
+                                  opacity: 1,
                                 }}
                               />
                             </>

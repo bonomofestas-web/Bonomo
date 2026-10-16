@@ -1531,30 +1531,46 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   }, [funnelsList, funnelSearch]);
 
   const funnelsByVenueGroup = useMemo(() => {
-    const groups: { venueName: string; venueId: string; funnels: typeof displayedFunnels }[] = [];
+    const groups: { 
+      venueName: string; 
+      venueId: string; 
+      logoUrl?: string; 
+      isMultiVenue?: boolean;
+      funnels: typeof displayedFunnels 
+    }[] = [];
 
-    // 1. Funis Globais / Rede Geral
-    const globalFunnels = displayedFunnels.filter(f => !f.venueId || f.venueId === 'all');
-    if (globalFunnels.length > 0) {
+    // 1. Identificar Funis Multi-Unidades (Rede Geral / Compartilhados com 2 ou mais casas)
+    const multiVenueFunnels = displayedFunnels.filter(f => {
+      if (!f.venueId || f.venueId === 'all') return true;
+      const linked = getLinkedVenuesForFunnel(f);
+      return linked.length > 1;
+    });
+
+    if (multiVenueFunnels.length > 0) {
       groups.push({
-        venueName: 'Todas as Casas (Rede Geral)',
-        venueId: 'all',
-        funnels: globalFunnels,
+        venueName: 'Multi-Unidades (Rede Geral)',
+        venueId: 'multi',
+        isMultiVenue: true,
+        funnels: multiVenueFunnels,
       });
     }
 
-    // 2. Por Unidade física cadastrada
+    // 2. Por Unidade física cadastrada (Apenas funis EXCLUSIVOS desta unidade)
     venues.forEach(v => {
-      const vFunnels = displayedFunnels.filter(f => {
-        if (globalFunnels.includes(f)) return false;
+      const exclusiveFunnels = displayedFunnels.filter(f => {
+        if (multiVenueFunnels.includes(f)) return false;
         const linked = getLinkedVenuesForFunnel(f);
-        return f.venueId === v.id || linked.some(lv => lv.id === v.id);
+        if (linked.length === 1 && linked[0].id === v.id) return true;
+        return f.venueId === v.id;
       });
-      if (vFunnels.length > 0) {
+
+      if (exclusiveFunnels.length > 0) {
         groups.push({
           venueName: v.name,
           venueId: v.id,
-          funnels: vFunnels,
+          logoUrl: v.logoUrl,
+          isMultiVenue: false,
+          funnels: exclusiveFunnels,
         });
       }
     });
@@ -1566,6 +1582,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       groups.push({
         venueName: 'Outras Unidades',
         venueId: 'other',
+        isMultiVenue: true,
         funnels: remaining,
       });
     }
@@ -1790,12 +1807,44 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
               <div key={group.venueId} className="saas-card" style={{ borderRadius: '16px', padding: '16px 20px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}>
                 {/* Cabeçalho da Unidade / Rede */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid var(--adm-border)', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(20, 169, 215, 0.12)', border: '1px solid rgba(20, 169, 215, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-accent)' }}>
-                      <Building2 size={16} />
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {group.logoUrl ? (
+                      <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '10px',
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        padding: '3px',
+                        boxSizing: 'border-box',
+                      }}>
+                        <img 
+                          src={group.logoUrl} 
+                          alt={group.venueName} 
+                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ 
+                        width: '36px', 
+                        height: '36px', 
+                        borderRadius: '10px', 
+                        background: group.isMultiVenue ? 'rgba(212, 175, 55, 0.12)' : 'rgba(20, 169, 215, 0.12)', 
+                        border: `1px solid ${group.isMultiVenue ? 'rgba(212, 175, 55, 0.3)' : 'rgba(20, 169, 215, 0.3)'}`, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        color: group.isMultiVenue ? '#D4AF37' : 'var(--adm-accent)' 
+                      }}>
+                        {group.isMultiVenue ? <Layers size={18} /> : <Building2 size={18} />}
+                      </div>
+                    )}
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                         {group.venueName}
                       </h4>
                       <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
@@ -1803,7 +1852,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </span>
                     </div>
                   </div>
-                  {canConfigureFunnels && group.venueId !== 'all' && (
+                  {canConfigureFunnels && group.venueId !== 'multi' && group.venueId !== 'other' && (
                     <button
                       type="button"
                       onClick={() => handleOpenCreateFunnel(group.venueId)}
@@ -1831,6 +1880,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {group.funnels.map(funnel => {
                     const isPinned = isFunnelPinned(funnel.id);
+                    const linkedVenues = getLinkedVenuesForFunnel(funnel);
+
                     return (
                       <div
                         key={funnel.id}
@@ -1856,13 +1907,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           e.currentTarget.style.transform = 'translateX(0)';
                         }}
                       >
-                        {/* Esquerda: Ícone + Nome + Badge */}
+                        {/* Esquerda: Ícone + Nome + Badges */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
                           <div style={{ flexShrink: 0 }}>
                             {renderFunnelVisual(funnel, 15, 30)}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {funnel.name}
                               </span>
@@ -1870,6 +1921,24 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.18)', color: '#D4AF37', border: '1px solid rgba(212, 175, 55, 0.35)' }}>
                                   PADRÃO
                                 </span>
+                              )}
+                              {/* Badges de Unidades Vinculadas em Funis Multi-Unidades */}
+                              {group.isMultiVenue && linkedVenues.length > 0 && (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  {linkedVenues.map(lv => (
+                                    <span key={lv.id} style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 700,
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(99, 102, 241, 0.12)',
+                                      color: '#818cf8',
+                                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    }}>
+                                      {lv.name}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </div>
                             <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>

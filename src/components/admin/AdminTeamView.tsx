@@ -38,6 +38,10 @@ export const AdminTeamView: React.FC = () => {
     return collaborators
       .filter(c => {
         if (!c.active) return false;
+        // Colaboradores sem primeiro acesso realizado não devem aparecer no diretório de Equipe
+        const isPendingFirstAccess = c.role !== 'master' && (Boolean(c.isFirstAccess) || (!c.activatedAt && !c.lastLoginAt));
+        if (isPendingFirstAccess) return false;
+
         if (selectedVenueFilter === 'all') return true;
         if (c.role === 'master') return true;
         return c.venueIds && c.venueIds.includes(selectedVenueFilter);

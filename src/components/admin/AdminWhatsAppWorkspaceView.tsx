@@ -1485,8 +1485,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Sincronização inteligente de seleção: preserva a escolha manual do usuário e do lead recém-criado
   useEffect(() => {
-    // Se o usuário fechou intencionalmente a conversa e não há seleção ativa, respeita o fechamento!
-    if (isChatClosedByUserRef.current && !selectedLeadId) {
+    // Se o usuário fechou intencionalmente a conversa e não há seleção ativa, respeita o fechamento (exceto se estiver embutido no funil)
+    if (!isEmbeddedInFunnel && isChatClosedByUserRef.current && !selectedLeadId) {
       return;
     }
 
