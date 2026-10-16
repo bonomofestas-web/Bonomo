@@ -4,12 +4,14 @@ import {
   Users, Sparkles, ExternalLink, 
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
-  Gift, Clock, Award, Star,
-  ArrowRightLeft
+  Gift, Award, Star,
+  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
+import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
+import { AdminLeadInspector } from './AdminLeadInspector';
 import type { Lead, ClientStage, LeadContact } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
@@ -88,7 +90,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     leads,
     funnels,
     reassignLeadFunnel,
-    updateClient, 
+    updateClient,
+    updateLeadData,
     linkClientDebutante,
     addDebutanteAccount
   } = useAdminState();
@@ -96,6 +99,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [activeTab, setActiveTab] = useState<'ficha' | 'debutante' | 'comercial'>('ficha');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [previewLeadId, setPreviewLeadId] = useState<string | null>(null);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
   const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
@@ -122,6 +126,31 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     }
     return leads.find(l => l.id === lead.id || (l.phone && client?.payerPhone && l.phone === client.payerPhone)) || null;
   }, [leads, client, lead]);
+
+  // Origem do Cliente / Lead
+  const isFromCommercialSale = Boolean(
+    client?.commercialLeadId || 
+    (client?.commercialHistory && client.commercialHistory.closedBy) ||
+    (commercialLead && ((commercialLead.stage as any) === 'deal_closed' || (commercialLead.stage as any) === 'ganho' || (commercialLead.stage as any) === 'contract_signed'))
+  );
+
+  const isFromWhatsAppInbox = Boolean(
+    !isFromCommercialSale && (
+      lead.whatsappJid || 
+      lead.source === 'whatsapp' || 
+      lead.group === 'WhatsApp' || 
+      lead.subSource?.toLowerCase().includes('whatsapp') ||
+      lead.subSource?.toLowerCase().includes('entrada')
+    )
+  );
+
+  const commercialFunnelName = useMemo(() => {
+    if (commercialLead?.funnelId) {
+      const f = funnels.find(fn => fn.id === commercialLead.funnelId);
+      if (f) return f.name;
+    }
+    return 'Funil Comercial';
+  }, [commercialLead, funnels]);
 
   const currentStage = (client?.stage || lead.stage || 'onboarding') as ClientStage;
   const currentStageConfig = POST_SALE_STAGES.find(s => s.id === currentStage) || POST_SALE_STAGES[0];
@@ -785,8 +814,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               gap: '4px',
             }}
           >
-            <Shield size={12} color="#06B6D4" />
-            <span>Histórico Comercial</span>
+            <Compass size={12} color="#06B6D4" />
+            <span>Origem</span>
           </button>
         </div>
       </div>
@@ -860,6 +889,40 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       </button>
                     )}
                   </div>
+                </div>
+              </div>
+
+              <div style={cardRowStyle}>
+                <span style={cardLabelStyle}>Tipo de Evento</span>
+                <div style={cardValueStyle}>
+                  <select
+                    disabled={readOnly}
+                    value={client?.eventType || (lead as any).eventType || '15_anos'}
+                    onChange={(e) => {
+                      const newType = e.target.value;
+                      if (client) {
+                        updateClient(client.id, { eventType: newType });
+                      }
+                      updateLeadData(lead.id, { eventType: newType } as any);
+                    }}
+                    style={{
+                      ...seamlessInputStyle,
+                      fontWeight: 700,
+                      color: 'var(--adm-text-title)',
+                      cursor: readOnly ? 'default' : 'pointer',
+                      background: 'var(--adm-bg-input)',
+                      borderRadius: '5px',
+                      padding: '2px 6px',
+                    }}
+                  >
+                    <option value="15_anos">15 Anos (Debutante)</option>
+                    <option value="casamento">Casamento</option>
+                    <option value="infantil">Aniversário Infantil</option>
+                    <option value="adulto">Aniversário Adulto</option>
+                    <option value="corporativo">Corporativo</option>
+                    <option value="formatura">Formatura</option>
+                    <option value="outro">Outro Evento</option>
+                  </select>
                 </div>
               </div>
 
@@ -1820,161 +1883,328 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         )}
 
         {/* ════════════════════════════════════════════════════════════════════ */}
-        {/* ABA 3: 🛡️ HISTÓRICO COMERCIAL (CARD KANBAN CRM + TIMELINE PRÉ-VENDA) */}
+        {/* ABA 3: 🧭 ORIGEM DO CLIENTE (WHATSAPP INBOX / MANUAL / VENDA NO CRM)  */}
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'comercial' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {/* Card Idêntico ao Kanban do CRM Comercial */}
-            <div style={{
-              background: 'var(--adm-bg-card)',
-              border: '1.5px solid rgba(99, 102, 241, 0.4)',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              boxShadow: '0 4px 16px rgba(99, 102, 241, 0.08)',
-            }}>
-              {/* Header do Card */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            {/* 1. SE FOI CONVERTIDO VIA VENDA NO COMERCIAL */}
+            {isFromCommercialSale ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1.5px solid rgba(16, 185, 129, 0.4)',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(16, 185, 129, 0.08)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10B981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div>
+                        <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)' }}>
+                          Venda Realizada no Comercial
+                        </strong>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
+                          Convertido para Pós-Venda após fechamento de contrato
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '6px',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      color: '#10B981',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                    }}>
+                      GANHO NO CRM
+                    </span>
+                  </div>
+
                   <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #6366F1 0%, #A855F7 100%)',
-                    color: '#FFF',
-                    fontWeight: 800,
-                    fontSize: '0.76rem',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    fontSize: '0.70rem',
+                  }}>
+                    <div>
+                      <span style={{ color: 'var(--adm-text-muted)', display: 'block', fontSize: '0.62rem' }}>Funil de Venda:</span>
+                      <strong style={{ color: 'var(--adm-accent)' }}>
+                        {commercialFunnelName}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--adm-text-muted)', display: 'block', fontSize: '0.62rem' }}>Fechador (Closer):</span>
+                      <strong style={{ color: 'var(--adm-text-title)' }}>
+                        {client?.commercialHistory?.closedBy || commercialLead?.closerName || commercialLead?.assignedTo || 'Equipe Comercial'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--adm-text-muted)', display: 'block', fontSize: '0.62rem' }}>Data do Contrato:</span>
+                      <strong style={{ color: 'var(--adm-text-title)' }}>
+                        {client?.contractDate ? new Date(client.contractDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Fechado'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--adm-text-muted)', display: 'block', fontSize: '0.62rem' }}>Valor Fechado:</span>
+                      <strong style={{ color: '#10B981' }}>
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseValue)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card Clicável do Lead Comercial (Modo Visualização / Espectador) */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1.5px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #6366F1 0%, #A855F7 100%)',
+                      color: '#FFF',
+                      fontWeight: 800,
+                      fontSize: '0.74rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {(commercialLead?.name || client?.name || 'L').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--adm-text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {commercialLead?.name || client?.name}
+                      </div>
+                      <div style={{ fontSize: '0.64rem', color: '#6366F1', fontWeight: 700 }}>
+                        {commercialLead?.code || client?.commercialLeadCode || 'LEAD COMERCIAL'} • Modo Espectador
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewLeadId(commercialLead?.id || client?.commercialLeadId || lead.id)}
+                    style={{
+                      background: 'var(--adm-accent-bg)',
+                      border: '1px solid var(--adm-accent)',
+                      borderRadius: '6px',
+                      color: 'var(--adm-accent)',
+                      padding: '4px 10px',
+                      fontSize: '0.70rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      flexShrink: 0,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Eye size={12} />
+                    <span>Visualizar Ficha</span>
+                  </button>
+                </div>
+
+                {/* Relatório do Closer (Passagem de Bastão) se existir */}
+                {(client?.commercialHistory?.closerReport || (commercialLead as any)?.closerReport) && (
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#6366F1' }}>
+                      <FileText size={12} />
+                      <span>Relatório do Closer (Passagem de Bastão)</span>
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                      {client?.commercialHistory?.closerReport || (commercialLead as any)?.closerReport}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : isFromWhatsAppInbox ? (
+              /* 2. SE ENTROU VIA CAIXA DE ENTRADA / WHATSAPP */
+              <div style={{
+                background: 'var(--adm-bg-card)',
+                border: '1.5px solid rgba(37, 211, 102, 0.35)',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                boxShadow: '0 4px 16px rgba(37, 211, 102, 0.08)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: 'rgba(37, 211, 102, 0.15)',
+                    color: '#25D366',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
                   }}>
-                    {(commercialLead?.name || client?.name || 'L').slice(0, 2).toUpperCase()}
+                    <WhatsAppBrandIcon size={20} color="#25D366" />
                   </div>
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ fontSize: '0.86rem', color: 'var(--adm-text-title)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {commercialLead?.name || client?.name}
+                  <div>
+                    <strong style={{ fontSize: '0.84rem', color: 'var(--adm-text-title)', display: 'block' }}>
+                      Iniciado via Caixa de Entrada (WhatsApp)
                     </strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.66rem', color: '#6366F1', fontWeight: 700 }}>
-                        {commercialLead?.code || client?.commercialLeadCode || 'LEAD-ORIGINAL'}
-                      </span>
-                      <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>
-                        • {commercialLead?.venueName || client?.venueName}
-                      </span>
-                    </div>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                      Iniciado diretamente por mensagem na Caixa de Entrada do Pós-Venda
+                    </span>
                   </div>
                 </div>
 
-                <span style={{
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  color: '#10B981',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  fontSize: '0.72rem',
                 }}>
-                  GANHO NO CRM
-                </span>
-              </div>
-
-              {/* Valor & Pacote */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                background: 'var(--adm-bg-input)',
-                border: '1px solid var(--adm-border)',
-              }}>
-                <div>
-                  <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', display: 'block' }}>Valor Contratado:</span>
-                  <strong style={{ fontSize: '0.90rem', fontWeight: 900, color: '#10B981' }}>
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseValue)}
-                  </strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--adm-text-muted)' }}>Data & Hora de Entrada:</span>
+                    <strong style={{ color: 'var(--adm-text-title)' }}>
+                      {new Date(lead.createdAt || client?.createdAt || Date.now()).toLocaleDateString('pt-BR')} às {new Date(lead.createdAt || client?.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--adm-text-muted)' }}>Canal / Instância:</span>
+                    <span style={{
+                      fontWeight: 700,
+                      color: '#25D366',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: 'rgba(37, 211, 102, 0.12)',
+                    }}>
+                      {lead.sourceName || lead.venueName || client?.venueName || 'WhatsApp'}
+                    </span>
+                  </div>
+                  {(lead.phone || client?.payerPhone) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--adm-text-muted)' }}>Número do WhatsApp:</span>
+                      <strong style={{ color: 'var(--adm-text-title)' }}>
+                        {formatPhone(lead.phone || client?.payerPhone || '')}
+                      </strong>
+                    </div>
+                  )}
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', display: 'block' }}>Pacote:</span>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
-                    {client?.packageSold || commercialLead?.packageSold || 'Pacote Completo'}
-                  </span>
-                </div>
               </div>
-
-              {/* Closer e SDR Responsáveis */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                <span>Fechador (Closer): <strong style={{ color: 'var(--adm-text-title)' }}>{client?.commercialHistory?.closedBy || commercialLead?.closerName || commercialLead?.assignedTo || 'Comercial'}</strong></span>
-                <span>Data: <strong style={{ color: 'var(--adm-text-title)' }}>{client?.contractDate ? new Date(client.contractDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Fechado'}</strong></span>
-              </div>
-            </div>
-
-            {/* Relatório do Closer (Passagem de Bastão) */}
-            {(client?.commercialHistory?.closerReport || (commercialLead as any)?.closerReport) && (
+            ) : (
+              /* 3. SE FOI CRIADO MANUALMENTE */
               <div style={{
-                padding: '10px 12px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
+                background: 'var(--adm-bg-card)',
+                border: '1.5px solid rgba(6, 182, 212, 0.35)',
+                borderRadius: '12px',
+                padding: '14px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '4px',
+                gap: '10px',
+                boxShadow: '0 4px 16px rgba(6, 182, 212, 0.08)',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#6366F1' }}>
-                  <FileText size={12} />
-                  <span>Relatório do Closer (Passagem de Bastão)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: 'rgba(6, 182, 212, 0.15)',
+                    color: '#06B6D4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <UserPlus size={18} color="#06B6D4" />
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '0.84rem', color: 'var(--adm-text-title)', display: 'block' }}>
+                      Criado Manualmente
+                    </strong>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                      Cadastro realizado manualmente no painel de Pós-Venda
+                    </span>
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-title)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                  {client?.commercialHistory?.closerReport || (commercialLead as any)?.closerReport}
+
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  fontSize: '0.72rem',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--adm-text-muted)' }}>Cadastrado Por:</span>
+                    <strong style={{ color: 'var(--adm-text-title)' }}>
+                      {client?.assignedSuccessManagerName || client?.assignedTo || 'Equipe Pós-Venda'}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--adm-text-muted)' }}>Data de Cadastro:</span>
+                    <strong style={{ color: 'var(--adm-text-title)' }}>
+                      {new Date(client?.createdAt || lead.createdAt || Date.now()).toLocaleDateString('pt-BR')} às {new Date(client?.createdAt || lead.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </strong>
+                  </div>
                 </div>
               </div>
             )}
-
-            {/* Timeline Comercial Pré-Venda */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                <Clock size={12} color="#6366F1" />
-                <span>Histórico de Atividades do Pré-Venda</span>
-              </div>
-
-              {commercialLead?.activities && commercialLead.activities.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-                  {commercialLead.activities.map((act) => (
-                    <div key={act.id} style={{
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      fontSize: '0.72rem',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
-                        <strong style={{ color: 'var(--adm-accent, #6366F1)', fontSize: '0.70rem' }}>
-                          {act.title || act.type}
-                        </strong>
-                        <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
-                          {new Date(act.timestamp).toLocaleDateString('pt-BR')} {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      {act.text && (
-                        <div style={{ color: 'var(--adm-text-body)', lineHeight: 1.35 }}>
-                          {act.text}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', fontStyle: 'italic', padding: '6px 0' }}>
-                  Todas as notas e acordos fechados foram consolidados e integrados ao histórico do Pós-Venda.
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
+
+      {/* Modal de Visualização da Ficha Comercial em Modo Espectador */}
+      {previewLeadId && commercialLead && (
+        <AdminLeadInspector
+          lead={commercialLead}
+          onClose={() => setPreviewLeadId(null)}
+          onStageChange={() => {}}
+          readOnly={true}
+          isModal={true}
+        />
+      )}
     </div>
   );
 };

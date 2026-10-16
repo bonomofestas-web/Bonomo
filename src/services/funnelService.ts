@@ -51,6 +51,7 @@ export const funnelService = {
         predefinedTags: Array.isArray(row.predefined_tags) ? row.predefined_tags : row.predefinedTags,
         allowCollaboratorsCreateTags: row.allow_collaborators_create_tags ?? row.duplicate_rule_config?._allowCollaboratorsCreateTags ?? false,
         customFields: Array.isArray(row.custom_fields) ? row.custom_fields : (row.customFields || []),
+        hiddenFieldKeys: Array.isArray(row.hidden_field_keys) ? row.hidden_field_keys : (row.duplicate_rule_config?._hiddenFieldKeys || []),
         defaultWhatsAppSourceId: row.default_whatsapp_source_id || row.duplicate_rule_config?._defaultWhatsAppSourceId || '',
         priorityWhatsappPerVenue: row.priority_whatsapp_per_venue || row.duplicate_rule_config?._priorityWhatsappPerVenue || {},
         venueDistributionConfig: row.venue_distribution_config || row.duplicate_rule_config?._venueDistributionConfig || {},
@@ -111,7 +112,10 @@ export const funnelService = {
         ...(funnel.postSaleChannels !== undefined ? { _postSaleChannels: funnel.postSaleChannels } : {}),
         ...(funnel.postSaleCustomStageNames !== undefined ? { _postSaleCustomStageNames: funnel.postSaleCustomStageNames } : {}),
         ...(funnel.enableInboxStage !== undefined ? { _enableInboxStage: funnel.enableInboxStage } : {}),
+        ...(funnel.hiddenFieldKeys !== undefined ? { _hiddenFieldKeys: funnel.hiddenFieldKeys } : {}),
       };
+
+      if (funnel.hiddenFieldKeys !== undefined) payload.hidden_field_keys = funnel.hiddenFieldKeys;
 
       if (funnel.enableInboxStage !== undefined) {
         payload.is_entry_stage_active = funnel.enableInboxStage;

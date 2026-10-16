@@ -203,19 +203,23 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   </svg>
 );
 
-  // 2. Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Agendamentos
+  // Ferramentas: WhatsApp Multi-Setor
+  const toolsItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
+    { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+  ];
+
+  // 2. Comercial: Dashboard, Funil, Leads, Follow-up, Agendamentos
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
     { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Sucesso do Cliente, App Aniversariantes, Compromissos
+  // 3. Pós-Venda: Funil de Pós-Venda, App Aniversariantes, Compromissos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'post-sale-crm', label: 'Sucesso do Cliente', icon: <Users size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-crm', label: 'Funil de Pós-Venda', icon: <Users size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
@@ -1378,7 +1382,26 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           </div>
 
-          {/* 2. Setor Comercial: Dashboard, WhatsApp, Funil, Leads, Follow-up, Agendamentos */}
+          {/* Ferramentas: WhatsApp */}
+          <div>
+            {!isCollapsed && (
+              <div style={{
+                fontSize: '0.56rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                color: '#25D366',
+                letterSpacing: '0.6px',
+                padding: '0 6px 3px 6px',
+              }}>
+                Ferramentas
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {toolsItems.map(item => renderNavButton(item))}
+            </div>
+          </div>
+
+          {/* 2. Setor Comercial: Dashboard, Funil, Leads, Follow-up, Agendamentos */}
           {effectiveSectors.includes('comercial') && (
             <div>
               {!isCollapsed && (

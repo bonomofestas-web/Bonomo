@@ -3,7 +3,8 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, X, Plus, Trash2, Zap, Copy, 
   ShieldAlert, ShieldCheck, Sparkles, AlertTriangle, Building2, FileText, Settings,
   Calendar, Tag, Sliders, Check,
-  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter
+  ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter,
+  Eye, EyeOff, Thermometer, CreditCard
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
@@ -196,6 +197,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [predefinedTags, setPredefinedTags] = useState<string[]>([]);
   const [allowCollaboratorsCreateTags, setAllowCollaboratorsCreateTags] = useState<boolean>(false);
   const [customFields, setCustomFields] = useState<FunnelCustomField[]>([]);
+  const [hiddenFieldKeys, setHiddenFieldKeys] = useState<string[]>([]);
   const [isCustomDataModalOpen, setIsCustomDataModalOpen] = useState(false);
   const [customDataModalView, setCustomDataModalView] = useState<'hub' | 'tags' | 'add_field' | 'edit_field'>('hub');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -286,6 +288,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setPredefinedTags(activeFunnel.predefinedTags || []);
     setAllowCollaboratorsCreateTags(Boolean(activeFunnel.allowCollaboratorsCreateTags));
     setCustomFields(activeFunnel.customFields || []);
+    setHiddenFieldKeys(activeFunnel.hiddenFieldKeys || (activeFunnel as any)?.duplicateRuleConfig?._hiddenFieldKeys || []);
     setDefaultWhatsAppSourceId((activeFunnel as any)?.defaultWhatsAppSourceId || '');
     const initialPriorities: Record<string, string> = {
       ...((activeFunnel as any)?.priorityWhatsappPerVenue || {}),
@@ -327,11 +330,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     if (!activeFunnel) return [];
     return leads.filter(l => {
       const matchesFunnel = l.funnelId === activeFunnel.id || (!l.funnelId && (activeFunnel.venueId === 'all' || l.venueId === activeFunnel.venueId));
-      const stageStr = l.stage as string;
-      const isEntry = stageStr === 'new_lead' || (isPostSale ? false : stageStr === 'onboarding') || stageStr === stages[0]?.id;
+      const stageStr = (l.stage as string) || '';
+      const isEntry = stageStr === 'new_lead' || stageStr === 'entry';
       return matchesFunnel && isEntry;
     });
-  }, [leads, activeFunnel, stages, isPostSale]);
+  }, [leads, activeFunnel]);
 
   const handleToggleEntryStage = (checked: boolean) => {
     if (!checked && leadsInEntryStage.length > 0) {
@@ -358,6 +361,27 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     });
     setIsEntryStageActive(false);
     setIsMigrateEntryLeadsModalOpen(false);
+  };
+
+  const handleToggleFieldVisibility = (fieldKey: string) => {
+    const isCurrentlyHidden = hiddenFieldKeys.includes(fieldKey);
+    const updated = isCurrentlyHidden 
+      ? hiddenFieldKeys.filter(k => k !== fieldKey)
+      : [...hiddenFieldKeys, fieldKey];
+    setHiddenFieldKeys(updated);
+    if (activeFunnel) {
+      updateFunnel(activeFunnel.id, {
+        hiddenFieldKeys: updated,
+        duplicateRuleConfig: {
+          matchPhone: true,
+          matchEmail: false,
+          matchName: false,
+          action: 'keep_recent',
+          ...(activeFunnel.duplicateRuleConfig || {}),
+          _hiddenFieldKeys: updated,
+        } as any
+      });
+    }
   };
 
   const handleSave = () => {
@@ -411,6 +435,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         _disabledVenueIds: disabledVenueIds,
         _enableInboxStage: isEntryStageActive,
         _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
+        ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
       },
       enabledWhatsAppSourceIds,
       stages: finalStages,
@@ -1164,7 +1189,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   background: 'rgba(212, 175, 55, 0.15)',
                   color: '#D4AF37',
                 }}>
-                  {customFields.length + predefinedTags.length} Itens
+                  {customFields.length + predefinedTags.length} Itens{hiddenFieldKeys.length > 0 ? ` • ${hiddenFieldKeys.length} ocultado(s)` : ''}
                 </span>
               </div>
               
@@ -3555,6 +3580,172 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                           <span>Configurar Tags</span>
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                                    {/* Seção: Campos Nativos do Lead (Visibilidade) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid var(--adm-border)', paddingTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Campos Nativos do Lead (Visibilidade)
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                          Defina quais campos padrão devem ser visíveis ou ocultados nos leads deste funil.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                      {/* Campo: Temperatura */}
+                      {(() => {
+                        const isHidden = hiddenFieldKeys.includes('temperature');
+                        return (
+                          <div style={{
+                            background: 'var(--adm-bg-input)',
+                            border: `1px solid ${isHidden ? 'var(--adm-border)' : 'rgba(239, 68, 68, 0.25)'}`,
+                            borderRadius: '10px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            opacity: isHidden ? 0.65 : 1,
+                            transition: 'all 0.15s ease',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: isHidden ? 'rgba(255, 255, 255, 0.05)' : 'rgba(239, 68, 68, 0.12)',
+                                color: isHidden ? 'var(--adm-text-muted)' : '#EF4444',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                <Thermometer size={16} />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                  Temperatura do Lead
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                                  Classificação (Frio, Morno, Quente)
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldVisibility('temperature')}
+                              style={{
+                                background: isHidden ? 'rgba(255, 255, 255, 0.06)' : 'rgba(16, 185, 129, 0.15)',
+                                border: `1px solid ${isHidden ? 'var(--adm-border)' : 'rgba(16, 185, 129, 0.3)'}`,
+                                color: isHidden ? 'var(--adm-text-muted)' : '#10B981',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
+                                fontSize: '0.70rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                flexShrink: 0,
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {isHidden ? (
+                                <>
+                                  <EyeOff size={13} />
+                                  <span>Oculto</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Eye size={13} />
+                                  <span>Visível</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Campo: Cartão de Crédito */}
+                      {(() => {
+                        const isHidden = hiddenFieldKeys.includes('hasCreditCard');
+                        return (
+                          <div style={{
+                            background: 'var(--adm-bg-input)',
+                            border: `1px solid ${isHidden ? 'var(--adm-border)' : 'rgba(59, 130, 246, 0.25)'}`,
+                            borderRadius: '10px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            opacity: isHidden ? 0.65 : 1,
+                            transition: 'all 0.15s ease',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                background: isHidden ? 'rgba(255, 255, 255, 0.05)' : 'rgba(59, 130, 246, 0.12)',
+                                color: isHidden ? 'var(--adm-text-muted)' : '#3B82F6',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                <CreditCard size={16} />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                  Cartão de Crédito
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                                  Possui cartão para parcelamento
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFieldVisibility('hasCreditCard')}
+                              style={{
+                                background: isHidden ? 'rgba(255, 255, 255, 0.06)' : 'rgba(16, 185, 129, 0.15)',
+                                border: `1px solid ${isHidden ? 'var(--adm-border)' : 'rgba(16, 185, 129, 0.3)'}`,
+                                color: isHidden ? 'var(--adm-text-muted)' : '#10B981',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
+                                fontSize: '0.70rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                flexShrink: 0,
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {isHidden ? (
+                                <>
+                                  <EyeOff size={13} />
+                                  <span>Oculto</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Eye size={13} />
+                                  <span>Visível</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

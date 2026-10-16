@@ -873,7 +873,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'whatsapp') { category = 'Comercial'; title = 'WhatsApp'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
               else if (activeTab === 'followups') { category = 'Comercial'; title = 'Follow-up'; }
-              else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Sucesso do Cliente'; }
+              else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Funis de Pós-Venda'; }
               else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'App Aniversariantes'; }
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
               else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Agendamentos'; }

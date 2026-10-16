@@ -136,6 +136,35 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   });
   const [followUpNotes, setFollowUpNotes] = useState<string>('');
 
+  // Filtro estrito: Apenas colaboradores com acesso ao Comercial (sem pós-venda exclusivo)
+  const commercialCollaborators = useMemo(() => {
+    return collaborators.filter(c => {
+      if (c.role === 'master' || (c as any).isDev) return true;
+      const sectors = (c as any).sectors as string[] | undefined;
+      if (Array.isArray(sectors) && sectors.length > 0) {
+        return sectors.includes('comercial') || sectors.includes('gerencia');
+      }
+      if (c.role === 'pos_venda' || (c as any).group === 'Pós-Venda') return false;
+      if (c.role === 'crm' || c.role === 'sdr' || c.role === 'closer' || c.role === 'admin' || (c as any).role === 'gerente') {
+        return true;
+      }
+      return true;
+    });
+  }, [collaborators]);
+
+  const getCollabJobTitle = (c: any) => {
+    if (c.customJobTitle) return c.customJobTitle;
+    if (c.roleTitle) return c.roleTitle;
+    if (c.jobTitle) return c.jobTitle;
+    if (c.cargo) return c.cargo;
+    if (c.role === 'closer') return 'Closer';
+    if (c.role === 'sdr') return 'SDR';
+    if (c.role === 'crm') return 'Consultor Comercial';
+    if (c.role === 'admin') return 'Gerente Comercial';
+    if (c.role === 'master') return 'Diretoria';
+    return 'Equipe Comercial';
+  };
+
   // Sincroniza Closer e SDR automaticamente a partir do Lead
   useEffect(() => {
     if (currentLead?.closerId) {
@@ -288,6 +317,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     }
     if (!selectedTime) {
       setErrorMessage('Selecione um horário disponível.');
+      return;
+    }
+
+    // Validação estrita de data e horário no passado
+    const scheduledDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
+    if (scheduledDateTime.getTime() < Date.now()) {
+      setErrorMessage('Não é permitido agendar em data ou horário que já passaram. Escolha um horário futuro.');
       return;
     }
     if (!targetVenueId || targetVenueId === 'all') {
@@ -1025,11 +1061,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     {formattedMonthTitle}
                   </span>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    <button type="button" onClick={handlePrevMonth} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer' }}>
-                      <ChevronLeft size={16} />
+                    <button type="button" onClick={handlePrevMonth} style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#0F172A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Mês anterior">
+                      <ChevronLeft size={16} color="#0F172A" />
                     </button>
-                    <button type="button" onClick={handleNextMonth} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer' }}>
-                      <ChevronRight size={16} />
+                    <button type="button" onClick={handleNextMonth} style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#0F172A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Próximo mês">
+                      <ChevronRight size={16} color="#0F172A" />
                     </button>
                   </div>
                 </div>
@@ -1173,43 +1209,88 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     </div>
                   )}
 
-                  {selectedDayAvailability.slots.length === 0 ? (
-                    <div style={{ fontSize: '0.78rem', color: '#94A3B8', fontStyle: 'italic' }}>
-                      Nenhum horário disponível para esta data.
+                  {selectedDayAvailability.isFreeMode ? (
+                    /* MODO LIVRE: Não exibe chips pré-definidos. Exibe aviso e campo de horário em destaque */
+                    <div style={{
+                      padding: '14px 16px',
+                      borderRadius: '10px',
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      border: '1.5px solid rgba(16, 185, 129, 0.3)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857', fontWeight: 800, fontSize: '0.82rem' }}>
+                        <Sparkles size={16} />
+                        <span>O agendamento está no modo livre. Digite abaixo o horário do agendamento:</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Clock size={18} color="#059669" />
+                        <input
+                          type="time"
+                          value={selectedTime}
+                          onChange={e => setSelectedTime(e.target.value)}
+                          placeholder="HH:mm"
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1.5px solid #10B981',
+                            fontSize: '0.92rem',
+                            fontWeight: 800,
+                            color: '#0F172A',
+                            background: '#FFFFFF',
+                            colorScheme: 'light',
+                            outline: 'none',
+                            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.15)',
+                          }}
+                        />
+                        {selectedTime && (
+                          <span style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 800 }}>
+                            Horário definido: <strong>{selectedTime}</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {selectedDayAvailability.slots.map(s => {
-                        const isSelected = selectedTime === s.time;
-                        return (
-                          <button
-                            key={s.time}
-                            type="button"
-                            disabled={!s.isAvailable}
-                            onClick={() => {
-                              setSelectedTime(s.time);
-                              if (realtimeBookingConflict) setRealtimeBookingConflict(null);
-                            }}
-                            title={s.isAvailable ? `${s.remainingSpots} vaga(s) disponível(is)` : 'Horário esgotado'}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '8px',
-                              border: '1px solid',
-                              borderColor: isSelected ? themeColor : (s.isAvailable ? '#CBD5E1' : '#E2E8F0'),
-                              background: isSelected ? themeColor : (s.isAvailable ? '#FFFFFF' : '#F8FAFC'),
-                              color: isSelected ? '#FFFFFF' : (s.isAvailable ? '#0F172A' : '#94A3B8'),
-                              fontSize: '0.80rem',
-                              fontWeight: 800,
-                              cursor: s.isAvailable ? 'pointer' : 'not-allowed',
-                              opacity: s.isAvailable ? 1 : 0.55,
-                              textDecoration: s.isAvailable ? 'none' : 'line-through',
-                            }}
-                          >
-                            {s.time} {!s.isAvailable && '(Lotado)'}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    /* MODO HORÁRIOS FIXOS: Exibe chips de horários disponíveis */
+                    selectedDayAvailability.slots.length === 0 ? (
+                      <div style={{ fontSize: '0.78rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                        Nenhum horário disponível para esta data.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {selectedDayAvailability.slots.map(s => {
+                          const isSelected = selectedTime === s.time;
+                          return (
+                            <button
+                              key={s.time}
+                              type="button"
+                              disabled={!s.isAvailable}
+                              onClick={() => {
+                                setSelectedTime(s.time);
+                                if (realtimeBookingConflict) setRealtimeBookingConflict(null);
+                              }}
+                              title={s.isAvailable ? `${s.remainingSpots} vaga(s) disponível(is)` : 'Horário esgotado'}
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '8px',
+                                border: '1px solid',
+                                borderColor: isSelected ? themeColor : (s.isAvailable ? '#CBD5E1' : '#E2E8F0'),
+                                background: isSelected ? themeColor : (s.isAvailable ? '#FFFFFF' : '#F8FAFC'),
+                                color: isSelected ? '#FFFFFF' : (s.isAvailable ? '#0F172A' : '#94A3B8'),
+                                fontSize: '0.80rem',
+                                fontWeight: 800,
+                                cursor: s.isAvailable ? 'pointer' : 'not-allowed',
+                                opacity: s.isAvailable ? 1 : 0.55,
+                                textDecoration: s.isAvailable ? 'none' : 'line-through',
+                              }}
+                            >
+                              {s.time} {!s.isAvailable && '(Lotado)'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
                   )}
 
                   {/* Campo de Horário Livre / Customizado */}
@@ -1262,10 +1343,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-                  {collaborators.map(c => {
+                  {commercialCollaborators.map(c => {
                     const isSelected = responsibleId === c.id;
                     const isLeadCloser = currentLead?.closerId === c.id;
-                    const roleTitle = (c as any)?.roleTitle || c.role || 'Anfitrião';
+                    const roleTitle = getCollabJobTitle(c);
                     return (
                       <div
                         key={c.id}
@@ -1333,7 +1414,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
-                  {collaborators.map(c => {
+                  {commercialCollaborators.map(c => {
                     const isSelected = sdrId === c.id;
                     const isLeadSdr = currentLead?.sdrId === c.id;
                     const isSdrRole = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
@@ -1383,7 +1464,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                             )}
                           </div>
                           <div style={{ fontSize: '0.68rem', fontWeight: 600, color: isSdrRole ? '#3B82F6' : '#64748B' }}>
-                            {isSdrRole ? '(SDR)' : `(${(c as any)?.roleTitle || c.role || 'Equipe'})`}
+                            {`(${getCollabJobTitle(c)})`}
                           </div>
                         </div>
                       </div>
@@ -1419,10 +1500,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     </div>
                     <div>
                       <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
-                        Tarefa de Follow-up / Confirmação Prévia
+                        Tarefa Follow-up Confirmação 01
                       </div>
                       <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                        Gera tarefa na esteira do SDR para confirmar a presença dos anfitriões
+                        Gera tarefa de confirmação na esteira do SDR responsável
                       </div>
                     </div>
                   </div>

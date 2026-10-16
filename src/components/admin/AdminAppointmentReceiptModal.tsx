@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   X, Check, Download, Share2, Calendar, 
-  MapPin, Users, User, Building2, ShieldCheck, Loader2
+  MapPin, Users, Building2, ShieldCheck, Loader2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useAdminState } from '../../context/AdminStateContext';
 import { isPhoneMatch } from '../../services/leadService';
+import { formatPhone } from '../../utils/phoneFormatter';
 import type { CommercialCommitmentType } from '../../types/admin';
 
 export interface AppointmentReceiptData {
@@ -43,7 +44,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
 
-  const { leads, venues, collaborators } = useAdminState();
+  const { leads, venues, collaborators, currentUser } = useAdminState();
 
   const isVisit = receipt.type === 'visit';
   const themeColor = isVisit ? '#10B981' : '#D97706';
@@ -62,13 +63,24 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
 
   const effectiveCloserPhoto = useMemo(() => {
     if (receipt.closerPhotoUrl) return receipt.closerPhotoUrl;
-    const c = collaborators.find(c => 
-      (receipt.closerName && c.name.trim().toLowerCase() === receipt.closerName.trim().toLowerCase()) ||
-      c.id === (receipt as any).closerId ||
-      c.id === (receipt as any).responsibleCollaboratorId
-    );
-    return c?.avatarUrl || (c as any)?.photoUrl || '';
-  }, [receipt.closerPhotoUrl, receipt.closerName, collaborators]);
+    const cleanCloserName = (receipt.closerName || '').trim().toLowerCase();
+    const c = collaborators.find(c => {
+      const cName = (c.name || '').trim().toLowerCase();
+      return (
+        c.id === (receipt as any).closerId ||
+        c.id === (receipt as any).responsibleCollaboratorId ||
+        (cleanCloserName && (cName === cleanCloserName || cName.includes(cleanCloserName) || cleanCloserName.includes(cName)))
+      );
+    });
+    if (c) return c.avatarUrl || (c as any)?.photoUrl || (c as any)?.avatar_url || '';
+    if (currentUser?.name && cleanCloserName) {
+      const curName = currentUser.name.trim().toLowerCase();
+      if (curName === cleanCloserName || curName.includes(cleanCloserName) || cleanCloserName.includes(curName)) {
+        return currentUser.avatarUrl || (currentUser as any)?.photoUrl || (currentUser as any)?.avatar_url || '';
+      }
+    }
+    return '';
+  }, [receipt.closerPhotoUrl, receipt.closerName, collaborators, currentUser]);
 
   // Estados de imagem pré-convertida para Data URL (evita tainted canvas) e controle de erro
   const [closerPhotoDataUrl, setCloserPhotoDataUrl] = useState<string | null>(null);
@@ -420,15 +432,15 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     width: '46px',
                     height: '46px',
                     borderRadius: '12px',
-                    background: '#FFFFFF',
-                    padding: '3px',
+                    background: '#0F172A',
+                    padding: '4px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
                     flexShrink: 0,
-                    border: '1.5px solid #E2E8F0',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                    border: '1.5px solid #1E293B',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
                   }}>
                     {!venueLogoFailed && (venueLogoDataUrl || effectiveVenueLogo) ? (
                       <img 
@@ -438,7 +450,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                         style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} 
                       />
                     ) : (
-                      <Building2 size={24} color="#0F172A" />
+                      <Building2 size={24} color="#F8FAFC" />
                     )}
                   </div>
                   <div>
@@ -505,13 +517,13 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                     <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>
-                      CONTRATANTE / LEAD
+                      CLIENTE
                     </span>
                     <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0F172A', marginTop: '2px' }}>
                       {receipt.leadName}
                     </strong>
                     {receipt.leadPhone && (
-                      <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{receipt.leadPhone}</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{formatPhone(receipt.leadPhone) || receipt.leadPhone}</span>
                     )}
                   </div>
 
@@ -543,7 +555,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                     width: '46px',
                     height: '46px',
                     borderRadius: '50%',
-                    background: '#0F172A',
+                    background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
                     overflow: 'hidden',
                     display: 'flex',
                     alignItems: 'center',
@@ -568,11 +580,9 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                         const nameParts = (receipt.closerName || '').trim().split(/\s+/).filter(Boolean);
                         const initials = nameParts.length >= 2 
                           ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
-                          : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : '');
-                        return initials ? (
-                          <span style={{ color: '#F8FAFC', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{initials}</span>
-                        ) : (
-                          <User size={22} color="#94A3B8" />
+                          : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : 'AF');
+                        return (
+                          <span style={{ color: '#F8FAFC', textShadow: '0 1px 2px rgba(0,0,0,0.4)', fontWeight: 900 }}>{initials}</span>
                         );
                       })()
                     )}
@@ -582,11 +592,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                       Anfitrião da Recepção
                     </div>
                     <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A', marginTop: '1px' }}>
-                      {receipt.closerName} {receipt.closerRoleTitle && (
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B' }}>
-                          ({receipt.closerRoleTitle})
-                        </span>
-                      )}
+                      {receipt.closerName}
                     </div>
                   </div>
                 </div>

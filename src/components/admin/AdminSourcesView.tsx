@@ -14,6 +14,7 @@ import { AdminWhatsAppHistoryTriageModal } from './AdminWhatsAppHistoryTriageMod
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
 import { SmartVenueLogo } from '../common/SmartVenueLogo';
+import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import type { Source } from '../../types/sources';
 import type { Venue } from '../../types/admin';
 
@@ -648,7 +649,7 @@ export const AdminSourcesView: React.FC = () => {
                         </td>
                       </tr>
 
-                      {/* Linhas das Origens da Unidade */}
+                      {/* Linhas das Origens da Unidade com Subdivisões Sutis (WhatsApp, Formulários, Indicações) */}
                       {group.sources.length === 0 ? (
                         <tr>
                           <td colSpan={8} style={{ padding: '24px 18px', textAlign: 'center', color: 'var(--adm-text-muted)', fontSize: '0.78rem' }}>
@@ -656,7 +657,33 @@ export const AdminSourcesView: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        group.sources.map((source: Source) => {
+                        (() => {
+                          const waSources = group.sources.filter(s => s.type === 'whatsapp_api' || (s.type as string) === 'whatsapp');
+                          const formSources = group.sources.filter(s => s.type === 'form' || (s.type as string) === 'landing_page');
+                          const otherSources = group.sources.filter(s => s.type !== 'whatsapp_api' && (s.type as string) !== 'whatsapp' && s.type !== 'form' && (s.type as string) !== 'landing_page');
+
+                          const subGroups = [
+                            { id: 'wa', label: 'WhatsApp & Linhas Diretas', icon: <WhatsAppBrandIcon size={12} color="#10B981" />, items: waSources },
+                            { id: 'form', label: 'Formulários & Captação', icon: <FileText size={12} color="var(--adm-accent)" />, items: formSources },
+                            { id: 'other', label: 'Indicações & Outros Canais', icon: <Gift size={12} color="#8B5CF6" />, items: otherSources },
+                          ].filter(sg => sg.items.length > 0);
+
+                          return subGroups.map(sg => (
+                            <React.Fragment key={sg.id}>
+                              {/* Subdivisão sutil por canal */}
+                              <tr style={{ background: 'var(--adm-bg-surface, #F8FAFC)', borderBottom: '1px solid var(--adm-border)' }}>
+                                <td colSpan={8} style={{ padding: '7px 20px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', letterSpacing: '0.4px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {sg.icon}
+                                    <span style={{ textTransform: 'uppercase' }}>{sg.label}</span>
+                                    <span style={{ fontSize: '0.62rem', background: 'var(--adm-bg-card)', padding: '1px 6px', borderRadius: '4px', border: '1px solid var(--adm-border)' }}>
+                                      {sg.items.length}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {sg.items.map((source: Source) => {
                           const venue = venues.find(v => v.id === source.venueId);
                           const funnel = funnels.find(f => f.id === source.funnelId);
                           const isCopied = copiedId === source.id;
@@ -1031,8 +1058,11 @@ export const AdminSourcesView: React.FC = () => {
                               </td>
                             </tr>
                           );
-                        })
-                      )}
+                        })}
+                      </React.Fragment>
+                    ));
+                  })()
+                )}
                     </React.Fragment>
                   );
                 })}

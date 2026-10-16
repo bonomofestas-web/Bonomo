@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   MessageSquare, Search, SlidersHorizontal, Send, Mic,
   FileText, ChevronRight, ChevronLeft, ChevronDown, Calendar,
-  Plus, Check, X, Clock, PhoneCall, Eye, Building2, UserPlus, CheckSquare,
+  Plus, Check, X, Clock, PhoneCall, Eye, EyeOff, Building2, UserPlus, CheckSquare,
   GitBranch, Users, Trash2, Zap, Smile, Image as ImageIcon,
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
@@ -438,13 +438,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     );
   };
 
+  const commercialFunnels = useMemo(() => {
+    return (funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda' && f.category !== 'pos_venda');
+  }, [funnels]);
+
+  const postSaleFunnels = useMemo(() => {
+    return (funnels || []).filter(f =>
+      f.isPostSale ||
+      f.category === 'Pós-Venda' ||
+      f.category === 'pos_venda' ||
+      f.name?.toLowerCase().includes('pós-venda') ||
+      f.name?.toLowerCase().includes('pos venda') ||
+      f.name?.toLowerCase().includes('sucesso do cliente') ||
+      f.name?.toLowerCase().includes('sucesso')
+    );
+  }, [funnels]);
+
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(() => {
     if (activeFunnelId) return activeFunnelId;
-    if (isPostSale) return 'post_sale_default';
+    if (isPostSale) return 'all_post_sale';
     const isUserPosVenda = currentUser?.role === 'pos_venda' ||
       (currentUser as any)?.primarySector === 'pos_venda' ||
       (currentUser as any)?.department === 'pos_venda';
-    if (isUserPosVenda) return 'post_sale_default';
+    if (isUserPosVenda) return 'all_post_sale';
 
     try {
       const savedKey = `f5_wa_funnel_${currentUser?.id || 'default'}`;
@@ -459,8 +475,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (activeFunnelId) {
       setSelectedFunnelId(activeFunnelId);
     } else if (isPostSale) {
-      setSelectedFunnelId('post_sale_default');
-    } else if (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'post_sale_default' && funnels.length > 0) {
+      setSelectedFunnelId('all_post_sale');
+    } else if (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial' && selectedFunnelId !== 'all_post_sale' && selectedFunnelId !== 'post_sale_default' && funnels.length > 0) {
       const exists = funnels.some(f => f.id === selectedFunnelId);
       if (!exists) {
         setSelectedFunnelId('all');
@@ -476,12 +492,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     } catch { }
   };
 
-  const activeFunnel = (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'post_sale_default')
+  const activeFunnel = (selectedFunnelId && selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial' && selectedFunnelId !== 'all_post_sale' && selectedFunnelId !== 'post_sale_default')
     ? funnels.find(f => f.id === selectedFunnelId)
     : (activeFunnelId ? funnels.find(f => f.id === activeFunnelId) : null);
 
   const isPostSaleFunnel = Boolean(
     isPostSale ||
+    selectedFunnelId === 'all_post_sale' ||
     selectedFunnelId === 'post_sale' ||
     selectedFunnelId === 'post_sale_default' ||
     activeFunnel?.isPostSale ||
@@ -494,7 +511,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     activeFunnelId === 'post_sale_default' ||
     (activeFunnelId && activeFunnelId.includes('pos_venda')) ||
     (activeFunnelId && activeFunnelId.includes('post_sale')) ||
-    (currentUser?.role === 'pos_venda' && (!selectedFunnelId || selectedFunnelId === 'all' || selectedFunnelId === 'post_sale_default'))
+    (currentUser?.role === 'pos_venda' && (!selectedFunnelId || selectedFunnelId === 'all' || selectedFunnelId === 'all_post_sale' || selectedFunnelId === 'post_sale_default'))
   );
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
@@ -1179,7 +1196,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         baseContractValue: c.baseContractValue,
         partyDate: c.partyDate || c.eventDate || '',
         eventDate: c.eventDate || c.partyDate || '',
-        funnelId: activeFunnelId || 'post_sale_default',
+        funnelId: c.funnelId || activeFunnelId || 'post_sale_default',
         assignedTo: c.assignedSuccessManagerName || c.assignedTo || '',
         sdrId: c.assignedSuccessManagerId || c.assignedToId || '',
         sdrName: c.assignedSuccessManagerName || c.assignedTo || '',
@@ -1280,16 +1297,32 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         return true;
       }
 
-      // 1. Funnel & Venue Matching
-      if (!isPostSaleFunnel) {
-        if (currentFunnel) {
-          const leadFunnelMatches =
-            lead.funnelId === currentFunnel.id ||
-            lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
-            (!lead.funnelId && currentFunnel.isPrimary);
-          if (!leadFunnelMatches) {
-            if (lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
-          }
+      // 1. Funnel Matching (Filtro Estrito por Funil)
+      if (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') {
+        const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
+        const isLeadPostSale = lead.isClient || lead.group === 'Pós-Venda' || Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        if (isLeadPostSale) {
+          return false;
+        }
+      } else if (selectedFunnelId === 'all_post_sale') {
+        const lFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : null;
+        const isLeadPostSale = lead.isClient || lead.group === 'Pós-Venda' || Boolean(lFunnel && (lFunnel.isPostSale || lFunnel.category === 'Pós-Venda' || lFunnel.category === 'pos_venda'));
+        if (!isLeadPostSale) {
+          return false;
+        }
+      } else if (currentFunnel) {
+        const leadFunnelMatches =
+          lead.funnelId === currentFunnel.id ||
+          lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
+          (!lead.funnelId && currentFunnel.isPrimary && !currentFunnel.isPostSale && currentFunnel.category !== 'Pós-Venda') ||
+          (!lead.funnelId && isPostSaleFunnel && (currentFunnel.id === 'post_sale_default' || currentFunnel.isPrimary));
+        if (!leadFunnelMatches) {
+          return false;
+        }
+      } else if (selectedFunnelId === 'post_sale_default') {
+        const isDefault = lead.funnelId === 'post_sale_default' || !lead.funnelId || lead.isClient || lead.group === 'Pós-Venda';
+        if (!isDefault) {
+          return false;
         }
       }
 
@@ -1518,8 +1551,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     )) || null;
   }, [activeFunnel, selectedLead?.funnelId, selectedLead?.venueId, activeVenueId, funnels]);
 
+    useEffect(() => {
+    const handleGlobalClick = () => setGeneralContextMenu(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
   const [activePostSaleChannelId, setActivePostSaleChannelId] = useState<string>('geral');
   const [isPostSaleChannelModalOpen, setIsPostSaleChannelModalOpen] = useState(false);
+  const [generalContextMenu, setGeneralContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [editingPostSaleChannel, setEditingPostSaleChannel] = useState<PostSaleChannelConfig | null>(null);
 
   const isMasterOrManager = Boolean(
@@ -2542,8 +2582,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sending',
-      channelId: (isPostSaleChat && activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
-      channelName: (isPostSaleChat && activePostSaleChannel) ? activePostSaleChannel.name : undefined,
+      channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
+      channelName: (activePostSaleChannel) ? activePostSaleChannel.name : undefined,
       instanceId: activeSenderSource?.id,
       metadata: getAppSenderMetadata(),
     } as any;
@@ -3450,15 +3490,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     // Filtra pelo canal setorial selecionado no Pós-Venda
     const filteredByChannel = chatOnly.filter(a => {
-      if (!isPostSaleChat) return true;
+      // Se a aba Geral estiver oculta/desativada e estamos no Geral: área 100% limpa (sem mensagens)
+      if (isGeneralHidden && activePostSaleChannelId === 'geral') {
+        return false;
+      }
+
       const isSessionMarker = Boolean((a as any).metadata?.isSessionEnd || (a as any).metadata?.isViewAudit || (a.title || '').toLowerCase().includes('conversa encerrada'));
       if (isSessionMarker) return true;
 
       const actChannelId = (a as any).channelId || (a as any).metadata?.channelId;
+      
+      // Se estiver em um setor/canal específico (ex: Teste, Recepção, etc.):
+      // Exibe rigorosamente apenas as mensagens enviadas neste setor!
+      if (activePostSaleChannelId && activePostSaleChannelId !== 'geral') {
+        return actChannelId === activePostSaleChannelId;
+      }
+
+      // Se estiver na aba Geral: exibe apenas mensagens gerais (sem setor específico ou marcadas como geral)
       if (activePostSaleChannelId === 'geral') {
         return !actChannelId || actChannelId === 'geral';
       }
-      return actChannelId === activePostSaleChannelId;
+
+      return true;
     });
 
     // Deduplicação inteligente de mensagens repetidas (por id e por conteúdo idêntico no mesmo minuto)
@@ -3802,11 +3855,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       )}
                     </div>
                     <span>
-                      {selectedFunnelId === 'all'
+                      {selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial'
                         ? 'Todos os Funis Comerciais'
-                        : (selectedFunnelId === 'post_sale_default' || selectedFunnelId === 'post_sale'
-                          ? 'Sucesso do Cliente'
-                          : (activeFunnel?.name || 'Funil Comercial'))}
+                        : selectedFunnelId === 'all_post_sale'
+                          ? 'Todos os Funis de Pós-Venda'
+                          : selectedFunnelId === 'post_sale_default' || selectedFunnelId === 'post_sale'
+                            ? 'Sucesso do Cliente'
+                            : (activeFunnel?.name || (isPostSaleFunnel ? 'Funil de Pós-Venda' : 'Funil Comercial'))}
                     </span>
                   </div>
                   <ChevronRight size={13} style={{ transform: isFunnelSelectOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
@@ -3826,38 +3881,56 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     zIndex: 9999,
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '3px',
-                    maxHeight: '260px',
+                    gap: '2px',
+                    maxHeight: '340px',
                     overflowY: 'auto',
                   }}>
-                    {/* 1. Todos os Funis Comerciais */}
+                    {/* ── BLOCO 1: FUNIL COMERCIAL ── */}
+                    <div style={{
+                      fontSize: '0.58rem',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      color: 'var(--adm-text-muted)',
+                      letterSpacing: '0.6px',
+                      padding: '4px 8px 2px',
+                    }}>
+                      Funil Comercial
+                    </div>
+
+                    {/* Todos os Funis Comerciais */}
                     <button
                       type="button"
                       onClick={() => handleSelectFunnel('all')}
                       style={{
-                        padding: '7px 10px',
+                        padding: '6px 10px',
                         borderRadius: '6px',
-                        background: selectedFunnelId === 'all' ? 'var(--adm-accent-bg)' : 'transparent',
+                        background: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent-bg)' : 'transparent',
                         border: 'none',
-                        color: selectedFunnelId === 'all' ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                        color: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 'var(--adm-accent)' : 'var(--adm-text-title)',
                         fontSize: '0.74rem',
-                        fontWeight: selectedFunnelId === 'all' ? 800 : 600,
+                        fontWeight: (selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') ? 800 : 600,
                         textAlign: 'left',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                       }}
+                      onMouseEnter={(e) => {
+                        if (selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial') e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedFunnelId !== 'all' && selectedFunnelId !== 'all_commercial') e.currentTarget.style.background = 'transparent';
+                      }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Target size={14} color="var(--adm-accent)" />
                         <span>Todos os Funis Comerciais</span>
                       </div>
-                      {selectedFunnelId === 'all' && <Check size={12} />}
+                      {(selectedFunnelId === 'all' || selectedFunnelId === 'all_commercial') && <Check size={12} />}
                     </button>
 
-                    {/* 2. Funis Comerciais Individuais com Ícones e Cores */}
-                    {(funnels || []).filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => {
+                    {/* Funis Comerciais Individuais */}
+                    {commercialFunnels.map(f => {
                       const isSelected = selectedFunnelId === f.id;
                       const funnelColor = (f as any).color || f.badgeColor || f.stages?.[0]?.color || 'var(--adm-accent)';
                       return (
@@ -3866,7 +3939,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           type="button"
                           onClick={() => handleSelectFunnel(f.id)}
                           style={{
-                            padding: '6px 10px',
+                            padding: '5px 10px',
                             borderRadius: '6px',
                             background: isSelected ? `${funnelColor}18` : 'transparent',
                             border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
@@ -3909,39 +3982,136 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       );
                     })}
 
-                    {/* 3. Por Fim: Sucesso do Cliente */}
+                    {/* ── LINHA DIVISÓRIA ── */}
+                    <div style={{
+                      height: '1px',
+                      background: 'var(--adm-border)',
+                      margin: '5px 2px',
+                    }} />
+
+                    {/* ── BLOCO 2: PÓS-VENDA ── */}
+                    <div style={{
+                      fontSize: '0.58rem',
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      color: '#06B6D4',
+                      letterSpacing: '0.6px',
+                      padding: '4px 8px 2px',
+                    }}>
+                      Pós-Venda
+                    </div>
+
+                    {/* Todos os Funis de Pós-Venda */}
                     <button
                       type="button"
-                      onClick={() => handleSelectFunnel('post_sale_default')}
+                      onClick={() => handleSelectFunnel('all_post_sale')}
                       style={{
-                        padding: '7px 10px',
+                        padding: '6px 10px',
                         borderRadius: '6px',
-                        background: isPostSaleFunnel ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                        border: isPostSaleFunnel ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
-                        color: isPostSaleFunnel ? '#06B6D4' : 'var(--adm-text-title)',
+                        background: selectedFunnelId === 'all_post_sale' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+                        border: selectedFunnelId === 'all_post_sale' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
+                        color: selectedFunnelId === 'all_post_sale' ? '#06B6D4' : 'var(--adm-text-title)',
                         fontSize: '0.74rem',
-                        fontWeight: isPostSaleFunnel ? 800 : 600,
+                        fontWeight: selectedFunnelId === 'all_post_sale' ? 800 : 600,
                         textAlign: 'left',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        marginTop: '2px',
-                        borderTop: '1px solid var(--adm-border)',
                       }}
                       onMouseEnter={(e) => {
-                        if (!isPostSaleFunnel) e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                        if (selectedFunnelId !== 'all_post_sale') e.currentTarget.style.background = 'var(--adm-bg-hover)';
                       }}
                       onMouseLeave={(e) => {
-                        if (!isPostSaleFunnel) e.currentTarget.style.background = 'transparent';
+                        if (selectedFunnelId !== 'all_post_sale') e.currentTarget.style.background = 'transparent';
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Users size={14} color="#06B6D4" />
-                        <span>Sucesso do Cliente</span>
+                        <span>Todos os Funis de Pós-Venda</span>
                       </div>
-                      {isPostSaleFunnel && <Check size={12} color="#06B6D4" />}
+                      {selectedFunnelId === 'all_post_sale' && <Check size={12} color="#06B6D4" />}
                     </button>
+
+                    {/* Funis de Pós-Venda Individuais */}
+                    {postSaleFunnels.length > 0 ? (
+                      postSaleFunnels.map(f => {
+                        const isSelected = selectedFunnelId === f.id;
+                        const funnelColor = (f as any).color || f.badgeColor || '#06B6D4';
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => handleSelectFunnel(f.id)}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              background: isSelected ? `${funnelColor}18` : 'transparent',
+                              border: isSelected ? `1px solid ${funnelColor}40` : '1px solid transparent',
+                              color: isSelected ? funnelColor : 'var(--adm-text-title)',
+                              fontSize: '0.74rem',
+                              fontWeight: isSelected ? 800 : 500,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              transition: 'all 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              <div style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '6px',
+                                background: `${funnelColor}22`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                {renderFunnelOrStageIcon(f.icon || 'shield-check', 12, funnelColor)}
+                              </div>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {f.name}
+                              </span>
+                            </div>
+                            {isSelected && <Check size={12} color={funnelColor} />}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectFunnel('post_sale_default')}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          background: selectedFunnelId === 'post_sale_default' ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+                          border: selectedFunnelId === 'post_sale_default' ? '1px solid rgba(6, 182, 212, 0.35)' : '1px solid transparent',
+                          color: selectedFunnelId === 'post_sale_default' ? '#06B6D4' : 'var(--adm-text-title)',
+                          fontSize: '0.74rem',
+                          fontWeight: selectedFunnelId === 'post_sale_default' ? 800 : 500,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Users size={12} color="#06B6D4" />
+                          <span>Sucesso do Cliente</span>
+                        </div>
+                        {selectedFunnelId === 'post_sale_default' && <Check size={12} color="#06B6D4" />}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -5341,11 +5511,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 overflowX: 'auto',
                 scrollbarWidth: 'none',
               }}>
-                {/* Canal Geral (se não estiver desabilitado) */}
-                {!isGeneralHidden && (
+                {/* Canal Geral com Botão Direito para Ocultar/Reativar */}
+                <div style={{ position: 'relative', display: 'inline-block' }}>
                   <button
                     type="button"
                     onClick={() => setActivePostSaleChannelId('geral')}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setGeneralContextMenu({ x: e.clientX, y: e.clientY });
+                    }}
+                    title={isGeneralHidden ? 'Canal Geral desativado. Clique com botão direito para reativar.' : 'Clique com o botão direito para ocultar o canal geral.'}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -5356,22 +5532,77 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       fontWeight: 700,
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
+                      opacity: isGeneralHidden ? 0.5 : 1,
                       border: activePostSaleChannelId === 'geral'
-                        ? '1.5px solid var(--adm-accent)'
-                        : '1px solid var(--adm-border)',
+                        ? (isGeneralHidden ? '1.5px dashed var(--adm-text-muted)' : '1.5px solid var(--adm-accent)')
+                        : (isGeneralHidden ? '1px dashed var(--adm-border)' : '1px solid var(--adm-border)'),
                       background: activePostSaleChannelId === 'geral'
-                        ? 'var(--adm-accent-bg)'
+                        ? (isGeneralHidden ? 'rgba(255,255,255,0.04)' : 'var(--adm-accent-bg)')
                         : 'var(--adm-bg-card)',
                       color: activePostSaleChannelId === 'geral'
-                        ? 'var(--adm-accent)'
-                        : 'var(--adm-text-title)',
-                      boxShadow: activePostSaleChannelId === 'geral' ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
+                        ? (isGeneralHidden ? 'var(--adm-text-muted)' : 'var(--adm-accent)')
+                        : (isGeneralHidden ? 'var(--adm-text-muted)' : 'var(--adm-text-title)'),
+                      boxShadow: activePostSaleChannelId === 'geral' && !isGeneralHidden ? '0 1px 4px rgba(0,0,0,0.06)' : 'none',
                     }}
                   >
                     <MessageSquare size={13} />
                     <span>Geral</span>
+                    {isGeneralHidden && (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 600, opacity: 0.8 }}>(Oculto)</span>
+                    )}
                   </button>
-                )}
+
+                  {/* Menu de Contexto do Botão Direito */}
+                  {generalContextMenu && (
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'fixed',
+                        top: generalContextMenu.y,
+                        left: generalContextMenu.x,
+                        zIndex: 9999,
+                        background: 'var(--adm-bg-card, #1E293B)',
+                        border: '1px solid var(--adm-border, #334155)',
+                        borderRadius: '10px',
+                        padding: '6px',
+                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
+                        minWidth: '170px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleToggleHideGeneralChannel(!isGeneralHidden);
+                          setGeneralContextMenu(null);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: isGeneralHidden ? '#10B981' : '#EF4444',
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          textAlign: 'left',
+                          width: '100%',
+                          transition: 'background 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <EyeOff size={14} />
+                        <span>{isGeneralHidden ? 'Reativar Canal Geral' : 'Ocultar Canal Geral'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {/* Demais canais setoriais configurados */}
                 {visiblePostSaleChannels.map(ch => {
@@ -5865,6 +6096,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   display: 'flex',
                                   flexDirection: 'column',
                                   gap: '3px',
+                                  maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
+                                  width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
                                 }}>
                                   {!isSameAsPrev && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
@@ -6307,6 +6540,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 flexDirection: 'column',
                                 gap: '4px',
                                 position: 'relative',
+                                maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
+                                width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
                               }}>
                                 {!isSameAsPrev && (
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
@@ -10818,7 +11053,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         </div>
                       )}
 
-                      {/* Cápsula Arredondada Estilo WhatsApp Web */}
+                                            {/* Cápsula Arredondada Estilo WhatsApp Web */}
+                      {isGeneralHidden && activePostSaleChannelId === 'geral' ? (
+                        <div style={{
+                          padding: '12px 18px',
+                          background: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                          border: '1px dashed var(--adm-border)',
+                          borderRadius: '16px',
+                          textAlign: 'center',
+                          color: 'var(--adm-text-muted)',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          width: '100%',
+                          boxSizing: 'border-box',
+                        }}>
+                          Canal Geral desativado para este funil. Selecione ou crie um setor acima para conversar com o lead.
+                        </div>
+                      ) : (
                       <form onSubmit={handleSendMessage} style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -10896,6 +11147,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           onStartAudioRecording={startAudioRecording}
                         />
                       </form>
+                      )}
                     </div>
                   )
                 )}

@@ -865,6 +865,7 @@ export interface CommercialFunnel {
   stagesCount?: number;
   stages?: FunnelStageConfig[]; // Etapas customizadas do funil
   customFields?: FunnelCustomField[]; // Campos extras personalizados para os leads deste funil
+  hiddenFieldKeys?: string[]; // Chaves de campos nativos ou extras que foram ocultados neste funil (ex: 'temperature', 'hasCreditCard')
   packageOptions?: string[]; // Lista de pacotes de venda deste funil (legado)
   paymentOptions?: string[]; // Lista de condições/formatos de pagamento deste funil (legado)
   predefinedTags?: string[]; // Tags pré-configuradas e recomendadas para leads deste funil

@@ -209,7 +209,7 @@ const AdminFilterDropdown: React.FC<AdminFilterDropdownProps> = ({
   );
 };
 
-const POST_SALE_ENTRY_COLUMN: StageColumn = {
+export const POST_SALE_ENTRY_COLUMN: StageColumn = {
   id: 'new_lead' as any,
   title: 'ENTRADA DO CLIENTE',
   color: '#EF4444',
@@ -516,28 +516,53 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const formatTitle = (id: string, defaultTitle: string) => {
       if (id === 'completed' && customNames?.won) return customNames.won.toUpperCase();
       if (id === 'lost' && customNames?.lost) return customNames.lost.toUpperCase();
-      if ((id === 'entry' || id === 'onboarding') && customNames?.entry) return customNames.entry.toUpperCase();
+      if ((id === 'entry' || id === 'new_lead' || id === 'onboarding') && customNames?.entry) return customNames.entry.toUpperCase();
       return defaultTitle;
     };
 
+    const isEntryActive = Boolean(currentFunnel?.isEntryStageActive || currentFunnel?.enableInboxStage);
+
+    let rawCols: { id: ClientStage; title: string; color: string; bgColor: string; borderColor: string }[] = [];
+
     if (currentFunnel?.stages && currentFunnel.stages.length > 0) {
-      return currentFunnel.stages.map(st => ({
+      rawCols = currentFunnel.stages.map(st => ({
         id: st.id as any,
         title: formatTitle(st.id, st.name),
         color: st.color || '#3B82F6',
         bgColor: `${st.color || '#3B82F6'}14`,
         borderColor: `${st.color || '#3B82F6'}4D`,
       }));
+    } else {
+      rawCols = STAGE_COLUMNS.map(col => ({
+        ...col,
+        title: formatTitle(col.id, col.title),
+      }));
     }
-    const baseCols = STAGE_COLUMNS.map(col => ({
-      ...col,
-      title: formatTitle(col.id, col.title),
-    }));
 
-    if (currentFunnel?.isEntryStageActive || currentFunnel?.enableInboxStage) {
-      return [POST_SALE_ENTRY_COLUMN, ...baseCols];
+    if (!isEntryActive) {
+      // Se Caixa de Entrada estiver DESATIVADA: remove qualquer etapa new_lead ou com nome de entrada
+      rawCols = rawCols.filter(c => c.id !== ('new_lead' as any) && c.id !== ('entry' as any) && !c.title.toLowerCase().includes('entrada'));
+    } else {
+      // Se Caixa de Entrada estiver ATIVADA: garante exatamente uma etapa de entrada no topo
+      const existingEntryIndex = rawCols.findIndex(c => c.id === ('new_lead' as any) || c.id === ('entry' as any) || c.title.toLowerCase().includes('entrada'));
+      if (existingEntryIndex >= 0) {
+        const entryCol = rawCols[existingEntryIndex];
+        // Remove quaisquer outras duplicatas
+        const otherCols = rawCols.filter((_, idx) => idx !== existingEntryIndex && rawCols[idx].id !== ('new_lead' as any) && rawCols[idx].id !== ('entry' as any));
+        rawCols = [{ ...entryCol, id: 'new_lead' as any, title: formatTitle('new_lead', entryCol.title || 'ENTRADA DO CLIENTE') }, ...otherCols];
+      } else {
+        const entryCol = {
+          id: 'new_lead' as ClientStage,
+          title: formatTitle('new_lead', 'ENTRADA DO CLIENTE'),
+          color: '#EF4444',
+          bgColor: '#EF444414',
+          borderColor: '#EF44444D',
+        };
+        rawCols = [entryCol, ...rawCols];
+      }
     }
-    return baseCols;
+
+    return rawCols;
   }, [currentFunnel]);
 
   const handleOpenSettings = async (targetFunnelId?: string, e?: React.MouseEvent) => {
@@ -967,7 +992,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
               <ShieldCheck size={24} color="#06B6D4" />
               <h1 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--adm-text-title)', letterSpacing: '-0.4px', margin: 0 }}>
-                Central de Funis de Pós-Venda (Sucesso do Cliente)
+                Central de Funis de Pós-Venda
               </h1>
             </div>
             <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>

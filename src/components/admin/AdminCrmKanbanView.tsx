@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Kanban, List, Search, Building2,
+  Kanban, List, LayoutGrid, Search, Building2,
   Inbox, Calendar, DollarSign,
   ChevronDown, Plus, Layers,
   Users, ArrowRight, X,
@@ -487,6 +487,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   };
   const [autoScheduleLead, setAutoScheduleLead] = useState<{ lead: Lead; type: CommercialCommitmentType } | null>(null);
   const [funnelSearch, setFunnelSearch] = useState('');
+  const [funnelViewMode, setFunnelViewMode] = useState<'list' | 'cards'>('list');
 
   // Como CRM Funnel Settings Modal com persistência no F5
   const [isComoFunnelSettingsOpen, setIsComoFunnelSettingsOpen] = useState<boolean>(() => {
@@ -1653,9 +1654,57 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         </div>
 
         {/* Search Bar for Funnels */}
-        <div style={{ position: 'relative', maxWidth: '440px' }}>
-          <Search size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
-          <input type="text" placeholder="Buscar funil por nome, categoria ou unidade..." value={funnelSearch} onChange={(e) => setFunnelSearch(e.target.value)} style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px', padding: '10px 14px 10px 42px', color: 'var(--adm-text-title)', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '440px' }}>
+            <Search size={16} color="var(--adm-accent)" style={{ position: 'absolute', left: '14px', top: '12px' }} />
+            <input type="text" placeholder="Buscar funil por nome, categoria ou unidade..." value={funnelSearch} onChange={(e) => setFunnelSearch(e.target.value)} style={{ width: '100%', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px', padding: '10px 14px 10px 42px', color: 'var(--adm-text-title)', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--adm-bg-input)', padding: '3px', borderRadius: '10px', border: '1px solid var(--adm-border)' }}>
+            <button
+              type="button"
+              onClick={() => setFunnelViewMode('list')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: funnelViewMode === 'list' ? 'var(--adm-bg-card)' : 'transparent',
+                color: funnelViewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                boxShadow: funnelViewMode === 'list' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              <List size={14} />
+              <span>Lista (Por Unidades)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFunnelViewMode('cards')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: funnelViewMode === 'cards' ? 'var(--adm-bg-card)' : 'transparent',
+                color: funnelViewMode === 'cards' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                boxShadow: funnelViewMode === 'cards' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              <LayoutGrid size={14} />
+              <span>Cards</span>
+            </button>
+          </div>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════════ */}

@@ -1,16 +1,17 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { 
   ChevronDown, Trash2, Check, Archive,
   ChevronLeft, ChevronRight, Plus,
   Shield, PartyPopper, Users,
   CheckCircle2, Clock, X, Sparkles,
   Globe, ExternalLink, FileText, Copy, Tag,
-  Building2, PhoneCall, Eye, MessageSquare,
-  User, Calendar as CalendarIcon, Utensils,
+  Building2, Eye, EyeOff, MessageSquare,
+  User, UserCheck, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
   ArrowRightLeft, GitBranch, UserX, Repeat,
   Route, MapPin, Trophy, History
 } from 'lucide-react';
+import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { CRM_STAGE_LABELS } from '../../utils/leadUtils';
 import { agendaAvailabilityService } from '../../services/agendaAvailabilityService';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
@@ -138,6 +139,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     closeLeadSaleWithValue,
     venueAgendaConfigs,
     appointments,
+    updateFunnel,
   } = useAdminState();
 
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
@@ -156,6 +158,47 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     return getMissingLeadFieldKeys(lead);
   }, [shouldHighlightMissing, lead]);
   const [isFunnelPickerOpen, setIsFunnelPickerOpen] = useState(false);
+  const funnelPickerRef = useRef<HTMLDivElement>(null);
+
+  // Fechar o dropdown de funil ao clicar fora
+  useEffect(() => {
+    if (!isFunnelPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (funnelPickerRef.current && !funnelPickerRef.current.contains(e.target as Node)) {
+        setIsFunnelPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isFunnelPickerOpen]);
+
+  // Identificação do primeiro atendente comercial que atendeu este lead (fixo e permanente)
+  const firstAttendant = useMemo(() => {
+    if ((lead as any).firstAttendantName) return (lead as any).firstAttendantName;
+    if ((lead as any).metadata?.firstAttendantName) return (lead as any).metadata.firstAttendantName;
+    if (lead.sdrName) return lead.sdrName;
+    if ((lead as any).createdByName) return (lead as any).createdByName;
+    const firstContactAct = (lead.activities || []).find(a => a.type === 'contact' || (a.authorName && a.authorName !== 'Robô F5 Automações'));
+    if (firstContactAct?.authorName) return firstContactAct.authorName;
+    return null;
+  }, [lead]);
+
+  // Checagem de campo ocultado no funil
+  const isFieldHidden = useCallback((fieldKey: string) => {
+    const fn = (funnels || []).find(f => f.id === lead.funnelId);
+    return Boolean(fn?.hiddenFieldKeys?.includes(fieldKey));
+  }, [funnels, lead.funnelId]);
+
+  // Ação para ocultar ou exibir campo específico para todos os leads do funil
+  const handleToggleHideField = useCallback(async (fieldKey: string) => {
+    const fn = (funnels || []).find(f => f.id === lead.funnelId);
+    if (!fn) return;
+    const currentHidden = fn.hiddenFieldKeys || [];
+    const isHidden = currentHidden.includes(fieldKey);
+    const updated = isHidden ? currentHidden.filter(k => k !== fieldKey) : [...currentHidden, fieldKey];
+    updateFunnel(fn.id, { hiddenFieldKeys: updated });
+  }, [funnels, lead.funnelId, updateFunnel]);
+
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'jornada' | 'mql' | 'comercial' | 'tasks'>('principal');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -548,9 +591,28 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     // 2. Trajetória de Etapas e Permanência
     const targetFunnel = (funnels || []).find(f => f.id === lead.funnelId) || funnels?.[0];
-    const getStageName = (sId: string) => {
-      const stageObj = targetFunnel?.stages?.find((s: any) => s.id === sId);
+    const getStageName = (sId: string, customFunnelId?: string) => {
+      const fn = customFunnelId ? ((funnels || []).find(f => f.id === customFunnelId) || targetFunnel) : targetFunnel;
+      const stageObj = fn?.stages?.find((s: any) => s.id === sId);
       return stageObj?.name || CRM_STAGE_LABELS[sId] || sId;
+    };
+
+    const formatDuration = (ms: number): string => {
+      const totalMinutes = Math.max(1, Math.floor(ms / (1000 * 60)));
+      const totalHours = Math.floor(totalMinutes / 60);
+      const days = Math.floor(totalHours / 24);
+      const remHours = totalHours % 24;
+      const remMinutes = totalMinutes % 60;
+
+      if (days >= 1) {
+        return remHours > 0 
+          ? `${days} ${days === 1 ? 'dia' : 'dias'} e ${remHours}h` 
+          : `${days} ${days === 1 ? 'dia' : 'dias'}`;
+      }
+      if (totalHours >= 1) {
+        return remMinutes > 0 ? `${totalHours}h ${remMinutes}m` : `${totalHours}h`;
+      }
+      return `${remMinutes}m`;
     };
 
     const stageChanges = (lead.activities || [])
@@ -564,6 +626,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       enteredAt: string;
       exitedAt?: string;
       durationDays: number;
+      durationFormatted: string;
       isCurrent: boolean;
     }
 
@@ -575,27 +638,55 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         const next = stageChanges[i + 1];
         const enteredTime = new Date(cur.timestamp).getTime();
         const exitedTime = next ? new Date(next.timestamp).getTime() : Date.now();
-        const durationDays = Math.max(1, Math.round((exitedTime - enteredTime) / (1000 * 60 * 60 * 24)));
-        const sId = (cur as any).stage || cur.metadata?.toStage || cur.title || lead.stage;
+        const diffMs = Math.max(0, exitedTime - enteredTime);
+        const durationDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+        const durationFormatted = formatDuration(diffMs);
+
+        // Resolução inteligente do nome real da etapa (nunca mostrar 'Etapa Alterada')
+        let resolvedStageName = '';
+        if (cur.metadata?.toStageName) {
+          resolvedStageName = cur.metadata.toStageName;
+        } else if (cur.text) {
+          const match = cur.text.match(/para\s+"([^"]+)"/i);
+          if (match && match[1]) resolvedStageName = match[1];
+        }
+
+        const sId = (cur as any).stage || cur.metadata?.toStage || (!next ? lead.stage : '');
+        if (!resolvedStageName) {
+          if (sId && sId !== 'Etapa Alterada' && sId !== 'Etapa alterada' && sId !== 'status_change') {
+            resolvedStageName = getStageName(sId);
+          } else if (!next) {
+            resolvedStageName = getStageName(lead.stage);
+          } else {
+            resolvedStageName = 'Etapa do Funil';
+          }
+        }
+
+        const resolvedFunnelName = cur.metadata?.funnelName || 
+          (cur.metadata?.funnelId && (funnels || []).find(f => f.id === cur.metadata?.funnelId)?.name) || 
+          targetFunnel?.name || 'Funil Comercial';
 
         stageItems.push({
-          funnelName: targetFunnel?.name || 'Comercial',
-          stageId: sId,
-          stageName: getStageName(sId),
+          funnelName: resolvedFunnelName,
+          stageId: sId || 'stage',
+          stageName: resolvedStageName,
           enteredAt: cur.timestamp,
           exitedAt: next ? next.timestamp : undefined,
           durationDays,
+          durationFormatted,
           isCurrent: !next,
         });
       }
     } else {
-      const durationDays = Math.max(1, Math.round((Date.now() - leadCreatedTime) / (1000 * 60 * 60 * 24)));
+      const diffMs = Math.max(0, Date.now() - leadCreatedTime);
+      const durationDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
       stageItems.push({
-        funnelName: targetFunnel?.name || 'Comercial',
+        funnelName: targetFunnel?.name || 'Funil Comercial',
         stageId: lead.stage,
         stageName: getStageName(lead.stage),
         enteredAt: lead.createdAt || new Date().toISOString(),
         durationDays,
+        durationFormatted: formatDuration(diffMs),
         isCurrent: true,
       });
     }
@@ -3089,9 +3180,37 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               )}
 
               {/* 3. Temperatura */}
-              {!isPostSale && (
+              {!isPostSale && !isFieldHidden('temperature') && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                  <span style={cardLabelStyle}>Temperatura</span>
+                  <span style={{ ...cardLabelStyle, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <span>Temperatura</span>
+                    {!readOnly && leadFunnel && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Deseja inibir a visualização da Temperatura neste funil? Você pode reativá-la em Campos & Tags.')) {
+                            handleToggleHideField('temperature');
+                          }
+                        }}
+                        title="Ocultar Temperatura neste funil"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '1px',
+                          cursor: 'pointer',
+                          color: 'var(--adm-text-muted)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          opacity: 0.5,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
+                      >
+                        <EyeOff size={11} />
+                      </button>
+                    )}
+                  </span>
                   <div style={cardValueStyle}>
                     <div
                       onClick={() => {
@@ -3246,11 +3365,39 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 7. Cartão de Crédito */}
-              <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('hasCreditCard'), position: 'relative' }}>
-                <span style={cardLabelStyle}>
-                  Cartão Crédito {isFieldMissing('hasCreditCard') && <span style={{ color: '#EF4444' }}>*</span>}
-                </span>
-                <div style={cardValueStyle}>
+              {!isFieldHidden('hasCreditCard') && (
+                <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('hasCreditCard'), position: 'relative' }}>
+                  <span style={{ ...cardLabelStyle, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <span>Cartão Crédito</span>
+                    {isFieldMissing('hasCreditCard') && <span style={{ color: '#EF4444' }}>*</span>}
+                    {!readOnly && leadFunnel && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Deseja inibir a visualização do Cartão de Crédito neste funil? Você pode reativá-lo em Campos & Tags.')) {
+                            handleToggleHideField('hasCreditCard');
+                          }
+                        }}
+                        title="Ocultar Cartão de Crédito neste funil"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '1px',
+                          cursor: 'pointer',
+                          color: 'var(--adm-text-muted)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          opacity: 0.5,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
+                      >
+                        <EyeOff size={11} />
+                      </button>
+                    )}
+                  </span>
+                  <div style={cardValueStyle}>
                   <div
                     onClick={() => {
                       if (!readOnly) {
@@ -3331,6 +3478,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   )}
                 </div>
               </div>
+              )}
 
               {/* 8. Tipo de Evento (Dropdown Popover Integrado) */}
               <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('eventType'), position: 'relative' }}>
@@ -5145,11 +5293,15 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     ? 'rgba(212, 175, 55, 0.15)' 
                     : (lead.source === 'cadastro_interno' || (lead as any).createdBy) 
                     ? 'rgba(99, 102, 241, 0.12)' 
+                    : (leadSource?.type === 'whatsapp_api' || lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp') || leadSource?.name?.toLowerCase().includes('samsung'))
+                    ? 'rgba(37, 211, 102, 0.15)'
                     : 'rgba(59, 130, 246, 0.15)',
                   color: isReferralLead 
                     ? '#D4AF37' 
                     : (lead.source === 'cadastro_interno' || (lead as any).createdBy) 
                     ? '#6366F1' 
+                    : (leadSource?.type === 'whatsapp_api' || lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp') || leadSource?.name?.toLowerCase().includes('samsung'))
+                    ? '#10B981'
                     : '#60A5FA',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -5162,6 +5314,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   ) : (lead.source === 'cadastro_interno' || (lead as any).createdBy) ? (
                     <>
                       <User size={12} /> Cadastro Manual
+                    </>
+                  ) : (leadSource?.type === 'whatsapp_api' || lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp') || leadSource?.name?.toLowerCase().includes('samsung')) ? (
+                    <>
+                      <WhatsAppBrandIcon size={12} color="#10B981" /> {leadSource ? leadSource.name : 'WhatsApp Oficial'}
                     </>
                   ) : leadSource ? (
                     <>
@@ -5178,18 +5334,22 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   ? `Lead gerado pelo programa de indicações da anfitriã ${lead.debutanteName}.`
                   : (lead.source === 'cadastro_interno' || (lead as any).createdBy)
                   ? `Lead cadastrado manualmente no CRM${(lead as any).createdByName ? ` por ${(lead as any).createdByName}` : ''}${lead.sourceName && lead.sourceName !== 'Cadastro Manual' ? ` (Canal informado: ${lead.sourceName})` : ''}.`
+                  : (leadSource?.type === 'whatsapp_api' || lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp') || leadSource?.name?.toLowerCase().includes('samsung'))
+                  ? `Lead captado através da origem rastreada "${leadSource?.name || lead.sourceName || 'WhatsApp'}" sendo canal WhatsApp.`
                   : leadSource
                   ? `Lead captado através da origem rastreada "${leadSource.name}".`
                   : 'Lead inserido diretamente pela equipe ou formulário institucional.'}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
-                <div>
-                  <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Casa Vinculada:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--adm-text-title)' }}>
+              {/* Informações de Origem em Layout Vertical (Uma abaixo da outra) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>
+                {/* 1. Casa Vinculada */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Casa Vinculada:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong style={{ fontSize: '0.80rem', color: 'var(--adm-text-title)' }}>
                       {leadVenue?.name || lead.venueName || 'F5 System'}
-                    </span>
+                    </strong>
                     {canChangeLeadVenue(currentUser) && (
                       <button
                         type="button"
@@ -5215,9 +5375,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     )}
                   </div>
                 </div>
-                <div>
-                  <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Funil de Destino:</span>
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
+
+                {/* 2. Funil de Destino com Dropdown e Fechamento ao Clicar Fora */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Funil de Destino:</span>
+                  <div ref={funnelPickerRef} style={{ position: 'relative', display: 'inline-block' }}>
                     <button
                       type="button"
                       disabled={readOnly}
@@ -5227,8 +5389,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         border: 'none',
                         padding: 0,
                         margin: 0,
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
+                        fontSize: '0.80rem',
+                        fontWeight: 700,
                         color: 'var(--adm-accent, #6366F1)',
                         cursor: readOnly ? 'default' : 'pointer',
                         display: 'inline-flex',
@@ -5248,9 +5410,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         style={{
                           position: 'absolute',
                           top: 'calc(100% + 4px)',
-                          left: 0,
+                          right: 0,
                           zIndex: 9999,
-                          minWidth: '200px',
+                          minWidth: '220px',
                           background: 'var(--adm-bg-card)',
                           border: '1px solid var(--adm-border)',
                           borderRadius: '8px',
@@ -5299,13 +5461,26 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     )}
                   </div>
                 </div>
-                <div>
-                  <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', display: 'block' }}>Data de Entrada no Funil:</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0284C7' }}>
+
+                {/* 3. Data de Entrada no Funil */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Data de Entrada no Funil:</span>
+                  <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0284C7' }}>
                     {lead.funnelEnteredAt || lead.createdAt 
                       ? new Date(lead.funnelEnteredAt || lead.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : 'Não registrada'}
                   </span>
+                </div>
+
+                {/* 4. Atendente Inicial (Primeiro Atendimento - Fixo e Permanente) */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--adm-bg-surface, #F8FAFC)', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <UserCheck size={13} color="#10B981" />
+                    <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Atendente Inicial (1º Atendimento):</span>
+                  </div>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--adm-text-title)' }}>
+                    {firstAttendant || 'Equipe Comercial'}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -5507,7 +5682,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Globe size={16} color="#10B981" />
+                    <WhatsAppBrandIcon size={16} color="#10B981" />
                     <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10B981', textTransform: 'uppercase' }}>
                       Identificação de Sub-origem WhatsApp
                     </span>
@@ -5530,23 +5705,23 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Origem Principal:</span>
-                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                      <PhoneCall size={12} color="#10B981" /> {lead.sourceName || leadSource?.name || 'WhatsApp API'}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>Origem Principal:</span>
+                    <strong style={{ fontSize: '0.82rem', color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                      <WhatsAppBrandIcon size={14} color="#10B981" /> {lead.sourceName || leadSource?.name || 'WhatsApp API'}
                     </strong>
                   </div>
 
-                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                    <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', display: 'block' }}>Sub-origem / Canal:</span>
+                  <div style={{ background: 'var(--adm-bg-card)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--adm-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>Sub-origem / Canal:</span>
                     <strong style={{ fontSize: '0.82rem', color: lead.subSource ? '#10B981' : 'var(--adm-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
                       {lead.subSource ? (
                         <>
                           <Tag size={12} /> {lead.subSource}
                         </>
                       ) : (
-                        'Sem sub-origem (Direto)'
+                        'Sem suborigem (WhatsApp Direto)'
                       )}
                     </strong>
                   </div>
@@ -5643,46 +5818,46 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
         {activeTab === 'jornada' && (
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-            {/* Banner Executivo de Entrada e Idade no Pipeline */}
+            {/* Banner Executivo de Entrada e Idade no Pipeline (Enxuto e Elegante) */}
             <div style={{
               background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.90) 100%)',
               border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '14px',
-              padding: '16px 18px',
+              borderRadius: '12px',
+              padding: '12px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-              flexWrap: 'wrap',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.20)',
               gap: '12px',
             }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Route size={16} color="#14A9D7" />
-                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#14A9D7', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Ciclo de Conversão Comercial
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Route size={14} color="#14A9D7" />
+                  <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#14A9D7', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Jornada & Ciclo de Conversão
                   </span>
                 </div>
-                <h4 style={{ margin: '4px 0 2px', fontSize: '1.05rem', fontWeight: 900, color: '#FFFFFF' }}>
-                  Jornada de {lead.name || lead.code}
+                <h4 style={{ margin: '2px 0', fontSize: '0.98rem', fontWeight: 900, color: '#FFFFFF' }}>
+                  {lead.name || lead.code}
                 </h4>
-                <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
-                  Funil Atual: <strong style={{ color: '#F8FAFC' }}>{journeyData.targetFunnel?.name || 'Comercial'}</strong> • Casa: <strong style={{ color: '#F8FAFC' }}>{leadVenue?.name || 'Unidade Geral'}</strong>
+                <div style={{ fontSize: '0.70rem', color: 'rgba(255,255,255,0.65)' }}>
+                  Funil: <strong style={{ color: '#F8FAFC' }}>{journeyData.targetFunnel?.name || 'Comercial'}</strong> • Casa: <strong style={{ color: '#F8FAFC' }}>{leadVenue?.name || 'Unidade Geral'}</strong>
                 </div>
               </div>
 
               <div style={{
                 background: 'rgba(255,255,255,0.06)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '10px',
-                padding: '8px 14px',
+                borderRadius: '8px',
+                padding: '6px 12px',
                 textAlign: 'right',
+                flexShrink: 0,
               }}>
-                <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>
-                  Tempo Total no Pipeline
+                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>
+                  Tempo no Pipeline
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                  <Clock size={16} />
+                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', marginTop: '1px' }}>
+                  <Clock size={13} />
                   <span>{journeyData.activePipelineDays} {journeyData.activePipelineDays === 1 ? 'dia' : 'dias'}</span>
                 </div>
               </div>
@@ -6034,7 +6209,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-heading)' }}>
+                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-text-heading)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                             {item.stageName}
                           </span>
                           {item.isCurrent && (
@@ -6050,9 +6225,12 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                             </span>
                           )}
                         </div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-accent, #6366F1)', marginTop: '1px' }}>
+                          {item.funnelName}
+                        </div>
                         <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
                           Entrada: {new Date(item.enteredAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          {item.exitedAt && ` • Saída: ${new Date(item.exitedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
+                          {item.exitedAt ? ` • Saída: ${new Date(item.exitedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ' • No estágio até agora'}
                         </div>
                       </div>
                     </div>
@@ -6070,7 +6248,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         fontWeight: 800,
                       }}>
                         <Clock size={12} />
-                        <span>{item.durationDays} {item.durationDays === 1 ? 'dia' : 'dias'}</span>
+                        <span>{item.durationFormatted}</span>
                       </div>
                       <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
                         {item.isCurrent ? 'permanência até agora' : 'tempo na etapa'}

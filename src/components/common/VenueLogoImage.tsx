@@ -13,11 +13,11 @@ export const VenueLogoImage: React.FC<VenueLogoImageProps> = ({
   src,
   alt,
   style,
-  forceBlackIfLight = true,
+  forceBlackIfLight = false,
   ...props
 }) => {
   const [isLight, setIsLight] = useState<boolean>(() => {
-    if (!src) return false;
+    if (!src || !forceBlackIfLight) return false;
     return brightnessCache.get(src) ?? false;
   });
 

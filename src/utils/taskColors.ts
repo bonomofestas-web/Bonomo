@@ -18,7 +18,7 @@ export function getTaskTypeTheme(task: { type?: string; customType?: string; tit
   const titleStr = (task.title || '').toLowerCase();
   const combined = `${customStr} ${typeStr} ${titleStr}`;
 
-  // 1. Degustação
+  // 1. Degustação Gastronômica (Sempre Laranja)
   if (combined.includes('degust') || combined.includes('jantar') || combined.includes('tasting')) {
     return {
       category: 'tasting',
@@ -30,7 +30,23 @@ export function getTaskTypeTheme(task: { type?: string; customType?: string; tit
     };
   }
 
-  // 2. Compromisso do Pós-Venda / Debutante (inclui Visita Técnica, Maquiagem, Decoração, Reunião, Ensaio, Cerimonial, etc)
+  // 2. Visita Comercial (Sempre Verde - prioridade máxima sobre meeting genérico)
+  if (
+    (combined.includes('visita') && !combined.includes('visita técnica')) || 
+    typeStr === 'visit' || 
+    (task as any).databaseId === 'db_visits_tastings'
+  ) {
+    return {
+      category: 'visit',
+      primaryColor: '#059669',
+      badgeBg: '#ECFDF5',
+      badgeBorder: '#A7F3D0',
+      badgeText: '#047857',
+      label: task.customType || 'Visita',
+    };
+  }
+
+  // 3. Compromisso do Pós-Venda / Debutante (inclui Visita Técnica, Maquiagem, etc)
   if (
     combined.includes('visita técnica') || 
     combined.includes('maquiagem') || 
@@ -52,18 +68,6 @@ export function getTaskTypeTheme(task: { type?: string; customType?: string; tit
       badgeBorder: '#DDD6FE',
       badgeText: '#6D28D9',
       label: task.customType || 'Compromisso',
-    };
-  }
-
-  // 3. Visita Comercial / Pós-Venda padrão
-  if (combined.includes('visita') || typeStr === 'visit') {
-    return {
-      category: 'visit',
-      primaryColor: '#059669',
-      badgeBg: '#ECFDF5',
-      badgeBorder: '#A7F3D0',
-      badgeText: '#047857',
-      label: task.customType || 'Visita',
     };
   }
 

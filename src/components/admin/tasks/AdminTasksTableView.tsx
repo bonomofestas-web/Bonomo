@@ -22,6 +22,9 @@ interface AdminTasksTableViewProps {
   todayStr: string;
   workspaceContext?: string;
   visitsSubFilter?: 'all' | 'visit' | 'tasting';
+  searchTerm?: string;
+  statusFilter?: string;
+  hasActiveFilters?: boolean;
 }
 
 interface DateGroup {
@@ -53,6 +56,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   todayStr,
   workspaceContext = 'all',
   visitsSubFilter = 'all',
+  searchTerm = '',
+  statusFilter = 'all',
+  hasActiveFilters = false,
 }) => {
   const adminState = useAdminState();
   const leads = propsLeads || adminState?.leads || [];
@@ -249,19 +255,23 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
     const activeDays = listPeriodMode === 'week' ? weekInfo.days : monthInfo.days;
     const activeDateSet = new Set(activeDays.map(d => d.dateStr));
 
-    // 1. Agrupa tarefas que pertencem ao período ativo
+    const hasSearchQuery = Boolean(searchTerm?.trim());
+    // Se o usuário digitou uma busca, selecionou um status específico ou ativou filtros, inclui itens passados automaticamente
+    const shouldIncludePast = showPastHistory || hasActiveFilters || hasSearchQuery || (statusFilter && statusFilter !== 'pending');
+
+    // 1. Agrupa tarefas que pertencem ao período ativo (ou tarefas encontradas pela busca inteligente)
     tasks.forEach(task => {
       const key = task.dueDate || 'no_date';
 
       if (key !== 'no_date') {
-        // Se estiver fora do período ativo (semana ou mês), ignora
-        if (!activeDateSet.has(key)) return;
+        // Se houver busca de texto ativa, permite que a tarefa apareça mesmo fora do período ativo; senão, respeita o período
+        if (!hasSearchQuery && !activeDateSet.has(key)) return;
 
-        // Se histórico estiver desligado e a data for do passado, ignora
-        if (!showPastHistory && key < todayStr) return;
+        // Se histórico estiver desligado e nenhum filtro inteligente estiver ativo, ignora tarefas passadas
+        if (!shouldIncludePast && key < todayStr) return;
       } else {
-        // Se for sem data: em visitas/degustações geralmente não há sem data, mas se houver só se histórico ou fora de visitas
-        if (isVisitsContext) return;
+        // Se for sem data: em visitas/degustações geralmente não há sem data, mas se houver busca, exibe
+        if (isVisitsContext && !hasSearchQuery) return;
       }
 
       if (!groupMap.has(key)) {
@@ -423,7 +433,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   }, [
     tasks, todayStr, tomorrowStr, isVisitsContext, activeVenueId, 
     venueAgendaConfigs, adminState?.venues, listPeriodMode, 
-    weekInfo, monthInfo, showPastHistory, visitsSubFilter
+    weekInfo, monthInfo, showPastHistory, visitsSubFilter,
+    searchTerm, statusFilter, hasActiveFilters
   ]);
 
   // Helper for Visitas & Degustações: Calculate Notification 1 & 2 + Presence metric
@@ -445,21 +456,66 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       return false;
     });
 
-    const evaluateNotification = (notif?: AdminTask) => {
-      if (!notif) return { status: 'not_created', label: 'Pendente', isPositive: false };
-      if (notif.status !== 'completed') {
-        return { status: 'pending', label: 'Pendente', isPositive: false };
+    const evaluateNotification = (notif: AdminTask | undefined, notifNumber: 1 | 2) => {
+      const explicitStatus = notifNumber === 1 
+        ? parentTask.customProperties?.notification1Status 
+        : parentTask.customProperties?.notification2Status;
+
+      if (explicitStatus === 'impossible') {
+        return {
+          status: 'impossible',
+          label: 'Impossibilitada',
+          tooltip: 'Esta confirmação não pôde ser programada porque o agendamento foi realizado sem tempo hábil suficiente para o envio deste aviso.',
+          isPositive: false,
+        };
       }
+      if (explicitStatus === 'disabled') {
+        return {
+          status: 'disabled',
+          label: 'Desativada',
+          tooltip: 'Esta confirmação foi desativada manualmente na criação do agendamento.',
+          isPositive: false,
+        };
+      }
+
+      if (!notif) {
+        return { 
+          status: 'disabled', 
+          label: 'Desativada', 
+          tooltip: 'Confirmação desativada ou não configurada para este compromisso.', 
+          isPositive: false 
+        };
+      }
+
+      if (notif.status !== 'completed') {
+        return { 
+          status: 'pending', 
+          label: 'Pendente', 
+          tooltip: 'Aguardando o momento hábil de contato pelo SDR.', 
+          isPositive: false 
+        };
+      }
+
       const resText = `${notif.resolution || ''} ${notif.observations || ''}`.toLowerCase();
       const isNegative = resText.includes('cancelad') || resText.includes('não') || resText.includes('desmarc') || resText.includes('ausente') || resText.includes('negativ');
       if (isNegative) {
-        return { status: 'negative', label: 'Não Confirmado', isPositive: false };
+        return { 
+          status: 'negative', 
+          label: 'Não Confirmado', 
+          tooltip: 'O cliente informou que não poderá comparecer.', 
+          isPositive: false 
+        };
       }
-      return { status: 'positive', label: 'Confirmado', isPositive: true };
+      return { 
+        status: 'positive', 
+        label: 'Confirmado', 
+        tooltip: 'Presença confirmada pelo cliente com sucesso.', 
+        isPositive: true 
+      };
     };
 
-    const eval1 = evaluateNotification(notif1);
-    const eval2 = evaluateNotification(notif2);
+    const eval1 = evaluateNotification(notif1, 1);
+    const eval2 = evaluateNotification(notif2, 2);
 
     let positiveCount = 0;
     if (eval1.isPositive) positiveCount++;
@@ -1155,6 +1211,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             <th style={{ padding: '8px 14px', width: '40px', textAlign: 'center' }}>
                               <span className="sr-only">Status</span>
                             </th>
+                            <th style={{ padding: '8px 10px', width: '60px', textAlign: 'center' }} title="Unidade da Casa de Festas">CASA</th>
                             <th style={{ padding: '8px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
                             <th style={{ padding: '8px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
                             <th style={{ padding: '8px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
@@ -1283,6 +1340,40 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                           </button>
                         </td>
 
+                        {/* Coluna da Unidade (Logo ou Iniciais com Tooltip) */}
+                        {isVisitsContext && (() => {
+                          const vId = task.venueId || task.customProperties?.venueId || (task.leadId ? leads.find(l => l.id === task.leadId)?.venueId : null);
+                          const venue = adminState?.venues?.find(v => v.id === vId);
+                          const venueName = venue?.name || 'Unidade';
+                          const venueLogo = venue?.logoUrl || (venue as any)?.logo_url;
+                          const initials = venueName.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'UN';
+
+                          return (
+                            <td style={{ padding: '10px 8px', textAlign: 'center' }} title={venueName}>
+                              <div style={{
+                                width: '30px',
+                                height: '30px',
+                                borderRadius: '8px',
+                                background: 'var(--adm-bg-input, #F1F5F9)',
+                                border: '1px solid var(--adm-border, #CBD5E1)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                                margin: '0 auto',
+                              }}>
+                                {venueLogo ? (
+                                  <img src={venueLogo} alt={venueName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                ) : (
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                                    {initials}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })()}
+
                         {/* Prazo / Horário */}
                         <td style={{
                           padding: '12px 16px',
@@ -1398,9 +1489,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                 borderRadius: '6px',
                                 fontSize: '0.70rem',
                                 fontWeight: 700,
-                                background: visitData.eval1.status === 'positive' ? '#ECFDF5' : visitData.eval1.status === 'negative' ? '#FEF2F2' : '#FFFBEB',
-                                color: visitData.eval1.status === 'positive' ? '#047857' : visitData.eval1.status === 'negative' ? '#B91C1C' : '#B45309',
-                                border: `1px solid ${visitData.eval1.status === 'positive' ? '#A7F3D0' : visitData.eval1.status === 'negative' ? '#FECACA' : '#FDE68A'}`,
+                                background: visitData.eval1.status === 'positive' ? '#ECFDF5' : visitData.eval1.status === 'negative' ? '#FEF2F2' : visitData.eval1.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval1.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
+                                color: visitData.eval1.status === 'positive' ? '#047857' : visitData.eval1.status === 'negative' ? '#B91C1C' : visitData.eval1.status === 'impossible' ? '#475569' : visitData.eval1.status === 'disabled' ? '#94A3B8' : '#B45309',
+                                border: `1px solid ${visitData.eval1.status === 'positive' ? '#A7F3D0' : visitData.eval1.status === 'negative' ? '#FECACA' : visitData.eval1.status === 'impossible' ? '#CBD5E1' : visitData.eval1.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
+                                cursor: 'help',
                                 whiteSpace: 'nowrap',
                               }}>
                                 {visitData.eval1.status === 'positive' && <CheckCircle2 size={12} />}
@@ -1420,9 +1512,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                                 borderRadius: '6px',
                                 fontSize: '0.70rem',
                                 fontWeight: 700,
-                                background: visitData.eval2.status === 'positive' ? '#ECFDF5' : visitData.eval2.status === 'negative' ? '#FEF2F2' : '#FFFBEB',
-                                color: visitData.eval2.status === 'positive' ? '#047857' : visitData.eval2.status === 'negative' ? '#B91C1C' : '#B45309',
-                                border: `1px solid ${visitData.eval2.status === 'positive' ? '#A7F3D0' : visitData.eval2.status === 'negative' ? '#FECACA' : '#FDE68A'}`,
+                                background: visitData.eval2.status === 'positive' ? '#ECFDF5' : visitData.eval2.status === 'negative' ? '#FEF2F2' : visitData.eval2.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval2.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
+                                color: visitData.eval2.status === 'positive' ? '#047857' : visitData.eval2.status === 'negative' ? '#B91C1C' : visitData.eval2.status === 'impossible' ? '#475569' : visitData.eval2.status === 'disabled' ? '#94A3B8' : '#B45309',
+                                border: `1px solid ${visitData.eval2.status === 'positive' ? '#A7F3D0' : visitData.eval2.status === 'negative' ? '#FECACA' : visitData.eval2.status === 'impossible' ? '#CBD5E1' : visitData.eval2.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
+                                cursor: 'help',
                                 whiteSpace: 'nowrap',
                               }}>
                                 {visitData.eval2.status === 'positive' && <CheckCircle2 size={12} />}

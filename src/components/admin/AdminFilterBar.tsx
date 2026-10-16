@@ -364,8 +364,12 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                 fontWeight: 700,
               }}
             >
-              <div style={{ width: '22px', height: '22px', borderRadius: '6px', background: '#000000', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <VenueLogoImage src={userAllowedVenues[0].logoUrl} alt={userAllowedVenues[0].name} style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+              <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#0F172A', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {userAllowedVenues[0].logoUrl ? (
+                  <VenueLogoImage src={userAllowedVenues[0].logoUrl} alt={userAllowedVenues[0].name} forceBlackIfLight={false} style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                ) : (
+                  <Building2 size={13} color="#818cf8" />
+                )}
               </div>
               <span>{userAllowedVenues[0].name}</span>
             </div>
@@ -389,7 +393,20 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Building2 size={14} color="#818cf8" />
+                {(() => {
+                  const singleVenue = selectedVenueIds.length === 1 
+                    ? (userAllowedVenues.find(v => v.id === selectedVenueIds[0]) || venues.find(v => v.id === selectedVenueIds[0]))
+                    : null;
+                  
+                  if (singleVenue?.logoUrl) {
+                    return (
+                      <div style={{ width: '20px', height: '20px', borderRadius: '5px', background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <VenueLogoImage src={singleVenue.logoUrl} alt={singleVenue.name} forceBlackIfLight={false} style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                      </div>
+                    );
+                  }
+                  return <Building2 size={14} color="#818cf8" />;
+                })()}
                 <span>
                   {selectedVenueIds.length === 0 
                     ? `Todas as Casas (${userAllowedVenues.length})` 
@@ -472,9 +489,11 @@ export const AdminFilterBar: React.FC<AdminFilterBarProps> = ({
                             style={{ accentColor: '#818cf8', cursor: 'pointer' }}
                           />
                           {v.logoUrl ? (
-                            <VenueLogoImage src={v.logoUrl} alt={v.name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                            <div style={{ width: 24, height: 24, borderRadius: '6px', background: '#0F172A', border: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                              <VenueLogoImage src={v.logoUrl} alt={v.name} forceBlackIfLight={false} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                            </div>
                           ) : (
-                            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 24, height: 24, borderRadius: '6px', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <Building2 size={12} color="#818cf8" />
                             </div>
                           )}
