@@ -36,6 +36,7 @@ import { ComingSoonOverlay } from './ComingSoonOverlay';
 import { AdminPostSaleKanbanView } from './AdminPostSaleKanbanView';
 import { AdminVipJourneyUnifiedView } from './AdminVipJourneyUnifiedView';
 import { AdminLeadsListView } from './AdminLeadsListView';
+import { AdminClientsListView } from './AdminClientsListView';
 import { SafeAvatar } from './SafeAvatar';
 import { Menu, X, Building2, Headset, Megaphone, Sparkles, Clock, Target, ShieldCheck, Crown, Settings, LogOut, Eye } from 'lucide-react';
 import { type FeatureFlagId, type Venue, type DebutanteAccount, type Lead, type Collaborator, type AdminTask, type SystemAnnouncement } from '../../types/admin';
@@ -667,6 +668,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             onSelectFunnel={(id) => setActiveFunnelId(id)}
             onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)}
             onOpenLead={handleOpenLeadFromTask}
+          />
+        );
+      case 'post-sale-clients':
+        return (
+          <AdminClientsListView
+            onOpenLead={(id) => handleOpenLeadInWhatsApp(id)}
+            onNavigateFunnel={(funnelId) => {
+              setActiveFunnelId(funnelId);
+              handleSelectTab('post-sale-crm', funnelId);
+            }}
           />
         );
       case 'vip-journey':

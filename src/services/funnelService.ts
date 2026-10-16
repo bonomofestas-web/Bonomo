@@ -34,7 +34,7 @@ export const funnelService = {
         isPinned: row.is_pinned ?? false,
         stagesCount: row.stages_count || (Array.isArray(row.stages) ? row.stages.length : 4),
         stages: Array.isArray(row.stages) ? row.stages : undefined,
-        isEntryStageActive: row.is_entry_stage_active ?? false,
+        isEntryStageActive: row.is_entry_stage_active ?? row.enable_inbox_stage ?? row.duplicate_rule_config?._isEntryStageActive ?? row.duplicate_rule_config?._enableInboxStage ?? false,
         detectDuplicates: row.detect_duplicates ?? true,
         duplicateRuleConfig: row.duplicate_rule_config || {
           matchPhone: true,
@@ -56,7 +56,7 @@ export const funnelService = {
         priorityWhatsappPerVenue: row.priority_whatsapp_per_venue || row.duplicate_rule_config?._priorityWhatsappPerVenue || {},
         venueDistributionConfig: row.venue_distribution_config || row.duplicate_rule_config?._venueDistributionConfig || {},
         isWonStageEnabled: row.is_won_stage_enabled ?? true,
-        enableInboxStage: row.enable_inbox_stage ?? row.is_entry_stage_active ?? row.duplicate_rule_config?._enableInboxStage ?? false,
+        enableInboxStage: row.enable_inbox_stage ?? row.is_entry_stage_active ?? row.duplicate_rule_config?._enableInboxStage ?? row.duplicate_rule_config?._isEntryStageActive ?? false,
         postSaleChannels: Array.isArray(row.post_sale_channels) ? row.post_sale_channels : (row.duplicate_rule_config?._postSaleChannels || []),
         postSaleCustomStageNames: row.post_sale_custom_stage_names || row.duplicate_rule_config?._postSaleCustomStageNames || undefined,
         distributionMode: row.distribution_mode || 'manual',
@@ -111,12 +111,16 @@ export const funnelService = {
         ...(funnel.disabledVenueIds !== undefined ? { _disabledVenueIds: funnel.disabledVenueIds } : {}),
         ...(funnel.postSaleChannels !== undefined ? { _postSaleChannels: funnel.postSaleChannels } : {}),
         ...(funnel.postSaleCustomStageNames !== undefined ? { _postSaleCustomStageNames: funnel.postSaleCustomStageNames } : {}),
-        ...(funnel.enableInboxStage !== undefined ? { _enableInboxStage: funnel.enableInboxStage } : {}),
+        ...(funnel.enableInboxStage !== undefined ? { _enableInboxStage: funnel.enableInboxStage, _isEntryStageActive: funnel.enableInboxStage } : {}),
+        ...(funnel.isEntryStageActive !== undefined ? { _enableInboxStage: funnel.isEntryStageActive, _isEntryStageActive: funnel.isEntryStageActive } : {}),
         ...(funnel.hiddenFieldKeys !== undefined ? { _hiddenFieldKeys: funnel.hiddenFieldKeys } : {}),
       };
 
       if (funnel.hiddenFieldKeys !== undefined) payload.hidden_field_keys = funnel.hiddenFieldKeys;
 
+      if (funnel.isEntryStageActive !== undefined) {
+        payload.is_entry_stage_active = funnel.isEntryStageActive;
+      }
       if (funnel.enableInboxStage !== undefined) {
         payload.is_entry_stage_active = funnel.enableInboxStage;
       }

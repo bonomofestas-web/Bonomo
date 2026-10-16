@@ -233,6 +233,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     viewingAsCollaborator,
     activeVenueId, 
     updateClient, 
+    updateLeadData,
     deleteClient, 
     updateClientStage, 
     funnels, 
@@ -327,17 +328,27 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     );
   };
 
-  const handleAddTag = (clientId: string) => {
-    if (!newTagInput.trim()) {
+  const handleAddTag = (clientId: string, tagToUse?: string) => {
+    const rawTag = tagToUse || newTagInput;
+    if (!rawTag.trim()) {
       setAddTagClientId(null);
       return;
     }
+    const normalized = rawTag.trim().toUpperCase();
     const targetClient = clients.find(c => c.id === clientId);
-    if (!targetClient) return;
-    const currentTags = targetClient.tags || [];
-    const normalized = newTagInput.trim().toUpperCase();
-    if (!currentTags.includes(normalized)) {
-      updateClient(clientId, { tags: [...currentTags, normalized] });
+    if (targetClient) {
+      const currentTags = targetClient.tags || [];
+      if (!currentTags.includes(normalized)) {
+        updateClient(clientId, { tags: [...currentTags, normalized] });
+      }
+    } else {
+      const targetLead = leads.find(l => l.id === clientId);
+      if (targetLead) {
+        const currentTags = targetLead.tags || [];
+        if (!currentTags.includes(normalized)) {
+          updateLeadData(clientId, { tags: [...currentTags, normalized] });
+        }
+      }
     }
     setNewTagInput('');
     setAddTagClientId(null);
@@ -435,7 +446,16 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   const getFunnelClientMetrics = (funnel: CommercialFunnel) => {
     const linked = getLinkedVenuesForFunnel(funnel);
     const linkedVenueIds = linked.map(v => v.id);
-    const funnelClients = clients.filter(c => {
+
+    const existingClientIds = new Set(clients.map(c => c.id));
+    const extraClientsFromLeads = (leads || []).filter(l => 
+      (l.isClient || l.group === 'Pós-Venda' || l.funnelId === funnel.id) && 
+      !existingClientIds.has(l.id) &&
+      (l.funnelId === funnel.id || (linkedVenueIds.length > 0 && l.venueId && linkedVenueIds.includes(l.venueId)))
+    );
+
+    const combined = [...clients, ...extraClientsFromLeads];
+    const funnelClients = combined.filter(c => {
       if (c.funnelId && c.funnelId !== funnel.id) return false;
       if (c.funnelId === funnel.id) return true;
       if (linkedVenueIds.length === 0) return true;
@@ -516,7 +536,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const formatTitle = (id: string, defaultTitle: string) => {
       if (id === 'completed' && customNames?.won) return customNames.won.toUpperCase();
       if (id === 'lost' && customNames?.lost) return customNames.lost.toUpperCase();
-      if ((id === 'entry' || id === 'new_lead' || id === 'onboarding') && customNames?.entry) return customNames.entry.toUpperCase();
+      if ((id === 'entry' || id === 'new_lead') && customNames?.entry) return customNames.entry.toUpperCase();
       return defaultTitle;
     };
 
@@ -968,7 +988,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   // ── CENTRAL DE FUNIS DE PÓS-VENDA (PRÉ-TELA QUANDO NENHUM FUNIL ESTIVER SELECIONADO) ──
   if (!selectedFunnelId) {
-    const totalClientsCount = clients.length;
+    const totalClientsCount = allClients.length;
     const totalPipelineSum = clients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
     const formattedPipeline = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalPipelineSum);
 
@@ -3122,43 +3142,95 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                 {addTagClientId === client.id ? (
                                   <div 
                                     onClick={(e) => e.stopPropagation()}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                    style={{
+                                      position: 'absolute',
+                                      bottom: '28px',
+                                      left: '10px',
+                                      background: '#141118',
+                                      border: '1px solid var(--adm-accent)',
+                                      borderRadius: '8px',
+                                      padding: '6px',
+                                      boxShadow: '0 8px 24px rgba(0,0,0,0.85)',
+                                      zIndex: 9999,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '6px',
+                                      minWidth: '160px',
+                                      maxWidth: '220px',
+                                    }}
                                   >
-                                    <input
-                                      type="text"
-                                      autoFocus
-                                      placeholder="NOVA TAG..."
-                                      value={newTagInput}
-                                      onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleAddTag(client.id);
-                                        if (e.key === 'Escape') setAddTagClientId(null);
-                                      }}
-                                      style={{
-                                        fontSize: '0.58rem',
-                                        padding: '2px 5px',
-                                        borderRadius: '4px',
-                                        border: '1px solid var(--adm-accent)',
-                                        background: 'var(--adm-bg-input)',
-                                        color: 'var(--adm-text-title)',
-                                        width: '80px',
-                                        outline: 'none',
-                                      }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleAddTag(client.id)}
-                                      style={{ background: 'transparent', border: 'none', padding: '1px', cursor: 'pointer', color: '#10B981' }}
-                                    >
-                                      <Check size={10} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setAddTagClientId(null)}
-                                      style={{ background: 'transparent', border: 'none', padding: '1px', cursor: 'pointer', color: '#EF4444' }}
-                                    >
-                                      <X size={10} />
-                                    </button>
+                                    {/* Tags Pré-cadastradas no Funil */}
+                                    {currentFunnel?.predefinedTags && currentFunnel.predefinedTags.length > 0 && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-accent)' }}>
+                                          Tags do Funil
+                                        </span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', maxHeight: '70px', overflowY: 'auto' }}>
+                                          {currentFunnel.predefinedTags
+                                            .filter(t => !(client.tags || []).includes(t.trim().toUpperCase()))
+                                            .map(tag => (
+                                              <button
+                                                key={tag}
+                                                type="button"
+                                                onClick={() => handleAddTag(client.id, tag)}
+                                                style={{
+                                                  fontSize: '0.58rem',
+                                                  fontWeight: 700,
+                                                  padding: '2px 5px',
+                                                  borderRadius: '4px',
+                                                  background: 'rgba(212, 175, 55, 0.15)',
+                                                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                                                  color: '#D4AF37',
+                                                  cursor: 'pointer',
+                                                  whiteSpace: 'nowrap',
+                                                }}
+                                              >
+                                                + {tag}
+                                              </button>
+                                            ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Input para Nova Tag Customizada */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', borderTop: currentFunnel?.predefinedTags?.length ? '1px solid rgba(255,255,255,0.08)' : 'none', paddingTop: currentFunnel?.predefinedTags?.length ? '4px' : 0 }}>
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        placeholder="NOVA TAG..."
+                                        value={newTagInput}
+                                        onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleAddTag(client.id);
+                                          if (e.key === 'Escape') setAddTagClientId(null);
+                                        }}
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          padding: '3px 6px',
+                                          borderRadius: '4px',
+                                          border: '1px solid var(--adm-border)',
+                                          background: 'var(--adm-bg-input)',
+                                          color: 'var(--adm-text-title)',
+                                          flex: 1,
+                                          minWidth: 0,
+                                          outline: 'none',
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddTag(client.id)}
+                                        style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#10B981' }}
+                                      >
+                                        <Check size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setAddTagClientId(null)}
+                                        style={{ background: 'transparent', border: 'none', padding: '2px', cursor: 'pointer', color: '#EF4444' }}
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <button
@@ -3325,7 +3397,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
                                 {/* 2. WhatsApp (WhatsAppBrandIcon) */}
                                 {(() => {
-                                  const unread = Number((client as any).unreadMessagesCount ?? (client as any).unreadCount ?? 0);
+                                  const clientPhoneNorm = (client.payerPhone || (client as any).phone || '').replace(/\D/g, '');
+                                  const matchingLead = leads.find(l => l.id === client.id || (clientPhoneNorm && (l.phone || '').replace(/\D/g, '') === clientPhoneNorm));
+                                  const unread = Number((client as any).unreadMessagesCount ?? (client as any).unreadCount ?? (matchingLead as any)?.unreadMessagesCount ?? matchingLead?.unreadCount ?? 0);
                                   const hasUnread = unread > 0;
 
                                   return (
@@ -3565,7 +3639,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                           {client.birthdayPersonName || client.name}
                         </strong>
                         <span style={{ fontSize: '11px', color: 'var(--adm-text-muted)' }}>
-                          {client.birthdayPersonAge ? `${client.birthdayPersonAge} Anos` : '15 Anos'}
+                          {client.birthdayPersonAge ? `${client.birthdayPersonAge} Anos` : ((client as any).eventType || 'Sem marcação')}
                         </span>
                       </td>
 

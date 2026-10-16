@@ -3508,7 +3508,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       fontWeight: 700,
                       color: lead.eventType ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
                     }}>
-                      {lead.eventType || '15 Anos'}
+                      {lead.eventType || 'Sem marcação'}
                     </span>
                     {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                   </div>
@@ -3527,6 +3527,30 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       zIndex: 60,
                       overflow: 'hidden',
                     }}>
+                      <div
+                        onClick={() => {
+                          handleUpdate({ eventType: '' as any });
+                          setIsEventTypeDropdownOpen(false);
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: !lead.eventType ? 800 : 500,
+                          color: !lead.eventType ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                          background: !lead.eventType ? 'var(--adm-bg-hover)' : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderBottom: '1px solid var(--adm-border)',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = !lead.eventType ? 'var(--adm-bg-hover)' : 'transparent'}
+                      >
+                        <span>Sem marcação (Em branco)</span>
+                        {!lead.eventType && <Check size={12} color="var(--adm-accent)" />}
+                      </div>
+
                       {EVENT_TYPE_OPTIONS.map((opt) => (
                         <div
                           key={opt}
@@ -3538,18 +3562,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                             padding: '8px 12px',
                             cursor: 'pointer',
                             fontSize: '0.78rem',
-                            fontWeight: (lead.eventType || '15 Anos') === opt ? 800 : 500,
+                            fontWeight: lead.eventType === opt ? 800 : 500,
                             color: 'var(--adm-text-title)',
-                            background: (lead.eventType || '15 Anos') === opt ? 'var(--adm-bg-hover)' : 'transparent',
+                            background: lead.eventType === opt ? 'var(--adm-bg-hover)' : 'transparent',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = (lead.eventType || '15 Anos') === opt ? 'var(--adm-bg-hover)' : 'transparent'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = lead.eventType === opt ? 'var(--adm-bg-hover)' : 'transparent'}
                         >
                           <span>{opt}</span>
-                          {(lead.eventType || '15 Anos') === opt && <Check size={12} color="var(--adm-accent)" />}
+                          {lead.eventType === opt && <Check size={12} color="var(--adm-accent)" />}
                         </div>
                       ))}
                     </div>

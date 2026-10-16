@@ -434,6 +434,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
         _disabledVenueIds: disabledVenueIds,
         _enableInboxStage: isEntryStageActive,
+        _isEntryStageActive: isEntryStageActive,
         _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
         ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
       },
@@ -663,7 +664,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
 
   const displayedStages = useMemo(() => {
     let list = isEntryStageActive ? stages : stages.filter((s, idx) => {
-      if (idx === 0 && (s.id === 'new_lead' || s.id === 'onboarding' || s.name.toLowerCase().includes('entrada'))) {
+      if (idx === 0 && (s.id === 'new_lead' || (!isPostSale && s.id === 'onboarding') || s.name.toLowerCase().includes('entrada'))) {
         return false;
       }
       return true;
@@ -2028,7 +2029,7 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       {/* Top Row: Icon Button + Stage Name Input + Meeting Toggle + Delete */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', minWidth: 0 }}>
                         {(() => {
-                          const isEntry = stage.id === 'new_lead' || stage.id === 'entry' || stage.id === 'onboarding' || stage.name.toLowerCase().includes('entrada');
+                          const isEntry = stage.id === 'new_lead' || stage.id === 'entry' || (!isPostSale && stage.id === 'onboarding') || stage.name.toLowerCase().includes('entrada');
                           const isWonOrLoss = isWon || isLoss;
                           const isNameReadOnly = isEntry || (isWonOrLoss && !isPostSale);
                           const isIconReadOnly = isEntry || (isWonOrLoss && !isPostSale);

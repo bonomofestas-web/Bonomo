@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Radio, PhoneCall, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, GripVertical
+  Eye, RotateCcw, Gift, Calendar, GripVertical, UserCheck
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -24,6 +24,7 @@ export type AdminTabType =
   | 'followups'
   | 'whatsapp'
   | 'post-sale-crm'
+  | 'post-sale-clients'
   | 'vip-journey'
   | 'post-sale-appointments'
   | 'post-sale-visits-tastings'
@@ -125,6 +126,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const [draggedFunnelId, setDraggedFunnelId] = useState<string | null>(null);
   const [dragOverFunnelId, setDragOverFunnelId] = useState<string | null>(null);
 
+  // Popover / Flyout flutuante para funis fixados quando o menu está recuado (isCollapsed)
+  const [collapsedFlyoutTab, setCollapsedFlyoutTab] = useState<'crm' | 'post-sale-crm' | null>(null);
+  const flyoutCloseTimerRef = useRef<any>(null);
+
+  const handleFlyoutMouseEnter = (tab: 'crm' | 'post-sale-crm') => {
+    if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
+    setCollapsedFlyoutTab(tab);
+  };
+
+  const handleFlyoutMouseLeave = () => {
+    flyoutCloseTimerRef.current = setTimeout(() => {
+      setCollapsedFlyoutTab(null);
+    }, 200);
+  };
+
   const handleFunnelDrop = (targetFunnelId: string) => {
     if (!draggedFunnelId || draggedFunnelId === targetFunnelId) {
       setDraggedFunnelId(null);
@@ -208,18 +224,19 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 2. Comercial: Dashboard, Funil, Leads, Follow-up, Agendamentos
+  // 2. Comercial: Dashboard, Funil Comercial, Leads, Follow-up, Agendamentos
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
-    { id: 'crm', label: 'Funil', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
+    { id: 'crm', label: 'Funil Comercial', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
     { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Funil de Pós-Venda, App Aniversariantes, Compromissos
+  // 3. Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
-    { id: 'post-sale-crm', label: 'Funil de Pós-Venda', icon: <Users size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-crm', label: 'Funis de Pós-Venda', icon: <Target size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'post-sale-clients', label: 'Clientes', icon: <UserCheck size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
@@ -416,6 +433,145 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           {isPostSale ? 'PÓS' : 'FUNIL'}
         </span>
       </button>
+    );
+  };
+
+  // Helper para renderizar o Popover/Flyout de funis quando a sidebar estiver colapsada
+  const renderCollapsedFunnelsFlyout = (type: 'crm' | 'post-sale-crm') => {
+    if (!isCollapsed || isMobileOverlay || collapsedFlyoutTab !== type) return null;
+    const isCommercial = type === 'crm';
+    const targetFunnels = isCommercial ? pinnedCommercialFunnels : pinnedPostSaleFunnels;
+    const accentColor = isCommercial ? '#14A9D7' : '#06B6D4';
+    const targetTab: AdminTabType = isCommercial ? 'crm' : 'post-sale-crm';
+
+    if (targetFunnels.length === 0) return null;
+
+    return (
+      <div
+        onMouseEnter={() => handleFlyoutMouseEnter(type)}
+        onMouseLeave={handleFlyoutMouseLeave}
+        style={{
+          position: 'absolute',
+          left: '46px',
+          top: '-6px',
+          minWidth: '220px',
+          maxWidth: '260px',
+          background: '#120F18',
+          border: `1.5px solid ${accentColor}55`,
+          borderRadius: '12px',
+          padding: '8px',
+          boxShadow: `0 12px 32px rgba(0,0,0,0.85), 0 0 16px ${accentColor}22`,
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+        }}
+      >
+        <div style={{
+          fontSize: '0.62rem',
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          color: accentColor,
+          padding: '2px 6px 6px 6px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <span>{isCommercial ? 'Funis Comerciais' : 'Funis de Pós-Venda'}</span>
+          <span style={{
+            fontSize: '0.52rem',
+            background: `${accentColor}22`,
+            color: accentColor,
+            padding: '1px 5px',
+            borderRadius: '4px',
+            fontWeight: 800,
+          }}>
+            {targetFunnels.length}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '240px', overflowY: 'auto' }}>
+          {targetFunnels.map(f => {
+            const isFunnelActive = activeTab === targetTab && activeFunnelId === f.id;
+            const funnelColor = isCommercial ? (f.badgeColor || '#D4AF37') : '#06B6D4';
+            return (
+              <button
+                key={`flyout-${f.id}`}
+                type="button"
+                onClick={() => {
+                  setCollapsedFlyoutTab(null);
+                  handleTabClick(targetTab, f.id);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  background: isFunnelActive ? `${funnelColor}22` : 'transparent',
+                  border: isFunnelActive ? `1px solid ${funnelColor}88` : '1px solid transparent',
+                  color: isFunnelActive ? funnelColor : '#E2E8F0',
+                  fontSize: '0.72rem',
+                  fontWeight: isFunnelActive ? 700 : 500,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.15s ease',
+                  width: '100%',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isFunnelActive) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isFunnelActive) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
+              >
+                {renderSidebarFunnelIcon(f.icon, 14, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCollapsedFlyoutTab(null);
+            handleTabClick(targetTab, null);
+          }}
+          style={{
+            marginTop: '4px',
+            padding: '5px 8px',
+            borderRadius: '6px',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            color: '#94A3B8',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            textAlign: 'center',
+            width: '100%',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = '#FFFFFF';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = '#94A3B8';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+          }}
+        >
+          {isCommercial ? 'Ver todos os funis comerciais' : 'Ver todos os funis de pós-venda'}
+        </button>
+      </div>
     );
   };
 
@@ -749,11 +905,13 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     : '208px';
 
   return (
-    <aside style={{
-      width: sidebarWidth,
-      minWidth: sidebarWidth,
-      maxWidth: sidebarWidth,
-      background: '#0B090E',
+    <aside 
+      className="admin-sidebar-scroll"
+      style={{
+        width: sidebarWidth,
+        minWidth: sidebarWidth,
+        maxWidth: sidebarWidth,
+        background: '#0B090E',
       borderRight: isMobileOverlay ? 'none' : '1px solid rgba(212, 175, 55, 0.15)',
       display: 'flex',
       flexDirection: 'column',
@@ -1363,14 +1521,14 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           )}
 
-          {/* 1. Setor Workspace: Início, Tarefas, Equipe & Funis Fixados do Usuário */}
+          {/* 1. Setor Workspace: Início, Tarefas, Equipe */}
           <div>
             {!isCollapsed && (
               <div style={{
                 fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
-                color: '#9E988D',
+                color: '#14A9D7',
                 letterSpacing: '0.6px',
                 padding: '0 6px 3px 6px',
               }}>
@@ -1382,6 +1540,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           </div>
 
+          {isCollapsed && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
+
           {/* Ferramentas: WhatsApp */}
           <div>
             {!isCollapsed && (
@@ -1389,7 +1549,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 fontSize: '0.56rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
-                color: '#25D366',
+                color: '#14A9D7',
                 letterSpacing: '0.6px',
                 padding: '0 6px 3px 6px',
               }}>
@@ -1401,7 +1561,9 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           </div>
 
-          {/* 2. Setor Comercial: Dashboard, Funil, Leads, Follow-up, Agendamentos */}
+          {isCollapsed && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
+
+          {/* 2. Setor Comercial: Dashboard, Funil Comercial, Leads, Follow-up, Agendamentos */}
           {effectiveSectors.includes('comercial') && (
             <div>
               {!isCollapsed && (
@@ -1418,22 +1580,37 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {commercialItems.map(item => {
-                  const btn = renderNavButton(item);
-                  if (item.id === 'crm' && pinnedCommercialFunnels.length > 0) {
+                  if (item.id === 'crm') {
+                    if (isCollapsed && !isMobileOverlay) {
+                      return (
+                        <div 
+                          key={item.id} 
+                          style={{ position: 'relative' }}
+                          onMouseEnter={() => handleFlyoutMouseEnter('crm')}
+                          onMouseLeave={handleFlyoutMouseLeave}
+                        >
+                          {renderNavButton(item)}
+                          {renderCollapsedFunnelsFlyout('crm')}
+                        </div>
+                      );
+                    }
+                    const btn = renderNavButton(item);
                     return (
                       <React.Fragment key={item.id}>
                         {btn}
-                        {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
+                        {!isCollapsed && pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
                       </React.Fragment>
                     );
                   }
-                  return btn;
+                  return renderNavButton(item);
                 })}
               </div>
             </div>
           )}
 
-          {/* 3. Setor Pós-Venda: Sucesso do Cliente, App Aniversariantes, Compromissos */}
+          {isCollapsed && effectiveSectors.includes('comercial') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
+
+          {/* 3. Setor Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos */}
           {effectiveSectors.includes('pos_venda') && (
             <div>
               {!isCollapsed && (
@@ -1441,7 +1618,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   fontSize: '0.56rem',
                   fontWeight: 800,
                   textTransform: 'uppercase',
-                  color: '#D4AF37',
+                  color: '#14A9D7',
                   letterSpacing: '0.6px',
                   padding: '0 6px 3px 6px',
                 }}>
@@ -1450,22 +1627,37 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {postSaleItems.map(item => {
-                  const btn = renderNavButton(item);
-                  if (item.id === 'post-sale-crm' && pinnedPostSaleFunnels.length > 0) {
+                  if (item.id === 'post-sale-crm') {
+                    if (isCollapsed && !isMobileOverlay) {
+                      return (
+                        <div 
+                          key={item.id} 
+                          style={{ position: 'relative' }}
+                          onMouseEnter={() => handleFlyoutMouseEnter('post-sale-crm')}
+                          onMouseLeave={handleFlyoutMouseLeave}
+                        >
+                          {renderNavButton(item)}
+                          {renderCollapsedFunnelsFlyout('post-sale-crm')}
+                        </div>
+                      );
+                    }
+                    const btn = renderNavButton(item);
                     return (
                       <React.Fragment key={item.id}>
                         {btn}
-                        {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
+                        {!isCollapsed && pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
                       </React.Fragment>
                     );
                   }
-                  return btn;
+                  return renderNavButton(item);
                 })}
               </div>
             </div>
           )}
 
-          {/* 4. Gerência: 1. Qualificação ICP, 2. Origens, 3. Metas, 4. Dashboard Gerência, 5. Colaboradores, 6. Casas de Festa */}
+          {isCollapsed && effectiveSectors.includes('pos_venda') && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
+
+          {/* 4. Gerência: Tarefas, Qualificação, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa */}
           {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
             <div>
               {!isCollapsed && (
@@ -1473,7 +1665,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   fontSize: '0.56rem',
                   fontWeight: 800,
                   textTransform: 'uppercase',
-                  color: '#8096A8',
+                  color: '#14A9D7',
                   letterSpacing: '0.6px',
                   padding: '0 6px 3px 6px',
                 }}>

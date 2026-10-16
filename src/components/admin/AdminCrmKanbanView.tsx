@@ -1530,6 +1530,49 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     return funnelsList.filter(f => f.name.toLowerCase().includes(q) || f.category.toLowerCase().includes(q) || (f.description || '').toLowerCase().includes(q) || (f.venueName || '').toLowerCase().includes(q));
   }, [funnelsList, funnelSearch]);
 
+  const funnelsByVenueGroup = useMemo(() => {
+    const groups: { venueName: string; venueId: string; funnels: typeof displayedFunnels }[] = [];
+
+    // 1. Funis Globais / Rede Geral
+    const globalFunnels = displayedFunnels.filter(f => !f.venueId || f.venueId === 'all');
+    if (globalFunnels.length > 0) {
+      groups.push({
+        venueName: 'Todas as Casas (Rede Geral)',
+        venueId: 'all',
+        funnels: globalFunnels,
+      });
+    }
+
+    // 2. Por Unidade física cadastrada
+    venues.forEach(v => {
+      const vFunnels = displayedFunnels.filter(f => {
+        if (globalFunnels.includes(f)) return false;
+        const linked = getLinkedVenuesForFunnel(f);
+        return f.venueId === v.id || linked.some(lv => lv.id === v.id);
+      });
+      if (vFunnels.length > 0) {
+        groups.push({
+          venueName: v.name,
+          venueId: v.id,
+          funnels: vFunnels,
+        });
+      }
+    });
+
+    // 3. Fallback se não foi agrupado
+    const groupedIds = new Set(groups.flatMap(g => g.funnels.map(f => f.id)));
+    const remaining = displayedFunnels.filter(f => !groupedIds.has(f.id));
+    if (remaining.length > 0) {
+      groups.push({
+        venueName: 'Outras Unidades',
+        venueId: 'other',
+        funnels: remaining,
+      });
+    }
+
+    return groups;
+  }, [displayedFunnels, venues]);
+
   // ── Render Kommo CRM Style Pipeline Configuration seamlessly in Content Area ──
   if (isComoFunnelSettingsOpen) {
     return (
@@ -1664,45 +1707,43 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             <button
               type="button"
               onClick={() => setFunnelViewMode('list')}
+              title="Visualização em Lista (Por Unidades)"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
+                justifyContent: 'center',
+                padding: '6px 10px',
                 borderRadius: '8px',
                 border: 'none',
                 background: funnelViewMode === 'list' ? 'var(--adm-bg-card)' : 'transparent',
                 color: funnelViewMode === 'list' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                fontWeight: 800,
-                fontSize: '0.76rem',
                 cursor: 'pointer',
                 boxShadow: funnelViewMode === 'list' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.15s ease',
               }}
             >
-              <List size={14} />
-              <span>Lista (Por Unidades)</span>
+              <List size={16} />
             </button>
 
             <button
               type="button"
               onClick={() => setFunnelViewMode('cards')}
+              title="Visualização em Cards"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
+                justifyContent: 'center',
+                padding: '6px 10px',
                 borderRadius: '8px',
                 border: 'none',
                 background: funnelViewMode === 'cards' ? 'var(--adm-bg-card)' : 'transparent',
                 color: funnelViewMode === 'cards' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                fontWeight: 800,
-                fontSize: '0.76rem',
                 cursor: 'pointer',
                 boxShadow: funnelViewMode === 'cards' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.15s ease',
               }}
             >
-              <LayoutGrid size={14} />
-              <span>Cards</span>
+              <LayoutGrid size={16} />
             </button>
           </div>
         </div>
@@ -1742,6 +1783,193 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <span>Criar Novo Funil</span>
               </button>
             )}
+          </div>
+        ) : funnelViewMode === 'list' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {funnelsByVenueGroup.map(group => (
+              <div key={group.venueId} className="saas-card" style={{ borderRadius: '16px', padding: '16px 20px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}>
+                {/* Cabeçalho da Unidade / Rede */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid var(--adm-border)', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(20, 169, 215, 0.12)', border: '1px solid rgba(20, 169, 215, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--adm-accent)' }}>
+                      <Building2 size={16} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                        {group.venueName}
+                      </h4>
+                      <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
+                        {group.funnels.length} {group.funnels.length === 1 ? 'esteira comercial configurada' : 'esteiras comerciais configuradas'}
+                      </span>
+                    </div>
+                  </div>
+                  {canConfigureFunnels && group.venueId !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCreateFunnel(group.venueId)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--adm-border)',
+                        color: 'var(--adm-accent)',
+                        borderRadius: '8px',
+                        padding: '5px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Plus size={12} />
+                      <span>Novo Funil</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Lista de Funis da Unidade */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {group.funnels.map(funnel => {
+                    const isPinned = isFunnelPinned(funnel.id);
+                    return (
+                      <div
+                        key={funnel.id}
+                        onClick={() => handleSelectFunnel(funnel.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = funnel.badgeColor || 'var(--adm-accent)';
+                          e.currentTarget.style.transform = 'translateX(4px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--adm-border)';
+                          e.currentTarget.style.transform = 'translateX(0)';
+                        }}
+                      >
+                        {/* Esquerda: Ícone + Nome + Badge */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
+                          <div style={{ flexShrink: 0 }}>
+                            {renderFunnelVisual(funnel, 15, 30)}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {funnel.name}
+                              </span>
+                              {funnel.isPrimary && (
+                                <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(212, 175, 55, 0.18)', color: '#D4AF37', border: '1px solid rgba(212, 175, 55, 0.35)' }}>
+                                  PADRÃO
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                              {funnel.stagesCount} etapas • {funnel.category || 'Comercial'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Centro: Métricas (Leads, Pipeline, Conversão) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+                          <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                            <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Leads</div>
+                            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{funnel.leadCount}</div>
+                          </div>
+                          <div style={{ textAlign: 'center', minWidth: '100px' }}>
+                            <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipeline</div>
+                            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#10B981' }}>
+                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(funnel.openPipelineValue)}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                            <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Conversão</div>
+                            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: 'var(--adm-accent)' }}>{funnel.conversionRate}%</div>
+                          </div>
+                        </div>
+
+                        {/* Direita: Botão Fixar + Abrir Funil */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            disabled={Boolean(viewingAsCollaborator)}
+                            title={isPinned ? "Desafixar do Workspace" : "Fixar no Workspace"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePinFunnel(funnel.id);
+                            }}
+                            style={{
+                              background: isPinned ? 'var(--adm-accent-bg)' : 'transparent',
+                              border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
+                              borderRadius: '7px',
+                              padding: '5px 8px',
+                              color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                              cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Pin size={13} style={{ transform: isPinned ? 'rotate(45deg)' : 'none' }} />
+                          </button>
+
+                          {canConfigureFunnels && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenConfigureFunnel(funnel, e)}
+                              title="Configurar Esteira"
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid var(--adm-border)',
+                                borderRadius: '7px',
+                                padding: '5px 8px',
+                                color: 'var(--adm-text-muted)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Settings size={13} />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectFunnel(funnel.id);
+                            }}
+                            style={{
+                              background: funnel.isPrimary ? 'var(--adm-accent)' : 'var(--adm-bg-elevated)',
+                              border: funnel.isPrimary ? 'none' : '1px solid var(--adm-border)',
+                              color: funnel.isPrimary ? '#FFFFFF' : 'var(--adm-text-title)',
+                              borderRadius: '8px',
+                              padding: '5px 12px',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <span>Abrir</span>
+                            <ArrowRight size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '18px' }}>
@@ -4925,7 +5153,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         <td style={{ padding: '8px 16px' }}>
                           {isPostSaleView ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>{lead.eventType || '15 Anos'}</span>
+                              <span style={{ fontWeight: 700, color: 'var(--adm-text-title)' }}>{lead.eventType || 'Sem marcação'}</span>
                               <span style={{ color: 'var(--adm-text-muted)', fontSize: '0.72rem' }}>
                                 {(lead.eventDate || lead.partyDate) ? new Date((lead.eventDate || lead.partyDate) + 'T12:00:00').toLocaleDateString('pt-BR') : 'Data a definir'}
                               </span>
