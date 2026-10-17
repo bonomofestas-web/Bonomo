@@ -131,6 +131,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const [flyoutPosition, setFlyoutPosition] = useState<{ top: number; left: number } | null>(null);
   const flyoutCloseTimerRef = useRef<any>(null);
 
+  // Popover flutuante para o seletor de casas de festa na barra recuada
+  const [venuePopoverPos, setVenuePopoverPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Tooltip customizado do F5 System para botões na barra recuada
+  const [customTooltip, setCustomTooltip] = useState<{ text: string; top: number; left: number } | null>(null);
+
   // Seções recolhíveis (accordion) no menu aberto
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
@@ -143,6 +149,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const handleSectorButtonTrigger = (e: React.MouseEvent, sector: 'comercial' | 'pos_venda' | 'gerencia') => {
     if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
+    setCustomTooltip(null);
     const rect = e.currentTarget.getBoundingClientRect();
     setFlyoutPosition({ top: Math.max(12, rect.top - 6), left: rect.right + 8 });
     setCollapsedSectorFlyout(prev => prev === sector ? null : sector);
@@ -150,6 +157,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const handleSectorFlyoutMouseEnter = () => {
     if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
+    setCustomTooltip(null);
   };
 
   const handleSectorFlyoutMouseLeave = () => {
@@ -164,10 +172,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       if (collapsedSectorFlyout && !target.closest('[data-sector-flyout="true"]') && !target.closest('[data-sector-btn="true"]')) {
         setCollapsedSectorFlyout(null);
       }
+      if (isVenueDropdownOpen && !target.closest('[data-venue-popover="true"]') && !target.closest('[data-venue-trigger="true"]')) {
+        setIsVenueDropdownOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [collapsedSectorFlyout]);
+  }, [collapsedSectorFlyout, isVenueDropdownOpen]);
 
   const handleFunnelDrop = (targetFunnelId: string) => {
     if (!draggedFunnelId || draggedFunnelId === targetFunnelId) {
@@ -340,7 +351,15 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           key={`pinned-${f.id}`}
           type="button"
           onClick={() => handleTabClick(targetTab, f.id)}
-          title={`${isPostSale ? 'Pós-Venda' : 'Comercial'}: ${f.name}`}
+          onMouseEnter={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setCustomTooltip({
+              text: f.name,
+              top: rect.top + (rect.height / 2),
+              left: rect.right + 10,
+            });
+          }}
+          onMouseLeave={() => setCustomTooltip(null)}
           style={{
             width: '38px',
             height: '38px',
@@ -570,20 +589,88 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
   const renderCollapsedSectorButton = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
     let icon = <DollarSign size={18} />;
-    let label = 'Comercial';
     let accentColor = '#14A9D7';
-    let isSectorActive = ['crm', 'leads', 'followups', 'appointments', 'commercial-dashboard'].includes(activeTab);
+    let isSectorActive = false;
 
-    if (sector === 'pos_venda') {
-      icon = <Briefcase size={18} />;
-      label = 'Pós-Venda';
-      accentColor = '#06B6D4';
-      isSectorActive = ['post-sale-crm', 'post-sale-clients', 'debutantes', 'schedule'].includes(activeTab);
-    } else if (sector === 'gerencia') {
-      icon = <SlidersHorizontal size={18} />;
-      label = 'Gerência';
+    // Detecta se algum funil fixado está ativo atualmente
+    const isPinnedCommercialActive = activeTab === 'crm' && Boolean(activeFunnelId) && pinnedCommercialFunnels.some(f => f.id === activeFunnelId);
+    const isPinnedPostSaleActive = activeTab === 'post-sale-crm' && Boolean(activeFunnelId) && pinnedPostSaleFunnels.some(f => f.id === activeFunnelId);
+
+    if (sector === 'comercial') {
       accentColor = '#14A9D7';
-      isSectorActive = ['tasks', 'mql', 'sources', 'venue-goals', 'dashboard', 'collaborators', 'venues'].includes(activeTab);
+      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'followups', 'post-sale-visits-tastings'].includes(activeTab);
+      // Ícone dinâmico do Comercial
+      switch (activeTab) {
+        case 'dashboard':
+          icon = <LayoutDashboard size={18} />;
+          break;
+        case 'crm':
+          icon = <Target size={18} />;
+          break;
+        case 'leads':
+          icon = <Users size={18} />;
+          break;
+        case 'followups':
+          icon = <PhoneCall size={18} />;
+          break;
+        case 'post-sale-visits-tastings':
+          icon = <Calendar size={18} />;
+          break;
+        default:
+          icon = <DollarSign size={18} />;
+          break;
+      }
+    } else if (sector === 'pos_venda') {
+      accentColor = '#06B6D4';
+      isSectorActive = !isPinnedPostSaleActive && ['post-sale-crm', 'post-sale-clients', 'debutantes', 'post-sale-appointments'].includes(activeTab);
+      // Ícone dinâmico do Pós-Venda
+      switch (activeTab) {
+        case 'post-sale-crm':
+          icon = <Target size={18} />;
+          break;
+        case 'post-sale-clients':
+          icon = <UserCheck size={18} />;
+          break;
+        case 'debutantes':
+          icon = <Gift size={18} />;
+          break;
+        case 'post-sale-appointments':
+          icon = <CheckSquare size={18} />;
+          break;
+        default:
+          icon = <Briefcase size={18} />;
+          break;
+      }
+    } else if (sector === 'gerencia') {
+      accentColor = '#14A9D7';
+      isSectorActive = ['tasks', 'mql', 'sources', 'venue-goals', 'master-dashboard', 'collaborators', 'venues'].includes(activeTab);
+      // Ícone dinâmico da Gerência
+      switch (activeTab) {
+        case 'tasks':
+          icon = <CheckSquare size={18} />;
+          break;
+        case 'mql':
+          icon = <IcpTargetUserIcon size={18} />;
+          break;
+        case 'sources':
+          icon = <Compass size={18} />;
+          break;
+        case 'venue-goals':
+          icon = <Star size={18} />;
+          break;
+        case 'master-dashboard':
+          icon = <LayoutDashboard size={18} />;
+          break;
+        case 'collaborators':
+          icon = <ShieldCheck size={18} />;
+          break;
+        case 'venues':
+          icon = <Building2 size={18} />;
+          break;
+        default:
+          icon = <SlidersHorizontal size={18} />;
+          break;
+      }
     }
 
     const isFlyoutOpen = collapsedSectorFlyout === sector;
@@ -611,7 +698,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               e.currentTarget.style.borderColor = 'transparent';
             }
           }}
-          title={label}
           style={{
             width: '38px',
             height: '38px',
@@ -806,7 +892,15 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           key={item.id}
           type="button"
           onClick={() => handleTabClick(item.id, null)}
-          title={isComingSoon ? `${item.label} (Em Breve)` : item.label}
+          onMouseEnter={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setCustomTooltip({
+              text: isComingSoon ? `${item.label} (Em Breve)` : item.label,
+              top: rect.top + (rect.height / 2),
+              left: rect.right + 10,
+            });
+          }}
+          onMouseLeave={() => setCustomTooltip(null)}
           style={{
             width: '38px',
             height: '38px',
@@ -1305,9 +1399,24 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             </div>
           ) : isCollapsed && !isMobileOverlay ? (
             <button
+              data-venue-trigger="true"
               type="button"
-              onClick={() => setIsVenueDropdownOpen(v => !v)}
-              title={activeVenue?.name || (userRole === 'master' ? 'Todas as Casas (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`)}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setVenuePopoverPos({ top: rect.top, left: rect.right + 8 });
+                setIsVenueDropdownOpen(v => !v);
+              }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setVenuePopoverPos({ top: rect.top, left: rect.right + 8 });
+                setCustomTooltip(null);
+                e.currentTarget.style.borderColor = '#D4AF37';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = isVenueDropdownOpen ? '#D4AF37' : 'rgba(20, 169, 215, 0.35)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
               style={{
                 width: '38px',
                 height: '38px',
@@ -1320,14 +1429,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 justifyContent: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#D4AF37';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = isVenueDropdownOpen ? '#D4AF37' : 'rgba(20, 169, 215, 0.35)';
-                e.currentTarget.style.transform = 'scale(1)';
               }}
             >
               {activeVenue ? renderVenueIconBadge(activeVenue, 28) : <Globe size={18} color="#D4AF37" />}
@@ -1383,23 +1484,26 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
           {/* Venue Switcher Popover Menu */}
           {isVenueDropdownOpen && (userRole === 'master' || allowedVenues.length > 1) && (
-            <div style={{
-              position: 'absolute',
-              top: isCollapsed ? '0px' : '100%',
-              left: isCollapsed ? '54px' : 0,
-              right: isCollapsed ? undefined : 0,
-              width: isCollapsed ? '230px' : undefined,
-              marginTop: isCollapsed ? '0px' : '6px',
-              background: '#141118',
-              border: '1.5px solid rgba(212, 175, 55, 0.4)',
-              borderRadius: '12px',
-              padding: '6px',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.85), 0 0 20px rgba(212, 175, 55, 0.2)',
-              zIndex: 99999,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-            }}>
+            <div 
+              data-venue-popover="true"
+              style={{
+                position: isCollapsed ? 'fixed' : 'absolute',
+                top: isCollapsed ? `${venuePopoverPos?.top ?? 60}px` : '100%',
+                left: isCollapsed ? `${venuePopoverPos?.left ?? 64}px` : 0,
+                right: isCollapsed ? undefined : 0,
+                width: isCollapsed ? '230px' : undefined,
+                marginTop: isCollapsed ? '0px' : '6px',
+                background: '#141118',
+                border: '1.5px solid rgba(212, 175, 55, 0.4)',
+                borderRadius: '12px',
+                padding: '6px',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.85), 0 0 20px rgba(212, 175, 55, 0.2)',
+                zIndex: 999999,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
               {(userRole === 'master' || allowedVenues.length > 1) && (
                 <button
                   type="button"
@@ -1424,7 +1528,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   }}
                 >
                   {renderVenueIconBadge(null, 24)}
-                  <span>{userRole === 'master' ? 'Todas as Casas (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`}</span>
+                  <span>{userRole === 'master' ? 'Todas as Unidades (Rede Geral)' : `Visão Geral (${allowedVenues.length} Unidades)`}</span>
                 </button>
               )}
 
@@ -1767,6 +1871,30 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
       {/* Flyout Flutuante Fora do Scroll da Sidebar */}
       {isCollapsed && !isMobileOverlay && collapsedSectorFlyout && renderSectorFlyout(collapsedSectorFlyout)}
+
+      {/* Tooltip Elegante Customizado do F5 System */}
+      {isCollapsed && !isMobileOverlay && customTooltip && !collapsedSectorFlyout && !isVenueDropdownOpen && (
+        <div style={{
+          position: 'fixed',
+          top: `${customTooltip.top}px`,
+          left: `${customTooltip.left}px`,
+          transform: 'translateY(-50%)',
+          background: '#141118',
+          border: '1px solid rgba(20, 169, 215, 0.45)',
+          borderRadius: '7px',
+          padding: '5px 10px',
+          color: '#FFFFFF',
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          fontFamily: "'Poppins', sans-serif",
+          whiteSpace: 'nowrap',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.85), 0 0 12px rgba(20, 169, 215, 0.25)',
+          zIndex: 9999999,
+          pointerEvents: 'none',
+        }}>
+          {customTooltip.text}
+        </div>
+      )}
     </aside>
   );
 };
