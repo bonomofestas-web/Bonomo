@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   LayoutDashboard, Building2, Users, Target, 
-  CheckSquare, Home, Briefcase,
+  CheckSquare, Home, Briefcase, DollarSign, SlidersHorizontal,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
   Sparkles, Radio, PhoneCall, Compass,
@@ -11,7 +11,7 @@ import {
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
-import { APP_VERSION, type FeatureFlagId, type Venue, type CommercialFunnel } from '../../types/admin';
+import { type FeatureFlagId, type Venue, type CommercialFunnel } from '../../types/admin';
 import { getLeadPendingWaitingTime } from '../../utils/leadSorting';
 
 export type AdminTabType = 
@@ -128,18 +128,46 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Popover / Flyout flutuante para setores quando o menu está recuado (isCollapsed)
   const [collapsedSectorFlyout, setCollapsedSectorFlyout] = useState<'comercial' | 'pos_venda' | 'gerencia' | null>(null);
+  const [flyoutPosition, setFlyoutPosition] = useState<{ top: number; left: number } | null>(null);
   const flyoutCloseTimerRef = useRef<any>(null);
 
-  const handleSectorFlyoutMouseEnter = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
+  // Seções recolhíveis (accordion) no menu aberto
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (sectionKey: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
+
+  const handleSectorButtonTrigger = (e: React.MouseEvent, sector: 'comercial' | 'pos_venda' | 'gerencia') => {
     if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
-    setCollapsedSectorFlyout(sector);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setFlyoutPosition({ top: Math.max(12, rect.top - 6), left: rect.right + 8 });
+    setCollapsedSectorFlyout(prev => prev === sector ? null : sector);
+  };
+
+  const handleSectorFlyoutMouseEnter = () => {
+    if (flyoutCloseTimerRef.current) clearTimeout(flyoutCloseTimerRef.current);
   };
 
   const handleSectorFlyoutMouseLeave = () => {
     flyoutCloseTimerRef.current = setTimeout(() => {
       setCollapsedSectorFlyout(null);
-    }, 200);
+    }, 220);
   };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (collapsedSectorFlyout && !target.closest('[data-sector-flyout="true"]') && !target.closest('[data-sector-btn="true"]')) {
+        setCollapsedSectorFlyout(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [collapsedSectorFlyout]);
 
   const handleFunnelDrop = (targetFunnelId: string) => {
     if (!draggedFunnelId || draggedFunnelId === targetFunnelId) {
@@ -436,45 +464,41 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     );
   };
 
-  // Helper para renderizar o Popover/Flyout de funis quando a sidebar estiver colapsada
+  // Helper para renderizar o Popover/Flyout de funis quando a sidebar estiver colapsada (position: fixed para nunca ser cortado pelo overflow)
   const renderSectorFlyout = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
-    if (!isCollapsed || isMobileOverlay || collapsedSectorFlyout !== sector) return null;
+    if (!isCollapsed || isMobileOverlay || collapsedSectorFlyout !== sector || !flyoutPosition) return null;
 
     let title = 'Comercial';
     let accentColor = '#14A9D7';
     let items = commercialItems;
-    let pinnedFunnels = pinnedCommercialFunnels;
-    let targetFunnelTab: AdminTabType = 'crm';
 
     if (sector === 'pos_venda') {
       title = 'Pós-Venda';
       accentColor = '#06B6D4';
       items = postSaleItems;
-      pinnedFunnels = pinnedPostSaleFunnels;
-      targetFunnelTab = 'post-sale-crm';
     } else if (sector === 'gerencia') {
       title = 'Gerência';
       accentColor = '#14A9D7';
       items = masterItems;
-      pinnedFunnels = [];
     }
 
     return (
       <div
-        onMouseEnter={() => handleSectorFlyoutMouseEnter(sector)}
+        data-sector-flyout="true"
+        onMouseEnter={handleSectorFlyoutMouseEnter}
         onMouseLeave={handleSectorFlyoutMouseLeave}
         style={{
-          position: 'absolute',
-          left: '46px',
-          top: '-10px',
+          position: 'fixed',
+          left: `${flyoutPosition.left}px`,
+          top: `${flyoutPosition.top}px`,
           minWidth: '220px',
           maxWidth: '260px',
-          background: '#120F18',
-          border: `1.5px solid ${accentColor}55`,
+          background: '#141118',
+          border: `1.5px solid ${accentColor}66`,
           borderRadius: '12px',
           padding: '8px',
-          boxShadow: `0 12px 32px rgba(0,0,0,0.85), 0 0 16px ${accentColor}22`,
-          zIndex: 99999,
+          boxShadow: `0 16px 40px rgba(0,0,0,0.85), 0 0 20px ${accentColor}25`,
+          zIndex: 999999,
           display: 'flex',
           flexDirection: 'column',
           gap: '4px',
@@ -540,91 +564,23 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             );
           })}
         </div>
-
-        {/* Funis Fixados (Se houver) */}
-        {pinnedFunnels.length > 0 && (
-          <>
-            <div style={{
-              fontSize: '0.55rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              color: '#8096A8',
-              padding: '6px 8px 3px 8px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              marginTop: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}>
-              <span>Funis Fixados</span>
-              <span style={{ fontSize: '0.50rem', background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '4px' }}>
-                {pinnedFunnels.length}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '180px', overflowY: 'auto' }}>
-              {pinnedFunnels.map(f => {
-                const isFunnelActive = activeTab === targetFunnelTab && activeFunnelId === f.id;
-                const funnelColor = sector === 'comercial' ? (f.badgeColor || '#D4AF37') : '#06B6D4';
-                return (
-                  <button
-                    key={`flyout-funnel-${f.id}`}
-                    type="button"
-                    onClick={() => {
-                      setCollapsedSectorFlyout(null);
-                      handleTabClick(targetFunnelTab, f.id);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      background: isFunnelActive ? `${funnelColor}22` : 'transparent',
-                      border: isFunnelActive ? `1px solid ${funnelColor}88` : '1px solid transparent',
-                      color: isFunnelActive ? funnelColor : '#E2E8F0',
-                      fontSize: '0.70rem',
-                      fontWeight: isFunnelActive ? 800 : 500,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.15s ease',
-                      width: '100%',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isFunnelActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isFunnelActive) e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    {renderSidebarFunnelIcon(f.icon, 13, isFunnelActive ? funnelColor : (f.badgeColor || '#8096A8'))}
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {f.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
       </div>
     );
   };
 
   const renderCollapsedSectorButton = (sector: 'comercial' | 'pos_venda' | 'gerencia') => {
-    let icon = <Target size={18} />;
+    let icon = <DollarSign size={18} />;
     let label = 'Comercial';
     let accentColor = '#14A9D7';
     let isSectorActive = ['crm', 'leads', 'followups', 'appointments', 'commercial-dashboard'].includes(activeTab);
 
     if (sector === 'pos_venda') {
-      icon = <ShieldCheck size={18} />;
+      icon = <Briefcase size={18} />;
       label = 'Pós-Venda';
       accentColor = '#06B6D4';
       isSectorActive = ['post-sale-crm', 'post-sale-clients', 'debutantes', 'schedule'].includes(activeTab);
     } else if (sector === 'gerencia') {
-      icon = <Briefcase size={18} />;
+      icon = <SlidersHorizontal size={18} />;
       label = 'Gerência';
       accentColor = '#14A9D7';
       isSectorActive = ['tasks', 'mql', 'sources', 'venue-goals', 'dashboard', 'collaborators', 'venues'].includes(activeTab);
@@ -636,12 +592,25 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       <div 
         key={`collapsed-sector-${sector}`}
         style={{ position: 'relative', width: '100%' }}
-        onMouseEnter={() => handleSectorFlyoutMouseEnter(sector)}
-        onMouseLeave={handleSectorFlyoutMouseLeave}
       >
         <button
+          data-sector-btn="true"
           type="button"
-          onClick={() => setCollapsedSectorFlyout(isFlyoutOpen ? null : sector)}
+          onClick={(e) => handleSectorButtonTrigger(e, sector)}
+          onMouseEnter={(e) => {
+            handleSectorButtonTrigger(e, sector);
+            if (!isSectorActive && !isFlyoutOpen) {
+              e.currentTarget.style.color = '#FFFFFF';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            handleSectorFlyoutMouseLeave();
+            if (!isSectorActive && !isFlyoutOpen) {
+              e.currentTarget.style.color = '#8096A8';
+              e.currentTarget.style.borderColor = 'transparent';
+            }
+          }}
           title={label}
           style={{
             width: '38px',
@@ -657,18 +626,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             cursor: 'pointer',
             transition: 'all 0.15s ease',
             position: 'relative',
-          }}
-          onMouseEnter={(e) => {
-            if (!isSectorActive && !isFlyoutOpen) {
-              e.currentTarget.style.color = '#FFFFFF';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isSectorActive && !isFlyoutOpen) {
-              e.currentTarget.style.color = '#8096A8';
-              e.currentTarget.style.borderColor = 'transparent';
-            }
           }}
         >
           {icon}
@@ -686,7 +643,50 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             }} />
           )}
         </button>
-        {renderSectorFlyout(sector)}
+      </div>
+    );
+  };
+
+  // Helper para renderizar o cabeçalho recolhível (accordion) no menu aberto
+  const renderSectionHeader = (title: string, sectionKey: string) => {
+    const isSectionCollapsed = Boolean(collapsedSections[sectionKey]);
+    return (
+      <div 
+        onClick={() => toggleSection(sectionKey)}
+        title={isSectionCollapsed ? `Expandir ${title}` : `Recolher ${title}`}
+        style={{
+          fontSize: '0.58rem',
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          color: '#14A9D7',
+          letterSpacing: '0.6px',
+          padding: '4px 6px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          borderRadius: '6px',
+          transition: 'all 0.15s ease',
+          userSelect: 'none',
+          marginBottom: '2px',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(20, 169, 215, 0.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <span>{title}</span>
+        <ChevronDown 
+          size={12} 
+          color="#14A9D7" 
+          style={{ 
+            transform: isSectionCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            opacity: 0.8,
+          }} 
+        />
       </div>
     );
   };
@@ -1636,42 +1636,24 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
           {/* 1. Setor Workspace: Início, Tarefas, Equipe */}
           <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#14A9D7',
-                letterSpacing: '0.6px',
-                padding: '0 6px 3px 6px',
-              }}>
-                Workspace
+            {!isCollapsed && renderSectionHeader('Workspace', 'workspace')}
+            {(!isCollapsed ? !collapsedSections['workspace'] : true) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {workspaceItems.map(item => renderNavButton(item))}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {workspaceItems.map(item => renderNavButton(item))}
-            </div>
           </div>
 
           {isCollapsed && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
 
           {/* Ferramentas: WhatsApp */}
           <div>
-            {!isCollapsed && (
-              <div style={{
-                fontSize: '0.56rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                color: '#14A9D7',
-                letterSpacing: '0.6px',
-                padding: '0 6px 3px 6px',
-              }}>
-                Ferramentas
+            {!isCollapsed && renderSectionHeader('Ferramentas', 'tools')}
+            {(!isCollapsed ? !collapsedSections['tools'] : true) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {toolsItems.map(item => renderNavButton(item))}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {toolsItems.map(item => renderNavButton(item))}
-            </div>
           </div>
 
           {isCollapsed && <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '3px 4px' }} />}
@@ -1679,33 +1661,29 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           {/* 2. Setor Comercial: Dashboard, Funil Comercial, Leads, Follow-up, Agendamentos */}
           {effectiveSectors.includes('comercial') && (
             isCollapsed && !isMobileOverlay ? (
-              renderCollapsedSectorButton('comercial')
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
+                {renderCollapsedSectorButton('comercial')}
+                {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
+              </div>
             ) : (
               <div>
-                <div style={{
-                  fontSize: '0.56rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  color: '#14A9D7',
-                  letterSpacing: '0.6px',
-                  padding: '0 6px 3px 6px',
-                }}>
-                  Comercial
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {commercialItems.map(item => {
-                    if (item.id === 'crm') {
-                      const btn = renderNavButton(item);
-                      return (
-                        <React.Fragment key={item.id}>
-                          {btn}
-                          {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
-                        </React.Fragment>
-                      );
-                    }
-                    return renderNavButton(item);
-                  })}
-                </div>
+                {renderSectionHeader('Comercial', 'comercial')}
+                {!collapsedSections['comercial'] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {commercialItems.map(item => {
+                      if (item.id === 'crm') {
+                        const btn = renderNavButton(item);
+                        return (
+                          <React.Fragment key={item.id}>
+                            {btn}
+                            {pinnedCommercialFunnels.map(f => renderPinnedFunnelButton(f))}
+                          </React.Fragment>
+                        );
+                      }
+                      return renderNavButton(item);
+                    })}
+                  </div>
+                )}
               </div>
             )
           )}
@@ -1715,33 +1693,29 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           {/* 3. Setor Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos */}
           {effectiveSectors.includes('pos_venda') && (
             isCollapsed && !isMobileOverlay ? (
-              renderCollapsedSectorButton('pos_venda')
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
+                {renderCollapsedSectorButton('pos_venda')}
+                {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
+              </div>
             ) : (
               <div>
-                <div style={{
-                  fontSize: '0.56rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  color: '#14A9D7',
-                  letterSpacing: '0.6px',
-                  padding: '0 6px 3px 6px',
-                }}>
-                  Pós-Venda
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {postSaleItems.map(item => {
-                    if (item.id === 'post-sale-crm') {
-                      const btn = renderNavButton(item);
-                      return (
-                        <React.Fragment key={item.id}>
-                          {btn}
-                          {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
-                        </React.Fragment>
-                      );
-                    }
-                    return renderNavButton(item);
-                  })}
-                </div>
+                {renderSectionHeader('Pós-Venda', 'pos_venda')}
+                {!collapsedSections['pos_venda'] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {postSaleItems.map(item => {
+                      if (item.id === 'post-sale-crm') {
+                        const btn = renderNavButton(item);
+                        return (
+                          <React.Fragment key={item.id}>
+                            {btn}
+                            {pinnedPostSaleFunnels.map(f => renderPinnedFunnelButton(f))}
+                          </React.Fragment>
+                        );
+                      }
+                      return renderNavButton(item);
+                    })}
+                  </div>
+                )}
               </div>
             )
           )}
@@ -1751,22 +1725,17 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           {/* 4. Gerência: Tarefas, Qualificação, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa */}
           {(isDevUser || userRole === 'master' || effectiveSectors.includes('gerencia')) && (
             isCollapsed && !isMobileOverlay ? (
-              renderCollapsedSectorButton('gerencia')
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', width: '100%' }}>
+                {renderCollapsedSectorButton('gerencia')}
+              </div>
             ) : (
               <div>
-                <div style={{
-                  fontSize: '0.56rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  color: '#14A9D7',
-                  letterSpacing: '0.6px',
-                  padding: '0 6px 3px 6px',
-                }}>
-                  Gerência
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {masterItems.map(item => renderNavButton(item))}
-                </div>
+                {renderSectionHeader('Gerência', 'gerencia')}
+                {!collapsedSections['gerencia'] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {masterItems.map(item => renderNavButton(item))}
+                  </div>
+                )}
               </div>
             )
           )}
@@ -1780,7 +1749,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 textTransform: 'uppercase',
                 color: '#8096A8',
                 letterSpacing: '0.6px',
-                padding: '0 6px 3px 6px',
+                padding: '4px 6px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -1796,20 +1765,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         </div>
       )}
 
-      {/* Sidebar Footer: Versão do Sistema */}
-      <div style={{
-        borderTop: '1px solid rgba(212, 175, 55, 0.15)',
-        paddingTop: '6px',
-        marginTop: 'auto',
-        textAlign: 'center',
-        fontSize: '0.52rem',
-        color: 'rgba(212, 175, 55, 0.65)',
-        fontFamily: "'Cinzel', serif",
-        letterSpacing: '0.6px',
-        fontWeight: 700,
-      }}>
-        {isCollapsed ? `v${APP_VERSION}` : `Versão ${APP_VERSION}`}
-      </div>
+      {/* Flyout Flutuante Fora do Scroll da Sidebar */}
+      {isCollapsed && !isMobileOverlay && collapsedSectorFlyout && renderSectorFlyout(collapsedSectorFlyout)}
     </aside>
   );
 };
