@@ -1,7 +1,7 @@
 import React from 'react';
-import { Phone, Calendar, Utensils, Users, RotateCw } from 'lucide-react';
+import { Phone, Calendar, UtensilsCrossed, Users, RotateCw, Bell } from 'lucide-react';
 
-export type TaskCategoryType = 'followup' | 'visit' | 'tasting' | 'appointment' | 'general';
+export type TaskCategoryType = 'followup' | 'visit' | 'tasting' | 'appointment' | 'general' | 'confirmation_reminder';
 
 export interface TaskTypeTheme {
   category: TaskCategoryType;
@@ -18,7 +18,28 @@ export function getTaskTypeTheme(task: { type?: string; customType?: string; tit
   const titleStr = (task.title || '').toLowerCase();
   const combined = `${customStr} ${typeStr} ${titleStr}`;
 
-  // 1. Degustação Gastronômica (Sempre Laranja)
+  // 0. Follow-up de Confirmação e Lembrete de Horário (não confunde com o evento Visita / Degustação)
+  const isNotificationOrReminder = 
+    combined.includes('notificar sobre') || 
+    combined.includes('lembrete:') || 
+    combined.includes('confirmar presença') || 
+    combined.includes('confirmação 1') || 
+    combined.includes('confirmação 2') ||
+    Boolean((task as any).customProperties?.parentTaskId) ||
+    Boolean((task as any).customProperties?.notificationNumber);
+
+  if (isNotificationOrReminder) {
+    return {
+      category: 'confirmation_reminder',
+      primaryColor: '#3B82F6',
+      badgeBg: '#EFF6FF',
+      badgeBorder: '#BFDBFE',
+      badgeText: '#1D4ED8',
+      label: task.customType || (combined.includes('lembrete') ? 'Lembrete' : 'Confirmação'),
+    };
+  }
+
+  // 1. Degustação Gastronômica (Sempre Laranja com Garfinhos)
   if (combined.includes('degust') || combined.includes('jantar') || combined.includes('tasting')) {
     return {
       category: 'tasting',
@@ -30,7 +51,7 @@ export function getTaskTypeTheme(task: { type?: string; customType?: string; tit
     };
   }
 
-  // 2. Visita Comercial (Sempre Verde - prioridade máxima sobre meeting genérico)
+  // 2. Visita Comercial (Sempre Verde com Calendário)
   if (
     (combined.includes('visita') && !combined.includes('visita técnica')) || 
     typeStr === 'visit' || 
@@ -110,7 +131,9 @@ export function renderTaskTypeIcon(category: TaskCategoryType, size = 13, colorO
     case 'visit':
       return React.createElement(Calendar, { size, color: colorOverride || '#059669' });
     case 'tasting':
-      return React.createElement(Utensils, { size, color: colorOverride || '#D97706' });
+      return React.createElement(UtensilsCrossed, { size, color: colorOverride || '#D97706' });
+    case 'confirmation_reminder':
+      return React.createElement(Bell, { size, color: colorOverride || '#3B82F6' });
     case 'followup':
       return React.createElement(Phone, { size, color: colorOverride || '#0284C7' });
     case 'appointment':

@@ -3,7 +3,7 @@ import {
   ArrowLeft, FileText, Plus, ExternalLink, Check, Copy, Trash2, 
   Clock, Sparkles, Send, CheckCircle2, MessageSquare, Shield, Heart,
   FileCheck, Users, ChevronDown, CheckSquare, Edit3, DollarSign, Gem,
-  X, ShoppingBag, Crown, PhoneCall, Zap
+  X, ShoppingBag, Crown, PhoneCall, Zap, UserCheck, Tag as TagIcon, Building2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -22,6 +22,18 @@ interface AdminClientInspectorProps {
 }
 
 const STAGE_CONFIG: Record<ClientStage, { label: string; color: string; bg: string; border: string }> = {
+  new_lead: { 
+    label: 'Entrada do Cliente', 
+    color: '#06B6D4', 
+    bg: 'rgba(6, 182, 212, 0.12)', 
+    border: '#06B6D4' 
+  },
+  entry: { 
+    label: 'Entrada do Cliente', 
+    color: '#06B6D4', 
+    bg: 'rgba(6, 182, 212, 0.12)', 
+    border: '#06B6D4' 
+  },
   onboarding: { 
     label: 'Onboarding & Boas-Vindas', 
     color: '#3B82F6', 
@@ -104,6 +116,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     venues,
     sources,
     collaborators,
+    funnels,
     updateClient,
     updateClientStage, 
     deleteClient,
@@ -125,6 +138,26 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
   
+  // Responsável & Tags State
+  const [isSuccessManagerDropdownOpen, setIsSuccessManagerDropdownOpen] = useState(false);
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [showCustomTagInput, setShowCustomTagInput] = useState(false);
+  const [newTagInput, setNewTagInput] = useState('');
+
+  // Fechar popovers ao clicar fora
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-inspector-dropdown]')) {
+        setIsSuccessManagerDropdownOpen(false);
+        setIsTagDropdownOpen(false);
+        setShowCustomTagInput(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   // Upsell Modal & Form State
   const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
   const [upsellTitle, setUpsellTitle] = useState('');
@@ -246,6 +279,82 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
       setSelectedClientRecipientPhone(client.payerPhone);
     }
   }, [client?.id, clientRecipients]);
+
+  // ── Pós-Venda Funil, Tags & Gestor de Sucesso ──
+  const clientFunnel = useMemo(() => {
+    if (!client) return null;
+    return (funnels || []).find(f => f.id === client.funnelId) || (funnels || []).find(f => f.isPostSale) || null;
+  }, [funnels, client?.funnelId]);
+
+  const availableTags = useMemo(() => {
+    const defaultTags = ['VIP', 'Urgente', 'Atenção', 'Contrato Assinado', 'Degustação Pendente', 'Cronograma OK', 'Fornecedores OK'];
+    const funnelTags = clientFunnel?.predefinedTags || [];
+    const combined = Array.from(new Set([...funnelTags, ...defaultTags]));
+    const currentTags = (client?.tags || []).map(t => t.trim().toLowerCase());
+    return combined.filter(t => !currentTags.includes(t.trim().toLowerCase()) && t.toLowerCase() !== 'new_lead' && t.toLowerCase() !== 'new-lead');
+  }, [clientFunnel, client?.tags]);
+
+  const handleAddTag = (tagToAdd?: string) => {
+    const val = (tagToAdd || newTagInput).trim();
+    if (!val || !client) return;
+    if (val.toLowerCase() === 'new_lead' || val.toLowerCase() === 'new-lead') {
+      setNewTagInput('');
+      setIsTagDropdownOpen(false);
+      setShowCustomTagInput(false);
+      return;
+    }
+    const currentTags = client.tags || [];
+    if (!currentTags.some(t => t.toLowerCase() === val.toLowerCase())) {
+      updateClient(client.id, { tags: [...currentTags, val] });
+    }
+    setNewTagInput('');
+    setIsTagDropdownOpen(false);
+    setShowCustomTagInput(false);
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    if (!client) return;
+    updateClient(client.id, { tags: (client.tags || []).filter(t => t !== tagToRemove) });
+  };
+
+  const assignedSuccessCollab = useMemo(() => {
+    if (!client) return null;
+    const targetId = client.assignedSuccessManagerId || client.assignedToId;
+    if (targetId) {
+      return (collaborators || []).find(c => c.id === targetId) || null;
+    }
+    if (client.assignedSuccessManagerName) {
+      return (collaborators || []).find(c => c.name.toLowerCase() === client.assignedSuccessManagerName?.toLowerCase()) || null;
+    }
+    return null;
+  }, [client?.assignedSuccessManagerId, client?.assignedToId, client?.assignedSuccessManagerName, collaborators]);
+
+  const postSaleCollaborators = useMemo(() => {
+    return (collaborators || []).filter(c => c.active);
+  }, [collaborators]);
+
+  const handleAssignSuccessManager = (collabId?: string) => {
+    if (!client) return;
+    if (!collabId) {
+      updateClient(client.id, {
+        assignedSuccessManagerId: undefined,
+        assignedSuccessManagerName: undefined,
+        assignedTo: undefined,
+        assignedToId: undefined,
+      } as any);
+    } else {
+      const selected = collaborators.find(c => c.id === collabId);
+      if (selected) {
+        updateClient(client.id, {
+          assignedSuccessManagerId: selected.id,
+          assignedSuccessManagerName: selected.name,
+          assignedTo: selected.name,
+          assignedToId: selected.id,
+        } as any);
+      }
+    }
+    setIsSuccessManagerDropdownOpen(false);
+  };
 
   // WhatsApp Sender Selection para Pós-Venda
   const connectedSenderSources = useMemo(() => {
@@ -723,6 +832,399 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
           gap: '14px',
           flexShrink: 0,
         }}>
+          {/* ── BARRA DE TAGS & UNIDADE FÍSICA ── */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '6px',
+            paddingBottom: '8px',
+            borderBottom: '1px solid var(--adm-border)',
+          }}>
+            {/* Unidade Física Fixa */}
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                background: 'rgba(20, 169, 215, 0.14)',
+                color: '#14A9D7',
+                border: '1px solid rgba(20, 169, 215, 0.4)',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                flexShrink: 0,
+              }}
+              title="Casa de festas / Unidade física"
+            >
+              <Building2 size={11} color="#14A9D7" />
+              <span>{client.venueName || 'Unidade Física'}</span>
+            </span>
+
+            {/* Tags Ativas */}
+            {(client.tags || [])
+              .filter(t => t.toLowerCase() !== 'new_lead' && t.toLowerCase() !== 'new-lead')
+              .map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    background: 'rgba(20, 169, 215, 0.15)',
+                    color: '#14A9D7',
+                    border: '1px solid rgba(20, 169, 215, 0.35)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <TagIcon size={10} color="#14A9D7" />
+                  <span>{tag}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTag(tag)}
+                    style={{ background: 'transparent', border: 'none', color: '#14A9D7', cursor: 'pointer', padding: 0, display: 'flex' }}
+                    title={`Remover tag ${tag}`}
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+
+            {/* Botão + Tag com Popover Dropdown */}
+            <div data-inspector-dropdown style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTagDropdownOpen(prev => !prev);
+                  setShowCustomTagInput(false);
+                }}
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: isTagDropdownOpen ? 'rgba(20, 169, 215, 0.25)' : 'var(--adm-bg-input)',
+                  color: isTagDropdownOpen ? '#14A9D7' : 'var(--adm-text-muted)',
+                  border: `1px dashed ${isTagDropdownOpen ? '#14A9D7' : 'var(--adm-border)'}`,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Plus size={11} />
+                <span>Tag</span>
+              </button>
+
+              {isTagDropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '6px',
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '10px',
+                  padding: '6px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                  zIndex: 100,
+                  minWidth: '200px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                }}>
+                  {availableTags.map(tag => (
+                    <div
+                      key={tag}
+                      onClick={() => handleAddTag(tag)}
+                      style={{
+                        padding: '6px 10px',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        color: 'var(--adm-text-title)',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span>{tag}</span>
+                      <Plus size={12} color="var(--adm-text-muted)" />
+                    </div>
+                  ))}
+
+                  {/* Opção Personalizada */}
+                  {!showCustomTagInput ? (
+                    <div
+                      onClick={() => setShowCustomTagInput(true)}
+                      style={{
+                        padding: '6px 10px',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: 'var(--adm-accent)',
+                        borderRadius: '6px',
+                        borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
+                        marginTop: availableTags.length > 0 ? '2px' : 0,
+                        paddingTop: availableTags.length > 0 ? '6px' : '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Plus size={12} />
+                      <span>Personalizado...</span>
+                    </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      gap: '4px',
+                      padding: '4px 0 2px',
+                      borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
+                      marginTop: '2px',
+                    }}>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Nome da tag..."
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddTag();
+                          }
+                          if (e.key === 'Escape') {
+                            setShowCustomTagInput(false);
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          background: 'var(--adm-bg-input)',
+                          border: '1px solid var(--adm-border)',
+                          color: 'var(--adm-text-title)',
+                          borderRadius: '6px',
+                          padding: '4px 8px',
+                          fontSize: '0.72rem',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddTag()}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          background: 'var(--adm-accent)',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Check size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Seção: Gestão de Sucesso & Responsável */}
+          <div style={sectionTitleStyle}>
+            <UserCheck size={13} color="var(--adm-accent)" />
+            <span>Gestão de Sucesso & Responsável</span>
+          </div>
+
+          <div style={cardStyle}>
+            <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
+              <span style={cardLabelStyle}>Gestor de Sucesso</span>
+              <div style={cardValueStyle}>
+                <div
+                  onClick={() => setIsSuccessManagerDropdownOpen(prev => !prev)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    cursor: 'pointer',
+                    padding: '3px 6px',
+                    borderRadius: '6px',
+                    background: isSuccessManagerDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = isSuccessManagerDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent'; }}
+                >
+                  {assignedSuccessCollab ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: 'rgba(20, 169, 215, 0.15)',
+                        border: '1px solid rgba(20, 169, 215, 0.35)',
+                        color: 'var(--adm-accent)',
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                      }}>
+                        {assignedSuccessCollab.avatarUrl ? (
+                          <img src={assignedSuccessCollab.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          assignedSuccessCollab.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.80rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {assignedSuccessCollab.name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                      Atribuir Gestor de Sucesso...
+                    </span>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    {assignedSuccessCollab && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAssignSuccessManager(undefined);
+                        }}
+                        title="Desatribuir Gestor"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--adm-text-muted)',
+                          cursor: 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          opacity: 0.7,
+                          transition: 'opacity 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                    <ChevronDown size={13} color="var(--adm-text-muted)" />
+                  </div>
+                </div>
+
+                {/* Dropdown Popover de Gestor de Sucesso */}
+                {isSuccessManagerDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                    zIndex: 90,
+                    maxHeight: '220px',
+                    overflowY: 'auto',
+                  }}>
+                    <div
+                      onClick={() => handleAssignSuccessManager(undefined)}
+                      style={{
+                        padding: '7px 10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: '#EF4444',
+                        borderBottom: '1px solid var(--adm-border)',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <X size={13} color="#EF4444" />
+                      <span>Nenhum (Desatribuir)</span>
+                    </div>
+
+                    {postSaleCollaborators.map(collab => {
+                      const isSelected = collab.id === assignedSuccessCollab?.id;
+                      return (
+                        <div
+                          key={collab.id}
+                          onClick={() => handleAssignSuccessManager(collab.id)}
+                          style={{
+                            padding: '7px 10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            background: isSelected ? 'var(--adm-bg-hover)' : 'transparent',
+                            color: isSelected ? 'var(--adm-accent)' : 'var(--adm-text-title)',
+                            fontSize: '0.76rem',
+                            fontWeight: isSelected ? 800 : 500,
+                            transition: 'background 0.12s ease',
+                          }}
+                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
+                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                            <div style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '50%',
+                              background: 'rgba(20, 169, 215, 0.15)',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--adm-accent)',
+                              flexShrink: 0,
+                              overflow: 'hidden',
+                            }}>
+                              {collab.avatarUrl ? (
+                                <img src={collab.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                collab.name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {collab.name}
+                            </span>
+                          </div>
+                          {isSelected && <Check size={14} color="var(--adm-accent)" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Seção 1: Aniversariante & Evento */}
           <div style={sectionTitleStyle}>
             <Heart size={13} color="var(--adm-accent)" />

@@ -665,7 +665,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return (
           <AdminPostSaleKanbanView
             initialFunnelId={activeFunnelId}
-            onSelectFunnel={(id) => setActiveFunnelId(id)}
+            onSelectFunnel={(id) => {
+              setActiveFunnelId(id);
+              if (id) {
+                try { localStorage.setItem('f5_active_funnel_id', id); } catch {}
+              }
+            }}
             onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)}
             onOpenLead={handleOpenLeadFromTask}
           />

@@ -4403,6 +4403,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                 // E) Tags do Lead (Customizadas)
                                 (lead.tags || []).forEach((tag, idx) => {
                                   if (tag && tag.trim()) {
+                                    const norm = tag.trim().toLowerCase();
+                                    if (norm === 'new_lead' || norm === 'new-lead' || norm === 'newlead') return;
                                     chips.push({
                                       id: `tag_${idx}`,
                                       label: tag.trim(),

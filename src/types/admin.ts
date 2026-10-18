@@ -719,6 +719,8 @@ export interface ClientActivity {
 }
 
 export type ClientStage =
+  | 'new_lead'         // Entrada do Cliente (Caixa de Entrada Pós-Venda)
+  | 'entry'            // Entrada (alias)
   | 'onboarding'       // Boas-vindas & Onboarding
   | 'planning'         // Planejamento & Cronograma
   | 'suppliers'        // Definição de Fornecedores / Degustação

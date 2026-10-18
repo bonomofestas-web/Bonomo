@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, Square, Calendar, Clock, 
   CheckCircle2, XCircle, Sparkles, ThumbsUp,
-  Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays, Plus, History
+  Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays, Plus,
+  RotateCw, ExternalLink
 } from 'lucide-react';
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
@@ -78,8 +79,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   // ── Alternador de Período da Lista: 'week' (Semana) ou 'month' (Mês) ──
   const [listPeriodMode, setListPeriodMode] = useState<'week' | 'month'>('week');
 
-  // ── Filtro de Histórico: por padrão false (apenas presente e futuro: date >= todayStr) ──
-  const [showPastHistory, setShowPastHistory] = useState<boolean>(false);
+  // ── Histórico: sempre exibe os agendamentos pertencentes ao período ativo navegado ──
+  const showPastHistory = true;
 
   // ── Navegação Semanal: Domingo a Sábado ──
   const getSundayOfWeek = (date: Date) => {
@@ -153,6 +154,24 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
   const handleTodayMonth = () => {
     setCurrentMonthDate(new Date());
+  };
+
+  // Helper de navegação dinâmica para datas específicas (ex: compromissos remarcados)
+  const navigateToDate = (targetDateStr: string) => {
+    if (!targetDateStr) return;
+    try {
+      const parts = targetDateStr.split('-');
+      if (parts.length === 3) {
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const d = Number(parts[2]);
+        const targetDate = new Date(y, m - 1, d);
+        setCurrentWeekSunday(getSundayOfWeek(targetDate));
+        setCurrentMonthDate(targetDate);
+      }
+    } catch (e) {
+      console.error('Falha ao navegar para data remarcada:', e);
+    }
   };
 
   const handleSelectPeriodMode = (mode: 'week' | 'month') => {
@@ -461,20 +480,15 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         ? parentTask.customProperties?.notification1Status 
         : parentTask.customProperties?.notification2Status;
 
-      if (explicitStatus === 'impossible') {
-        return {
-          status: 'impossible',
-          label: 'Impossibilitada',
-          tooltip: 'Esta confirmação não pôde ser programada porque o agendamento foi realizado sem tempo hábil suficiente para o envio deste aviso.',
-          isPositive: false,
-        };
-      }
-      if (explicitStatus === 'disabled') {
+      const deactivatedTooltip = 'Esta confirmação foi desativada pelo motivo do evento ser muito próximo da data (não foi possível criar tarefa retroativa).';
+
+      if (explicitStatus === 'impossible' || explicitStatus === 'disabled') {
         return {
           status: 'disabled',
           label: 'Desativada',
-          tooltip: 'Esta confirmação foi desativada manualmente na criação do agendamento.',
+          tooltip: deactivatedTooltip,
           isPositive: false,
+          isDisabled: true,
         };
       }
 
@@ -482,8 +496,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         return { 
           status: 'disabled', 
           label: 'Desativada', 
-          tooltip: 'Confirmação desativada ou não configurada para este compromisso.', 
-          isPositive: false 
+          tooltip: deactivatedTooltip, 
+          isPositive: false,
+          isDisabled: true,
         };
       }
 
@@ -492,7 +507,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
           status: 'pending', 
           label: 'Pendente', 
           tooltip: 'Aguardando o momento hábil de contato pelo SDR.', 
-          isPositive: false 
+          isPositive: false,
+          isDisabled: false,
         };
       }
 
@@ -503,14 +519,16 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
           status: 'negative', 
           label: 'Não Confirmado', 
           tooltip: 'O cliente informou que não poderá comparecer.', 
-          isPositive: false 
+          isPositive: false,
+          isDisabled: false,
         };
       }
       return { 
         status: 'positive', 
         label: 'Confirmado', 
         tooltip: 'Presença confirmada pelo cliente com sucesso.', 
-        isPositive: true 
+        isPositive: true,
+        isDisabled: false,
       };
     };
 
@@ -523,7 +541,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
     let presenceStatus: { label: string; bg: string; text: string; border: string; icon: React.ReactNode };
 
-    if (positiveCount === 2) {
+    if (eval1.isPositive && eval2.isPositive) {
       presenceStatus = {
         label: 'Mais que Confirmado (100%)',
         bg: '#ECFDF5',
@@ -531,7 +549,25 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         border: '#A7F3D0',
         icon: <Sparkles size={13} style={{ color: '#059669' }} />,
       };
-    } else if (positiveCount === 1) {
+    } else if (eval1.isDisabled && eval2.isPositive) {
+      // Regra F5: Se Confirmação 1 for desativada (tempo curto) e Confirmação 2 for confirmada -> 100%
+      presenceStatus = {
+        label: 'Confirmado (100%)',
+        bg: '#ECFDF5',
+        text: '#047857',
+        border: '#A7F3D0',
+        icon: <Sparkles size={13} style={{ color: '#059669' }} />,
+      };
+    } else if (eval1.isDisabled && eval2.isDisabled) {
+      // Regra F5: Se ambas forem desativadas (agendamento de curtíssimo prazo < 30min) -> 100%
+      presenceStatus = {
+        label: 'Confirmado Imediato (100%)',
+        bg: '#ECFDF5',
+        text: '#047857',
+        border: '#A7F3D0',
+        icon: <Sparkles size={13} style={{ color: '#059669' }} />,
+      };
+    } else if (eval1.isPositive || eval2.isPositive) {
       presenceStatus = {
         label: 'Cliente Confirmado (50%)',
         bg: '#EFF6FF',
@@ -782,45 +818,6 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
             <ChevronRight size={16} />
           </button>
         </div>
-
-        {/* Direita: Filtro de Histórico (Presente -> Futuro vs Passado) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={() => setShowPastHistory(prev => !prev)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 14px',
-              borderRadius: '8px',
-              background: showPastHistory ? 'rgba(2, 132, 199, 0.12)' : 'var(--adm-bg-surface, #F8FAFC)',
-              border: showPastHistory ? '1.5px solid var(--adm-accent, #0284C7)' : '1px solid var(--adm-border, #CBD5E1)',
-              color: showPastHistory ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-title, #334155)',
-              fontSize: '0.74rem',
-              fontWeight: showPastHistory ? 800 : 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              boxShadow: showPastHistory ? '0 1px 4px rgba(2, 132, 199, 0.2)' : 'none',
-            }}
-            title={showPastHistory ? 'Ocultar datas e compromissos passados (focar no presente e futuro)' : 'Exibir histórico de datas e compromissos passados'}
-          >
-            <History size={14} style={{ color: showPastHistory ? '#0284C7' : 'inherit' }} />
-            <span>Histórico</span>
-            {showPastHistory ? (
-              <span style={{
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                background: '#0284C7',
-                color: '#FFFFFF',
-                padding: '1px 5px',
-                borderRadius: '6px',
-              }}>
-                Ativo
-              </span>
-            ) : null}
-          </button>
-        </div>
       </div>
 
       {/* ÁREA DA TABELA */}
@@ -835,7 +832,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
       }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <table style={{
+          <table className="adm-tasks-table" style={{
             width: '100%',
             borderCollapse: 'collapse',
             textAlign: 'left',
@@ -1211,7 +1208,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             <th style={{ padding: '8px 14px', width: '40px', textAlign: 'center' }}>
                               <span className="sr-only">Status</span>
                             </th>
-                            <th style={{ padding: '8px 10px', width: '60px', textAlign: 'center' }} title="Unidade da Casa de Festas">CASA</th>
+                            <th style={{ padding: '8px 10px', width: '60px', textAlign: 'center' }} title="Unidade da Casa de Festas">UNIDADE</th>
                             <th style={{ padding: '8px 16px', minWidth: '130px' }}>HORÁRIO / PRAZO</th>
                             <th style={{ padding: '8px 16px', minWidth: '160px' }}>RESPONSÁVEIS</th>
                             <th style={{ padding: '8px 16px', minWidth: '220px' }}>FAMÍLIA & EVENTO</th>
@@ -1254,6 +1251,28 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                     const isCancelledDueToBlock = Boolean(task.customProperties?.cancelledDueToBlock || task.status === 'cancelled');
                     const isOverdue = task.dueDate && task.dueDate < todayStr && task.status !== 'completed';
                     const isCompleted = task.status === 'completed';
+                    const isRescheduled = (task.status as any) === 'rescheduled' || Boolean(task.customProperties?.rescheduledToDate) || (task.resolution || '').toLowerCase().includes('remarcad');
+                    const isCancelled = task.status === 'cancelled' || isCancelledDueToBlock || (task.resolution || '').toLowerCase().includes('cancelad');
+
+                    const rescheduledToDate = (task.customProperties?.rescheduledToDate as string) || 
+                      (task.customProperties?.newDueDate as string) || 
+                      (task.customProperties?.rescheduledDate as string) ||
+                      (() => {
+                        const text = `${task.resolution || ''} ${task.observations || ''} ${task.description || ''}`;
+                        const isoMatch = text.match(/\b(202\d-[0-1]\d-[0-3]\d)\b/);
+                        if (isoMatch) return isoMatch[1];
+                        const brMatch = text.match(/\b([0-3]?\d)\/([0-1]?\d)\/(202\d)\b/);
+                        if (brMatch) {
+                          return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`;
+                        }
+                        return null;
+                      })();
+
+                    const formattedRescheduledDate = rescheduledToDate ? (() => {
+                      const parts = rescheduledToDate.split('-');
+                      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : rescheduledToDate;
+                    })() : null;
+
                     const theme = getTaskTypeTheme(task);
                     // Resolve linked entity names (Lead, Client, Debutante)
                     const resolvedLeadName = task.leadName || (task.leadId ? leads.find(l => l.id === task.leadId)?.name : null);
@@ -1279,7 +1298,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                       : (idx % 2 === 0 ? 'var(--adm-bg-card, #FFFFFF)' : 'var(--adm-bg-surface, #FAFAFA)');
                     let rowHoverBg = isCancelledDueToBlock ? 'rgba(239, 68, 68, 0.14)' : 'var(--adm-bg-card-hover, #F0F9FF)';
 
-                    if (isVisitsContext && visitData && !isCancelledDueToBlock) {
+                    if (isRescheduled) {
+                      rowBg = 'rgba(124, 58, 237, 0.05)';
+                      rowHoverBg = 'rgba(124, 58, 237, 0.12)';
+                    } else if (isVisitsContext && visitData && !isCancelledDueToBlock) {
                       if (visitData.positiveCount === 2) {
                         rowBg = 'rgba(16, 185, 129, 0.12)';
                         rowHoverBg = 'rgba(16, 185, 129, 0.2)';
@@ -1454,6 +1476,61 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                               {leadOrTargetName}
                             </div>
                           )}
+
+                          {/* Badge de Remarcado com Navegação Dinâmica */}
+                          {isRescheduled && (
+                            <div style={{ marginTop: '5px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (rescheduledToDate) navigateToDate(rescheduledToDate);
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  background: '#F5F3FF',
+                                  border: '1px solid #DDD6FE',
+                                  color: '#7C3AED',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  cursor: rescheduledToDate ? 'pointer' : 'default',
+                                  transition: 'all 0.15s ease',
+                                }}
+                                title={rescheduledToDate ? `Clique para ir até a data remarcada: ${formattedRescheduledDate}` : 'Compromisso remarcado'}
+                              >
+                                <RotateCw size={11} />
+                                <span>{formattedRescheduledDate ? `Remarcado para ${formattedRescheduledDate}` : 'Remarcado'}</span>
+                                {rescheduledToDate && <ExternalLink size={10} style={{ marginLeft: '2px' }} />}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Badge de Cancelado */}
+                          {isCancelled && !isRescheduled && (
+                            <div style={{ marginTop: '5px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  background: '#FEF2F2',
+                                  border: '1px solid #FECACA',
+                                  color: '#EF4444',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <XCircle size={11} />
+                                <span>Cancelado</span>
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Tipo de Tarefa */}
@@ -1481,20 +1558,23 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                           <>
                             {/* Confirmação 1 */}
                             <td style={{ padding: '12px 14px' }}>
-                              <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                fontSize: '0.70rem',
-                                fontWeight: 700,
-                                background: visitData.eval1.status === 'positive' ? '#ECFDF5' : visitData.eval1.status === 'negative' ? '#FEF2F2' : visitData.eval1.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval1.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
-                                color: visitData.eval1.status === 'positive' ? '#047857' : visitData.eval1.status === 'negative' ? '#B91C1C' : visitData.eval1.status === 'impossible' ? '#475569' : visitData.eval1.status === 'disabled' ? '#94A3B8' : '#B45309',
-                                border: `1px solid ${visitData.eval1.status === 'positive' ? '#A7F3D0' : visitData.eval1.status === 'negative' ? '#FECACA' : visitData.eval1.status === 'impossible' ? '#CBD5E1' : visitData.eval1.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
-                                cursor: 'help',
-                                whiteSpace: 'nowrap',
-                              }}>
+                              <span 
+                                title={visitData.eval1.tooltip}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                  background: visitData.eval1.status === 'positive' ? '#ECFDF5' : visitData.eval1.status === 'negative' ? '#FEF2F2' : visitData.eval1.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval1.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
+                                  color: visitData.eval1.status === 'positive' ? '#047857' : visitData.eval1.status === 'negative' ? '#B91C1C' : visitData.eval1.status === 'impossible' ? '#475569' : visitData.eval1.status === 'disabled' ? '#94A3B8' : '#B45309',
+                                  border: `1px solid ${visitData.eval1.status === 'positive' ? '#A7F3D0' : visitData.eval1.status === 'negative' ? '#FECACA' : visitData.eval1.status === 'impossible' ? '#CBD5E1' : visitData.eval1.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
+                                  cursor: 'help',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {visitData.eval1.status === 'positive' && <CheckCircle2 size={12} />}
                                 {visitData.eval1.status === 'negative' && <XCircle size={12} />}
                                 {visitData.eval1.status === 'pending' && <Clock size={12} />}
@@ -1504,20 +1584,23 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
                             {/* Confirmação 2 */}
                             <td style={{ padding: '12px 14px' }}>
-                              <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                fontSize: '0.70rem',
-                                fontWeight: 700,
-                                background: visitData.eval2.status === 'positive' ? '#ECFDF5' : visitData.eval2.status === 'negative' ? '#FEF2F2' : visitData.eval2.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval2.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
-                                color: visitData.eval2.status === 'positive' ? '#047857' : visitData.eval2.status === 'negative' ? '#B91C1C' : visitData.eval2.status === 'impossible' ? '#475569' : visitData.eval2.status === 'disabled' ? '#94A3B8' : '#B45309',
-                                border: `1px solid ${visitData.eval2.status === 'positive' ? '#A7F3D0' : visitData.eval2.status === 'negative' ? '#FECACA' : visitData.eval2.status === 'impossible' ? '#CBD5E1' : visitData.eval2.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
-                                cursor: 'help',
-                                whiteSpace: 'nowrap',
-                              }}>
+                              <span 
+                                title={visitData.eval2.tooltip}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.70rem',
+                                  fontWeight: 700,
+                                  background: visitData.eval2.status === 'positive' ? '#ECFDF5' : visitData.eval2.status === 'negative' ? '#FEF2F2' : visitData.eval2.status === 'impossible' ? 'rgba(148, 163, 184, 0.15)' : visitData.eval2.status === 'disabled' ? 'rgba(100, 116, 139, 0.08)' : '#FFFBEB',
+                                  color: visitData.eval2.status === 'positive' ? '#047857' : visitData.eval2.status === 'negative' ? '#B91C1C' : visitData.eval2.status === 'impossible' ? '#475569' : visitData.eval2.status === 'disabled' ? '#94A3B8' : '#B45309',
+                                  border: `1px solid ${visitData.eval2.status === 'positive' ? '#A7F3D0' : visitData.eval2.status === 'negative' ? '#FECACA' : visitData.eval2.status === 'impossible' ? '#CBD5E1' : visitData.eval2.status === 'disabled' ? '#E2E8F0' : '#FDE68A'}`,
+                                  cursor: 'help',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {visitData.eval2.status === 'positive' && <CheckCircle2 size={12} />}
                                 {visitData.eval2.status === 'negative' && <XCircle size={12} />}
                                 {visitData.eval2.status === 'pending' && <Clock size={12} />}

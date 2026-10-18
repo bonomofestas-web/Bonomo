@@ -91,9 +91,25 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     collaborators,
     viewingAsCollaborator,
     setViewingAsCollaborator,
+    refreshAllData,
     userPinnedFunnelIds,
     reorderPinnedFunnels,
   } = useAdminState();
+
+  const [isRefreshingLogo, setIsRefreshingLogo] = useState(false);
+
+  const handleLogoRefresh = async () => {
+    if (isRefreshingLogo) return;
+    setIsRefreshingLogo(true);
+    try {
+      if (refreshAllData) {
+        await refreshAllData();
+      }
+    } catch {}
+    setTimeout(() => {
+      setIsRefreshingLogo(false);
+    }, 650);
+  };
 
   // Contagem de conversas de WhatsApp pendentes aguardando resposta para o usuário logado
   const myPendingConversationsCount = useMemo(() => {
@@ -1162,10 +1178,10 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
             gap: '8px',
             width: '100%',
           }}>
-            {/* F5 Official Símbolo/Mark - Limpo, sem caixa nem neon */}
+            {/* F5 Official Símbolo/Mark - Limpo, com Easter Egg de Refresh */}
             <div 
-              title="F5 System"
-              onClick={onToggleCollapse}
+              title="F5 System • Atualizar tela"
+              onClick={handleLogoRefresh}
               style={{
                 width: '32px',
                 height: '32px',
@@ -1174,12 +1190,25 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                 justifyContent: 'center',
                 boxSizing: 'border-box',
                 cursor: 'pointer',
+                transition: 'transform 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
               }}
             >
               <img
                 src="/f5_mark.png"
                 alt="F5"
-                style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  objectFit: 'contain',
+                  transform: isRefreshingLogo ? 'rotate(360deg)' : 'none',
+                  transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                }}
               />
             </div>
 
@@ -1223,13 +1252,25 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
               position: 'relative',
               minHeight: '30px',
             }}>
-            {/* Centered Logo in the Middle */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '100%',
-            }}>
+            {/* Centered Logo in the Middle with Easter Egg Refresh */}
+            <div 
+              title="F5 System • Atualizar tela"
+              onClick={handleLogoRefresh}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '100%',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.04)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
               <img
                 src="/f5_logo.png"
                 alt="F5 System"
@@ -1240,6 +1281,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   objectFit: 'contain',
                   display: 'block',
                   margin: '0 auto',
+                  transform: isRefreshingLogo ? 'rotate(360deg)' : 'none',
+                  transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 }}
               />
             </div>
@@ -1307,55 +1350,115 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         )}
       </div>
 
-      {/* Viewing As Collaborator Alert Banner */}
+      {/* Viewing As Collaborator Alert Banner (Redesenhado: Elegante, Espaçoso e Moderno) */}
       {viewingAsCollaborator && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.22) 0%, rgba(20, 169, 215, 0.08) 100%)',
-          border: '1px solid #14A9D7',
+          background: 'linear-gradient(135deg, rgba(20, 169, 215, 0.16) 0%, rgba(20, 169, 215, 0.05) 100%)',
+          border: '1px solid rgba(20, 169, 215, 0.40)',
           borderRadius: '12px',
           padding: isCollapsed ? '8px 4px' : '10px 12px',
           marginBottom: '12px',
           display: 'flex',
-          flexDirection: isCollapsed ? 'column' : 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '8px',
-          boxShadow: '0 0 16px rgba(20, 169, 215, 0.2)',
+          flexDirection: 'column',
+          gap: isCollapsed ? '6px' : '8px',
+          boxShadow: '0 4px 16px rgba(20, 169, 215, 0.12)',
         }}>
-          {!isCollapsed && (
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: '#14A9D7', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Eye size={12} />
-                <span>Modo de Visualização</span>
-              </div>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {viewingAsCollaborator.name} ({ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role})
-              </div>
+          {isCollapsed ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setViewingAsCollaborator(null)}
+                title={`Modo de Visualização: ${viewingAsCollaborator.name}. Clique para sair.`}
+                style={{
+                  background: '#14A9D7',
+                  color: '#080C14',
+                  border: 'none',
+                  borderRadius: '8px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <RotateCcw size={14} />
+              </button>
             </div>
+          ) : (
+            <>
+              {/* Top row: Label badge and Sair button */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  color: '#14A9D7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}>
+                  <Eye size={12} />
+                  <span>Modo de Visualização</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setViewingAsCollaborator(null)}
+                  title="Sair do Modo de Visualização e voltar à sua visão nativa"
+                  style={{
+                    background: 'rgba(20, 169, 215, 0.18)',
+                    color: '#38BDF8',
+                    border: '1px solid rgba(20, 169, 215, 0.35)',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#14A9D7';
+                    e.currentTarget.style.color = '#080C14';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(20, 169, 215, 0.18)';
+                    e.currentTarget.style.color = '#38BDF8';
+                  }}
+                >
+                  <RotateCcw size={11} />
+                  <span>Sair</span>
+                </button>
+              </div>
+
+              {/* Collab Info: Name and Role */}
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontSize: '0.80rem',
+                  fontWeight: 800,
+                  color: '#FFFFFF',
+                  lineHeight: 1.25,
+                  wordBreak: 'break-word',
+                }}>
+                  {viewingAsCollaborator.name}
+                </div>
+                <div style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 600,
+                  color: '#94A3B8',
+                  marginTop: '2px',
+                }}>
+                  {ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role}
+                </div>
+              </div>
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => setViewingAsCollaborator(null)}
-            title="Sair do Modo de Visualização e voltar à sua visão nativa"
-            style={{
-              background: '#14A9D7',
-              color: '#080C14',
-              border: 'none',
-              borderRadius: '8px',
-              padding: isCollapsed ? '6px' : '6px 10px',
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-              flexShrink: 0,
-            }}
-          >
-            <RotateCcw size={12} />
-            {!isCollapsed && <span>Sair</span>}
-          </button>
         </div>
       )}
 

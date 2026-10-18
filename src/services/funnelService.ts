@@ -34,7 +34,13 @@ export const funnelService = {
         isPinned: row.is_pinned ?? false,
         stagesCount: row.stages_count || (Array.isArray(row.stages) ? row.stages.length : 4),
         stages: Array.isArray(row.stages) ? row.stages : undefined,
-        isEntryStageActive: row.is_entry_stage_active ?? row.enable_inbox_stage ?? row.duplicate_rule_config?._isEntryStageActive ?? row.duplicate_rule_config?._enableInboxStage ?? false,
+        isEntryStageActive: Boolean(
+          row.is_entry_stage_active === true ||
+          row.enable_inbox_stage === true ||
+          row.duplicate_rule_config?._isEntryStageActive === true ||
+          row.duplicate_rule_config?._enableInboxStage === true ||
+          (row.is_entry_stage_active !== false && Array.isArray(row.stages) && row.stages.some((s: any) => s.id === 'new_lead' || s.name?.toLowerCase().includes('entrada')))
+        ),
         detectDuplicates: row.detect_duplicates ?? true,
         duplicateRuleConfig: row.duplicate_rule_config || {
           matchPhone: true,
@@ -151,6 +157,14 @@ export const funnelService = {
       if (funnel.pinnedAt !== undefined) payload.pinned_at = funnel.pinnedAt || null;
       if (funnel.order !== undefined) payload.order = funnel.order;
 
+      // Sanitiza strings vazias em campos UUID para evitar erro de tipo no PostgreSQL
+      if (payload.default_whatsapp_source_id === '' || payload.default_whatsapp_source_id === 'none') {
+        payload.default_whatsapp_source_id = null;
+      }
+      if (payload.venue_id === '' || payload.venue_id === 'all') {
+        payload.venue_id = null;
+      }
+
       // Se venue_id for nulo mas houver shared_venue_ids válidos, usa o primeiro como primário
       if (!payload.venue_id && funnel.sharedVenueIds && funnel.sharedVenueIds.length > 0) {
         const firstValidVenue = funnel.sharedVenueIds.find(vid => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vid));
@@ -184,6 +198,13 @@ export const funnelService = {
             order: funnel.order,
             is_primary: funnel.isPrimary,
             master_id: funnel.masterId,
+            is_post_sale: funnel.isPostSale,
+            is_entry_stage_active: funnel.isEntryStageActive,
+            enable_inbox_stage: funnel.isEntryStageActive,
+            allowed_roles: funnel.allowedRoles,
+            predefined_tags: funnel.predefinedTags,
+            post_sale_channels: funnel.postSaleChannels,
+            post_sale_custom_stage_names: funnel.postSaleCustomStageNames,
             duplicate_rule_config: payload.duplicate_rule_config,
           };
           if (payload.venue_id) fallbackPayload.venue_id = payload.venue_id;

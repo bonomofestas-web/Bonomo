@@ -1,13 +1,14 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   X, Check, Download, Share2, Calendar, 
-  MapPin, Users, Building2, ShieldCheck, Loader2
+  MapPin, Users, Building2, ShieldCheck, Loader2,
+  Bell, ChevronDown, ChevronUp, Clock, CheckCircle2, XCircle, Sparkles
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useAdminState } from '../../context/AdminStateContext';
 import { isPhoneMatch } from '../../services/leadService';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { CommercialCommitmentType } from '../../types/admin';
+import type { CommercialCommitmentType, AdminTask } from '../../types/admin';
 
 export interface AppointmentReceiptData {
   id?: string;
@@ -34,11 +35,13 @@ export interface AppointmentReceiptData {
 interface AdminAppointmentReceiptModalProps {
   receipt: AppointmentReceiptData;
   onClose: () => void;
+  tasks?: AdminTask[];
 }
 
 export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModalProps> = ({
   receipt,
   onClose,
+  tasks = [],
 }) => {
   const printableCardRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -94,6 +97,131 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
   const [venueLogoDataUrl, setVenueLogoDataUrl] = useState<string | null>(null);
   const [venueLogoFailed, setVenueLogoFailed] = useState(false);
   const [closerPhotoFailed, setCloserPhotoFailed] = useState(false);
+
+  // Visualização e acompanhamento de tarefas de Confirmação 1 e 2
+  const [showConfirmationTasks, setShowConfirmationTasks] = useState(false);
+
+  const notif1 = useMemo(() => {
+    if (!tasks || !receipt.id) return null;
+    return tasks.find(t => 
+      (t.customProperties?.parentTaskId === receipt.id && t.customProperties?.notificationNumber === 1) ||
+      (receipt.leadId && t.leadId === receipt.leadId && (t.title.toLowerCase().includes('notificar sobre') || t.title.toLowerCase().includes('lembrete: notificar')))
+    );
+  }, [tasks, receipt.id, receipt.leadId]);
+
+  const notif2 = useMemo(() => {
+    if (!tasks || !receipt.id) return null;
+    return tasks.find(t => 
+      (t.customProperties?.parentTaskId === receipt.id && t.customProperties?.notificationNumber === 2) ||
+      (receipt.leadId && t.leadId === receipt.leadId && (t.title.toLowerCase().includes('confirmar presença') || t.title.toLowerCase().includes('confirmação 24h')))
+    );
+  }, [tasks, receipt.id, receipt.leadId]);
+
+  const evaluateNotif = (notif: AdminTask | null | undefined, _notifNumber: 1 | 2) => {
+    const deactivatedTooltip = 'Esta confirmação foi desativada pelo motivo do evento ser muito próximo da data (não foi possível criar tarefa retroativa).';
+
+    if (!notif) {
+      return {
+        status: 'disabled' as const,
+        label: 'Desativada',
+        tooltip: deactivatedTooltip,
+        isPositive: false,
+        isDisabled: true,
+        sdrName: 'SDR Automático',
+        dueDate: 'Não programada',
+      };
+    }
+
+    const sdrId = notif.assignedToIds?.[0];
+    const sdrCollab = collaborators.find(c => c.id === sdrId);
+    const sdrName = sdrCollab?.name || notif.createdByName || 'SDR Responsável';
+
+    if (notif.status !== 'completed') {
+      return {
+        status: 'pending' as const,
+        label: 'Pendente',
+        tooltip: 'Aguardando o momento hábil de contato pelo SDR.',
+        isPositive: false,
+        isDisabled: false,
+        sdrName,
+        dueDate: notif.dueDate ? `${notif.dueDate.split('-').reverse().join('/')}${notif.dueTime ? ` às ${notif.dueTime}` : ''}` : 'A definir',
+      };
+    }
+
+    const resText = `${notif.resolution || ''} ${notif.observations || ''}`.toLowerCase();
+    const isNegative = resText.includes('cancelad') || resText.includes('não') || resText.includes('desmarc') || resText.includes('ausente') || resText.includes('negativ');
+
+    if (isNegative) {
+      return {
+        status: 'negative' as const,
+        label: 'Não Confirmado',
+        tooltip: 'O cliente informou que não poderá comparecer.',
+        isPositive: false,
+        isDisabled: false,
+        sdrName,
+        dueDate: notif.dueDate ? notif.dueDate.split('-').reverse().join('/') : 'Realizado',
+      };
+    }
+
+    return {
+      status: 'positive' as const,
+      label: 'Confirmado',
+      tooltip: 'Presença confirmada pelo cliente com sucesso.',
+      isPositive: true,
+      isDisabled: false,
+      sdrName,
+      dueDate: notif.dueDate ? notif.dueDate.split('-').reverse().join('/') : 'Realizado',
+    };
+  };
+
+  const eval1 = evaluateNotif(notif1, 1);
+  const eval2 = evaluateNotif(notif2, 2);
+
+  const presenceSummary = useMemo(() => {
+    if (eval1.isPositive && eval2.isPositive) {
+      return {
+        label: 'Mais que Confirmado (100%)',
+        bg: '#ECFDF5',
+        text: '#047857',
+        border: '#A7F3D0',
+        icon: <Sparkles size={14} color="#059669" />,
+      };
+    }
+    if (eval1.isDisabled && eval2.isPositive) {
+      return {
+        label: 'Confirmado (100%)',
+        bg: '#ECFDF5',
+        text: '#047857',
+        border: '#A7F3D0',
+        icon: <Sparkles size={14} color="#059669" />,
+      };
+    }
+    if (eval1.isDisabled && eval2.isDisabled) {
+      return {
+        label: 'Confirmado Imediato (100%)',
+        bg: '#ECFDF5',
+        text: '#047857',
+        border: '#A7F3D0',
+        icon: <Sparkles size={14} color="#059669" />,
+      };
+    }
+    if (eval1.isPositive || eval2.isPositive) {
+      return {
+        label: 'Cliente Confirmado (50%)',
+        bg: '#EFF6FF',
+        text: '#1D4ED8',
+        border: '#BFDBFE',
+        icon: <Check size={14} color="#2563EB" />,
+      };
+    }
+    return {
+      label: 'Não Confirmado (0%)',
+      bg: '#F8FAFC',
+      text: '#64748B',
+      border: '#E2E8F0',
+      icon: <Clock size={14} color="#94A3B8" />,
+    };
+  }, [eval1, eval2]);
 
   // Helper robusto para converter URL remota para Data URL base64 contornando bloqueios CORS
   const convertRemoteUrlToBase64 = async (url: string): Promise<string> => {
@@ -318,9 +446,10 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
           background: '#FFFFFF',
           borderRadius: '20px',
           maxWidth: '560px',
+          maxHeight: '92vh',
+          overflowY: 'auto',
           width: '100%',
           boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)',
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           border: '1px solid rgba(226,232,240,0.8)',
@@ -639,6 +768,151 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
+            PAINEL EXPANSÍVEL: TAREFAS DE CONFIRMAÇÃO (1 E 2)
+            ═══════════════════════════════════════════════════════════════════ */}
+        {showConfirmationTasks && (
+          <div style={{
+            margin: '0 24px 16px 24px',
+            padding: '16px',
+            borderRadius: '14px',
+            background: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '8px',
+                  background: '#EFF6FF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#2563EB',
+                }}>
+                  <Bell size={15} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                    Fluxo de Confirmação de Presença
+                  </div>
+                  <div style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                    Acompanhamento operacional das notificações ao cliente
+                  </div>
+                </div>
+              </div>
+
+              {/* Métrica de Presença */}
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                background: presenceSummary.bg,
+                color: presenceSummary.text,
+                border: `1px solid ${presenceSummary.border}`,
+              }}>
+                {presenceSummary.icon}
+                <span>{presenceSummary.label}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+              {/* Card Confirmação 1 */}
+              <div style={{
+                padding: '12px',
+                borderRadius: '10px',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155' }}>
+                    Confirmação 1 (Dias antes)
+                  </span>
+                  <span 
+                    title={eval1.tooltip}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 7px',
+                      borderRadius: '6px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      background: eval1.status === 'positive' ? '#ECFDF5' : eval1.status === 'negative' ? '#FEF2F2' : eval1.status === 'disabled' ? '#F1F5F9' : '#FFFBEB',
+                      color: eval1.status === 'positive' ? '#047857' : eval1.status === 'negative' ? '#B91C1C' : eval1.status === 'disabled' ? '#64748B' : '#B45309',
+                      border: `1px solid ${eval1.status === 'positive' ? '#A7F3D0' : eval1.status === 'negative' ? '#FECACA' : eval1.status === 'disabled' ? '#CBD5E1' : '#FDE68A'}`,
+                      cursor: 'help',
+                    }}
+                  >
+                    {eval1.status === 'positive' && <CheckCircle2 size={11} />}
+                    {eval1.status === 'negative' && <XCircle size={11} />}
+                    {eval1.status === 'pending' && <Clock size={11} />}
+                    <span>{eval1.label}</span>
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.70rem', color: '#64748B', lineHeight: 1.4 }}>
+                  <div><strong>SDR:</strong> {eval1.sdrName}</div>
+                  <div><strong>Previsão:</strong> {eval1.dueDate}</div>
+                  {eval1.isDisabled && (
+                    <div style={{ marginTop: '6px', fontSize: '0.65rem', color: '#94A3B8', fontStyle: 'italic', lineHeight: 1.3 }}>
+                      {eval1.tooltip}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card Confirmação 2 */}
+              <div style={{
+                padding: '12px',
+                borderRadius: '10px',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155' }}>
+                    Confirmação 2 (24h antes)
+                  </span>
+                  <span 
+                    title={eval2.tooltip}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 7px',
+                      borderRadius: '6px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      background: eval2.status === 'positive' ? '#ECFDF5' : eval2.status === 'negative' ? '#FEF2F2' : eval2.status === 'disabled' ? '#F1F5F9' : '#FFFBEB',
+                      color: eval2.status === 'positive' ? '#047857' : eval2.status === 'negative' ? '#B91C1C' : eval2.status === 'disabled' ? '#64748B' : '#B45309',
+                      border: `1px solid ${eval2.status === 'positive' ? '#A7F3D0' : eval2.status === 'negative' ? '#FECACA' : eval2.status === 'disabled' ? '#CBD5E1' : '#FDE68A'}`,
+                      cursor: 'help',
+                    }}
+                  >
+                    {eval2.status === 'positive' && <CheckCircle2 size={11} />}
+                    {eval2.status === 'negative' && <XCircle size={11} />}
+                    {eval2.status === 'pending' && <Clock size={11} />}
+                    <span>{eval2.label}</span>
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.70rem', color: '#64748B', lineHeight: 1.4 }}>
+                  <div><strong>SDR:</strong> {eval2.sdrName}</div>
+                  <div><strong>Previsão:</strong> {eval2.dueDate}</div>
+                  {eval2.isDisabled && (
+                    <div style={{ marginTop: '6px', fontSize: '0.65rem', color: '#94A3B8', fontStyle: 'italic', lineHeight: 1.3 }}>
+                      {eval2.tooltip}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
             BARRA DE AÇÕES INFERIOR EM LINHA ÚNICA
             ═══════════════════════════════════════════════════════════════════ */}
         <div style={{
@@ -667,7 +941,33 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             Fechar
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Botão Ver Tarefas de Confirmação (1 e 2) */}
+            <button
+              type="button"
+              onClick={() => setShowConfirmationTasks(prev => !prev)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '7px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: showConfirmationTasks ? '#EFF6FF' : '#FFFFFF',
+                border: showConfirmationTasks ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                color: showConfirmationTasks ? '#1D4ED8' : '#334155',
+                fontSize: '0.80rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Acompanhar tarefas de Confirmação 1 (dias antes) e Confirmação 2 (horas antes)"
+            >
+              <Bell size={15} color={showConfirmationTasks ? '#2563EB' : '#64748B'} />
+              <span>Confirmações (1 e 2)</span>
+              {showConfirmationTasks ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+
             {/* Botão Baixar Imagem PNG Idêntica */}
             <button
               type="button"

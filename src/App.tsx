@@ -280,6 +280,11 @@ const parseRouteFromLocation = (): {
   }
 
   const hash = window.location.hash;
+  if (hash && (hash.includes('error=') || hash.includes('error_code=') || hash.includes('error_description='))) {
+    try {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } catch {}
+  }
   if (hash.includes('debutante=')) {
     const match = hash.match(/debutante=([^&]+)/);
     if (match && match[1]) {

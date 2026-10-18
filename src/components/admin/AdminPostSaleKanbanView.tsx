@@ -255,6 +255,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   const handleSelectFunnel = (id: string | null) => {
     setSelectedFunnelId(id);
+    if (id) {
+      try { localStorage.setItem('f5_active_funnel_id', id); } catch {}
+    }
     if (onSelectFunnel) {
       onSelectFunnel(id);
     }
@@ -369,13 +372,21 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     );
   }, [funnels]);
 
-  // Funil Atualmente Selecionado no Kanban
+  // Funil Atualmente Selecionado no Kanban (com fallback inteligente para o funil primário ou primeiro pós-venda)
   const currentFunnel = useMemo(() => {
     if (selectedFunnelId) {
-      return (funnels || []).find(f => f.id === selectedFunnelId) || null;
+      const matched = (funnels || []).find(f => f.id === selectedFunnelId);
+      if (matched) return matched;
     }
-    return null;
-  }, [funnels, selectedFunnelId]);
+    return postSaleFunnels.find(f => f.isPrimary) || postSaleFunnels[0] || null;
+  }, [funnels, selectedFunnelId, postSaleFunnels]);
+
+  useEffect(() => {
+    if (!selectedFunnelId && currentFunnel?.id) {
+      setSelectedFunnelId(currentFunnel.id);
+      try { localStorage.setItem('f5_active_funnel_id', currentFunnel.id); } catch {}
+    }
+  }, [selectedFunnelId, currentFunnel?.id]);
 
   // Recupera unidades vinculadas manualmente a este funil de pós-venda (vínculo estrito, sem inferência automática)
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
@@ -3451,6 +3462,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             // D) Tags Customizadas (CAPSLOCK)
                             (client.tags || []).forEach((t: string, idx: number) => {
                               if (t && t.trim()) {
+                                const norm = t.trim().toLowerCase();
+                                if (norm === 'new_lead' || norm === 'new-lead' || norm === 'newlead') return;
                                 chips.push({
                                   id: `tag_${idx}`,
                                   label: t.trim().toUpperCase(),

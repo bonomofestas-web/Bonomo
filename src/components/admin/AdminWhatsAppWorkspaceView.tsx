@@ -5019,27 +5019,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           </span>
                         )}
 
-                        {isPostSaleFunnel ? (
-                          <>
-                            {/* Stage Badge for Post-Sale */}
-                            {(() => {
-                              const stgKey = (lead.stage as string) || 'onboarding';
-                              const stgCfg = POST_SALE_STAGE_CONFIG[stgKey] || { label: stgKey, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' };
-                              return (
-                                <span style={{
-                                  fontSize: '0.58rem',
-                                  fontWeight: 800,
-                                  padding: '1px 5px',
-                                  borderRadius: '4px',
-                                  background: stgCfg.bg,
-                                  color: stgCfg.color,
-                                  border: `1px solid ${stgCfg.color}40`,
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {stgCfg.label}
-                                </span>
-                              );
-                            })()}
+                        {(() => {
+                          const isLeadPostSale = Boolean(
+                            lead.isClient ||
+                            lead.group === 'Pós-Venda' ||
+                            (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.isPostSale) ||
+                            (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.category === 'Pós-Venda') ||
+                            isPostSaleFunnel
+                          );
+
+                          if (isLeadPostSale) {
+                            const stgKey = (lead.stage as string) || '';
+                            const matchedFunnel = funnels.find(f => f.id === lead.funnelId);
+                            const customStage = matchedFunnel?.stages?.find(s => s.id === stgKey);
+                            const stgCfg = POST_SALE_STAGE_CONFIG[stgKey] || (customStage ? {
+                              label: customStage.name,
+                              color: customStage.color || '#3B82F6',
+                              bg: `${customStage.color || '#3B82F6'}15`,
+                            } : null);
+
+                            return (
+                              <>
+                                {/* Stage Badge for Post-Sale (NUNCA exibe 'new_lead' ou 'entry') */}
+                                {stgKey && stgKey !== 'new_lead' && stgKey !== 'entry' && stgCfg ? (
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 800,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: stgCfg.bg,
+                                    color: stgCfg.color,
+                                    border: `1px solid ${stgCfg.color}40`,
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {stgCfg.label}
+                                  </span>
+                                ) : null}
 
                             {/* Party Date Badge with Countdown */}
                             {(lead.partyDate || lead.eventDate) && (() => {
@@ -5074,66 +5089,70 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                               </span>
                             ) : null}
                           </>
-                        ) : (
-                          <>
-                            {originLabel && (
-                              <span style={{
-                                fontSize: '0.60rem',
-                                fontWeight: 700,
-                                padding: '1px 5px',
-                                borderRadius: '4px',
-                                background: isIndication ? 'rgba(212, 175, 55, 0.15)' : 'rgba(16, 185, 129, 0.1)',
-                                color: isIndication ? '#D4AF37' : '#10B981',
-                                border: `1px solid ${isIndication ? 'rgba(212, 175, 55, 0.35)' : 'rgba(16, 185, 129, 0.25)'}`,
-                                whiteSpace: 'nowrap',
-                              }}>
-                                {originLabel}
-                              </span>
-                            )}
-                            {hasIcpConfigured(lead) && (() => {
-                              const hasAns = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).some(k => Boolean(lead.mqlAnswers![k])));
-                              const isUndef = !hasAns && (lead.mqlScore === undefined || lead.mqlScore === 0);
-                              if (isUndef) {
-                                return (
+                        );
+                      } else {
+                            return (
+                              <>
+                                {originLabel && (
                                   <span style={{
-                                    fontSize: '0.58rem',
+                                    fontSize: '0.60rem',
                                     fontWeight: 700,
                                     padding: '1px 5px',
                                     borderRadius: '4px',
-                                    background: 'var(--adm-bg-card)',
-                                    color: 'var(--adm-text-muted)',
-                                    border: '1px solid var(--adm-border)',
+                                    background: isIndication ? 'rgba(212, 175, 55, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+                                    color: isIndication ? '#D4AF37' : '#10B981',
+                                    border: `1px solid ${isIndication ? 'rgba(212, 175, 55, 0.35)' : 'rgba(16, 185, 129, 0.25)'}`,
                                     whiteSpace: 'nowrap',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
                                   }}>
-                                    <IcpTargetUserIcon size={10} color="var(--adm-text-muted)" />
-                                    <span>Indefinido</span>
+                                    {originLabel}
                                   </span>
-                                );
-                              }
-                              const isTop = (lead.mqlScore ?? 0) >= 80 || lead.mqlLevel === 'top';
-                              const isQual = ((lead.mqlScore ?? 0) >= 50 && (lead.mqlScore ?? 0) < 80) || lead.mqlLevel === 'qualified';
-                              const lbl = isTop ? 'ICP A' : isQual ? 'ICP B' : 'ICP C';
-                              const col = isTop ? '#10B981' : isQual ? '#F59E0B' : '#EF4444';
-                              const bgCol = isTop ? 'rgba(16,185,129,0.12)' : isQual ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
-                              return (
-                                <span style={{
-                                  fontSize: '0.58rem',
-                                  fontWeight: 700,
-                                  padding: '1px 4px',
-                                  borderRadius: '4px',
-                                  background: bgCol,
-                                  color: col,
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  {lbl}
-                                </span>
-                              );
-                            })()}
-                          </>
-                        )}
+                                )}
+                                {hasIcpConfigured(lead) && (() => {
+                                  const hasAns = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).some(k => Boolean(lead.mqlAnswers![k])));
+                                  const isUndef = !hasAns && (lead.mqlScore === undefined || lead.mqlScore === 0);
+                                  if (isUndef) {
+                                    return (
+                                      <span style={{
+                                        fontSize: '0.58rem',
+                                        fontWeight: 700,
+                                        padding: '1px 5px',
+                                        borderRadius: '4px',
+                                        background: 'var(--adm-bg-card)',
+                                        color: 'var(--adm-text-muted)',
+                                        border: '1px solid var(--adm-border)',
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                      }}>
+                                        <IcpTargetUserIcon size={10} color="var(--adm-text-muted)" />
+                                        <span>Indefinido</span>
+                                      </span>
+                                    );
+                                  }
+                                  const isTop = (lead.mqlScore ?? 0) >= 80 || lead.mqlLevel === 'top';
+                                  const isQual = ((lead.mqlScore ?? 0) >= 50 && (lead.mqlScore ?? 0) < 80) || lead.mqlLevel === 'qualified';
+                                  const lbl = isTop ? 'ICP A' : isQual ? 'ICP B' : 'ICP C';
+                                  const col = isTop ? '#10B981' : isQual ? '#F59E0B' : '#EF4444';
+                                  const bgCol = isTop ? 'rgba(16,185,129,0.12)' : isQual ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+                                  return (
+                                    <span style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 700,
+                                      padding: '1px 4px',
+                                      borderRadius: '4px',
+                                      background: bgCol,
+                                      color: col,
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      {lbl}
+                                    </span>
+                                  );
+                                })()}
+                              </>
+                            );
+                          }
+                        })()}
                       </div>
 
                       {/* Avatares do SDR & Closer (Sobrepostos se forem diferentes, Único se for o mesmo, UserPlus se desatribuído) */}

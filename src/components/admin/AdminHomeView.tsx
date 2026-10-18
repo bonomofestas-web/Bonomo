@@ -23,6 +23,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 }) => {
   const { 
     currentUser, 
+    viewingAsCollaborator,
     debutantes, 
     venues,
     tasks, 
@@ -34,11 +35,16 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
     toggleTaskStatus 
   } = useAdminState();
 
+  // Effective user for scoping (prioritizes spectator mode collaborator)
+  const effectiveUser = useMemo(() => {
+    return viewingAsCollaborator || currentUser;
+  }, [viewingAsCollaborator, currentUser]);
+
   // User-scoped venues
   const userAllowedVenueIds = useMemo(() => {
-    if (!currentUser || currentUser.role === 'master') return null; // null means all
-    return currentUser.venueIds && currentUser.venueIds.length > 0 ? currentUser.venueIds : [];
-  }, [currentUser]);
+    if (!effectiveUser || effectiveUser.role === 'master') return null; // null means all
+    return effectiveUser.venueIds && effectiveUser.venueIds.length > 0 ? effectiveUser.venueIds : [];
+  }, [effectiveUser]);
 
   // Venue-scoped debutantes and tasks
   const scopedDebutantes = useMemo(() => {
@@ -94,7 +100,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   };
 
   // Filters for Left Column (Tasks)
-  const [taskTab, setTaskTab] = useState<'today' | 'upcoming' | 'completed' | 'all'>('today');
+  const [taskTab, setTaskTab] = useState<'overdue' | 'today' | 'upcoming' | 'completed' | 'all'>('today');
   const [scopeFilter, setScopeFilter] = useState<'my' | 'all'>('my');
 
   // Selected Date for Right Column (Daily Calendar Time Grid)
@@ -106,6 +112,35 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
     d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   }, []);
+
+  const effectiveUserId = effectiveUser?.id;
+
+  // Counts for tabs
+  const tabCounts = useMemo(() => {
+    const userTasks = scopedTasks.filter(task => {
+      if (scopeFilter === 'my' && effectiveUserId) {
+        return task.assignedToIds?.includes(effectiveUserId) || task.createdById === effectiveUserId;
+      }
+      return true;
+    });
+
+    return {
+      overdue: userTasks.filter(t => t.status !== 'completed' && !!t.dueDate && t.dueDate < todayStr).length,
+      today: userTasks.filter(t => t.status !== 'completed' && (!t.dueDate || t.dueDate === todayStr)).length,
+      upcoming: userTasks.filter(t => t.status !== 'completed' && (!!t.dueDate && t.dueDate > todayStr)).length,
+      completed: userTasks.filter(t => t.status === 'completed').length,
+      all: userTasks.length,
+    };
+  }, [scopedTasks, scopeFilter, effectiveUserId, todayStr]);
+
+  // Se existirem tarefas atrasadas ao abrir a Home, prioriza automaticamente a aba Atrasadas
+  const hasAutoSelectedOverdueRef = useRef(false);
+  useEffect(() => {
+    if (!hasAutoSelectedOverdueRef.current && tabCounts.overdue > 0) {
+      setTaskTab('overdue');
+      hasAutoSelectedOverdueRef.current = true;
+    }
+  }, [tabCounts.overdue]);
 
   // Formatted calendar date for daily agenda header
   const formattedCalendarDate = useMemo(() => {
@@ -143,21 +178,24 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
   // Filtered Tasks based on Active Tab and Scope
   const filteredTasks = useMemo(() => {
     return scopedTasks.filter(task => {
-      // Scope filter: My tasks vs All team tasks
-      if (scopeFilter === 'my' && currentUser?.id) {
-        if (!task.assignedToIds?.includes(currentUser.id) && task.createdById !== currentUser.id) {
+      // Scope filter: My tasks vs All team tasks (scoped to effectiveUser)
+      if (scopeFilter === 'my' && effectiveUserId) {
+        if (!task.assignedToIds?.includes(effectiveUserId) && task.createdById !== effectiveUserId) {
           return false;
         }
       }
 
       // Tab filter
+      if (taskTab === 'overdue') {
+        return task.status !== 'completed' && !!task.dueDate && task.dueDate < todayStr;
+      }
       if (taskTab === 'today') {
-        // Tarefas de Hoje: exibe tarefas de hoje + tarefas atrasadas
-        return task.status !== 'completed' && (!task.dueDate || task.dueDate <= todayStr);
+        // Tarefas de Hoje: estritamente hoje ou sem prazo definido
+        return task.status !== 'completed' && (!task.dueDate || task.dueDate === todayStr);
       }
       if (taskTab === 'upcoming') {
-        // Próximas: exibe todas as tarefas pendentes
-        return task.status !== 'completed';
+        // Próximas: tarefas pendentes para datas futuras
+        return task.status !== 'completed' && (!!task.dueDate && task.dueDate > todayStr);
       }
       if (taskTab === 'completed') {
         return task.status === 'completed';
@@ -178,24 +216,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       const timeB = b.dueDate ? new Date(`${b.dueDate}T${b.dueTime || '00:00'}`).getTime() : 0;
       return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
     });
-  }, [scopedTasks, scopeFilter, taskTab, currentUser, todayStr]);
-
-  // Counts for tabs
-  const tabCounts = useMemo(() => {
-    const userTasks = scopedTasks.filter(task => {
-      if (scopeFilter === 'my' && currentUser?.id) {
-        return task.assignedToIds?.includes(currentUser.id) || task.createdById === currentUser.id;
-      }
-      return true;
-    });
-
-    return {
-      today: userTasks.filter(t => t.status !== 'completed' && (!t.dueDate || t.dueDate <= todayStr)).length,
-      upcoming: userTasks.filter(t => t.status !== 'completed').length,
-      completed: userTasks.filter(t => t.status === 'completed').length,
-      all: userTasks.length,
-    };
-  }, [scopedTasks, scopeFilter, currentUser, todayStr]);
+  }, [scopedTasks, scopeFilter, taskTab, effectiveUserId, todayStr]);
 
   // Tasks due today count
   const todayTasksCount = useMemo(() => {
@@ -585,7 +606,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
             </div>
           </div>
 
-          {/* Section Tabs: Hoje, Próximas, Finalizadas, Todas */}
+          {/* Section Tabs: Atrasadas (se houver), Hoje, Próximas, Finalizadas, Todas */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -595,44 +616,60 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
             overflowX: 'auto',
           }}>
             {[
-              { id: 'today', label: 'Tarefas de Hoje', count: tabCounts.today, color: '#F59E0B' },
-              { id: 'upcoming', label: 'Próximas', count: tabCounts.upcoming, color: 'var(--adm-accent)' },
-              { id: 'completed', label: 'Finalizadas', count: tabCounts.completed, color: '#10B981' },
-              { id: 'all', label: 'Todas', count: tabCounts.all, color: 'var(--adm-text-muted)' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setTaskTab(tab.id as any)}
-                style={{
-                  background: taskTab === tab.id ? 'var(--adm-accent-bg)' : 'transparent',
-                  border: `1px solid ${taskTab === tab.id ? 'var(--adm-accent)' : 'transparent'}`,
-                  color: taskTab === tab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  borderRadius: '16px',
-                  padding: '5px 12px',
-                  fontSize: '0.74rem',
-                  fontWeight: taskTab === tab.id ? 800 : 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span>{tab.label}</span>
-                <span style={{
-                  background: taskTab === tab.id ? 'var(--adm-accent)' : 'var(--adm-bg-input)',
-                  color: taskTab === tab.id ? '#FFFFFF' : 'var(--adm-text-muted)',
-                  borderRadius: '10px',
-                  padding: '1px 6px',
-                  fontSize: '0.62rem',
-                  fontWeight: 800,
-                }}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+              ...(tabCounts.overdue > 0 ? [{
+                id: 'overdue' as const,
+                label: 'Atrasadas',
+                count: tabCounts.overdue,
+                color: '#EF4444',
+                isAlert: true,
+              }] : []),
+              { id: 'today' as const, label: 'Tarefas de Hoje', count: tabCounts.today, color: '#F59E0B' },
+              { id: 'upcoming' as const, label: 'Próximas', count: tabCounts.upcoming, color: 'var(--adm-accent)' },
+              { id: 'completed' as const, label: 'Finalizadas', count: tabCounts.completed, color: '#10B981' },
+              { id: 'all' as const, label: 'Todas', count: tabCounts.all, color: 'var(--adm-text-muted)' },
+            ].map(tab => {
+              const isActive = taskTab === tab.id;
+              const isAlert = (tab as any).isAlert;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setTaskTab(tab.id as any)}
+                  style={{
+                    background: isActive 
+                      ? (isAlert ? 'rgba(239, 68, 68, 0.16)' : 'var(--adm-accent-bg)') 
+                      : (isAlert ? 'rgba(239, 68, 68, 0.08)' : 'transparent'),
+                    border: `1px solid ${isActive 
+                      ? (isAlert ? '#EF4444' : 'var(--adm-accent)') 
+                      : (isAlert ? 'rgba(239, 68, 68, 0.40)' : 'transparent')}`,
+                    color: isAlert ? '#EF4444' : (isActive ? 'var(--adm-accent)' : 'var(--adm-text-muted)'),
+                    borderRadius: '16px',
+                    padding: '5px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: isActive || isAlert ? 800 : 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {isAlert && <AlertTriangle size={13} style={{ color: '#EF4444' }} />}
+                  <span>{tab.label}</span>
+                  <span style={{
+                    background: isAlert ? '#EF4444' : (isActive ? 'var(--adm-accent)' : 'var(--adm-bg-input)'),
+                    color: '#FFFFFF',
+                    borderRadius: '10px',
+                    padding: '1px 6px',
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                  }}>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Task Table View Grouped by Status */}

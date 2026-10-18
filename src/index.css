@@ -596,3 +596,17 @@ p { margin: 0; }
   }
 }
 
+/* Responsividade e Conforto Visual para Telas HD (1366x768 e resoluções compactas) */
+@media (max-width: 1440px) {
+  .adm-tasks-table th {
+    padding: 6px 10px !important;
+    font-size: 0.65rem !important;
+    letter-spacing: 0.3px !important;
+  }
+  .adm-tasks-table td {
+    padding: 8px 10px !important;
+    font-size: 0.74rem !important;
+  }
+}
+
+

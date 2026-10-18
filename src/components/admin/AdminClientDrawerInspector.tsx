@@ -5,7 +5,7 @@ import {
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
   Gift, Award, Star,
-  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye
+  ArrowRightLeft, Compass, UserPlus, CheckCircle2, Eye, X, Building2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -104,6 +104,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const [expandedFunnelId, setExpandedFunnelId] = useState<string | null>(null);
   const [isTransferringFunnel, setIsTransferringFunnel] = useState(false);
   const [isSuccessManagerDropdownOpen, setIsSuccessManagerDropdownOpen] = useState(false);
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const [showCustomTagInput, setShowCustomTagInput] = useState(false);
+  const [newTagInput, setNewTagInput] = useState('');
 
   // Subcontatos Form
   const [isAddingContact, setIsAddingContact] = useState(false);
@@ -237,6 +240,56 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  // ── Pós-Venda Tags ──
+  const clientFunnel = useMemo(() => {
+    const fid = client?.funnelId || lead.funnelId;
+    return (funnels || []).find(f => f.id === fid) || (funnels || []).find(f => f.isPostSale) || null;
+  }, [funnels, client?.funnelId, lead.funnelId]);
+
+  const activeClientTags = useMemo(() => {
+    const raw = client?.tags || lead.tags || [];
+    return raw.filter(t => t.toLowerCase() !== 'new_lead' && t.toLowerCase() !== 'new-lead');
+  }, [client?.tags, lead.tags]);
+
+  const availableTags = useMemo(() => {
+    const defaultTags = ['VIP', 'Urgente', 'Atenção', 'Contrato Assinado', 'Degustação Pendente', 'Cronograma OK', 'Fornecedores OK'];
+    const funnelTags = clientFunnel?.predefinedTags || [];
+    const combined = Array.from(new Set([...funnelTags, ...defaultTags]));
+    const currentTags = activeClientTags.map(t => t.trim().toLowerCase());
+    return combined.filter(t => !currentTags.includes(t.trim().toLowerCase()) && t.toLowerCase() !== 'new_lead' && t.toLowerCase() !== 'new-lead');
+  }, [clientFunnel, activeClientTags]);
+
+  const handleAddTag = (tagToAdd?: string) => {
+    const val = (tagToAdd || newTagInput).trim();
+    if (!val) return;
+    if (val.toLowerCase() === 'new_lead' || val.toLowerCase() === 'new-lead') {
+      setNewTagInput('');
+      setIsTagDropdownOpen(false);
+      setShowCustomTagInput(false);
+      return;
+    }
+    const currentTags = client?.tags || lead.tags || [];
+    if (!currentTags.some(t => t.toLowerCase() === val.toLowerCase())) {
+      const nextTags = [...currentTags, val];
+      if (client) {
+        updateClient(client.id, { tags: nextTags });
+      }
+      updateLeadData(lead.id, { tags: nextTags });
+    }
+    setNewTagInput('');
+    setIsTagDropdownOpen(false);
+    setShowCustomTagInput(false);
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const currentTags = client?.tags || lead.tags || [];
+    const nextTags = currentTags.filter(t => t !== tagToRemove);
+    if (client) {
+      updateClient(client.id, { tags: nextTags });
+    }
+    updateLeadData(lead.id, { tags: nextTags });
   };
 
   const handleDirectWhatsApp = (phone?: string, text?: string) => {
@@ -828,6 +881,219 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
         {/* ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'ficha' && (
           <>
+            {/* ── BARRA DE TAGS & UNIDADE FÍSICA ── */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '6px',
+              paddingBottom: '8px',
+              borderBottom: '1px solid var(--adm-border)',
+            }}>
+              {/* Unidade Física Fixa */}
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  background: 'rgba(20, 169, 215, 0.14)',
+                  color: '#14A9D7',
+                  border: '1px solid rgba(20, 169, 215, 0.4)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  flexShrink: 0,
+                }}
+              >
+                <Building2 size={11} color="#14A9D7" />
+                <span>{client?.venueName || lead.venueName || 'Unidade Física'}</span>
+              </span>
+
+              {/* Tags Ativas */}
+              {activeClientTags.map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    background: 'rgba(20, 169, 215, 0.15)',
+                    color: '#14A9D7',
+                    border: '1px solid rgba(20, 169, 215, 0.35)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Tag size={10} color="#14A9D7" />
+                  <span>{tag}</span>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag(tag)}
+                      style={{ background: 'transparent', border: 'none', color: '#14A9D7', cursor: 'pointer', padding: 0, display: 'flex' }}
+                      title={`Remover tag ${tag}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </span>
+              ))}
+
+              {/* Botão + Tag com Popover Dropdown */}
+              {!readOnly && (
+                <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTagDropdownOpen(prev => !prev);
+                      setShowCustomTagInput(false);
+                    }}
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      background: isTagDropdownOpen ? 'rgba(20, 169, 215, 0.25)' : 'var(--adm-bg-input)',
+                      color: isTagDropdownOpen ? '#14A9D7' : 'var(--adm-text-muted)',
+                      border: `1px dashed ${isTagDropdownOpen ? '#14A9D7' : 'var(--adm-border)'}`,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Plus size={11} />
+                    <span>Tag</span>
+                  </button>
+
+                  {isTagDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      marginTop: '6px',
+                      background: 'var(--adm-bg-card)',
+                      border: '1px solid var(--adm-border)',
+                      borderRadius: '10px',
+                      padding: '6px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                      zIndex: 100,
+                      minWidth: '200px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '3px',
+                    }}>
+                      {availableTags.map(tag => (
+                        <div
+                          key={tag}
+                          onClick={() => handleAddTag(tag)}
+                          style={{
+                            padding: '6px 10px',
+                            cursor: 'pointer',
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            color: 'var(--adm-text-title)',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            transition: 'background 0.12s ease',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span>{tag}</span>
+                          <Plus size={12} color="var(--adm-text-muted)" />
+                        </div>
+                      ))}
+
+                      {/* Opção Personalizada */}
+                      {!showCustomTagInput ? (
+                        <div
+                          onClick={() => setShowCustomTagInput(true)}
+                          style={{
+                            padding: '6px 10px',
+                            cursor: 'pointer',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            color: 'var(--adm-accent)',
+                            borderRadius: '6px',
+                            borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
+                            marginTop: availableTags.length > 0 ? '2px' : 0,
+                            paddingTop: availableTags.length > 0 ? '6px' : '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Plus size={12} />
+                          <span>Personalizado...</span>
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          gap: '4px',
+                          padding: '4px 0 2px',
+                          borderTop: availableTags.length > 0 ? '1px solid var(--adm-border)' : 'none',
+                          marginTop: '2px',
+                        }}>
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Nome da tag..."
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddTag();
+                              }
+                              if (e.key === 'Escape') {
+                                setShowCustomTagInput(false);
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              color: 'var(--adm-text-title)',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              fontSize: '0.72rem',
+                              outline: 'none',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddTag()}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: 'var(--adm-accent)',
+                              border: 'none',
+                              color: '#FFFFFF',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Check size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* ── SEÇÃO: ANIVERSARIANTE & EVENTO ── */}
             <div style={sectionTitleStyle}>
               <Heart size={12} color="#EC4899" />

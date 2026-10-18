@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
   X, MessageSquare, Users, CheckSquare, Sliders, CalendarDays, Clock, LayoutGrid,
-  Building2, UtensilsCrossed, ChevronRight
+  Building2, UtensilsCrossed, ChevronRight, Check
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
@@ -93,6 +93,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [sectorFilter, setSectorFilter] = useState<'all' | 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro'>('all');
+  const [venueFilter, setVenueFilter] = useState<string>('all');
 
   const getTaskSector = useCallback((task: AdminTask): 'comercial' | 'pos_venda' | 'gerencia' | 'financeiro' => {
     const directSector = (task as any).sector;
@@ -328,44 +329,44 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         if (getTaskSector(task) !== sectorFilter) return false;
       }
 
+      // 8. Venue filter
+      if (venueFilter !== 'all') {
+        const taskVenue = task.venueId || task.customProperties?.venueId || (task.leadId ? leads.find(l => l.id === task.leadId)?.venueId : null);
+        if (taskVenue !== venueFilter) return false;
+      }
+
+      // 9. Status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'pending') {
+          if (task.status === 'completed' || task.status === 'cancelled' || (task.status as any) === 'rescheduled') return false;
+        } else if (statusFilter === 'completed') {
+          if (task.status !== 'completed') return false;
+        } else if (statusFilter === 'overdue') {
+          if (task.status === 'completed' || !task.dueDate || task.dueDate >= todayStr) return false;
+        } else if (statusFilter === 'cancelled') {
+          const isCanc = task.status === 'cancelled' || Boolean(task.customProperties?.cancelledDueToBlock) || (task.resolution || '').toLowerCase().includes('cancelad');
+          if (!isCanc) return false;
+        } else if (statusFilter === 'rescheduled') {
+          const isResched = (task.status as any) === 'rescheduled' || Boolean(task.customProperties?.rescheduledToDate) || (task.resolution || '').toLowerCase().includes('remarcad');
+          if (!isResched) return false;
+        }
+      }
+
       return true;
     });
-  }, [baseScopedTasks, selectedDatabaseId, databases, searchTerm, assigneeFilter, typeFilter, statusFilter, priorityFilter, sectorFilter, getTaskSector, collaborators, todayStr]);
+  }, [baseScopedTasks, selectedDatabaseId, databases, searchTerm, assigneeFilter, typeFilter, statusFilter, priorityFilter, sectorFilter, venueFilter, getTaskSector, collaborators, todayStr, leads]);
 
   // Open detail modal with dynamically resolved database context
   const handleOpenTask = (task: AdminTask) => {
-    // 0. Redirecionamento Direto para o WhatsApp:
-    // Follow-ups, agendamentos e compromissos vinculados a um Lead ou Cliente não abrem Bloco de Notas Inteligente
-    const targetLeadId = task.leadId || task.customProperties?.leadId;
-    if (targetLeadId && onOpenLead) {
-      onOpenLead(targetLeadId);
-      return;
-    }
+    const isVisitsOrTastings = 
+      workspaceContext === 'visits_tastings' ||
+      task.databaseId === 'db_visits_tastings' ||
+      (task.customType || '').toLowerCase().includes('visita') ||
+      (task.customType || '').toLowerCase().includes('degust') ||
+      (task.type as any) === 'visit';
 
-    if (task.debutanteId && onOpenLead) {
-      const debLead = leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId);
-      if (debLead) {
-        onOpenLead(debLead.id);
-        return;
-      }
-    }
-
-    let resolvedContext: TaskWorkspaceContext = 'all';
-    let resolvedDbId = task.databaseId || 'default_collabs';
-
-    if (resolvedDbId === 'db_followup' || task.type === 'followup' || (task.customType || '').toLowerCase().includes('follow')) {
-      resolvedContext = 'followup';
-      resolvedDbId = 'db_followup';
-    } else if (resolvedDbId === 'db_visits_tastings' || (task.customType || '').toLowerCase().includes('visita') || (task.customType || '').toLowerCase().includes('degust')) {
-      resolvedContext = 'visits_tastings';
-      resolvedDbId = 'db_visits_tastings';
-    } else if (resolvedDbId === 'db_appointments' || Boolean(task.debutanteId && !task.leadId)) {
-      resolvedContext = 'appointments';
-      resolvedDbId = 'db_appointments';
-    }
-
-    // Se for um agendamento de Visitas ou Degustações, abre o Cartão Oficial de Comprovante (#AGV / #AGD)
-    if (resolvedContext === 'visits_tastings' || workspaceContext === 'visits_tastings') {
+    // Se for um agendamento de Visitas ou Degustações, abre SEMPRE o Cartão Oficial de Confirmação/Comprovante (#AGV / #AGD)
+    if (isVisitsOrTastings) {
       const typeStr = (task.customType || task.type || '').toLowerCase();
       const titleStr = (task.title || '').toLowerCase();
       const isVisit = typeStr.includes('visita') || titleStr.includes('visita');
@@ -407,6 +408,32 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         notes: task.description,
       });
       return;
+    }
+
+    // 0. Redirecionamento Direto para o WhatsApp (apenas para outros contextos vinculados a Lead ou Cliente):
+    const targetLeadId = task.leadId || task.customProperties?.leadId;
+    if (targetLeadId && onOpenLead) {
+      onOpenLead(targetLeadId);
+      return;
+    }
+
+    if (task.debutanteId && onOpenLead) {
+      const debLead = leads.find(l => l.debutanteId === task.debutanteId || l.id === task.debutanteId);
+      if (debLead) {
+        onOpenLead(debLead.id);
+        return;
+      }
+    }
+
+    let resolvedContext: TaskWorkspaceContext = 'all';
+    let resolvedDbId = task.databaseId || 'default_collabs';
+
+    if (resolvedDbId === 'db_followup' || task.type === 'followup' || (task.customType || '').toLowerCase().includes('follow')) {
+      resolvedContext = 'followup';
+      resolvedDbId = 'db_followup';
+    } else if (resolvedDbId === 'db_appointments' || Boolean(task.debutanteId && !task.leadId)) {
+      resolvedContext = 'appointments';
+      resolvedDbId = 'db_appointments';
     }
 
     setModalWorkspaceContext(resolvedContext);
@@ -477,7 +504,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     }
   };
 
-  const hasActiveFilters = assigneeFilter !== 'all' || typeFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || selectedDatabaseId !== 'all' || sectorFilter !== 'all';
+  const isVisits = workspaceContext === 'visits_tastings';
+  const hasActiveFilters = isVisits
+    ? (assigneeFilter !== 'all' || typeFilter !== 'all' || statusFilter !== 'all' || venueFilter !== 'all' || Boolean(searchTerm.trim()))
+    : (assigneeFilter !== 'all' || typeFilter !== 'all' || statusFilter !== 'all' || priorityFilter !== 'all' || selectedDatabaseId !== 'all' || sectorFilter !== 'all' || venueFilter !== 'all' || Boolean(searchTerm.trim()));
 
   const resetFilters = () => {
     setAssigneeFilter('all');
@@ -486,6 +516,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
     setPriorityFilter('all');
     setSelectedDatabaseId('all');
     setSectorFilter('all');
+    setVenueFilter('all');
     setSearchTerm('');
   };
 
@@ -703,32 +734,59 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 boxSizing: 'border-box',
               }}
             />
-            <button
-              type="button"
-              onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-              style={{
-                position: 'absolute',
-                right: '6px',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                background: hasActiveFilters ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.15))' : 'var(--adm-bg-card, #FFFFFF)',
-                color: hasActiveFilters ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-                border: '1px solid var(--adm-border, #CBD5E1)',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Filter size={12} />
-              <span>Filtros</span>
+            <div style={{ position: 'absolute', right: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: hasActiveFilters ? 'rgba(2, 132, 199, 0.16)' : 'var(--adm-bg-card, #FFFFFF)',
+                  color: hasActiveFilters ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
+                  border: `1px solid ${hasActiveFilters ? 'var(--adm-accent, #0284C7)' : 'var(--adm-border, #CBD5E1)'}`,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: hasActiveFilters ? '0 1px 4px rgba(2, 132, 199, 0.2)' : 'none',
+                }}
+                title={hasActiveFilters ? 'Filtros ativos. Clique para ajustar.' : 'Filtrar compromissos'}
+              >
+                <Filter size={12} />
+                <span>Filtros</span>
+                {hasActiveFilters && (
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--adm-accent, #0284C7)' }} />
+                )}
+              </button>
+
               {hasActiveFilters && (
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--adm-accent, #0284C7)' }} />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetFilters();
+                  }}
+                  title="Remover filtros e voltar ao normal"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.10)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: '#DC2626',
+                    borderRadius: '6px',
+                    padding: '4px 6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <X size={12} />
+                </button>
               )}
-            </button>
+            </div>
           </div>
 
           {/* Popover de Filtros Avançados */}
@@ -750,7 +808,9 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
               gap: '12px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--adm-border, #E2E8F0)' }}>
-                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>Filtros Avançados</span>
+                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                  {workspaceContext === 'visits_tastings' ? 'Filtrar Agendamentos' : 'Filtros Avançados'}
+                </span>
                 {hasActiveFilters && (
                   <button
                     type="button"
@@ -762,7 +822,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 )}
               </div>
 
-              {/* Responsável */}
+              {/* 1. Usuário Responsável */}
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
                   Usuário Responsável
@@ -788,10 +848,10 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                 </select>
               </div>
 
-              {/* Tipo de Tarefa */}
+              {/* 2. Tipo (Adaptado para Agendamentos vs Geral) */}
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
-                  Tipo de Tarefa
+                  {workspaceContext === 'visits_tastings' ? 'Tipo de Agendamento' : 'Tipo de Tarefa'}
                 </label>
                 <select
                   value={typeFilter}
@@ -807,25 +867,35 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     outline: 'none',
                   }}
                 >
-                  <option value="all">Todos os tipos</option>
-                  <option value="Acompanhar">🔄 Acompanhar</option>
-                  <option value="Visita">📅 Visita</option>
-                  <option value="Degustação">🍽️ Degustação</option>
-                  <option value="Follow-up">💬 Follow-up</option>
-                  <option value="Reunião">👥 Reunião</option>
-                  <option value="Ligação">📞 Ligação</option>
-                  <option value="Contrato">📝 Contrato</option>
+                  {workspaceContext === 'visits_tastings' ? (
+                    <>
+                      <option value="all">Todos os agendamentos</option>
+                      <option value="Visita">Visitas Comerciais</option>
+                      <option value="Degustação">Degustações Gastronômicas</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="all">Todos os tipos</option>
+                      <option value="Acompanhar">Acompanhar</option>
+                      <option value="Visita">Visita</option>
+                      <option value="Degustação">Degustação</option>
+                      <option value="Follow-up">Follow-up</option>
+                      <option value="Reunião">Reunião</option>
+                      <option value="Ligação">Ligação</option>
+                      <option value="Contrato">Contrato</option>
+                    </>
+                  )}
                 </select>
               </div>
 
-              {/* Banco / Unidade */}
+              {/* 3. Unidade (Exibido para Agendamentos ou Geral) */}
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
-                  Banco de Tarefas / Unidade
+                  Unidade
                 </label>
                 <select
-                  value={selectedDatabaseId}
-                  onChange={(e) => setSelectedDatabaseId(e.target.value)}
+                  value={venueFilter}
+                  onChange={(e) => setVenueFilter(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '6px 10px',
@@ -837,44 +907,73 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                     outline: 'none',
                   }}
                 >
-                  <option value="all">Todos os bancos</option>
-                  {databases.map(db => (
-                    <option key={db.id} value={db.id}>{db.name}</option>
+                  <option value="all">Todas as unidades</option>
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Setor */}
-              <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
-                  Setor da Empresa
-                </label>
-                <select
-                  value={sectorFilter}
-                  onChange={(e) => setSectorFilter(e.target.value as any)}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #CBD5E1)',
-                    background: 'var(--adm-bg-surface, #F8FAFC)',
-                    fontSize: '0.78rem',
-                    color: 'var(--adm-text-title, #0F172A)',
-                    outline: 'none',
-                  }}
-                >
-                  <option value="all">Todos os setores</option>
-                  <option value="comercial">Comercial (SDR / Closer / CRM)</option>
-                  <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
-                  <option value="gerencia">Gerência / Gestão</option>
-                  <option value="financeiro">Financeiro</option>
-                </select>
-              </div>
+              {/* Banco / Unidade e Setor (Ocultos em Visitas & Degustações conforme Audio 4) */}
+              {workspaceContext !== 'visits_tastings' && (
+                <>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
+                      Banco de Tarefas
+                    </label>
+                    <select
+                      value={selectedDatabaseId}
+                      onChange={(e) => setSelectedDatabaseId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--adm-border, #CBD5E1)',
+                        background: 'var(--adm-bg-surface, #F8FAFC)',
+                        fontSize: '0.78rem',
+                        color: 'var(--adm-text-title, #0F172A)',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="all">Todos os bancos</option>
+                      {databases.map(db => (
+                        <option key={db.id} value={db.id}>{db.name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Status */}
+                  <div>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
+                      Setor da Empresa
+                    </label>
+                    <select
+                      value={sectorFilter}
+                      onChange={(e) => setSectorFilter(e.target.value as any)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--adm-border, #CBD5E1)',
+                        background: 'var(--adm-bg-surface, #F8FAFC)',
+                        fontSize: '0.78rem',
+                        color: 'var(--adm-text-title, #0F172A)',
+                        outline: 'none',
+                      }}
+                    >
+                      <option value="all">Todos os setores</option>
+                      <option value="comercial">Comercial (SDR / Closer / CRM)</option>
+                      <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
+                      <option value="gerencia">Gerência / Gestão</option>
+                      <option value="financeiro">Financeiro</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* 4. Status */}
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', display: 'block', marginBottom: '4px' }}>
-                  Status
+                  {workspaceContext === 'visits_tastings' ? 'Status do Agendamento' : 'Status'}
                 </label>
                 <select
                   value={statusFilter}
@@ -891,11 +990,37 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
                   }}
                 >
                   <option value="all">Todos os status</option>
-                  <option value="pending">Pendentes / Em Aberto</option>
-                  <option value="overdue">Atrasadas</option>
-                  <option value="completed">Concluídas</option>
+                  <option value="pending">Agendados / Pendentes</option>
+                  <option value="completed">Realizados / Concluídos</option>
+                  <option value="overdue">Atrasados</option>
+                  <option value="cancelled">Cancelados</option>
+                  <option value="rescheduled">Remarcados</option>
                 </select>
               </div>
+
+              {/* Botão Usar Filtro */}
+              <button
+                type="button"
+                onClick={() => setIsFilterDropdownOpen(false)}
+                style={{
+                  marginTop: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'var(--adm-accent, #0284C7)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Check size={14} />
+                <span>Usar filtro</span>
+              </button>
             </div>
           )}
         </div>
@@ -1725,6 +1850,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
         <AdminAppointmentReceiptModal
           receipt={selectedReceipt}
           onClose={() => setSelectedReceipt(null)}
+          tasks={contextTasks}
         />
       )}
 

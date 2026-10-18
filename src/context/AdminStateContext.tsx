@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { 
   AdminUser, 
   Collaborator,
@@ -257,6 +257,7 @@ export interface AdminContextType {
   viewingAsCollaborator: Collaborator | null;
   setViewingAsCollaborator: (collab: Collaborator | null) => void;
   updateCurrentUserProfile: (data: Partial<AdminUser>) => void;
+  refreshAllData: () => Promise<void>;
 
   // Collaborators
   addCollaborator: (data: Omit<Collaborator, 'id' | 'createdAt'>) => string;
@@ -1073,12 +1074,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
 
   // ── Supabase Initial Fetch & Realtime Synchronizer ──────────────────────────
+  const refreshDataRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  const refreshAllData = useCallback(async () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('f5_app_refresh', { detail: { timestamp: Date.now() } }));
+    }
+    await refreshDataRef.current();
+  }, []);
+
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
     let isMounted = true;
 
     const loadLiveSupabaseData = async () => {
+      refreshDataRef.current = loadLiveSupabaseData;
       try {
         const results = await Promise.allSettled([
           venueService.getAll(),             // 0
@@ -2133,6 +2144,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setActiveVenueIdState(preVenue);
       safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, preVenue);
       if (typeof window !== 'undefined') {
+        if (window.location.hash) {
+          try {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          } catch {}
+        }
         window.dispatchEvent(new CustomEvent('f5_spectator_mode_changed', { detail: { isSpectator: false } }));
       }
     }
@@ -4647,6 +4663,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const updated = prev.map(c => {
         if (c.id === id) {
           const stageLabels: Record<ClientStage, string> = {
+            new_lead: 'Entrada do Cliente',
+            entry: 'Entrada do Cliente',
             onboarding: 'Onboarding & Boas-Vindas',
             planning: 'Planejamento & Cronograma',
             suppliers: 'Definição de Fornecedores',
@@ -9304,6 +9322,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       stopImpersonation,
       viewingAsCollaborator: effectiveViewingAsCollaborator,
       setViewingAsCollaborator,
+      refreshAllData,
       allLeads: leads,
       allTasks: tasks,
       allFunnels: funnels,
