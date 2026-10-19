@@ -271,7 +271,7 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             color: '#06B6D4',
-            boxShadow: '0 4px 14px rgba(6, 182, 212, 0.15)',
+            boxShadow: 'none',
           }}>
             <UserCheck size={22} />
           </div>
@@ -515,8 +515,8 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
       </div>
 
       {/* ── Table Container ── */}
-      <div className="saas-card" style={{
-        borderRadius: '14px',
+      <div style={{
+        borderRadius: '12px',
         overflow: 'hidden',
         border: '1px solid var(--adm-border)',
         background: 'var(--adm-bg-card)',

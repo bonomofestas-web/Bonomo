@@ -3,7 +3,8 @@ import {
   Users, Plus, Share2, Send, 
   Gift, Edit3, Trash2, Check, 
   ExternalLink, Building2, Search, LayoutGrid, List,
-  Calendar, Power, Phone, Mail, Crown
+  Calendar, Power, Phone, Mail, Crown,
+  PartyPopper, Sparkles, Heart, Gem, GraduationCap, Briefcase, Wine
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -348,53 +349,15 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
               labelUnit="aniversariantes"
             />
 
-            {/* Event Category Filter Pills (Limpo, sem emojis) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', overflowX: 'auto', paddingBottom: '2px' }}>
-              {[
-                { id: 'all', label: 'Todos os Eventos' },
-                { id: 'debutante_15', label: '15 Anos' },
-                { id: 'birthday_kids', label: 'Infantil' },
-                { id: 'birthday_adult', label: 'Adulto' },
-                { id: 'baby_shower', label: 'Chá de Bebê' },
-                { id: 'wedding_anniversary', label: 'Bodas / Casamento' },
-                { id: 'graduation', label: 'Formatura' },
-                { id: 'corporate', label: 'Corporativo' },
-                { id: 'other', label: 'Outros' },
-              ].map(typeTab => (
-                <button
-                  key={typeTab.id}
-                  type="button"
-                  onClick={() => setFilterEventType(typeTab.id as any)}
-                  style={{
-                    background: filterEventType === typeTab.id ? 'rgba(212, 175, 55, 0.2)' : 'var(--adm-bg-card)',
-                    border: `1px solid ${filterEventType === typeTab.id ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
-                    color: filterEventType === typeTab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                    borderRadius: '16px',
-                    padding: '5px 12px',
-                    fontSize: '0.74rem',
-                    fontWeight: filterEventType === typeTab.id ? 800 : 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <span>{typeTab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Module Filter Pills & Right-Aligned Cards/List Switch */}
+            {/* Consolidated & Streamlined Filters Bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Left: Compact Module Status Segmented Bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 {[
                   { id: 'all', label: `Todas (${debutantes.length})` },
                   { id: 'active', label: `Ativas (${debutantes.filter(d => d.status !== 'inactive').length})` },
-                  { id: 'inactive', label: `Inativas / Encerradas (${debutantes.filter(d => d.status === 'inactive').length})` },
                   { id: 'journey', label: `Com Jornada VIP (${debutantes.filter(d => d.hasJourneyEnabled && d.status !== 'inactive').length})` },
-                  { id: 'guests_only', label: `Apenas Convidados (${debutantes.filter(d => !d.hasJourneyEnabled && d.status !== 'inactive').length})` },
+                  { id: 'inactive', label: `Inativas (${debutantes.filter(d => d.status === 'inactive').length})` },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -403,8 +366,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       background: filterModule === tab.id ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
                       border: filterModule === tab.id ? '1px solid var(--adm-accent)' : '1px solid var(--adm-border)',
                       color: filterModule === tab.id ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                      borderRadius: '20px',
-                      padding: '5px 14px',
+                      borderRadius: '8px',
+                      padding: '5px 12px',
                       fontSize: '0.74rem',
                       fontWeight: filterModule === tab.id ? 800 : 600,
                       cursor: 'pointer',
@@ -415,6 +378,34 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* Right: Event Category Select + Cards/List Switch */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <select
+                  value={filterEventType}
+                  onChange={(e) => setFilterEventType(e.target.value as any)}
+                  style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 600,
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="all">Todos os Tipos de Festa</option>
+                  <option value="debutante_15">15 Anos</option>
+                  <option value="birthday_kids">Infantil</option>
+                  <option value="birthday_adult">Adulto</option>
+                  <option value="baby_shower">Chá de Bebê</option>
+                  <option value="wedding_anniversary">Bodas / Casamento</option>
+                  <option value="graduation">Formatura</option>
+                  <option value="corporate">Corporativo</option>
+                  <option value="other">Outros</option>
+                </select>
 
               {/* View Mode Toggle: Grid vs List (Right Side) */}
               <div style={{
@@ -471,6 +462,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
               </div>
             </div>
           </div>
+        </div>
 
           {/* Empty State */}
           {filteredDebutantes.length === 0 ? (
@@ -512,14 +504,14 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
                 const getEventBadge = (type?: EventType) => {
                   switch (type) {
-                    case 'birthday_kids': return { label: 'Infantil', icon: '🎈', color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.12)' };
-                    case 'birthday_adult': return { label: 'Adulto', icon: '🥂', color: '#A855F7', bg: 'rgba(168, 85, 247, 0.12)' };
-                    case 'baby_shower': return { label: 'Chá Bebê', icon: '🍼', color: '#F472B6', bg: 'rgba(244, 114, 182, 0.12)' };
-                    case 'wedding_anniversary': return { label: 'Bodas', icon: '💍', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' };
-                    case 'graduation': return { label: 'Formatura', icon: '🎓', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)' };
-                    case 'corporate': return { label: 'Corporativo', icon: '🏢', color: '#64748B', bg: 'rgba(100, 116, 139, 0.12)' };
-                    case 'other': return { label: 'Outro', icon: '✨', color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.12)' };
-                    default: return { label: '15 Anos', icon: '👑', color: '#D4AF37', bg: 'rgba(212, 175, 55, 0.12)' };
+                    case 'birthday_kids': return { label: 'Infantil', icon: <PartyPopper size={11} />, color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.12)' };
+                    case 'birthday_adult': return { label: 'Adulto', icon: <Wine size={11} />, color: '#A855F7', bg: 'rgba(168, 85, 247, 0.12)' };
+                    case 'baby_shower': return { label: 'Chá Bebê', icon: <Heart size={11} />, color: '#F472B6', bg: 'rgba(244, 114, 182, 0.12)' };
+                    case 'wedding_anniversary': return { label: 'Bodas', icon: <Gem size={11} />, color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' };
+                    case 'graduation': return { label: 'Formatura', icon: <GraduationCap size={11} />, color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)' };
+                    case 'corporate': return { label: 'Corporativo', icon: <Briefcase size={11} />, color: '#64748B', bg: 'rgba(100, 116, 139, 0.12)' };
+                    case 'other': return { label: 'Outro', icon: <Sparkles size={11} />, color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.12)' };
+                    default: return { label: '15 Anos', icon: <Crown size={11} />, color: '#D4AF37', bg: 'rgba(212, 175, 55, 0.12)' };
                   }
                 };
                 const eventBadge = getEventBadge(deb.eventType);
@@ -527,18 +519,22 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                 return (
                   <div
                     key={deb.id}
-                    className="saas-card"
                     onClick={() => setSelectedDebutanteId(deb.id)}
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '14px',
+                      gap: '12px',
                       cursor: 'pointer',
-                      transition: 'all 0.2s ease',
+                      border: '1px solid var(--adm-border)',
+                      background: 'var(--adm-bg-card)',
+                      borderRadius: '14px',
+                      padding: '16px',
+                      transition: 'border-color 0.15s ease',
                       position: 'relative',
+                      boxShadow: 'none',
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--adm-accent)'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--adm-border)'}
                   >
                     {/* Top Row: Avatar, Name & Venue */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -546,8 +542,8 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                         src={deb.avatarUrl}
                         alt={deb.name}
                         style={{
-                          width: '48px',
-                          height: '48px',
+                          width: '46px',
+                          height: '46px',
                           borderRadius: '50%',
                           objectFit: 'cover',
                           border: '2px solid var(--adm-accent)',
@@ -558,7 +554,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                           <h3 style={{
-                            fontSize: '1.02rem',
+                            fontSize: '0.98rem',
                             fontWeight: 800,
                             color: 'var(--adm-text-title)',
                             margin: 0,
@@ -575,11 +571,15 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                               color: eventBadge.color,
                               border: `1px solid ${eventBadge.color}40`,
                               borderRadius: '6px',
-                              padding: '1px 5px',
+                              padding: '2px 6px',
                               fontSize: '0.62rem',
                               fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}>
-                              {eventBadge.icon} {eventBadge.label}
+                              {eventBadge.icon}
+                              <span>{eventBadge.label}</span>
                             </span>
 
                             {deb.status === 'inactive' ? (
@@ -587,7 +587,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                                 background: 'rgba(239, 68, 68, 0.15)',
                                 color: '#EF4444',
                                 border: '1px solid rgba(239, 68, 68, 0.3)',
-                                borderRadius: '8px',
+                                borderRadius: '6px',
                                 padding: '2px 6px',
                                 fontSize: '0.62rem',
                                 fontWeight: 800,
@@ -599,7 +599,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                                 background: 'rgba(16, 185, 129, 0.15)',
                                 color: '#10B981',
                                 border: '1px solid rgba(16, 185, 129, 0.3)',
-                                borderRadius: '8px',
+                                borderRadius: '6px',
                                 padding: '2px 6px',
                                 fontSize: '0.62rem',
                                 fontWeight: 800,
@@ -610,7 +610,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           </div>
                         </div>
 
-                        <div style={{ fontSize: '0.72rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
                           <Building2 size={12} />
                           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venue?.name || 'Casa não vinculada'}</span>
                         </div>
@@ -623,7 +623,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       background: 'var(--adm-bg-input)',
-                      borderRadius: '10px',
+                      borderRadius: '8px',
                       padding: '6px 10px',
                       fontSize: '0.72rem',
                     }}>
@@ -638,24 +638,24 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
                     {/* Metrics Row */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '6px', textAlign: 'center' }}>
+                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Convidados</div>
                         <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{guestsConfirmed} / {deb.currentGuestLimit}</div>
                       </div>
 
-                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '6px', textAlign: 'center' }}>
+                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.58rem', color: 'var(--adm-accent)', textTransform: 'uppercase', fontWeight: 700 }}>Indicações</div>
                         <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-accent)' }}>{totalReferrals}</div>
                       </div>
 
-                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '10px', padding: '6px', textAlign: 'center' }}>
+                      <div style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.58rem', color: 'var(--adm-green)', textTransform: 'uppercase', fontWeight: 700 }}>Vendas VIP</div>
                         <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--adm-green)' }}>{deb.convertedReferralSales}</div>
                       </div>
                     </div>
 
                     {/* Jornada VIP de Prêmios & Progresso Real-time */}
-                    {deb.hasJourneyEnabled && (() => {
+                    {deb.hasJourneyEnabled ? (() => {
                       const currentSales = deb.convertedReferralSales || 0;
                       const template = templates.find(t => t.id === deb.journeyTemplateId) || templates[0];
                       const rewards = template?.vipRewards || [];
@@ -666,9 +666,9 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
 
                       return (
                         <div style={{
-                          background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, rgba(212, 175, 55, 0.04) 100%)',
-                          border: '1px solid rgba(212, 175, 55, 0.35)',
-                          borderRadius: '10px',
+                          background: 'rgba(212, 175, 55, 0.08)',
+                          border: '1px solid rgba(212, 175, 55, 0.25)',
+                          borderRadius: '8px',
                           padding: '8px 10px',
                           display: 'flex',
                           flexDirection: 'column',
@@ -687,16 +687,16 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           {/* Progress Bar */}
                           <div style={{
                             width: '100%',
-                            height: '6px',
+                            height: '5px',
                             background: 'rgba(255, 255, 255, 0.08)',
-                            borderRadius: '6px',
+                            borderRadius: '5px',
                             overflow: 'hidden',
                           }}>
                             <div style={{
                               width: `${progressPercent}%`,
                               height: '100%',
                               background: 'linear-gradient(90deg, #D4AF37 0%, #F59E0B 100%)',
-                              borderRadius: '6px',
+                              borderRadius: '5px',
                               transition: 'width 0.3s ease',
                             }} />
                           </div>
@@ -704,12 +704,33 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--adm-text-muted)' }}>
                             <span>{currentSales} {currentSales === 1 ? 'venda confirmada' : 'vendas confirmadas'}</span>
                             <span style={{ fontWeight: remainingSales === 0 ? 800 : 500, color: remainingSales === 0 ? '#10B981' : 'var(--adm-text-muted)' }}>
-                              {remainingSales > 0 ? `Falta ${remainingSales} para o prêmio` : '🏆 Meta Conquistada!'}
+                              {remainingSales > 0 ? `Falta ${remainingSales} para o prêmio` : 'Meta Conquistada!'}
                             </span>
                           </div>
                         </div>
                       );
-                    })()}
+                    })() : (
+                      /* Bloco Harmonizado quando não tem Jornada VIP ativa (evita espaço vazio) */
+                      <div style={{
+                        background: 'var(--adm-bg-input)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.68rem',
+                        color: 'var(--adm-text-muted)',
+                      }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <Users size={12} color="var(--adm-text-muted)" />
+                          <span>App Oficial • RSVP & Convidados</span>
+                        </span>
+                        <span style={{ fontSize: '0.60rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}>
+                          PADRÃO
+                        </span>
+                      </div>
+                    )}
 
                     {/* Action Buttons */}
                     <div style={{

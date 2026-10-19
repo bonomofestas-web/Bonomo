@@ -602,6 +602,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   };
 
   const totalColumns = isVisitsContext ? 9 : 7;
+  const totalTasksInView = useMemo(() => groupedTasks.reduce((acc, g) => acc + g.tasks.length, 0), [groupedTasks]);
 
   return (
     <div style={{
@@ -613,107 +614,118 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
       gap: '14px',
       boxSizing: 'border-box',
     }}>
-      {/* BARRA SUPERIOR DE NAVEGAÇÃO (Semana vs Mês, Navegação Temporal e Histórico) */}
+      {/* BARRA SUPERIOR DE NAVEGAÇÃO CENTRALIZADA (Semana vs Mês, Navegação Temporal e Totalizador) */}
       <div style={{
-        padding: '10px 16px',
+        padding: '8px 16px',
         borderRadius: '12px',
-        border: '1px solid var(--adm-border, #E2E8F0)',
+        border: '1px solid var(--adm-border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '12px',
-        background: 'var(--adm-bg-card, #FFFFFF)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+        background: 'var(--adm-bg-card)',
+        boxShadow: 'none',
         flexShrink: 0,
       }}>
         {/* Esquerda: Alternador de Visualização [ Semana | Mês ] */}
         <div style={{
           display: 'flex',
+          flex: 1,
+          justifyContent: 'flex-start',
           alignItems: 'center',
-          gap: '4px',
-          background: 'var(--adm-bg-surface, #F1F5F9)',
-          padding: '3px',
-          borderRadius: '8px',
-          border: '1px solid var(--adm-border, #E2E8F0)',
+          minWidth: '150px',
         }}>
-          <button
-            type="button"
-            onClick={() => handleSelectPeriodMode('week')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 12px',
-              borderRadius: '6px',
-              border: listPeriodMode === 'week' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
-              background: listPeriodMode === 'week' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-              color: listPeriodMode === 'week' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-              fontWeight: 700,
-              fontSize: '0.74rem',
-              cursor: 'pointer',
-              boxShadow: listPeriodMode === 'week' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-            title="Visualizar lista organizada por semana"
-          >
-            <CalendarDays size={14} />
-            <span>Semana</span>
-          </button>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '2px',
+            background: 'var(--adm-bg-input)',
+            padding: '2px',
+            borderRadius: '8px',
+            border: '1px solid var(--adm-border)',
+          }}>
+            <button
+              type="button"
+              onClick={() => handleSelectPeriodMode('week')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                background: listPeriodMode === 'week' ? 'var(--adm-bg-card)' : 'transparent',
+                color: listPeriodMode === 'week' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                fontWeight: listPeriodMode === 'week' ? 700 : 500,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                boxShadow: listPeriodMode === 'week' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Visualizar lista organizada por semana"
+            >
+              <CalendarDays size={13} />
+              <span>Semana</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleSelectPeriodMode('month')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 12px',
-              borderRadius: '6px',
-              border: listPeriodMode === 'month' ? '1px solid var(--adm-border, #CBD5E1)' : '1px solid transparent',
-              background: listPeriodMode === 'month' ? 'var(--adm-bg-card, #FFFFFF)' : 'transparent',
-              color: listPeriodMode === 'month' ? 'var(--adm-accent, #0284C7)' : 'var(--adm-text-muted, #64748B)',
-              fontWeight: 700,
-              fontSize: '0.74rem',
-              cursor: 'pointer',
-              boxShadow: listPeriodMode === 'month' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-            title="Visualizar lista organizada por mês"
-          >
-            <Calendar size={14} />
-            <span>Mês</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => handleSelectPeriodMode('month')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: 'none',
+                background: listPeriodMode === 'month' ? 'var(--adm-bg-card)' : 'transparent',
+                color: listPeriodMode === 'month' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                fontWeight: listPeriodMode === 'month' ? 700 : 500,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                boxShadow: listPeriodMode === 'month' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Visualizar lista organizada por mês"
+            >
+              <Calendar size={13} />
+              <span>Mês</span>
+            </button>
+          </div>
         </div>
 
-        {/* Centro: Navegação Temporal (Semana Anterior / Próxima ou Mês Anterior / Próximo) */}
+        {/* Centro: Navegação Temporal Centralizada */}
         <div style={{
           display: 'flex',
+          flex: 2,
+          justifyContent: 'center',
           alignItems: 'center',
-          gap: '10px',
+          gap: '8px',
+          minWidth: '280px',
         }}>
           {/* Botão Anterior */}
           <button
             type="button"
             onClick={listPeriodMode === 'week' ? handlePrevWeek : handlePrevMonth}
             style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: 'var(--adm-bg-surface, #F8FAFC)',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-title, #334155)',
-              fontSize: '0.74rem',
-              fontWeight: 700,
+              padding: '5px 10px',
+              borderRadius: '7px',
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.73rem',
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
               transition: 'all 0.15s ease',
             }}
             title={listPeriodMode === 'week' ? 'Semana anterior' : 'Mês anterior'}
           >
-            <ChevronLeft size={16} />
-            <span>{listPeriodMode === 'week' ? 'Semana Anterior' : 'Mês Anterior'}</span>
+            <ChevronLeft size={14} />
+            <span>Anterior</span>
           </button>
 
           {/* Rótulo Central Clicável */}
@@ -733,70 +745,70 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
               alignItems: 'center',
               gap: '8px',
               cursor: (listPeriodMode === 'week' ? !weekInfo.isCurrentWeek : !monthInfo.isCurrentMonth) ? 'pointer' : 'default',
-              padding: '5px 12px',
-              borderRadius: '8px',
-              background: (listPeriodMode === 'week' ? !weekInfo.isCurrentWeek : !monthInfo.isCurrentMonth) ? 'rgba(2, 132, 199, 0.06)' : 'transparent',
+              padding: '4px 12px',
+              borderRadius: '7px',
+              background: (listPeriodMode === 'week' ? !weekInfo.isCurrentWeek : !monthInfo.isCurrentMonth) ? 'var(--adm-accent-bg, rgba(2, 132, 199, 0.08))' : 'transparent',
               transition: 'all 0.15s ease',
             }}
           >
             {listPeriodMode === 'week' ? (
-              <CalendarDays size={17} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+              <CalendarDays size={15} style={{ color: 'var(--adm-accent)' }} />
             ) : (
-              <Calendar size={17} style={{ color: 'var(--adm-accent, #0284C7)' }} />
+              <Calendar size={15} style={{ color: 'var(--adm-accent)' }} />
             )}
 
-            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
               {listPeriodMode === 'week' ? weekInfo.label : monthInfo.label}
             </span>
 
             {listPeriodMode === 'week' ? (
               weekInfo.isCurrentWeek ? (
                 <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: 'rgba(2,132,199,0.12)',
-                  color: '#0284C7',
-                  border: '1px solid rgba(2,132,199,0.25)',
+                  fontSize: '0.64rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '5px',
+                  background: 'rgba(2, 132, 199, 0.12)',
+                  color: 'var(--adm-accent)',
+                  border: '1px solid rgba(2, 132, 199, 0.25)',
                 }}>
                   Semana Atual
                 </span>
               ) : (
                 <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: 'var(--adm-accent, #0284C7)',
+                  fontSize: '0.64rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '5px',
+                  background: 'var(--adm-accent)',
                   color: '#FFFFFF',
                 }}>
-                  Voltar para Hoje
+                  Voltar p/ Hoje
                 </span>
               )
             ) : (
               monthInfo.isCurrentMonth ? (
                 <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: 'rgba(2,132,199,0.12)',
-                  color: '#0284C7',
-                  border: '1px solid rgba(2,132,199,0.25)',
+                  fontSize: '0.64rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '5px',
+                  background: 'rgba(2, 132, 199, 0.12)',
+                  color: 'var(--adm-accent)',
+                  border: '1px solid rgba(2, 132, 199, 0.25)',
                 }}>
                   Mês Atual
                 </span>
               ) : (
                 <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  padding: '2px 7px',
-                  borderRadius: '6px',
-                  background: 'var(--adm-accent, #0284C7)',
+                  fontSize: '0.64rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '5px',
+                  background: 'var(--adm-accent)',
                   color: '#FFFFFF',
                 }}>
-                  Voltar para Este Mês
+                  Voltar p/ Mês
                 </span>
               )
             )}
@@ -807,24 +819,45 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
             type="button"
             onClick={listPeriodMode === 'week' ? handleNextWeek : handleNextMonth}
             style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
-              background: 'var(--adm-bg-surface, #F8FAFC)',
-              border: '1px solid var(--adm-border, #CBD5E1)',
-              color: 'var(--adm-text-title, #334155)',
-              fontSize: '0.74rem',
-              fontWeight: 700,
+              padding: '5px 10px',
+              borderRadius: '7px',
+              background: 'var(--adm-bg-input)',
+              border: '1px solid var(--adm-border)',
+              color: 'var(--adm-text-title)',
+              fontSize: '0.73rem',
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
               transition: 'all 0.15s ease',
             }}
             title={listPeriodMode === 'week' ? 'Próxima semana' : 'Próximo mês'}
           >
-            <span>{listPeriodMode === 'week' ? 'Próxima Semana' : 'Próximo Mês'}</span>
-            <ChevronRight size={16} />
+            <span>Próximo</span>
+            <ChevronRight size={14} />
           </button>
+        </div>
+
+        {/* Direita: Totalizador de Tarefas no Período */}
+        <div style={{
+          display: 'flex',
+          flex: 1,
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          minWidth: '150px',
+        }}>
+          <span style={{
+            fontSize: '0.72rem',
+            color: 'var(--adm-text-muted)',
+            fontWeight: 600,
+            background: 'var(--adm-bg-input)',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            border: '1px solid var(--adm-border)',
+          }}>
+            {totalTasksInView} {totalTasksInView === 1 ? 'tarefa no período' : 'tarefas no período'}
+          </span>
         </div>
       </div>
 
@@ -834,10 +867,10 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        background: 'var(--adm-bg-card, #FFFFFF)',
-        borderRadius: '14px',
-        border: '1px solid var(--adm-border, #E2E8F0)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+        background: 'var(--adm-bg-card)',
+        borderRadius: '12px',
+        border: '1px solid var(--adm-border)',
+        boxShadow: 'none',
       }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <table className="adm-tasks-table" style={{

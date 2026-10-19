@@ -730,11 +730,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'master-dashboard':
         return <AdminMasterDashboardView />;
       case 'benefits':
-        return <AdminBenefitsCatalogView />;
+        return <AdminBenefitsCatalogView onBack={() => handleSelectTab('debutantes')} />;
       case 'collaborators':
         return <AdminCollaboratorsView />;
       case 'templates':
-        return <AdminJourneysConfigView />;
+        return <AdminJourneysConfigView onBack={() => handleSelectTab('debutantes')} />;
       case 'appointments':
         return <AdminAppointmentsView />;
       case 'settings':
@@ -937,6 +937,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'dev-users') { category = 'Desenvolvedor'; title = 'Gestão de Usuários'; }
               else if (activeTab === 'dev-announcements') { category = 'Desenvolvedor'; title = 'Comunicados Globais'; }
               else if (activeTab === 'dev-support') { category = 'Desenvolvedor'; title = 'Central de Suporte'; }
+
+              if (activeTab === 'benefits' || activeTab === 'templates') {
+                const subTitle = activeTab === 'benefits' ? 'Catálogo de Prêmios' : 'Jornadas VIP';
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#14A9D7', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Pós-Venda
+                    </span>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>/</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab('debutantes')}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                        color: 'rgba(255, 255, 255, 0.75)',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        transition: 'color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#FFFFFF'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.75)'}
+                    >
+                      App Aniversariante
+                    </button>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.3)', fontSize: '0.8rem' }}>/</span>
+                    <h1 style={{ fontSize: '0.96rem', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.2px' }}>
+                      {subTitle}
+                    </h1>
+                  </div>
+                );
+              }
 
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>

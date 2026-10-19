@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Gift, Crown, Plus, Search, Edit3, Trash2, 
-  DollarSign
+  DollarSign, ArrowLeft
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminBenefitModal } from './AdminBenefitModal';
@@ -9,7 +9,11 @@ import { AdminVipRewardModal } from './AdminVipRewardModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import type { BenefitCatalogItem, VipRewardCatalogItem } from '../../types/admin';
 
-export const AdminBenefitsCatalogView: React.FC = () => {
+interface AdminBenefitsCatalogViewProps {
+  onBack?: () => void;
+}
+
+export const AdminBenefitsCatalogView: React.FC<AdminBenefitsCatalogViewProps> = ({ onBack }) => {
   const { 
     benefitsCatalog, 
     vipCatalog, 
@@ -67,6 +71,30 @@ export const AdminBenefitsCatalogView: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-accent)',
+                fontSize: '0.78rem',
+                fontWeight: 750,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                padding: '0 0 8px 0',
+                transition: 'opacity 0.15s ease',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.75'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <ArrowLeft size={14} />
+              <span>Voltar ao App Aniversariante</span>
+            </button>
+          )}
           <h1 style={{
             fontSize: '1.45rem',
             fontWeight: 800,

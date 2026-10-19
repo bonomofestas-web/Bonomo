@@ -807,8 +807,8 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               }}
             >
               <option value="all">Todos os Funis</option>
-              <option value="unindexed">⚠️ Desanexados (Sem Funil)</option>
-              <option value="archived">📦 Leads Arquivados</option>
+              <option value="unindexed">Desanexados (Sem Funil)</option>
+              <option value="archived">Leads Arquivados</option>
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name} ({f.category || 'Geral'})</option>
               ))}
@@ -927,6 +927,9 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
             <button
               onClick={() => setFilterType('hot')}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: filterType === 'hot' ? '1px solid #EF4444' : '1px solid var(--adm-border, #CBD5E1)',
@@ -937,11 +940,15 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 cursor: 'pointer',
               }}
             >
-              🔥 Quentes
+              <Flame size={13} color="#EF4444" />
+              <span>Quentes</span>
             </button>
             <button
               onClick={() => setFilterType('won')}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: filterType === 'won' ? '1px solid #10B981' : '1px solid var(--adm-border, #CBD5E1)',
@@ -952,7 +959,8 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 cursor: 'pointer',
               }}
             >
-              🏆 Ganhos ({stats.won})
+              <Trophy size={13} color="#10B981" />
+              <span>Ganhos ({stats.won})</span>
             </button>
             <button
               onClick={() => setFilterType('lost')}
@@ -972,6 +980,9 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
             <button
               onClick={() => { setFilterType('archived'); setSelectedFunnelFilter('archived'); }}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
                 padding: '4px 10px',
                 borderRadius: '6px',
                 border: filterType === 'archived' ? '1px solid #8B5CF6' : '1px solid var(--adm-border, #CBD5E1)',
@@ -982,7 +993,8 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 cursor: 'pointer',
               }}
             >
-              📦 Arquivados ({stats.archived})
+              <Archive size={13} color="#8B5CF6" />
+              <span>Arquivados ({stats.archived})</span>
             </button>
           </div>
 

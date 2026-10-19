@@ -1671,44 +1671,44 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           )}
         </div>
 
-        {/* Overview KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(212, 175, 55, 0.12)', border: '1px solid rgba(212, 175, 55, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37' }}>
-              <Layers size={20} />
+        {/* Overview KPIs - Clean Style */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(212, 175, 55, 0.1)', border: '1px solid rgba(212, 175, 55, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', flexShrink: 0 }}>
+              <Layers size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipelines Ativos</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{funnelsList.length} Funis</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Pipelines Ativos</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{funnelsList.length} Funis</div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
-              <Users size={20} />
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6', flexShrink: 0 }}>
+              <Users size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Oportunidades</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{totalLeadsSum} Leads</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Oportunidades</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{totalLeadsSum} Leads</div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-              <DollarSign size={20} />
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981', flexShrink: 0 }}>
+              <DollarSign size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipeline Fechado</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10B981' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Pipeline Fechado</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10B981' }}>
                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalPipelineSum)}
               </div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B5CF6' }}>
-              <Building2 size={20} />
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B5CF6', flexShrink: 0 }}>
+              <Building2 size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Unidades Atendidas</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{venues.length} Casas</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Unidades Atendidas</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{venues.length} Casas</div>
             </div>
           </div>
         </div>
@@ -1802,24 +1802,24 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
             )}
           </div>
         ) : funnelViewMode === 'list' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             {funnelsByVenueGroup.map(group => (
-              <div key={group.venueId} className="saas-card" style={{ borderRadius: '16px', padding: '16px 20px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}>
-                {/* Cabeçalho da Unidade / Rede */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid var(--adm-border)', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div key={group.venueId} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Cabeçalho da Unidade / Rede - Limpo, sem retângulo envolvente */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {group.logoUrl ? (
                       <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '10px',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
                         background: 'var(--adm-bg-input)',
                         border: '1px solid var(--adm-border)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         overflow: 'hidden',
-                        padding: '3px',
+                        padding: '2px',
                         boxSizing: 'border-box',
                       }}>
                         <img 
@@ -1830,9 +1830,9 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </div>
                     ) : (
                       <div style={{ 
-                        width: '36px', 
-                        height: '36px', 
-                        borderRadius: '10px', 
+                        width: '32px', 
+                        height: '32px', 
+                        borderRadius: '8px', 
                         background: group.isMultiVenue ? 'rgba(212, 175, 55, 0.12)' : 'rgba(20, 169, 215, 0.12)', 
                         border: `1px solid ${group.isMultiVenue ? 'rgba(212, 175, 55, 0.3)' : 'rgba(20, 169, 215, 0.3)'}`, 
                         display: 'flex', 
@@ -1840,11 +1840,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         justifyContent: 'center', 
                         color: group.isMultiVenue ? '#D4AF37' : 'var(--adm-accent)' 
                       }}>
-                        {group.isMultiVenue ? <Layers size={18} /> : <Building2 size={18} />}
+                        {group.isMultiVenue ? <Layers size={16} /> : <Building2 size={16} />}
                       </div>
                     )}
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                         {group.venueName}
                       </h4>
                       <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
@@ -1876,9 +1876,14 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                   )}
                 </div>
 
-                {/* Lista de Funis da Unidade */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {group.funnels.map(funnel => {
+                {/* Lista de Funis em Contêiner Único Elegante (Sem retângulos aninhados) */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                }}>
+                  {group.funnels.map((funnel, fIdx) => {
                     const isPinned = isFunnelPinned(funnel.id);
                     const linkedVenues = getLinkedVenuesForFunnel(funnel);
 
@@ -1891,24 +1896,21 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           gap: '12px',
-                          padding: '10px 14px',
-                          borderRadius: '10px',
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
+                          padding: '12px 18px',
+                          borderBottom: fIdx === group.funnels.length - 1 ? 'none' : '1px solid var(--adm-border)',
+                          background: 'transparent',
                           cursor: 'pointer',
-                          transition: 'all 0.15s ease',
+                          transition: 'background-color 0.15s ease',
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = funnel.badgeColor || 'var(--adm-accent)';
-                          e.currentTarget.style.transform = 'translateX(4px)';
+                          e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--adm-border)';
-                          e.currentTarget.style.transform = 'translateX(0)';
+                          e.currentTarget.style.backgroundColor = 'transparent';
                         }}
                       >
                         {/* Esquerda: Ícone + Nome + Badges */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px', flex: 1 }}>
                           <div style={{ flexShrink: 0 }}>
                             {renderFunnelVisual(funnel, 15, 30)}
                           </div>
@@ -2049,32 +2051,27 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 <div
                   key={funnel.id}
                   onClick={() => handleSelectFunnel(funnel.id)}
-                  className="saas-card"
                   style={{
-                    borderRadius: '16px',
-                    padding: '14px 16px',
+                    borderRadius: '14px',
+                    padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: '10px',
+                    gap: '12px',
                     cursor: 'pointer',
                     border: funnel.isPrimary ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
                     background: funnel.isPrimary 
-                      ? 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(212, 175, 55, 0.06) 100%)' 
+                      ? 'linear-gradient(135deg, var(--adm-bg-card) 0%, rgba(212, 175, 55, 0.04) 100%)' 
                       : 'var(--adm-bg-card)',
-                    transition: 'all 0.2s ease',
+                    transition: 'border-color 0.15s ease, background-color 0.15s ease',
                     position: 'relative',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.05)'
+                    boxShadow: 'none'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.borderColor = funnel.badgeColor || 'var(--adm-accent)';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.borderColor = funnel.isPrimary ? 'var(--adm-accent)' : 'var(--adm-border)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.05)';
                   }}
                 >
                   <div>
@@ -2218,17 +2215,16 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Bloco de Métricas (Pipeline, Oportunidades, Conversão) MAIS ACIMA */}
+                    {/* Bloco de Métricas Flat (sem retângulo interno) */}
                     <div style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '10px',
-                      padding: '7px 10px',
+                      borderTop: '1px solid var(--adm-border)',
+                      borderBottom: '1px solid var(--adm-border)',
+                      padding: '9px 0',
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: '4px',
                       textAlign: 'center',
-                      marginBottom: '8px',
+                      marginBottom: '10px',
                     }}>
                       <div>
                         <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Oportunidades</div>

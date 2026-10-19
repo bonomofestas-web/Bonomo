@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { 
   Plus, Gift, Crown, 
-  Edit3, Trash2, CheckCircle2, Layers, Share2, Building2 
+  Edit3, Trash2, CheckCircle2, Layers, Share2, Building2,
+  ArrowLeft
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminTemplateModal } from './AdminTemplateModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import type { JourneyTemplate } from '../../types/admin';
 
-export const AdminJourneysConfigView: React.FC = () => {
+interface AdminJourneysConfigViewProps {
+  onBack?: () => void;
+}
+
+export const AdminJourneysConfigView: React.FC<AdminJourneysConfigViewProps> = ({ onBack }) => {
   const { 
     templates, 
     debutantes, 
@@ -66,6 +71,30 @@ export const AdminJourneysConfigView: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--adm-accent)',
+                fontSize: '0.78rem',
+                fontWeight: 750,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                padding: '0 0 8px 0',
+                transition: 'opacity 0.15s ease',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.75'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <ArrowLeft size={14} />
+              <span>Voltar ao App Aniversariante</span>
+            </button>
+          )}
           <h1 style={{
             fontSize: '1.45rem',
             fontWeight: 800,

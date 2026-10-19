@@ -5,7 +5,8 @@ import {
   ChevronDown, MoreVertical, Store, Tag as TagIcon, Clock, Sparkles,
   MessageSquare, Trash2, ExternalLink,
   Eye, Check, X, Gem, Calendar, CheckSquare, UserPlus,
-  Copy, Building2, Layers, Users, DollarSign, ArrowRight, ChevronLeft, Pin, ShieldCheck
+  Copy, Building2, Layers, Users, DollarSign, ArrowRight, ChevronLeft, Pin, ShieldCheck,
+  Smartphone
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -263,7 +264,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     }
   };
   const [viewMode, setViewMode] = useState<'kanban' | 'inbox' | 'list'>('kanban');
-  const [funnelViewMode, setFunnelViewMode] = useState<'cards' | 'list'>('cards');
+  const [funnelViewMode, setFunnelViewMode] = useState<'cards' | 'list'>('list');
   const [search, setSearch] = useState('');
   const [funnelSearch, setFunnelSearch] = useState('');
   const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
@@ -1070,8 +1071,26 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // ── CENTRAL DE FUNIS DE PÓS-VENDA (PRÉ-TELA QUANDO NENHUM FUNIL ESTIVER SELECIONADO) ──
   if (!selectedFunnelId) {
     const totalClientsCount = allClients.length;
-    const totalPipelineSum = clients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
+    const totalPipelineSum = allClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
     const formattedPipeline = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(totalPipelineSum);
+
+    // 5 KPIs Estratégicos & Operacionais de Pós-Venda
+    const upcomingPartiesCount = allClients.filter(c => {
+      const pStr = c.partyDate || c.eventDate;
+      if (!pStr) return false;
+      const pTime = new Date(pStr).getTime();
+      const now = Date.now();
+      const diffDays = Math.ceil((pTime - now) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 60;
+    }).length;
+
+    const tastingsAndVisitsCount = allClients.filter(c => {
+      const s = String(c.stage || '').toLowerCase();
+      return s.includes('degust') || s.includes('visita') || s.includes('reuniao') || s.includes('alinhamento') || s.includes('planej');
+    }).length;
+
+    const appActiveCount = allClients.filter(c => Boolean(c.debutanteId || c.debutanteSlug || (c as any).hasDebutanteApp || (c as any).portalAccess)).length;
+    const appActivationRate = totalClientsCount > 0 ? Math.round((appActiveCount / totalClientsCount) * 100) : 0;
 
     return (
       <div style={{
@@ -1097,7 +1116,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               </h1>
             </div>
             <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0, maxWidth: '650px' }}>
-              Pipelines de pós-venda estruturados e independentes. Gerencie clientes, alinhamento técnico, visitas e degustações das casas.
+              Pipelines de pós-venda estruturados e independentes. Gerencie clientes na carteira, visitas técnicas, degustações e engajamento.
             </p>
           </div>
 
@@ -1117,7 +1136,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)',
+                boxShadow: 'none',
                 transition: 'all 0.18s ease',
               }}
             >
@@ -1127,44 +1146,60 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           )}
         </div>
 
-        {/* Overview KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06B6D4' }}>
-              <Layers size={20} />
+        {/* Overview KPIs - 5 Métricas Operacionais Clean (Sem sombras pesadas) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          {/* 1. Clientes Ativos */}
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06B6D4', flexShrink: 0 }}>
+              <Users size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Pipelines Ativos</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{postSaleFunnels.length} Funis</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Clientes na Carteira</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{totalClientsCount}</div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
-              <Users size={20} />
+
+          {/* 2. Festas Próximas 60d */}
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F59E0B', flexShrink: 0 }}>
+              <Calendar size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Clientes Atendidos</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{totalClientsCount} Clientes</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Festas Próximas 60d</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#F59E0B' }}>{upcomingPartiesCount}</div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-              <DollarSign size={20} />
+
+          {/* 3. Degustações e Visitas */}
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B5CF6', flexShrink: 0 }}>
+              <Clock size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Volume em Contratos</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10B981' }}>
-                {formattedPipeline}
-              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Visitas & Degustações</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{tastingsAndVisitsCount}</div>
             </div>
           </div>
-          <div className="saas-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B5CF6' }}>
-              <Building2 size={20} />
+
+          {/* 4. App Ativo */}
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6', flexShrink: 0 }}>
+              <Smartphone size={19} />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Unidades Atendidas</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{venues.length} Casas</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>App Aniversariante</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#3B82F6' }}>{appActivationRate}% <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-text-muted)' }}>({appActiveCount})</span></div>
+            </div>
+          </div>
+
+          {/* 5. Volume em Contratos Pós-Venda */}
+          <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981', flexShrink: 0 }}>
+              <DollarSign size={19} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Volume Contratos</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10B981' }}>{formattedPipeline}</div>
             </div>
           </div>
         </div>
@@ -1175,15 +1210,15 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             <Search size={16} color="#06B6D4" style={{ position: 'absolute', left: '14px', top: '12px' }} />
             <input
               type="text"
-              placeholder="Buscar funil de pós-venda por nome, categoria ou unidade..."
+              placeholder="Buscar esteira de pós-venda..."
               value={funnelSearch}
               onChange={(e) => setFunnelSearch(e.target.value)}
               style={{
                 width: '100%',
                 background: 'var(--adm-bg-card)',
                 border: '1px solid var(--adm-border)',
-                borderRadius: '12px',
-                padding: '10px 14px 10px 42px',
+                borderRadius: '10px',
+                padding: '9px 14px 9px 40px',
                 color: 'var(--adm-text-title)',
                 fontSize: '0.84rem',
                 outline: 'none',
@@ -1207,7 +1242,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 background: funnelViewMode === 'list' ? 'var(--adm-bg-card)' : 'transparent',
                 color: funnelViewMode === 'list' ? '#06B6D4' : 'var(--adm-text-muted)',
                 cursor: 'pointer',
-                boxShadow: funnelViewMode === 'list' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: 'none',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -1228,7 +1263,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 background: funnelViewMode === 'cards' ? 'var(--adm-bg-card)' : 'transparent',
                 color: funnelViewMode === 'cards' ? '#06B6D4' : 'var(--adm-text-muted)',
                 cursor: 'pointer',
-                boxShadow: funnelViewMode === 'cards' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: 'none',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -1239,12 +1274,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
         {/* Funnels View (List or Grid) */}
         {displayedFunnels.length === 0 ? (
-          <div className="saas-card" style={{ padding: '48px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+          <div style={{ padding: '48px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '14px' }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#06B6D4' }}>
               <ShieldCheck size={28} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 4px 0' }}>Nenhum Funil de Pós-Venda Encontrado</h3>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--adm-text-title)', margin: '0 0 4px 0' }}>Nenhum Funil de Pós-Venda Encontrado</h3>
               <p style={{ fontSize: '0.82rem', color: 'var(--adm-text-muted)', margin: 0 }}>Crie um novo funil de pós-venda ou ajuste a busca para visualizar as esteiras.</p>
             </div>
             {canConfigurePostSale && (
@@ -1272,24 +1307,24 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             )}
           </div>
         ) : funnelViewMode === 'list' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             {funnelsByVenueGroup.map(group => (
-              <div key={group.venueId} className="saas-card" style={{ borderRadius: '16px', padding: '16px 20px', background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)' }}>
-                {/* Cabeçalho da Unidade / Rede */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid var(--adm-border)', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div key={group.venueId} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Cabeçalho da Unidade / Rede - Limpo, sem retângulo envolvente */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {group.logoUrl ? (
                       <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '10px',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
                         background: 'var(--adm-bg-input)',
                         border: '1px solid var(--adm-border)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         overflow: 'hidden',
-                        padding: '3px',
+                        padding: '2px',
                         boxSizing: 'border-box',
                       }}>
                         <img 
@@ -1300,9 +1335,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       </div>
                     ) : (
                       <div style={{ 
-                        width: '36px', 
-                        height: '36px', 
-                        borderRadius: '10px', 
+                        width: '32px', 
+                        height: '32px', 
+                        borderRadius: '8px', 
                         background: group.isMultiVenue ? 'rgba(6, 182, 212, 0.12)' : 'rgba(20, 169, 215, 0.12)', 
                         border: `1px solid ${group.isMultiVenue ? 'rgba(6, 182, 212, 0.3)' : 'rgba(20, 169, 215, 0.3)'}`, 
                         display: 'flex', 
@@ -1310,15 +1345,15 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                         justifyContent: 'center', 
                         color: group.isMultiVenue ? '#06B6D4' : 'var(--adm-accent)' 
                       }}>
-                        {group.isMultiVenue ? <Layers size={18} /> : <Building2 size={18} />}
+                        {group.isMultiVenue ? <Layers size={16} /> : <Building2 size={16} />}
                       </div>
                     )}
                     <div>
-                      <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
                         {group.venueName}
                       </h4>
                       <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted)' }}>
-                        {group.funnels.length} {group.funnels.length === 1 ? 'esteira de pós-venda configurada' : 'esteiras de pós-venda configuradas'}
+                        {group.funnels.length} {group.funnels.length === 1 ? 'esteira de pós-venda' : 'esteiras de pós-venda'}
                       </span>
                     </div>
                   </div>
@@ -1346,9 +1381,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                   )}
                 </div>
 
-                {/* Lista de Funis da Unidade */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {group.funnels.map(funnel => {
+                {/* Lista de Funis em Contêiner Único Elegante (Sem retângulos aninhados) */}
+                <div style={{
+                  background: 'var(--adm-bg-card)',
+                  border: '1px solid var(--adm-border)',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                }}>
+                  {group.funnels.map((funnel, fIdx) => {
                     const isPinned = isFunnelPinned(funnel.id);
                     const linkedVenues = getLinkedVenuesForFunnel(funnel);
                     const fMetrics = getFunnelClientMetrics(funnel);
@@ -1362,24 +1402,21 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           gap: '12px',
-                          padding: '10px 14px',
-                          borderRadius: '10px',
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
+                          padding: '12px 18px',
+                          borderBottom: fIdx === group.funnels.length - 1 ? 'none' : '1px solid var(--adm-border)',
+                          background: 'transparent',
                           cursor: 'pointer',
-                          transition: 'all 0.15s ease',
+                          transition: 'background-color 0.15s ease',
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = funnel.badgeColor || '#06B6D4';
-                          e.currentTarget.style.transform = 'translateX(4px)';
+                          e.currentTarget.style.backgroundColor = 'var(--adm-bg-input)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'var(--adm-border)';
-                          e.currentTarget.style.transform = 'translateX(0)';
+                          e.currentTarget.style.backgroundColor = 'transparent';
                         }}
                       >
                         {/* Esquerda: Ícone + Nome + Badges */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '220px', flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '220px', flex: 1 }}>
                           <div style={{ flexShrink: 0 }}>
                             {renderFunnelVisual(funnel, 15, 30)}
                           </div>
@@ -1447,11 +1484,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                               togglePinFunnel(funnel.id);
                             }}
                             style={{
-                              background: isPinned ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
-                              border: `1px solid ${isPinned ? '#06B6D4' : 'var(--adm-border)'}`,
+                              background: isPinned ? 'var(--adm-accent-bg)' : 'transparent',
+                              border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                               borderRadius: '7px',
                               padding: '5px 8px',
-                              color: isPinned ? '#06B6D4' : 'var(--adm-text-muted)',
+                              color: isPinned ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
                               cursor: viewingAsCollaborator ? 'not-allowed' : 'pointer',
                               display: 'flex',
                               alignItems: 'center',
@@ -1464,7 +1501,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             <button
                               type="button"
                               onClick={(e) => handleOpenSettings(funnel.id, e)}
-                              title="Configurar Esteira"
+                              title="Configurações e Vínculo de Casas do Funil"
                               style={{
                                 background: 'transparent',
                                 border: '1px solid var(--adm-border)',
@@ -1512,7 +1549,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             ))}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
             {displayedFunnels.map(funnel => {
               const linkedVenues = getLinkedVenuesForFunnel(funnel);
               const fMetrics = getFunnelClientMetrics(funnel);
@@ -1522,35 +1559,30 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 <div
                   key={funnel.id}
                   onClick={() => handleSelectFunnel(funnel.id)}
-                  className="saas-card"
                   style={{
-                    borderRadius: '16px',
-                    padding: '14px 16px',
+                    borderRadius: '14px',
+                    padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: '10px',
+                    gap: '12px',
                     cursor: 'pointer',
                     border: '1px solid var(--adm-border)',
                     background: 'var(--adm-bg-card)',
-                    transition: 'all 0.2s ease',
+                    transition: 'border-color 0.15s ease, background-color 0.15s ease',
                     position: 'relative',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.05)'
+                    boxShadow: 'none'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
                     e.currentTarget.style.borderColor = funnel.badgeColor || '#06B6D4';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.borderColor = 'var(--adm-border)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.05)';
                   }}
                 >
                   <div>
                     {/* Top Row: Ícone + Nome + Badge Pós-Venda + [Fixar] + [Duplicar] + [Configurações] */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                         <div style={{ flexShrink: 0 }}>
                           {renderFunnelVisual(funnel, 15, 32)}
@@ -1558,7 +1590,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
                           <h3 style={{
-                            fontSize: '0.95rem',
+                            fontSize: '0.94rem',
                             fontWeight: 800,
                             color: 'var(--adm-text-title)',
                             margin: 0,
@@ -1571,13 +1603,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                           </h3>
 
                           <span style={{
-                            fontSize: '0.62rem',
+                            fontSize: '0.60rem',
                             fontWeight: 800,
                             padding: '1px 6px',
                             borderRadius: '6px',
-                            background: 'rgba(6, 182, 212, 0.15)',
+                            background: 'rgba(6, 182, 212, 0.12)',
                             color: '#06B6D4',
-                            border: '1px solid rgba(6, 182, 212, 0.35)',
+                            border: '1px solid rgba(6, 182, 212, 0.25)',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '3px',
@@ -1600,7 +1632,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             togglePinFunnel(funnel.id);
                           }}
                           style={{
-                            background: isPinned ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                            background: isPinned ? 'var(--adm-accent-bg)' : 'transparent',
                             border: `1px solid ${isPinned ? 'var(--adm-accent)' : 'var(--adm-border)'}`,
                             borderRadius: '7px',
                             padding: '4px 7px',
@@ -1623,10 +1655,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                           <>
                             <button
                               type="button"
-                              title="Duplicar Funil de Pós-Venda (Criar cópia com todas as regras, etapas e casas vinculadas)"
+                              title="Duplicar Funil de Pós-Venda"
                               onClick={(e) => handleDuplicateFunnel(funnel.id, e)}
                               style={{
-                                background: 'var(--adm-bg-input)',
+                                background: 'transparent',
                                 border: '1px solid var(--adm-border)',
                                 borderRadius: '7px',
                                 padding: '4px 6px',
@@ -1636,14 +1668,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'all 0.15s ease',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.color = '#06B6D4';
-                                e.currentTarget.style.borderColor = '#06B6D4';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.color = 'var(--adm-text-muted)';
-                                e.currentTarget.style.borderColor = 'var(--adm-border)';
                               }}
                             >
                               <Copy size={12} />
@@ -1654,7 +1678,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                               title="Configurações e Vínculo de Casas do Funil"
                               onClick={(e) => handleOpenSettings(funnel.id, e)}
                               style={{
-                                background: 'var(--adm-bg-input)',
+                                background: 'transparent',
                                 border: '1px solid var(--adm-border)',
                                 borderRadius: '7px',
                                 padding: '4px 6px',
@@ -1665,14 +1689,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                 justifyContent: 'center',
                                 transition: 'all 0.15s ease',
                               }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.color = 'var(--adm-accent)';
-                                e.currentTarget.style.borderColor = 'var(--adm-accent)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.color = 'var(--adm-text-muted)';
-                                e.currentTarget.style.borderColor = 'var(--adm-border)';
-                              }}
                             >
                               <Settings size={12} />
                             </button>
@@ -1681,17 +1697,16 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       </div>
                     </div>
 
-                    {/* Bloco de Métricas */}
+                    {/* Bloco de Métricas Flat (sem retângulo interno) */}
                     <div style={{
-                      background: 'var(--adm-bg-input)',
-                      border: '1px solid var(--adm-border)',
-                      borderRadius: '10px',
-                      padding: '7px 10px',
+                      borderTop: '1px solid var(--adm-border)',
+                      borderBottom: '1px solid var(--adm-border)',
+                      padding: '9px 0',
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: '4px',
                       textAlign: 'center',
-                      marginBottom: '8px',
+                      marginBottom: '10px',
                     }}>
                       <div>
                         <div style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>Clientes</div>
@@ -1709,7 +1724,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       </div>
                     </div>
 
-                    {/* Tags de Casas de Festas Vinculadas Manualmente */}
+                    {/* Tags de Casas de Festas Vinculadas */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
                       {linkedVenues.length > 0 ? (
                         linkedVenues.map(v => (
@@ -1717,123 +1732,51 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                             fontSize: '0.62rem',
                             fontWeight: 700,
                             padding: '2px 6px',
-                            borderRadius: '6px',
-                            background: 'rgba(99, 102, 241, 0.12)',
-                            color: '#818cf8',
-                            border: '1px solid rgba(99, 102, 241, 0.25)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
+                            borderRadius: '5px',
+                            background: 'var(--adm-bg-input)',
+                            color: 'var(--adm-text-muted)',
+                            border: '1px solid var(--adm-border)',
                           }}>
-                            <Building2 size={9} />
-                            <span>{v.name}</span>
+                            {v.name}
                           </span>
                         ))
                       ) : (
-                        <span style={{
-                          fontSize: '0.62rem',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '6px',
-                          background: 'rgba(99, 102, 241, 0.12)',
-                          color: '#818cf8',
-                          border: '1px solid rgba(99, 102, 241, 0.25)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                        }}>
-                          <Building2 size={9} />
-                          <span>Todas as Casas da Rede (Geral)</span>
+                        <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
+                          Todas as casas vinculadas
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Card Footer */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid var(--adm-border)' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--adm-text-muted)', fontWeight: 600 }}>
-                      {funnel.stages?.length || 0} Etapas no Kanban
+                  {/* Rodapé do Card */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--adm-border)' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
+                      {funnel.stages?.length || 0} etapas
                     </span>
-
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFunnelId(funnel.id);
-                      }}
+                      type="button"
                       style={{
-                        background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+                        background: 'transparent',
                         border: 'none',
-                        color: '#FFFFFF',
-                        borderRadius: '9px',
-                        padding: '6px 12px',
-                        fontSize: '0.76rem',
+                        color: '#06B6D4',
+                        fontSize: '0.74rem',
                         fontWeight: 800,
-                        cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        transition: 'all 0.15s ease',
+                        gap: '4px',
+                        cursor: 'pointer',
+                        padding: 0
                       }}
                     >
-                      <span>Entrar no Funil</span>
-                      <ArrowRight size={12} />
+                      <span>Acessar Esteira</span>
+                      <ArrowRight size={13} />
                     </button>
                   </div>
                 </div>
               );
             })}
-
-            {/* "+ Adicionar Funil de Pós-Venda" Slot */}
-            {canConfigurePostSale && (
-              <div
-                onClick={() => setIsCreateModalOpen(true)}
-                style={{
-                  borderRadius: '16px',
-                  padding: '24px 16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  border: '2px dashed var(--adm-border)',
-                  background: 'transparent',
-                  color: 'var(--adm-text-muted)',
-                  transition: 'all 0.18s ease',
-                  minHeight: '180px',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#06B6D4';
-                  e.currentTarget.style.color = '#06B6D4';
-                  e.currentTarget.style.background = 'rgba(6, 182, 212, 0.04)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--adm-border)';
-                  e.currentTarget.style.color = 'var(--adm-text-muted)';
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Plus size={18} />
-                </div>
-                <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>Novo Funil de Pós-Venda</div>
-                <div style={{ fontSize: '0.68rem', textAlign: 'center', maxWidth: '200px' }}>
-                  Crie esteiras dedicadas para pós-venda vinculando uma ou mais casas da rede
-                </div>
-              </div>
-            )}
           </div>
         )}
-
         {/* Modal de Criação de Funil de Pós-Venda quando na Central */}
         <AdminCreatePostSaleFunnelModal
           isOpen={isCreateModalOpen}
