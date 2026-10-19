@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   AlertTriangle, ShieldAlert, CheckCircle2, 
-  Trash2, X
+  Trash2, X, Crown
 } from 'lucide-react';
 import type { Venue, DebutanteAccount } from '../../types/admin';
 
@@ -219,7 +219,7 @@ export const AdminDeleteVenueModal: React.FC<AdminDeleteVenueModalProps> = ({
                     color: '#FFF',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.9rem' }}>👑</span>
+                      <Crown size={14} color="#E8C98D" />
                       <strong style={{ color: '#E8C98D' }}>{deb.name}</strong>
                     </div>
                     <span style={{ fontSize: '0.72rem', color: 'rgba(255, 255, 255, 0.5)' }}>

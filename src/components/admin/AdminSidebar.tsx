@@ -4,7 +4,7 @@ import {
   CheckSquare, Home, Briefcase, DollarSign, SlidersHorizontal,
   ChevronRight, ChevronLeft,
   ChevronDown, Globe,
-  Sparkles, Radio, PhoneCall, Compass,
+  Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
   Eye, RotateCcw, Gift, Calendar, GripVertical, UserCheck
 } from 'lucide-react';
@@ -274,17 +274,17 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   </svg>
 );
 
-  // Ferramentas: WhatsApp Multi-Setor
+  // Ferramentas: WhatsApp Multi-Setor e Central Unificada de Tarefas
   const toolsItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 2. Comercial: Dashboard, Funil Comercial, Leads, Follow-up, Agendamentos
+  // 2. Comercial: Dashboard, Funil Comercial, Leads, Agendamentos
   const commercialItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'crm', label: 'Funil Comercial', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
-    { id: 'followups', label: 'Follow-up', icon: <PhoneCall size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
@@ -296,9 +296,8 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
 
-  // 4. Gerência: Tarefas, Qualificação ICP, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa
+  // 4. Gerência: Qualificação ICP, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa
   const masterItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin'] },
     { id: 'mql', label: 'Qualificação', icon: <IcpTargetUserIcon size={15} />, roles: ['master', 'admin'] },
     { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
     { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
@@ -614,7 +613,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
     if (sector === 'comercial') {
       accentColor = '#14A9D7';
-      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'followups', 'post-sale-visits-tastings'].includes(activeTab);
+      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'post-sale-visits-tastings'].includes(activeTab);
       // Ícone dinâmico do Comercial
       switch (activeTab) {
         case 'dashboard':
@@ -625,9 +624,6 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           break;
         case 'leads':
           icon = <Users size={18} />;
-          break;
-        case 'followups':
-          icon = <PhoneCall size={18} />;
           break;
         case 'post-sale-visits-tastings':
           icon = <Calendar size={18} />;
@@ -659,12 +655,9 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
       }
     } else if (sector === 'gerencia') {
       accentColor = '#14A9D7';
-      isSectorActive = ['tasks', 'mql', 'sources', 'venue-goals', 'master-dashboard', 'collaborators', 'venues'].includes(activeTab);
+      isSectorActive = ['mql', 'sources', 'venue-goals', 'master-dashboard', 'collaborators', 'venues'].includes(activeTab);
       // Ícone dinâmico da Gerência
       switch (activeTab) {
-        case 'tasks':
-          icon = <CheckSquare size={18} />;
-          break;
         case 'mql':
           icon = <IcpTargetUserIcon size={18} />;
           break;
@@ -1281,8 +1274,10 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
                   objectFit: 'contain',
                   display: 'block',
                   margin: '0 auto',
-                  transform: isRefreshingLogo ? 'rotate(360deg)' : 'none',
-                  transition: 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transform: isRefreshingLogo ? 'scale(0.96)' : 'none',
+                  opacity: isRefreshingLogo ? 0.75 : 1,
+                  filter: isRefreshingLogo ? 'drop-shadow(0 0 8px rgba(20, 169, 215, 0.6))' : 'none',
+                  transition: 'all 0.25s ease',
                 }}
               />
             </div>

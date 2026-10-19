@@ -111,6 +111,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     supportTickets,
     isInitialSyncComplete,
     updateCollaborator,
+    isRefreshing,
   } = useAdminState();
   
   // Track active focus time for collaborators
@@ -635,7 +636,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           />
         );
       case 'followups':
-        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="followup" />;
+        return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
       case 'whatsapp':
         return (
           <AdminWhatsAppWorkspaceView
@@ -717,7 +718,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             />
           );
         }
-        return <AdminDebutantesView onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)} onOpenLead={handleOpenLeadFromTask} />;
+        return (
+          <AdminDebutantesView
+            onOpenDebutanteApp={(slug) => onOpenDebutanteApp(slug)}
+            onOpenLead={handleOpenLeadFromTask}
+            onNavigateTab={(tab) => handleSelectTab(tab as any)}
+          />
+        );
       case 'venue-goals':
         return <AdminVenueGoalsView />;
       case 'master-dashboard':
@@ -761,6 +768,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       fontFamily: "'Inter', sans-serif",
       position: 'relative',
     }}>
+      {/* Barra de Progresso Luminosa Global (YouTube / GitHub top loader) */}
+      {isRefreshing && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          zIndex: 99999,
+          background: 'linear-gradient(90deg, #14A9D7, #10B981, #06B6D4, #14A9D7)',
+          backgroundSize: '200% 100%',
+          animation: 'f5TopLoader 1s linear infinite',
+          boxShadow: '0 0 12px rgba(20, 169, 215, 0.9)',
+          pointerEvents: 'none',
+        }}>
+          <style>{`
+            @keyframes f5TopLoader {
+              0% { background-position: 100% 0; }
+              100% { background-position: -100% 0; }
+            }
+          `}</style>
+        </div>
+      )}
       {/* Tela de Sincronização Inicial F5 System (Overlay Seguro que nunca trava nem quebra hooks) */}
       {!isSplashDismissed && currentUser.role !== 'dev' && (
         <AdminLoadingSplash
@@ -882,13 +912,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               if (venues.length === 0 && activeTab !== 'dev-features' && activeTab !== 'dev-users' && activeTab !== 'settings') {
                 category = 'Inicialização';
                 title = 'Registrar Primeira Casa de Festas';
-              } else if (activeTab === 'tasks') { category = 'Workspace'; title = 'Tarefas'; }
+              } else if (activeTab === 'tasks') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
               else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
               else if (activeTab === 'team') { category = 'Workspace'; title = 'Equipe'; }
               else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
-              else if (activeTab === 'whatsapp') { category = 'Comercial'; title = 'WhatsApp'; }
+              else if (activeTab === 'whatsapp') { category = 'Ferramentas'; title = 'WhatsApp'; }
               else if (activeTab === 'crm') { category = 'Comercial'; title = activeFunnel ? `Funil • ${activeFunnel.name}` : 'Funil Comercial'; }
-              else if (activeTab === 'followups') { category = 'Comercial'; title = 'Follow-up'; }
+              else if (activeTab === 'followups') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
               else if (activeTab === 'post-sale-crm') { category = 'Pós-Venda'; title = 'Funis de Pós-Venda'; }
               else if (activeTab === 'debutantes') { category = 'Pós-Venda'; title = 'App Aniversariantes'; }
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }

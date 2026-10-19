@@ -344,10 +344,10 @@ export const AdminCollaboratorModal: React.FC<AdminCollaboratorModalProps> = ({
               }}
             >
               <option value="">Padrão (Automático de acordo com a função)</option>
-              <option value="comercial">🎯 Comercial (Funis de Vendas)</option>
-              <option value="pos_venda">👑 Pós-Venda (Sucesso do Cliente)</option>
-              <option value="gerencia">📊 Gestão / Gerência</option>
-              <option value="financeiro">💰 Financeiro</option>
+              <option value="comercial">Comercial (Funis de Vendas)</option>
+              <option value="pos_venda">Pós-Venda (Sucesso do Cliente)</option>
+              <option value="gerencia">Gestão / Gerência</option>
+              <option value="financeiro">Financeiro</option>
             </select>
             <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
               Determina se o colaborador acessa prioritariamente o Comercial ou Sucesso do Cliente (Pós-Venda) no WhatsApp.

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { 
   Plus, Search, Filter, List, Calendar as CalendarIcon, Utensils,
   X, MessageSquare, Users, CheckSquare, Sliders, CalendarDays, Clock, LayoutGrid,
-  Building2, UtensilsCrossed, ChevronRight, Check
+  Building2, UtensilsCrossed, ChevronRight, Check, ShieldAlert
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { taskService } from '../../services/taskService';
@@ -157,15 +157,56 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
   const [commitmentModalType, setCommitmentModalType] = useState<CommercialCommitmentType>('visit');
   const [commitmentPresetDate, setCommitmentPresetDate] = useState<string | undefined>(undefined);
 
+  // Toast de Permissão de Tarefa (Regra de Bloqueio para colaboradores comuns)
+  const [permissionToast, setPermissionToast] = useState<string | null>(null);
+
+  const canUserInteractWithTask = useCallback((task: AdminTask): boolean => {
+    const effectiveRole = currentUser?.role || 'master';
+    if (effectiveRole === 'master' || effectiveRole === 'admin' || (currentUser as any)?.isDev) {
+      return true;
+    }
+    const currentUserId = currentUser?.id;
+    if (!currentUserId) return true;
+
+    const isAssigned = (task.assignedToIds || []).includes(currentUserId) || (task as any).assignedTo === currentUserId;
+    const isCreator = task.createdById === currentUserId;
+    return Boolean(isAssigned || isCreator);
+  }, [currentUser]);
+
+  const showPermissionWarning = useCallback(() => {
+    setPermissionToast('Você não consegue interagir com esta tarefa pois ela não é sua.');
+  }, []);
+
+  useEffect(() => {
+    if (permissionToast) {
+      const timer = setTimeout(() => setPermissionToast(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [permissionToast]);
+
   const handleTableToggleStatus = useCallback((taskId: string) => {
     const task = contextTasks.find(t => t.id === taskId);
     if (!task) return;
+    if (!canUserInteractWithTask(task)) {
+      showPermissionWarning();
+      return;
+    }
     if (task.status !== 'completed') {
       setCompletingTask(task);
     } else {
       toggleTaskStatus(taskId);
     }
-  }, [contextTasks, toggleTaskStatus]);
+  }, [contextTasks, toggleTaskStatus, canUserInteractWithTask, showPermissionWarning]);
+
+  const handleReassignTask = useCallback((taskId: string, newCollaboratorId: string) => {
+    const task = contextTasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (!canUserInteractWithTask(task)) {
+      showPermissionWarning();
+      return;
+    }
+    updateTask(taskId, { assignedToIds: [newCollaboratorId] });
+  }, [contextTasks, updateTask, canUserInteractWithTask, showPermissionWarning]);
 
   // Refs for outside click
   const filterDropdownRef = useRef<HTMLDivElement>(null);
@@ -425,6 +466,28 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
       }
     }
 
+    let resolvedContext: TaskWorkspaceContext = 'all';
+    let resolvedDbId = task.databaseId || 'default_collabs';
+
+    if (resolvedDbId === 'db_followup' || task.type === 'followup' || (task.customType || '').toLowerCase().includes('follow')) {
+      resolvedContext = 'followup';
+      resolvedDbId = 'db_followup';
+    } else if (resolvedDbId === 'db_appointments' || Boolean(task.debutanteId && !task.leadId)) {
+      resolvedContext = 'appointments';
+      resolvedDbId = 'db_appointments';
+    }
+
+    setModalWorkspaceContext(resolvedContext);
+    setModalDatabaseId(resolvedDbId);
+    setSelectedTask(task);
+    setPrefilledDueDate(undefined);
+    setPrefilledDueTime(undefined);
+    setPrefilledCustomType(undefined);
+    setIsTaskModalOpen(true);
+  };
+
+  // Força abertura direta no Bloco de Notas Inteligente (usado pelo botão "Ver")
+  const handleOpenTaskInNotepad = (task: AdminTask) => {
     let resolvedContext: TaskWorkspaceContext = 'all';
     let resolvedDbId = task.databaseId || 'default_collabs';
 
@@ -1224,6 +1287,7 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
           <AdminTasksKanbanView
             tasks={filteredTasks}
             onOpenTask={handleOpenTask}
+            onOpenNotepad={handleOpenTaskInNotepad}
             todayStr={todayStr}
             entityLabel={entityLabel}
             workspaceContext={workspaceContext}
@@ -1237,6 +1301,8 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             allTasks={contextTasks}
             collaborators={collaborators}
             onOpenTask={handleOpenTask}
+            onOpenNotepad={handleOpenTaskInNotepad}
+            onReassignTask={handleReassignTask}
             onToggleStatus={handleTableToggleStatus}
             onScheduleForDate={(dateStr) => {
               setCommitmentPresetDate(dateStr);
@@ -1877,6 +1943,32 @@ export const AdminTasksWorkspaceView: React.FC<AdminTasksWorkspaceViewProps> = (
             setCommitmentPresetDate(undefined);
           }}
         />
+      )}
+
+      {/* Toast Inferior de Restrição de Permissão */}
+      {permissionToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: '#0F172A',
+          color: '#FFFFFF',
+          padding: '10px 18px',
+          borderRadius: '12px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          fontSize: '0.82rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <ShieldAlert size={16} color="#F59E0B" />
+          <span>{permissionToast}</span>
+        </div>
       )}
     </div>
   );

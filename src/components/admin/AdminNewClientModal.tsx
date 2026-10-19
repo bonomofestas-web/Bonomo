@@ -143,7 +143,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
           {/* Seção 1: Aniversariante */}
           <div>
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
-              👑 1. Dados da Aniversariante (Nome Principal de Atendimento)
+              1. Dados da Aniversariante (Nome Principal de Atendimento)
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
               <div>
@@ -193,7 +193,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
           {/* Seção 2: Decisor / Contratante */}
           <div>
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
-              👤 2. Decisor / Contratante Pagante (Pai, Mãe ou Responsável)
+              2. Decisor / Contratante Pagante (Pai, Mãe ou Responsável)
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
@@ -311,7 +311,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
           {/* Seção 3: Dados Contratuais & Evento */}
           <div>
             <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
-              💼 3. Dados Contratuais & Casa de Festas
+              3. Dados Contratuais & Casa de Festas
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>

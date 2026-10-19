@@ -3,12 +3,13 @@ import {
   CheckSquare, Square, Calendar, Clock, 
   CheckCircle2, XCircle, Sparkles, ThumbsUp,
   Building2, UtensilsCrossed, ChevronLeft, ChevronRight, CalendarDays, Plus,
-  RotateCw, ExternalLink
+  RotateCw, ExternalLink, Eye, ChevronDown
 } from 'lucide-react';
 import type { AdminTask, Collaborator, Lead, Client, DebutanteAccount } from '../../../types/admin';
 import { useAdminState } from '../../../context/AdminStateContext';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
 import { agendaAvailabilityService } from '../../../services/agendaAvailabilityService';
+import { sanitizeTaskTitle } from '../../../utils/taskEmojiUtils';
 
 interface AdminTasksTableViewProps {
   tasks: AdminTask[];
@@ -18,6 +19,8 @@ interface AdminTasksTableViewProps {
   clients?: Client[];
   debutantes?: DebutanteAccount[];
   onOpenTask: (task: AdminTask) => void;
+  onOpenNotepad?: (task: AdminTask) => void;
+  onReassignTask?: (taskId: string, newCollaboratorId: string) => void;
   onToggleStatus: (taskId: string) => void;
   onScheduleForDate?: (dateStr: string) => void;
   todayStr: string;
@@ -52,6 +55,8 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   clients: propsClients,
   debutantes: propsDebutantes,
   onOpenTask,
+  onOpenNotepad,
+  onReassignTask,
   onToggleStatus,
   onScheduleForDate,
   todayStr,
@@ -67,6 +72,9 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
   const debutantes = propsDebutantes || adminState?.debutantes || [];
   const venueAgendaConfigs = adminState?.venueAgendaConfigs || [];
   const activeVenueId = adminState?.activeVenueId;
+  const currentUser = adminState?.currentUser;
+  const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || (currentUser as any)?.isDev;
+  const [reassignPopoverTaskId, setReassignPopoverTaskId] = useState<string | null>(null);
 
   const tomorrowStr = useMemo(() => {
     const d = new Date();
@@ -593,7 +601,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
     };
   };
 
-  const totalColumns = isVisitsContext ? 8 : 6;
+  const totalColumns = isVisitsContext ? 9 : 7;
 
   return (
     <div style={{
@@ -867,9 +875,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                         Nenhum agendamento para {listPeriodMode === 'week' ? 'esta semana' : 'este mês'}
                       </div>
                       <div style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted, #64748B)', maxWidth: '440px', lineHeight: 1.4 }}>
-                        {!showPastHistory 
-                          ? 'Modo padrão (presente e futuro). Compromissos passados estão ocultos. Para visualizá-los, clique no botão "Histórico".'
-                          : 'Nenhum agendamento ou bloco de atendimento aberto encontrado no período selecionado.'}
+                        Nenhum agendamento ou bloco de atendimento aberto encontrado no período selecionado.
                       </div>
                     </div>
                   </td>
@@ -1227,6 +1233,7 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             <th style={{ padding: '8px 16px', minWidth: '240px' }}>OBJETO / TAREFA</th>
                             <th style={{ padding: '8px 16px', minWidth: '150px' }}>TIPO DE TAREFA</th>
                             <th style={{ padding: '8px 16px', minWidth: '200px' }}>RESULTADO / RESOLUÇÃO</th>
+                            <th style={{ padding: '8px 14px', width: '80px', textAlign: 'right' }}>AÇÕES</th>
                           </>
                         )}
                       </tr>
@@ -1461,15 +1468,119 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
                             </div>
                           </td>
                         ) : (
-                          <td style={{ padding: '12px 16px', color: 'var(--adm-text-title, #475569)', fontWeight: 600 }}>
-                            {assignedName}
+                          <td 
+                            style={{ padding: '10px 16px', position: 'relative' }}
+                            onClick={(e) => {
+                              if (isMasterOrAdmin) {
+                                e.stopPropagation();
+                                setReassignPopoverTaskId(prev => prev === task.id ? null : task.id);
+                              }
+                            }}
+                          >
+                            <div 
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '4px 8px',
+                                borderRadius: '8px',
+                                background: 'var(--adm-bg-surface, #F8FAFC)',
+                                border: '1px solid var(--adm-border, #E2E8F0)',
+                                cursor: isMasterOrAdmin ? 'pointer' : 'default',
+                                transition: 'all 0.15s ease',
+                              }}
+                              title={isMasterOrAdmin ? 'Clique para reatribuir o colaborador responsável' : `Responsável: ${assignedName}`}
+                            >
+                              <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title, #334155)', maxWidth: '105px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {assignedName}
+                              </span>
+                              <img
+                                src={assignedAvatar}
+                                alt={assignedName}
+                                style={{
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  objectFit: 'cover',
+                                  border: '1.5px solid #14A9D7',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              {isMasterOrAdmin && <ChevronDown size={11} color="var(--adm-text-muted, #94A3B8)" />}
+                            </div>
+
+                            {/* Reassignment Popover */}
+                            {reassignPopoverTaskId === task.id && isMasterOrAdmin && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: '16px',
+                                  zIndex: 100,
+                                  marginTop: '4px',
+                                  background: 'var(--adm-bg-card, #FFFFFF)',
+                                  border: '1px solid var(--adm-border, #CBD5E1)',
+                                  borderRadius: '10px',
+                                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+                                  padding: '6px',
+                                  minWidth: '180px',
+                                  maxHeight: '220px',
+                                  overflowY: 'auto',
+                                }}
+                              >
+                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted, #94A3B8)', padding: '4px 8px', textTransform: 'uppercase' }}>
+                                  Reatribuir Tarefa
+                                </div>
+                                {collaborators.map(c => {
+                                  const isCur = (task.assignedToIds || []).includes(c.id);
+                                  return (
+                                    <div
+                                      key={c.id}
+                                      onClick={() => {
+                                        if (onReassignTask) onReassignTask(task.id, c.id);
+                                        else if (adminState?.updateTask) adminState.updateTask(task.id, { assignedToIds: [c.id] });
+                                        setReassignPopoverTaskId(null);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 8px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        background: isCur ? 'rgba(20, 169, 215, 0.1)' : 'transparent',
+                                        fontSize: '0.75rem',
+                                        fontWeight: isCur ? 700 : 500,
+                                        color: isCur ? '#14A9D7' : 'var(--adm-text-title, #334155)',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (!isCur) e.currentTarget.style.background = 'var(--adm-bg-surface, #F1F5F9)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        if (!isCur) e.currentTarget.style.background = 'transparent';
+                                      }}
+                                    >
+                                      <img
+                                        src={c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}`}
+                                        alt={c.name}
+                                        style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
+                                      />
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {c.name}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </td>
                         )}
 
                         {/* Objeto / Tarefa / Família */}
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 800, color: 'var(--adm-text-title, #0F172A)', fontSize: '0.82rem', lineHeight: 1.3, textDecoration: isCompleted ? 'line-through' : 'none' }}>
-                            {task.title}
+                            {sanitizeTaskTitle(task.title)}
                           </div>
                           {leadOrTargetName && (
                             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '2px', fontWeight: 500 }}>
@@ -1632,17 +1743,60 @@ export const AdminTasksTableView: React.FC<AdminTasksTableViewProps> = ({
 
                         {/* Resultado / Resolução (apenas para outros contextos) */}
                         {!isVisitsContext && (
-                          <td style={{
-                            padding: '12px 16px',
-                            color: task.resolution ? 'var(--adm-text-title, #0F172A)' : 'var(--adm-text-muted, #94A3B8)',
-                            fontStyle: task.resolution ? 'normal' : 'italic',
-                            maxWidth: '280px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {task.resolution || 'Sem resolução registrada'}
-                          </td>
+                          <>
+                            <td style={{
+                              padding: '12px 16px',
+                              color: task.resolution ? 'var(--adm-text-title, #0F172A)' : 'var(--adm-text-muted, #94A3B8)',
+                              fontStyle: task.resolution ? 'normal' : 'italic',
+                              maxWidth: '280px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {task.resolution || 'Sem resolução registrada'}
+                            </td>
+
+                            {/* Ações / Botão "Ver" no Bloco de Notas */}
+                            <td 
+                              style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} 
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (onOpenNotepad) onOpenNotepad(task);
+                                  else onOpenTask(task);
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '5px 12px',
+                                  borderRadius: '8px',
+                                  background: 'var(--adm-bg-surface, #F8FAFC)',
+                                  border: '1px solid var(--adm-border, #CBD5E1)',
+                                  color: 'var(--adm-text-title, #334155)',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.borderColor = '#14A9D7';
+                                  e.currentTarget.style.color = '#14A9D7';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = 'var(--adm-border, #CBD5E1)';
+                                  e.currentTarget.style.color = 'var(--adm-text-title, #334155)';
+                                }}
+                                title="Abrir detalhes no Bloco de Notas Inteligente"
+                              >
+                                <Eye size={12} />
+                                <span>Ver</span>
+                              </button>
+                            </td>
+                          </>
                         )}
                       </tr>
                     );

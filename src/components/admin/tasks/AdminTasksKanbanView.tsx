@@ -1,11 +1,13 @@
 import React from 'react';
-import { Clock, CheckCircle2, Building } from 'lucide-react';
+import { Clock, CheckCircle2, Building, Eye } from 'lucide-react';
 import type { AdminTask, Collaborator } from '../../../types/admin';
 import { getTaskTypeTheme, renderTaskTypeIcon } from '../../../utils/taskColors';
+import { sanitizeTaskTitle } from '../../../utils/taskEmojiUtils';
 
 interface AdminTasksKanbanViewProps {
   tasks: AdminTask[];
   onOpenTask: (task: AdminTask) => void;
+  onOpenNotepad?: (task: AdminTask) => void;
   todayStr: string;
   entityLabel?: string; // 'Tarefas' | 'Follow-ups' | 'Visitas & Degustações' | 'Compromissos' | 'Visitas' | 'Degustações'
   workspaceContext?: 'all' | 'followup' | 'visits_tastings' | 'appointments';
@@ -15,6 +17,7 @@ interface AdminTasksKanbanViewProps {
 export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
   tasks,
   onOpenTask,
+  onOpenNotepad,
   todayStr,
   entityLabel = 'Tarefas',
   workspaceContext = 'all',
@@ -221,7 +224,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                     marginBottom: '6px',
                     paddingRight: (isOverdue || isCompleted) ? '18px' : '0',
                   }}>
-                    {task.title}
+                    {sanitizeTaskTitle(task.title)}
                   </div>
 
                   {/* Date and Time */}
@@ -237,7 +240,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                     <span>{formatTaskTime(task)}</span>
                   </div>
 
-                  {/* Footer: Sector / Type Badge (Left) + Assigned Collaborator Photo Avatar (Right) */}
+                  {/* Footer: Sector / Type Badge (Left) + Assigned Collaborator Photo Avatar & Ver Button (Right) */}
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -264,8 +267,44 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                       <span>{workspaceContext === 'all' ? getSectorName(task) : theme.label}</span>
                     </div>
 
-                    {/* Collaborator Photo Circle in Sector Views */}
-                    {workspaceContext !== 'all' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {/* Botão Ver no Bloco de Notas */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenNotepad) onOpenNotepad(task);
+                          else onOpenTask(task);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: '2px 7px',
+                          borderRadius: '6px',
+                          background: 'var(--adm-bg-surface, #F8FAFC)',
+                          border: '1px solid var(--adm-border, #CBD5E1)',
+                          color: 'var(--adm-text-title, #334155)',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = '#14A9D7';
+                          e.currentTarget.style.color = '#14A9D7';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = 'var(--adm-border, #CBD5E1)';
+                          e.currentTarget.style.color = 'var(--adm-text-title, #334155)';
+                        }}
+                        title="Abrir no Bloco de Notas Inteligente"
+                      >
+                        <Eye size={10} />
+                        <span>Ver</span>
+                      </button>
+
+                      {/* Collaborator Photo Circle */}
                       <div 
                         title={`Responsável: ${assignedName}`}
                         style={{
@@ -295,7 +334,7 @@ export const AdminTasksKanbanView: React.FC<AdminTasksKanbanViewProps> = ({
                           <span>{assignedInitial}</span>
                         )}
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Status Badge Tag if completed or overdue */}

@@ -16,10 +16,12 @@ import type { DebutanteAccount, EventType } from '../../types/admin';
 interface AdminDebutantesViewProps {
   onOpenDebutanteApp?: (slug: string) => void;
   onOpenLead?: (leadId: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   onOpenLead,
+  onNavigateTab,
 }) => {
   const { 
     debutantes, 
@@ -32,6 +34,7 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
   } = useAdminState();
 
   const canManage = currentUser?.role === 'master' || currentUser?.role === 'admin';
+  const canAccessVipAndPrizes = ['master', 'admin', 'pos_venda', 'gerencia', 'dev'].includes(currentUser?.role || '');
 
   // Selected Debutante for In-Page Detail View
   const [selectedDebutanteId, setSelectedDebutanteId] = useState<string | null>(null);
@@ -201,25 +204,93 @@ export const AdminDebutantesView: React.FC<AdminDebutantesViewProps> = ({
         </div>
 
         {!selectedDebutanteId && (
-          <button
-            onClick={() => {
-              setDebutanteToEdit(null);
-              setIsModalOpen(true);
-            }}
-            className="adm-btn-primary"
-            style={{
-              padding: '9px 18px',
-              borderRadius: '12px',
-              fontWeight: 800,
-              fontSize: '0.82rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <Plus size={16} />
-            <span>Cadastrar Conta no App</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {canAccessVipAndPrizes && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab ? onNavigateTab('benefits') : null}
+                  style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    fontWeight: 700,
+                    fontSize: '0.80rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--adm-accent)';
+                    e.currentTarget.style.color = 'var(--adm-accent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--adm-border)';
+                    e.currentTarget.style.color = 'var(--adm-text-title)';
+                  }}
+                  title="Configurar catálogo de prêmios e benefícios para aniversariantes"
+                >
+                  <Gift size={15} color="var(--adm-accent)" />
+                  <span>Configurar Prêmios</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab ? onNavigateTab('templates') : null}
+                  style={{
+                    background: 'var(--adm-bg-card)',
+                    border: '1px solid var(--adm-border)',
+                    color: 'var(--adm-text-title)',
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    fontWeight: 700,
+                    fontSize: '0.80rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#F59E0B';
+                    e.currentTarget.style.color = '#F59E0B';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--adm-border)';
+                    e.currentTarget.style.color = 'var(--adm-text-title)';
+                  }}
+                  title="Configurar templates e fases das Jornadas VIP"
+                >
+                  <Crown size={15} color="#F59E0B" />
+                  <span>Jornadas VIP</span>
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => {
+                setDebutanteToEdit(null);
+                setIsModalOpen(true);
+              }}
+              className="adm-btn-primary"
+              style={{
+                padding: '9px 18px',
+                borderRadius: '12px',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Plus size={16} />
+              <span>Cadastrar Conta no App</span>
+            </button>
+          </div>
         )}
       </div>
 

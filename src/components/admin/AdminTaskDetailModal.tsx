@@ -117,6 +117,15 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
   const isManagerOrAdmin = ['master', 'admin', 'dev', 'gerencia'].includes(userRole);
   const isPostSaleRole = userRole === 'pos_venda';
 
+  const canEditTask = useMemo(() => {
+    if (isCreateMode) return true;
+    if (isManagerOrAdmin) return true;
+    if (!currentUser?.id) return false;
+    const isAssigned = (task?.assignedToIds || []).includes(currentUser.id);
+    const isCreator = task?.createdById === currentUser.id;
+    return Boolean(isAssigned || isCreator);
+  }, [isCreateMode, isManagerOrAdmin, currentUser?.id, task?.assignedToIds, task?.createdById]);
+
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -447,12 +456,14 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
 
   // Safe Blur Handlers for existing task
   const handleTitleBlur = () => {
+    if (!canEditTask) return;
     if (task && title.trim() && title !== task.title) {
       updateTask(task.id, { title: title.trim() });
     }
   };
 
   const handleContentBlur = () => {
+    if (!canEditTask) return;
     if (task && content !== task.content) {
       updateTask(task.id, { 
         content, 
@@ -465,6 +476,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
 
 
   const handleCustomTypeBlur = () => {
+    if (!canEditTask) return;
     if (task && customType !== task.customType) {
       updateTask(task.id, { 
         customType: customType.trim(),
@@ -474,6 +486,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
   };
 
   const handleResolutionBlur = () => {
+    if (!canEditTask) return;
     if (resolution.trim()) {
       setResolutionHighlight(false);
     }
@@ -486,6 +499,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
   };
 
   const handleSelectStatus = (st: TaskCustomStatus) => {
+    if (!canEditTask) return;
     if (st.groupKey === 'completed' && !resolution.trim() && !allowEmptyResolution) {
       setShowStatusPopover(false);
       setStatusPopoverMode('select');
@@ -1345,7 +1359,7 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
                   <Check size={14} color="#FFFFFF" />
                   <span>{contextInfo.saveButtonLabel}</span>
                 </button>
-              ) : (
+              ) : isManagerOrAdmin && (
                 <button
                   type="button"
                   onClick={() => setIsConfirmDeleteOpen(true)}
@@ -1387,6 +1401,24 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
             </div>
           </div>
 
+          {/* Read-Only Notice if user cannot edit */}
+          {!canEditTask && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 24px',
+              background: 'rgba(245, 158, 11, 0.08)',
+              borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+              color: '#D97706',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+            }}>
+              <AlertCircle size={15} />
+              <span>Modo somente leitura: você não consegue interagir com esta tarefa pois ela não é sua.</span>
+            </div>
+          )}
+
           {/* ── SCROLLABLE DOCUMENT BODY ── */}
           <div style={{
             flex: 1,
@@ -1401,8 +1433,9 @@ export const AdminTaskDetailModal: React.FC<AdminTaskDetailModalProps> = ({
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => canEditTask && setTitle(e.target.value)}
                 onBlur={handleTitleBlur}
+                readOnly={!canEditTask}
                 placeholder={contextInfo.titlePlaceholder}
                 autoFocus={isCreateMode}
                 style={{

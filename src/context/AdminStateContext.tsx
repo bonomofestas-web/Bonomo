@@ -258,6 +258,7 @@ export interface AdminContextType {
   setViewingAsCollaborator: (collab: Collaborator | null) => void;
   updateCurrentUserProfile: (data: Partial<AdminUser>) => void;
   refreshAllData: () => Promise<void>;
+  isRefreshing: boolean;
 
   // Collaborators
   addCollaborator: (data: Omit<Collaborator, 'id' | 'createdAt'>) => string;
@@ -1075,12 +1076,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // ── Supabase Initial Fetch & Realtime Synchronizer ──────────────────────────
   const refreshDataRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refreshAllData = useCallback(async () => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('f5_app_refresh', { detail: { timestamp: Date.now() } }));
     }
-    await refreshDataRef.current();
+    setIsRefreshing(true);
+    const startTime = Date.now();
+    try {
+      await refreshDataRef.current();
+    } finally {
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 600 - elapsed);
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, remaining);
+    }
   }, []);
 
   useEffect(() => {
@@ -9323,6 +9335,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       viewingAsCollaborator: effectiveViewingAsCollaborator,
       setViewingAsCollaborator,
       refreshAllData,
+      isRefreshing,
       allLeads: leads,
       allTasks: tasks,
       allFunnels: funnels,

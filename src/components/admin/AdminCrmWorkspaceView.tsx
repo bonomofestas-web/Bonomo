@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Send, MessageSquare, Sparkles, 
   ChevronRight, CheckCircle2, Lock,
-  FileText, Plus, CheckSquare, Clock, Trash2, Edit3
+  FileText, Plus, CheckSquare, Clock, Trash2, Edit3, Crown
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { CloseDealValueModal } from './CloseDealValueModal';
@@ -470,8 +470,9 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
 
                   {/* Middle Row: Debutante Indicadora & Unidade */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', fontSize: '0.7rem', color: 'var(--adm-text-muted)' }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      👑 <strong style={{ color: 'var(--adm-accent)' }}>{lead.debutanteName}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <Crown size={12} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
+                      <strong style={{ color: 'var(--adm-accent)' }}>{lead.debutanteName}</strong>
                     </div>
                     {(lead.venueName || lead.venueId) && (
                       <span style={{

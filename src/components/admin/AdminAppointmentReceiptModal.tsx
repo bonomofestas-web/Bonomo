@@ -445,7 +445,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         style={{
           background: '#FFFFFF',
           borderRadius: '20px',
-          maxWidth: '560px',
+          maxWidth: '585px',
           maxHeight: '92vh',
           overflowY: 'auto',
           width: '100%',
@@ -916,32 +916,37 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
             BARRA DE AÇÕES INFERIOR EM LINHA ÚNICA
             ═══════════════════════════════════════════════════════════════════ */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 20px',
           background: '#F8FAFC',
           borderTop: '1px solid #E2E8F0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '12px',
+          gap: '8px',
+          flexWrap: 'nowrap',
+          boxSizing: 'border-box',
         }}>
           <button
             type="button"
             onClick={onClose}
             style={{
-              padding: '10px 16px',
+              padding: '9px 14px',
               borderRadius: '10px',
               background: '#FFFFFF',
               border: '1px solid #CBD5E1',
               color: '#475569',
-              fontSize: '0.82rem',
+              fontSize: '0.80rem',
               fontWeight: 700,
               cursor: 'pointer',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease',
             }}
           >
             Fechar
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
             {/* Botão Ver Tarefas de Confirmação (1 e 2) */}
             <button
               type="button"
@@ -950,20 +955,22 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '7px',
-                padding: '10px 14px',
+                gap: '6px',
+                padding: '9px 12px',
                 borderRadius: '10px',
                 background: showConfirmationTasks ? '#EFF6FF' : '#FFFFFF',
                 border: showConfirmationTasks ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
                 color: showConfirmationTasks ? '#1D4ED8' : '#334155',
-                fontSize: '0.80rem',
+                fontSize: '0.78rem',
                 fontWeight: 700,
                 cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transition: 'all 0.15s ease',
               }}
               title="Acompanhar tarefas de Confirmação 1 (dias antes) e Confirmação 2 (horas antes)"
             >
-              <Bell size={15} color={showConfirmationTasks ? '#2563EB' : '#64748B'} />
+              <Bell size={14} color={showConfirmationTasks ? '#2563EB' : '#64748B'} />
               <span>Confirmações (1 e 2)</span>
               {showConfirmationTasks ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
@@ -977,21 +984,23 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
-                padding: '10px 18px',
+                gap: '7px',
+                padding: '9px 14px',
                 borderRadius: '10px',
                 background: '#FFFFFF',
                 border: '1px solid #0284C7',
                 color: '#0284C7',
-                fontSize: '0.82rem',
+                fontSize: '0.78rem',
                 fontWeight: 700,
                 cursor: (isDownloading || isSharing) ? 'not-allowed' : 'pointer',
                 opacity: (isDownloading || isSharing) ? 0.7 : 1,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transition: 'all 0.15s ease',
               }}
               title="Baixar comprovante oficial em imagem PNG exatamente igual ao que vê na tela"
             >
-              {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
               <span>{isDownloading ? 'Gerando...' : 'Baixar (PNG)'}</span>
             </button>
 
@@ -1004,23 +1013,25 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
-                padding: '10px 20px',
+                gap: '7px',
+                padding: '9px 16px',
                 borderRadius: '10px',
                 background: '#10B981',
                 border: 'none',
                 color: '#FFFFFF',
-                fontSize: '0.82rem',
+                fontSize: '0.80rem',
                 fontWeight: 800,
                 cursor: (isDownloading || isSharing) ? 'not-allowed' : 'pointer',
                 opacity: (isDownloading || isSharing) ? 0.7 : 1,
                 boxShadow: '0 4px 14px rgba(16,185,129,0.3)',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transition: 'all 0.15s ease',
               }}
               title="Anexar a foto do comprovante no chat para enviar ao lead dentro do sistema"
             >
-              {isSharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
-              <span>{isSharing ? 'Anexando no Chat...' : 'Compartilhar'}</span>
+              {isSharing ? <Loader2 size={15} className="animate-spin" /> : <Share2 size={15} />}
+              <span>{isSharing ? 'Anexando...' : 'Compartilhar'}</span>
             </button>
           </div>
         </div>

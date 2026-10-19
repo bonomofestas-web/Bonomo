@@ -372,21 +372,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     );
   }, [funnels]);
 
-  // Funil Atualmente Selecionado no Kanban (com fallback inteligente para o funil primário ou primeiro pós-venda)
+  // Funil Atualmente Selecionado no Kanban
   const currentFunnel = useMemo(() => {
     if (selectedFunnelId) {
       const matched = (funnels || []).find(f => f.id === selectedFunnelId);
       if (matched) return matched;
     }
-    return postSaleFunnels.find(f => f.isPrimary) || postSaleFunnels[0] || null;
-  }, [funnels, selectedFunnelId, postSaleFunnels]);
-
-  useEffect(() => {
-    if (!selectedFunnelId && currentFunnel?.id) {
-      setSelectedFunnelId(currentFunnel.id);
-      try { localStorage.setItem('f5_active_funnel_id', currentFunnel.id); } catch {}
-    }
-  }, [selectedFunnelId, currentFunnel?.id]);
+    return null;
+  }, [funnels, selectedFunnelId]);
 
   // Recupera unidades vinculadas manualmente a este funil de pós-venda (vínculo estrito, sem inferência automática)
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
@@ -3369,7 +3362,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                       marginTop: '2px',
                                     }}>
                                       <span style={{ fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                                        💰 Faturamento Total:
+                                        Faturamento Total:
                                       </span>
                                       <strong style={{ fontWeight: 800, color: '#047857', fontSize: '0.84rem' }}>
                                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRentabilidade)}
@@ -3401,7 +3394,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                   color: daysLeft <= 30 ? '#EF4444' : daysLeft <= 90 ? '#F59E0B' : 'var(--adm-accent)',
                                   fontSize: '0.66rem',
                                 }}>
-                                  ({daysLeft > 0 ? `${daysLeft} dias` : daysLeft === 0 ? '🎉 Hoje!' : 'Realizada'})
+                                  ({daysLeft > 0 ? `${daysLeft} dias` : daysLeft === 0 ? 'Hoje!' : 'Realizada'})
                                 </span>
                               )}
                             </div>

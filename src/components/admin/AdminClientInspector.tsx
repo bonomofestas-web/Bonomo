@@ -1697,10 +1697,10 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     color: client.contractStatus === 'contrato_assinado' ? '#10B981' : client.contractStatus === 'sinal_pago' ? '#3B82F6' : '#F59E0B',
                   }}
                 >
-                  <option value="aguardando_sinal">⏳ Aguardando Sinal</option>
-                  <option value="sinal_pago">💰 Sinal Pago</option>
-                  <option value="contrato_enviado">📤 Contrato Enviado</option>
-                  <option value="contrato_assinado">✅ Contrato Assinado</option>
+                  <option value="aguardando_sinal">Aguardando Sinal</option>
+                  <option value="sinal_pago">Sinal Pago</option>
+                  <option value="contrato_enviado">Contrato Enviado</option>
+                  <option value="contrato_assinado">Contrato Assinado</option>
                 </select>
               </div>
             </div>
@@ -2286,15 +2286,15 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
                   {[
                     {
-                      label: '🎉 Boas-vindas & Onboarding',
-                      text: `Olá ${client.payerName}! É um prazer ter você e a ${client.birthdayPersonName} conosco na Bonomo Festas. Estamos iniciando a organização da sua festa para o dia ${new Date(client.eventDate).toLocaleDateString('pt-BR')}.`,
+                      label: 'Boas-vindas & Onboarding',
+                      text: `Olá ${client.payerName}! É um prazer ter você e a ${client.birthdayPersonName} conosco. Estamos iniciando a organização da sua festa para o dia ${new Date(client.eventDate).toLocaleDateString('pt-BR')}.`,
                     },
                     {
-                      label: '📋 Envio do Link do App',
+                      label: 'Envio do Link do App',
                       text: client.debutanteSlug ? `Olá ${client.birthdayPersonName}! Segue o link exclusivo do seu App de Convidados e Confirmação: ${window.location.origin}/app/${client.debutanteSlug}` : 'Acesse o App da Debutante.',
                     },
                     {
-                      label: '🍰 Agendamento de Degustação / Visita',
+                      label: 'Agendamento de Degustação / Visita',
                       text: `Olá ${client.payerName}! Gostaríamos de agendar a degustação do menu e a visita técnica da festa da ${client.birthdayPersonName}. Qual o melhor dia para vocês?`,
                     },
                   ].map((tpl, idx) => (
@@ -2855,7 +2855,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        💰 Rentabilidade Geral
+                        Rentabilidade Geral
                       </span>
                       <div style={{
                         width: '18px',
