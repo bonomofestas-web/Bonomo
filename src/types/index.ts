@@ -14,7 +14,15 @@ export type AppointmentCategory =
   | 'DJ & Pista' 
   | 'Cerimonial';
 
-export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
+export type AppointmentStatus = 
+  | 'scheduled' 
+  | 'confirmed' 
+  | 'in_progress' 
+  | 'completed' 
+  | 'cancelled' 
+  | 'no_show' 
+  | 'rescheduled' 
+  | 'reschedule_target';
 
 export type TabType = 'journey' | 'referrals' | 'guests' | 'appointments' | 'benefits';
 

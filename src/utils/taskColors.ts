@@ -166,3 +166,49 @@ export function getTaskPriorityConfig(priority?: string): TaskPriorityConfig {
   if (found) return found;
   return TASK_PRIORITY_OPTIONS[0]; // Sem prioridade
 }
+
+/**
+ * Validação Canônica de Tarefa Atrasada:
+ * - Tarefas concluídas ou com status 'completed' NUNCA estão atrasadas.
+ * - Sem data de vencimento: NÃO está atrasada.
+ * - Data estritamente anterior a hoje (YYYY-MM-DD < todayStr): ATRASADA.
+ * - Data estritamente futura (YYYY-MM-DD > todayStr): NÃO atrasada.
+ * - Data igual a hoje:
+ *   - Se NÃO possui horário definido: ESTÁ EM DIA pelo restante do dia.
+ *   - Se possui horário definido: fica atrasada apenas se o horário já passou em relação à hora local atual.
+ */
+export function isTaskOverdue(task: {
+  dueDate?: string;
+  dueTime?: string;
+  status?: string;
+  isCompleted?: boolean;
+}): boolean {
+  if (task.isCompleted || task.status === 'completed') return false;
+  if (!task.dueDate) return false;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const currentDay = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${currentYear}-${currentMonth}-${currentDay}`;
+
+  const dueDateStr = task.dueDate.slice(0, 10);
+  if (dueDateStr < todayStr) {
+    return true;
+  }
+  if (dueDateStr > todayStr) {
+    return false;
+  }
+
+  // Data é hoje: se não tem hora, está em dia
+  if (!task.dueTime || !task.dueTime.trim()) {
+    return false;
+  }
+
+  const currentHours = String(now.getHours()).padStart(2, '0');
+  const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+  const currentTimeStr = `${currentHours}:${currentMinutes}`;
+
+  const taskTimeStr = task.dueTime.trim().slice(0, 5);
+  return taskTimeStr < currentTimeStr;
+}

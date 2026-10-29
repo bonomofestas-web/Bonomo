@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, GripVertical, UserCheck
+  Eye, RotateCcw, Gift, Calendar, GripVertical, UserCheck, Clock, Zap
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -17,6 +17,7 @@ import { getLeadPendingWaitingTime } from '../../utils/leadSorting';
 export type AdminTabType = 
   | 'home'
   | 'tasks'
+  | 'quick-messages'
   | 'team-calendar'
   | 'dashboard' 
   | 'crm' 
@@ -31,6 +32,7 @@ export type AdminTabType =
   | 'team'
   | 'sources'
   | 'mql'
+  | 'sla-settings'
   | 'debutantes' 
   | 'venue-goals'
   | 'master-dashboard'
@@ -274,10 +276,11 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
   </svg>
 );
 
-  // Ferramentas: WhatsApp Multi-Setor e Central Unificada de Tarefas
+  // Ferramentas: WhatsApp Multi-Setor, Tarefas e Mensagens Rápidas
   const toolsItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
     { id: 'whatsapp', label: 'WhatsApp', icon: <WhatsAppBrandIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'tasks', label: 'Tarefas', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'quick-messages', label: 'Mensagens Rápidas', icon: <Zap size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
   // 2. Comercial: Dashboard, Funil Comercial, Leads, Agendamentos
@@ -302,6 +305,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     { id: 'sources', label: 'Origens', icon: <Compass size={15} />, roles: ['master', 'admin'], alertBadge: hasUnconfiguredSources },
     { id: 'venue-goals', label: 'Metas', icon: <Star size={15} />, roles: ['master', 'admin'] },
     { id: 'master-dashboard', label: 'Dashboard Gerência', icon: <LayoutDashboard size={15} />, roles: ['master', 'admin'] },
+    { id: 'sla-settings', label: 'Tempo de Resposta', icon: <Clock size={15} />, roles: ['master', 'admin'] },
     { id: 'collaborators', label: 'Colaboradores', icon: <ShieldCheck size={15} />, roles: ['master', 'admin'] },
     { id: 'venues', label: 'Casas de Festa', icon: <Building2 size={15} />, roles: ['master', 'admin'] },
   ];

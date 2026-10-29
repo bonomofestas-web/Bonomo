@@ -11,6 +11,10 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
+  Trash2,
+  X,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -34,7 +38,12 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
     venues, 
     collaborators, 
     activeVenueId,
+    deleteMultipleClients,
   } = useAdminState();
+
+  // Seleção Múltipla
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,10 +93,17 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
   const allPostSaleClients = useMemo(() => {
     const existingClientIds = new Set(clients.map(c => c.id));
     const extraClientsFromLeads: Client[] = (leads || [])
-      .filter(l => (l.isClient || l.group === 'Pós-Venda' || postSaleFunnels.some(f => f.id === l.funnelId)) && !existingClientIds.has(l.id))
+      .filter(l => {
+        if (existingClientIds.has(l.id)) return false;
+        // Áudio 1: REGRA SUPREMA - LEADS NÃO PODEM APARECER EM PÓS-VENDA
+        const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')) || (l as any).won || (l as any).status === 'won');
+        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
+        if (!isRealClient || isLeadCode) return false;
+        return true;
+      })
       .map(l => ({
         id: l.id,
-        code: l.code ? (l.code.startsWith('LEAD-') ? `CLI-${l.code.replace('LEAD-', '')}` : l.code) : `CLI-${l.id.slice(0, 5).toUpperCase()}`,
+        code: l.code || `CLI-${l.id.slice(0, 5).toUpperCase()}`,
         name: l.name,
         payerName: (l as any).payerName || l.name,
         payerPhone: l.phone,
@@ -104,8 +120,9 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
         updatedAt: l.updatedAt || new Date().toISOString(),
       } as Client));
 
-    return [...clients, ...extraClientsFromLeads];
-  }, [clients, leads, postSaleFunnels]);
+    const validClients = clients.filter(c => !c.code || !c.code.startsWith('LEAD-'));
+    return [...validClients, ...extraClientsFromLeads];
+  }, [clients, leads]);
 
   // Filtragem completa
   const filteredClients = useMemo(() => {
@@ -305,8 +322,34 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
           </div>
         </div>
 
-        {/* Status Filter Chips */}
+        {/* Status Filter Chips + Seleção Múltipla */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !isMultiSelectMode;
+              setIsMultiSelectMode(next);
+              if (!next) setSelectedClientIds([]);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: isMultiSelectMode ? 'rgba(6, 182, 212, 0.15)' : 'var(--adm-bg-card)',
+              border: `1px solid ${isMultiSelectMode ? '#06B6D4' : 'var(--adm-border)'}`,
+              color: isMultiSelectMode ? '#06B6D4' : 'var(--adm-text-title)',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {isMultiSelectMode ? <CheckSquare size={14} /> : <Square size={14} />}
+            <span>{isMultiSelectMode ? 'Cancelar Seleção' : 'Seleção Múltipla'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setStatusFilter('all')}
@@ -527,6 +570,24 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
             <thead>
               <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+                {isMultiSelectMode && (
+                  <th style={{ padding: '10px 14px', width: '32px' }}>
+                    <input
+                      type="checkbox"
+                      checked={paginatedClients.length > 0 && paginatedClients.every(c => selectedClientIds.includes(c.id))}
+                      onChange={() => {
+                        const allSelected = paginatedClients.every(c => selectedClientIds.includes(c.id));
+                        if (allSelected) {
+                          setSelectedClientIds(prev => prev.filter(id => !paginatedClients.some(c => c.id === id)));
+                        } else {
+                          const toAdd = paginatedClients.map(c => c.id).filter(id => !selectedClientIds.includes(id));
+                          setSelectedClientIds(prev => [...prev, ...toAdd]);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                )}
                 <th style={{ padding: '10px 14px', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontSize: '0.62rem' }}>Cliente / Código</th>
                 <th style={{ padding: '10px 14px', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontSize: '0.62rem' }}>Telefone</th>
                 <th style={{ padding: '10px 14px', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', fontSize: '0.62rem' }}>Casa de Festa</th>
@@ -563,11 +624,32 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
                       key={client.id}
                       style={{
                         borderBottom: '1px solid var(--adm-border)',
+                        background: selectedClientIds.includes(client.id) ? 'rgba(6, 182, 212, 0.08)' : 'transparent',
                         transition: 'background 0.15s ease',
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      onMouseEnter={(e) => {
+                        if (!selectedClientIds.includes(client.id)) e.currentTarget.style.background = 'var(--adm-bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!selectedClientIds.includes(client.id)) e.currentTarget.style.background = 'transparent';
+                      }}
                     >
+                      {/* Checkbox */}
+                      {isMultiSelectMode && (
+                        <td style={{ padding: '10px 14px', width: '32px' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedClientIds.includes(client.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedClientIds(prev => 
+                                prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id]
+                              );
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                      )}
                       {/* Cliente / Código */}
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -797,6 +879,109 @@ export const AdminClientsListView: React.FC<AdminClientsListViewProps> = ({
           </div>
         </div>
       </div>
+      {/* ── BARRA FLUTUANTE DE AÇÕES EM MASSA ── */}
+      {isMultiSelectMode && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: 'var(--adm-bg-card, #1E293B)',
+          border: '1px solid var(--adm-border, #334155)',
+          borderRadius: '8px',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.3)',
+          padding: '10px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title, #FFFFFF)' }}>
+            <span style={{ color: '#06B6D4' }}>{selectedClientIds.length}</span> de {filteredClients.length} selecionado(s)
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedClientIds.length === filteredClients.length) {
+                setSelectedClientIds([]);
+              } else {
+                setSelectedClientIds(filteredClients.map(c => c.id));
+              }
+            }}
+            style={{
+              padding: '4px 8px',
+              borderRadius: '5px',
+              border: '1px solid var(--adm-border, #475569)',
+              background: 'transparent',
+              color: 'var(--adm-text-secondary, #94A3B8)',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {selectedClientIds.length === filteredClients.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+          </button>
+
+          <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
+
+          {/* Excluir em Massa */}
+          <button
+            type="button"
+            disabled={selectedClientIds.length === 0}
+            onClick={async () => {
+              if (selectedClientIds.length === 0) return;
+              if (confirm(`Deseja realmente excluir os ${selectedClientIds.length} clientes selecionados? Essa ação não pode ser desfeita.`)) {
+                const idsToDelete = [...selectedClientIds];
+                setSelectedClientIds([]);
+                setIsMultiSelectMode(false);
+                await deleteMultipleClients(idsToDelete);
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              background: selectedClientIds.length > 0 ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: selectedClientIds.length > 0 ? '#EF4444' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: selectedClientIds.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: selectedClientIds.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <Trash2 size={13} />
+            <span>Excluir</span>
+          </button>
+
+          <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
+
+          {/* Cancelar Seleção */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedClientIds([]);
+              setIsMultiSelectMode(false);
+            }}
+            title="Cancelar seleção"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--adm-text-muted, #94A3B8)',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

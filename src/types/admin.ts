@@ -400,6 +400,7 @@ export interface FunnelStageConfig {
   order?: number;
   hints?: string;     // Dicas de negociação da etapa (estilo Como CRM)
   triggers?: FunnelStageTrigger[]; // Gatilhos de automação da etapa
+  allowedCollaboratorIds?: string[]; // IDs de colaboradores autorizados a visualizar esta etapa (se vazio, todos veem)
 }
 
 export type FunnelCustomFieldSection = 'commercial' | 'contact' | 'event' | 'priority' | 'party_data' | 'contractor' | 'custom';
@@ -526,6 +527,8 @@ export interface Lead {
   isValidated: boolean;  // Se true, indicação é válida e concedeu +1 ponto para a debutante
   pointsGranted: number; // 1 se válida, 0 se não
   rejectionReason?: string;
+  lossReason?: string;        // Motivo pelo qual o lead foi perdido
+  archiveReason?: string;     // Motivo do arquivamento do lead
 
   // Responsabilidade dupla SDR + Closer (Obrigatórios)
   sdrId?: string;        // ID do SDR responsável pela captação/qualificação
@@ -570,10 +573,36 @@ export interface Lead {
   updatedAt: string;
 }
 
+export interface DeletedLeadRecord {
+  id: string;
+  leadId: string;
+  leadName: string;
+  leadPhone: string;
+  venueId?: string;
+  venueName?: string;
+  masterId?: string;
+  deletedAt: string;
+  deletedBy: string;
+  reason: string;
+}
+
 // ── Compromissos Comerciais & Motor de Agenda (F5 System) ───────────────────
 export type CommercialCommitmentType = 'visit' | 'tasting';
-export type CommercialCommitmentStatus = 'not_scheduled' | 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+export type CommercialCommitmentStatus = 
+  | 'not_scheduled' 
+  | 'scheduled' 
+  | 'in_progress' 
+  | 'completed' 
+  | 'cancelled' 
+  | 'no_show' 
+  | 'rescheduled' 
+  | 'reschedule_target';
 
+export interface SystemSlaConfig {
+  idealMinutes: number;       // Padrão: 15 (Lead aguardando dentro do tempo ideal -> Azul Claro)
+  warningMinutes: number;     // Padrão: 60 (Preocupante -> Amarelo)
+  criticalMinutes: number;    // Padrão: 120 (Alarmante -> Vermelho)
+}
 
 export interface CommercialCommitment {
   id?: string;
@@ -663,11 +692,13 @@ export interface AgendaDateOverride {
 export interface VenueAgendaConfig {
   id?: string;
   venueId: string;              // ID da Casa de Festa ou 'all'
-  isFreeMode?: boolean;         // Modo Livre geral para a unidade              // ID da Casa de Festa ou 'all'
+  isFreeMode?: boolean;         // Modo Livre geral para a unidade
   visitsRule: AgendaRecurringRule;
   tastingsRule: AgendaRecurringRule;
   blockRules?: AgendaBlockRule[]; // Configurações por período com precedência
   dateOverrides: AgendaDateOverride[];
+  closerDistributionMode?: 'manual' | 'round_robin'; // Modo de divisão de Closers
+  closerIds?: string[];         // Ordem/pesos de Closers para rodízio de agendamento
   updatedAt?: string;
 }
 
@@ -1074,3 +1105,17 @@ export interface PodiumConfig {
   sdr: PodiumTargetConfig;
   closer: PodiumTargetConfig;
 }
+
+// ── WhatsApp Quick Messages (Mensagens Rápidas) ─────────────────────────────
+export interface QuickMessage {
+  id: string;
+  masterId?: string;
+  venueId?: string | null;
+  keyword: string; // sem espaços, ex: saudacao, pix
+  message: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+  isActive: boolean;
+}
+

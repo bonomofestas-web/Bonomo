@@ -36,7 +36,9 @@ export const AdminLostReasonModal: React.FC<AdminLostReasonModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalReason = selectedReason === 'Outro motivo...' ? customReasonText.trim() : selectedReason;
+    const finalReason = selectedReason === 'Outro motivo...' 
+      ? customReasonText.trim() 
+      : (customReasonText.trim() ? `${selectedReason}: ${customReasonText.trim()}` : selectedReason);
     if (!finalReason) {
       setError('Por favor, informe ou selecione o motivo pelo qual este lead foi perdido.');
       return;
@@ -208,7 +210,6 @@ export const AdminLostReasonModal: React.FC<AdminLostReasonModalProps> = ({
             </div>
           </div>
 
-          {selectedReason === 'Outro motivo...' && (
             <div>
               <label style={{
                 display: 'block',
@@ -218,17 +219,17 @@ export const AdminLostReasonModal: React.FC<AdminLostReasonModalProps> = ({
                 textTransform: 'uppercase',
                 marginBottom: '6px',
               }}>
-                Descreva o Motivo da Perda *
+                {selectedReason === 'Outro motivo...' ? 'Descreva o Motivo da Perda *' : 'Observações / Detalhes da Perda (Recomendado)'}
               </label>
               <textarea
-                required
+                required={selectedReason === 'Outro motivo...'}
                 rows={3}
                 value={customReasonText}
                 onChange={(e) => {
                   setCustomReasonText(e.target.value);
                   setError('');
                 }}
-                placeholder="Explique detalhadamente o que levou o lead a não fechar..."
+                placeholder="Detalhe o contexto, objeções levantadas pelo cliente ou o motivo que levou o lead a não fechar..."
                 style={{
                   width: '100%',
                   background: 'var(--adm-bg-input)',
@@ -243,7 +244,6 @@ export const AdminLostReasonModal: React.FC<AdminLostReasonModalProps> = ({
                 }}
               />
             </div>
-          )}
 
           {/* Footer Buttons */}
           <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>

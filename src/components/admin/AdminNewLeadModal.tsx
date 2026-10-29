@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, UserPlus, Phone, User, DollarSign, Building2, 
-  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch 
+  MessageSquare, Sparkles, ArrowRight, Loader2, Zap, Sliders, GitBranch, AlertTriangle 
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { LeadSource, CrmStage } from '../../types/admin';
@@ -32,6 +32,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     sources, 
     activeVenueId, 
     currentUser,
+    leads,
     createLead 
   } = useAdminState();
 
@@ -71,14 +72,27 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
   // Nome de exibição do funil
   const displayFunnelName = currentFunnelName || targetFunnel?.name || 'Funil Comercial';
 
-  // Casas vinculadas a este funil (via f.venueId e via origens conectadas a ele)
+  // Casas vinculadas a este funil (Áudio 2: Funis Multi-Unidades liberam a seleção de qualquer unidade)
   const allowedVenuesForFunnel = useMemo(() => {
     if (!targetFunnel) return venues;
 
-    const vSet = new Set<string>();
-    if (targetFunnel.venueId && targetFunnel.venueId !== 'all') {
-      vSet.add(targetFunnel.venueId);
+    // Se o funil for de toda a rede / geral
+    if (!targetFunnel.venueId || targetFunnel.venueId === 'all') {
+      return venues;
     }
+
+    const vSet = new Set<string>();
+    vSet.add(targetFunnel.venueId);
+
+    // Adiciona unidades compartilhadas (sharedVenueIds ou venueIds)
+    const funnelAny = targetFunnel as any;
+    const sharedIds: string[] = funnelAny.sharedVenueIds || funnelAny.venueIds || [];
+    if (Array.isArray(sharedIds)) {
+      sharedIds.forEach(id => {
+        if (id && id !== 'all') vSet.add(id);
+      });
+    }
+
     // Origens conectadas a este funil
     (sources || []).filter(s => s.funnelId === targetFunnel.id && s.venueId && s.venueId !== 'all').forEach(s => {
       vSet.add(s.venueId);
@@ -92,7 +106,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     return venues;
   }, [targetFunnel, venues, sources]);
 
-  // Se o funil só tem 1 casa de festas vinculada, a opção é unitária
+  // Se o funil só tem 1 casa de festas vinculada, a opção é unitária. Se tiver mais de uma, o usuário escolhe livremente!
   const isVenueFixedByFunnel = allowedVenuesForFunnel.length === 1;
 
   // Inicializar formulário ao abrir
@@ -159,9 +173,34 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
 
+  // Verificação em Tempo Real de Contato Existente (Áudio 2)
+  const matchedExistingLead = useMemo(() => {
+    const cleanDigits = phone.replace(/\D/g, '');
+    if (cleanDigits.length < 8) return null;
+
+    return (leads || []).find(l => {
+      // Ignora leads deletados (podem ser recriados normalmente conforme Áudio 2)
+      if ((l as any).isDeleted) return false;
+      // Não considera clientes pós-venda como duplicados de lead comercial
+      if (l.isClient) return false;
+
+      const lp = (l.phone || '').replace(/\D/g, '');
+      if (!lp) return false;
+
+      return lp === cleanDigits || 
+        (cleanDigits.length >= 8 && lp.endsWith(cleanDigits.slice(-8))) ||
+        (lp.length >= 8 && cleanDigits.endsWith(lp.slice(-8)));
+    }) || null;
+  }, [phone, leads]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    if (matchedExistingLead) {
+      setErrorMsg(`Este contato já existe cadastrado como "${matchedExistingLead.name}" (${matchedExistingLead.code || 'LEAD'}). Clique no botão "Acessar Lead" para abrir sua ficha.`);
+      return;
+    }
 
     const cleanName = name.trim();
     const cleanPhoneDigits = phone.replace(/\D/g, '');
@@ -491,9 +530,13 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 ))}
               </select>
             </div>
-            {isVenueFixedByFunnel && (
+            {isVenueFixedByFunnel ? (
               <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted, #64748B)', marginTop: '4px', display: 'block' }}>
                 Unidade exclusiva vinculada a este funil.
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent, #0284C7)', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+                Funil multi-unidade: selecione a unidade desejada para este lead.
               </span>
             )}
           </div>
@@ -519,7 +562,7 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                   paddingLeft: '34px',
                   paddingRight: '12px',
                   backgroundColor: 'var(--adm-bg-input, #F8FAFC)',
-                  border: '1px solid var(--adm-border, #CBD5E1)',
+                  border: `1px solid ${matchedExistingLead ? '#F59E0B' : 'var(--adm-border, #CBD5E1)'}`,
                   borderRadius: '8px',
                   color: 'var(--adm-text-title, #0F172A)',
                   fontSize: '0.82rem',
@@ -528,6 +571,86 @@ export const AdminNewLeadModal: React.FC<AdminNewLeadModalProps> = ({
                 }}
               />
             </div>
+
+            {/* Alerta de Contato Já Existente (Áudio 2) */}
+            {matchedExistingLead && (
+              <div style={{
+                marginTop: '8px',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                animation: 'fadeIn 0.15s ease-out',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#D97706', fontSize: '0.78rem', fontWeight: 800 }}>
+                  <AlertTriangle size={15} />
+                  <span>Esse contato já existe. Deseja ser encaminhado para ele?</span>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  background: 'var(--adm-bg-card, #FFFFFF)',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                      {matchedExistingLead.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.70rem', color: 'var(--adm-text-muted, #64748B)' }}>
+                      <span>Código: <strong style={{ color: 'var(--adm-text-title)' }}>{matchedExistingLead.code || 'LEAD'}</strong></span>
+                      <span>•</span>
+                      <span>{matchedExistingLead.phone}</span>
+                      <span>•</span>
+                      <span style={{
+                        fontWeight: 700,
+                        color: (matchedExistingLead as any).status === 'archived' || (matchedExistingLead.stage as string) === 'archived' ? '#94A3B8' : '#2563EB',
+                      }}>
+                        {(matchedExistingLead as any).status === 'archived' || (matchedExistingLead.stage as string) === 'archived' 
+                          ? 'Arquivado' 
+                          : `${funnelsPool.find(f => f.id === matchedExistingLead.funnelId)?.name || 'Funil Comercial'} (${matchedExistingLead.stage})`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onLeadCreated) {
+                        onLeadCreated(matchedExistingLead.id);
+                      }
+                      onClose();
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      background: '#F59E0B',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(245, 158, 11, 0.25)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Acessar Lead</span>
+                    <ArrowRight size={12} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* CAMPOS ADICIONAIS DO CADASTRO PERSONALIZADO */}

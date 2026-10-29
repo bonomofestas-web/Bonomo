@@ -10,7 +10,7 @@ import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import type { AdminTask } from '../../types/admin';
 import type { Appointment } from '../../types';
-import { getTaskPriorityConfig } from '../../utils/taskColors';
+import { getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
 
 interface AdminHomeViewProps {
   onOpenLead: (leadId: string) => void;
@@ -115,7 +115,29 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
   const effectiveUserId = effectiveUser?.id;
 
-  // Counts for tabs
+  // Áudio 5: Gerente e Master têm privilégio de alternar escopo para ver tarefas do time
+  const isManagerOrMaster = useMemo(() => {
+    if (!effectiveUser) return false;
+    const role = (effectiveUser.role as string) || '';
+    const roleTitle = ((effectiveUser as any).roleTitle || '').toLowerCase();
+    return (
+      role === 'master' || 
+      role === 'admin' || 
+      role === 'gerencia' || 
+      role === 'gerente' || 
+      roleTitle.includes('geren') || 
+      roleTitle.includes('direto')
+    );
+  }, [effectiveUser]);
+
+  // Se o usuário não for master/gerente, fixa estritamente o filtro em 'Minhas Tarefas'
+  useEffect(() => {
+    if (!isManagerOrMaster && scopeFilter !== 'my') {
+      setScopeFilter('my');
+    }
+  }, [isManagerOrMaster, scopeFilter]);
+
+  // Counts for tabs (Áudio 3: Validação canônica de tarefas em dia vs atrasadas)
   const tabCounts = useMemo(() => {
     const userTasks = scopedTasks.filter(task => {
       if (scopeFilter === 'my' && effectiveUserId) {
@@ -125,9 +147,9 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
     });
 
     return {
-      overdue: userTasks.filter(t => t.status !== 'completed' && !!t.dueDate && t.dueDate < todayStr).length,
-      today: userTasks.filter(t => t.status !== 'completed' && (!t.dueDate || t.dueDate === todayStr)).length,
-      upcoming: userTasks.filter(t => t.status !== 'completed' && (!!t.dueDate && t.dueDate > todayStr)).length,
+      overdue: userTasks.filter(t => isTaskOverdue(t)).length,
+      today: userTasks.filter(t => !isTaskOverdue(t) && t.status !== 'completed' && (!t.dueDate || t.dueDate === todayStr)).length,
+      upcoming: userTasks.filter(t => !isTaskOverdue(t) && t.status !== 'completed' && (!!t.dueDate && t.dueDate > todayStr)).length,
       completed: userTasks.filter(t => t.status === 'completed').length,
       all: userTasks.length,
     };
@@ -185,17 +207,17 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
         }
       }
 
-      // Tab filter
+      // Tab filter com validação canônica de atraso
       if (taskTab === 'overdue') {
-        return task.status !== 'completed' && !!task.dueDate && task.dueDate < todayStr;
+        return isTaskOverdue(task);
       }
       if (taskTab === 'today') {
-        // Tarefas de Hoje: estritamente hoje ou sem prazo definido
-        return task.status !== 'completed' && (!task.dueDate || task.dueDate === todayStr);
+        // Tarefas de Hoje: estritamente hoje ou sem prazo definido, e não atrasadas
+        return !isTaskOverdue(task) && task.status !== 'completed' && (!task.dueDate || task.dueDate === todayStr);
       }
       if (taskTab === 'upcoming') {
         // Próximas: tarefas pendentes para datas futuras
-        return task.status !== 'completed' && (!!task.dueDate && task.dueDate > todayStr);
+        return !isTaskOverdue(task) && task.status !== 'completed' && (!!task.dueDate && task.dueDate > todayStr);
       }
       if (taskTab === 'completed') {
         return task.status === 'completed';
@@ -207,8 +229,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
       if (a.status === 'completed' && b.status !== 'completed') return 1;
       if (a.status !== 'completed' && b.status === 'completed') return -1;
 
-      const isOverdueA = !a.status || a.status !== 'completed' ? (!!a.dueDate && a.dueDate < todayStr) : false;
-      const isOverdueB = !b.status || b.status !== 'completed' ? (!!b.dueDate && b.dueDate < todayStr) : false;
+      const isOverdueA = isTaskOverdue(a);
+      const isOverdueB = isTaskOverdue(b);
       if (isOverdueA && !isOverdueB) return -1;
       if (!isOverdueA && isOverdueB) return 1;
 
@@ -220,7 +242,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
 
   // Tasks due today count
   const todayTasksCount = useMemo(() => {
-    return scopedTasks.filter(t => (!t.dueDate || t.dueDate <= todayStr) && t.status !== 'completed').length;
+    return scopedTasks.filter(t => (!t.dueDate || t.dueDate === todayStr) && !isTaskOverdue(t) && t.status !== 'completed').length;
   }, [scopedTasks, todayStr]);
 
   const completedTodayCount = useMemo(() => {
@@ -563,47 +585,49 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
               </button>
             </div>
 
-            {/* Scope Pill Toggle */}
-            <div style={{
-              background: 'var(--adm-bg-input)',
-              borderRadius: '10px',
-              padding: '3px',
-              display: 'flex',
-              gap: '3px',
-            }}>
-              <button
-                type="button"
-                onClick={() => setScopeFilter('my')}
-                style={{
-                  background: scopeFilter === 'my' ? 'var(--adm-accent-bg)' : 'transparent',
-                  border: 'none',
-                  color: scopeFilter === 'my' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  borderRadius: '6px',
-                  padding: '4px 10px',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Minhas
-              </button>
-              <button
-                type="button"
-                onClick={() => setScopeFilter('all')}
-                style={{
-                  background: scopeFilter === 'all' ? 'var(--adm-accent-bg)' : 'transparent',
-                  border: 'none',
-                  color: scopeFilter === 'all' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
-                  borderRadius: '6px',
-                  padding: '4px 10px',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Toda a Equipe
-              </button>
-            </div>
+            {/* Scope Pill Toggle (Áudio 5: Exibido exclusivamente para Master e Gerente) */}
+            {isManagerOrMaster && (
+              <div style={{
+                background: 'var(--adm-bg-input)',
+                borderRadius: '10px',
+                padding: '3px',
+                display: 'flex',
+                gap: '3px',
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('my')}
+                  style={{
+                    background: scopeFilter === 'my' ? 'var(--adm-accent-bg)' : 'transparent',
+                    border: 'none',
+                    color: scopeFilter === 'my' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Minhas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeFilter('all')}
+                  style={{
+                    background: scopeFilter === 'all' ? 'var(--adm-accent-bg)' : 'transparent',
+                    border: 'none',
+                    color: scopeFilter === 'all' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Toda a Equipe
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Section Tabs: Atrasadas (se houver), Hoje, Próximas, Finalizadas, Todas */}
@@ -804,7 +828,7 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                   ].map(group => {
                     const groupTasks = filteredTasks.filter(t => {
                       const isDone = t.status === 'completed';
-                      const isOverdue = !isDone && Boolean(t.dueDate && t.dueDate < todayStr);
+                      const isOverdue = isTaskOverdue(t);
                       const isInProgress = !isDone && !isOverdue && (t.status === 'in_progress' || t.customStatusId === 'st_in_progress');
                       const isScheduled = !isDone && !isOverdue && !isInProgress && ((t.status as string) === 'scheduled' || t.customStatusId === 'st_scheduled' || Boolean(t.dueDate && t.dueDate > todayStr));
 
@@ -836,8 +860,8 @@ export const AdminHomeView: React.FC<AdminHomeViewProps> = ({
                         </tr>
                         {groupTasks.map((task) => {
                           const isDone = task.status === 'completed';
-                          const isOverdue = !isDone && Boolean(task.dueDate && task.dueDate < todayStr);
-                          const isDueToday = !isDone && task.dueDate === todayStr;
+                          const isOverdue = isTaskOverdue(task);
+                          const isDueToday = !isDone && !isOverdue && (!task.dueDate || task.dueDate === todayStr);
 
                           // Resolve linked entity names
                           const resolvedLead = task.leadId ? leads.find(l => l.id === task.leadId) : null;

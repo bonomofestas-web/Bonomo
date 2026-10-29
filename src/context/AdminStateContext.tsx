@@ -31,7 +31,10 @@ import type {
   ClientDocument,
   ClientActivity,
   VenueAgendaConfig,
-  CommercialCommitment
+  CommercialCommitment,
+  DeletedLeadRecord,
+  SystemSlaConfig,
+  QuickMessage
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -56,6 +59,7 @@ import { agendaAvailabilityService } from '../services/agendaAvailabilityService
 import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
+import { quickMessageService } from '../services/quickMessageService';
 import { mqlService } from '../services/mqlService';
 import { supportService } from '../services/supportService';
 import { clientService } from '../services/clientService';
@@ -77,6 +81,7 @@ const STORAGE_KEY_APPOINTMENTS = 'bonomo_admin_appointments_v1';
 const STORAGE_KEY_LEADS = 'bonomo_admin_leads_v7';
 const STORAGE_KEY_SOURCES = 'bonomo_admin_sources_v1';
 const STORAGE_KEY_TEMPLATES = 'bonomo_admin_templates_v7';
+const STORAGE_KEY_QUICK_MESSAGES = 'f5_admin_quick_messages_v1';
 const STORAGE_KEY_ACTIVE_VENUE = 'bonomo_admin_active_venue_v7';
 const STORAGE_KEY_BENEFITS = 'bonomo_admin_benefits_catalog_v7';
 const STORAGE_KEY_VIP_CATALOG = 'bonomo_admin_vip_catalog_v7';
@@ -89,6 +94,14 @@ const STORAGE_KEY_FEATURE_DESCRIPTIONS = 'bonomo_system_feature_descriptions';
 const STORAGE_KEY_ANNOUNCEMENTS = 'bonomo_system_announcements';
 const STORAGE_KEY_MQL_QUESTIONS = 'bonomo_admin_mql_questions_v1';
 const STORAGE_KEY_SUPPORT_TICKETS = 'bonomo_support_tickets_v1';
+const STORAGE_KEY_DELETED_LEADS = 'bonomo_admin_deleted_leads_v1';
+const STORAGE_KEY_SLA_CONFIG = 'bonomo_admin_sla_config_v1';
+
+const DEFAULT_SYSTEM_SLA_CONFIG: SystemSlaConfig = {
+  idealMinutes: 10,
+  warningMinutes: 30,
+  criticalMinutes: 60,
+};
 
 export const purgeAllTenantStorage = () => {
   try {
@@ -205,6 +218,33 @@ const DEFAULT_VENUES: Venue[] = [];
 
 const DEFAULT_TEMPLATES: JourneyTemplate[] = [];
 
+const DEFAULT_QUICK_MESSAGES: QuickMessage[] = [
+  {
+    id: 'qm_saudacao',
+    keyword: 'saudacao',
+    message: 'Olá! Seja muito bem-vindo(a) ao nosso atendimento! Como posso te ajudar hoje?',
+    createdBy: 'Sistema',
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  },
+  {
+    id: 'qm_visita',
+    keyword: 'visita',
+    message: 'Será um prazer receber você para conhecer o nosso espaço e tirar todas as suas dúvidas! Qual seria o melhor dia e horário para a sua visita?',
+    createdBy: 'Sistema',
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  },
+  {
+    id: 'qm_pix',
+    keyword: 'pix',
+    message: 'Seguem os nossos dados bancários para transferência via Pix:\n\n*Chave Pix:* financeiro@casadefestas.com.br\n*Favorecido:* Casa de Festas',
+    createdBy: 'Sistema',
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  }
+];
+
 const DEFAULT_BENEFITS_CATALOG: BenefitCatalogItem[] = [];
 
 const DEFAULT_VIP_CATALOG: VipRewardCatalogItem[] = [];
@@ -304,6 +344,7 @@ export interface AdminContextType {
   addClient: (clientData: Partial<Client>) => string;
   updateClient: (id: string, updates: Partial<Client>) => void;
   deleteClient: (id: string) => void;
+  deleteMultipleClients: (ids: string[]) => Promise<void>;
   updateClientStage: (id: string, stage: ClientStage) => void;
   addClientNote: (id: string, noteText: string) => void;
   addClientDocument: (id: string, doc: Omit<ClientDocument, 'id' | 'uploadedAt'>) => void;
@@ -388,12 +429,13 @@ export interface AdminContextType {
     createdByAvatar?: string;
   }) => Promise<string>;
   rejectLead: (leadId: string, reason: string) => void;
-  deleteLead: (leadId: string) => void;
+  deleteLead: (leadId: string, reason?: string) => void;
   removeLeadFromFunnel: (leadId: string, reason: string) => Promise<boolean>;
   restoreLeadToFunnel: (leadId: string) => Promise<boolean>;
-  deleteMultipleLeads: (leadIds: string[]) => Promise<void>;
-  archiveLead: (leadId: string) => Promise<boolean>;
+  deleteMultipleLeads: (leadIds: string[], reason?: string) => Promise<void>;
+  archiveLead: (leadId: string, reason?: string) => Promise<boolean>;
   unarchiveLead: (leadId: string, funnelId?: string, stageId?: string) => Promise<boolean>;
+  deletedLeadsHistory: DeletedLeadRecord[];
   mergeLeads: (primaryLeadId: string, secondaryLeadId: string) => Promise<boolean>;
   consolidateAllDuplicateLeads: () => Promise<{ mergedCount: number }>;
   syncWhatsAppHistoryGap: (options?: {
@@ -464,6 +506,13 @@ export interface AdminContextType {
   applyTemplateToDebutante: (debutanteId: string, templateId: string) => void;
   shareJourneyTemplateToVenue: (templateId: string, targetVenueId: string) => void;
   shareCatalogItemToVenue: (type: 'benefit' | 'vip', itemId: string, targetVenueId: string) => void;
+
+  // WhatsApp Quick Messages (Mensagens Rápidas com '/')
+  quickMessages: QuickMessage[];
+  addQuickMessage: (data: Omit<QuickMessage, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateQuickMessage: (id: string, data: Partial<QuickMessage>) => Promise<void>;
+  deleteQuickMessage: (id: string) => Promise<void>;
+  toggleQuickMessageActive: (id: string, active: boolean) => Promise<void>;
 
   // Appointments & Unified Agenda
   appointments: Appointment[];
@@ -555,6 +604,8 @@ export interface AdminContextType {
       department?: string;
     }
   ) => Promise<{ success: boolean; message: string }>;
+  systemSlaConfig: SystemSlaConfig;
+  updateSystemSlaConfig: (config: Partial<SystemSlaConfig>) => Promise<void>;
   forceLogout: (reason?: string) => void;
 }
 
@@ -600,6 +651,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     return mockClients;
   });
+
+  const [systemSlaConfig, setSystemSlaConfig] = useState<SystemSlaConfig>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SLA_CONFIG);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.idealMinutes === 'number') return parsed;
+      }
+    } catch {}
+    return DEFAULT_SYSTEM_SLA_CONFIG;
+  });
+
+  const updateSystemSlaConfig = useCallback(async (newConfig: Partial<SystemSlaConfig>) => {
+    setSystemSlaConfig(prev => {
+      const updated = { ...prev, ...newConfig };
+      try {
+        localStorage.setItem(STORAGE_KEY_SLA_CONFIG, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
 
   // Conjuntos de proteção anti-flicker para exclusões recentes
   const deletedDebutanteIdsRef = React.useRef<Set<string>>(new Set());
@@ -701,9 +773,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return [];
   });
 
+  const [deletedLeadsHistory, setDeletedLeadsHistory] = useState<DeletedLeadRecord[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_DELETED_LEADS);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   const [templates, setTemplates] = useState<JourneyTemplate[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES);
     return saved ? JSON.parse(saved) : DEFAULT_TEMPLATES;
+  });
+
+  const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_QUICK_MESSAGES);
+    return saved ? JSON.parse(saved) : DEFAULT_QUICK_MESSAGES;
   });
 
   const [benefitsCatalog, setBenefitsCatalog] = useState<BenefitCatalogItem[]>(() => {
@@ -1036,6 +1125,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [templates]);
 
   useEffect(() => {
+    safeLocalStorageSet(STORAGE_KEY_QUICK_MESSAGES, JSON.stringify(quickMessages));
+  }, [quickMessages]);
+
+  useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_BENEFITS, JSON.stringify(benefitsCatalog));
   }, [benefitsCatalog]);
 
@@ -1118,6 +1211,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           clientService.getAll(),            // 11
           agendaAvailabilityService.getAllConfigs(), // 12
           appointmentService.getAll(),       // 13
+          quickMessageService.getAll(),      // 14
         ]);
 
         const dbVenues = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -1134,8 +1228,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const dbClients = results[11].status === 'fulfilled' ? results[11].value : [];
         const dbAgendaConfigs = results[12].status === 'fulfilled' ? results[12].value : [];
         const dbAppointments = results[13].status === 'fulfilled' ? results[13].value : [];
+        const dbQuickMessages = results[14]?.status === 'fulfilled' ? results[14].value : [];
 
-        const serviceNames = ['venues', 'funnels', 'leads', 'debutantes', 'tasks', 'collaborators', 'benefits', 'vip', 'templates', 'sources', 'mql', 'clients', 'agendaConfigs', 'appointments'];
+        const serviceNames = ['venues', 'funnels', 'leads', 'debutantes', 'tasks', 'collaborators', 'benefits', 'vip', 'templates', 'sources', 'mql', 'clients', 'agendaConfigs', 'appointments', 'quickMessages'];
         results.forEach((res, idx) => {
           if (res.status === 'rejected') {
             console.warn(`[Supabase Sync] Falha ao carregar ${serviceNames[idx]}:`, res.reason);
@@ -1313,6 +1408,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (Array.isArray(dbAppointments)) {
             setAppointments(dbAppointments);
             safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(dbAppointments));
+          }
+
+          if (Array.isArray(dbQuickMessages) && dbQuickMessages.length > 0) {
+            setQuickMessages(dbQuickMessages);
+            safeLocalStorageSet(STORAGE_KEY_QUICK_MESSAGES, JSON.stringify(dbQuickMessages));
+          } else {
+            DEFAULT_QUICK_MESSAGES.forEach(qm => quickMessageService.upsert(qm));
           }
 
           // Realtime sync of system feature flags from Supabase
@@ -2194,8 +2296,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   });
 
   const startImpersonation = (c: Collaborator) => {
-    // Redireciona para visualização segura sem trocar credenciais
+    // Redireciona para visualização segura com sincronização de unidade imediata
     setViewingAsCollaborator(c);
+    const userVids = Array.isArray(c.venueIds) && c.venueIds.length > 0
+      ? c.venueIds
+      : (c.venueId && c.venueId !== 'all' ? [c.venueId] : []);
+    if (userVids.length > 0) {
+      if (!activeVenueId || !userVids.includes(activeVenueId)) {
+        setActiveVenueIdState(userVids[0]);
+        safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, userVids[0]);
+      }
+    }
   };
 
   const stopImpersonation = () => {
@@ -2389,13 +2500,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
     if (!effectiveUser || !scopedMasterId) return [];
-    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    
+    // Todas as casas físicas pertencentes à rede do Master
+    const tenantVenues = venues.filter(v => !v.masterId || v.masterId === scopedMasterId);
+    const tenantVenueIds = new Set(tenantVenues.map(v => v.id));
 
     // Permissões do usuário efetivo (se for colaborador não-master ou master no modo olhar com olhos)
     const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
     const userAllowedVenueIds = !isMasterNative && Array.isArray(effectiveUser.venueIds) && effectiveUser.venueIds.length > 0
       ? new Set(effectiveUser.venueIds)
       : (!isMasterNative && (effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? new Set([(effectiveUser as any).venueId]) : null);
+
+    // Unidade ativa efetiva para o usuário atual (caso activeVenueId ainda esteja apontando para uma casa que ele não tem acesso)
+    const effectiveActiveVenue = (userAllowedVenueIds && activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' && !userAllowedVenueIds.has(activeVenueId))
+      ? (Array.from(userAllowedVenueIds)[0] || null)
+      : activeVenueId;
 
     return leads.filter(l => {
       // REGRA SUPREMA E INEGOCIÁVEL: ISOLAMENTO TOTAL ENTRE MASTERS (VAZAMENTO ZERO)
@@ -2405,7 +2524,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // 2. Se o lead possui uma casa vinculada, essa casa DEVE pertencer ao tenant!
-      if (l.venueId && !masterVenueIds.has(l.venueId)) {
+      if (l.venueId && !tenantVenueIds.has(l.venueId)) {
         return false;
       }
 
@@ -2418,7 +2537,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // 4. Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant e às casas permitidas
       if (!l.venueId && l.sourceId) {
         const src = sources.find(s => s.id === l.sourceId);
-        if (src && src.venueId && (!masterVenueIds.has(src.venueId) || (userAllowedVenueIds && !userAllowedVenueIds.has(src.venueId)))) {
+        if (src && src.venueId && (!tenantVenueIds.has(src.venueId) || (userAllowedVenueIds && !userAllowedVenueIds.has(src.venueId)))) {
           return false;
         }
       }
@@ -2433,11 +2552,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (l.masterId !== scopedMasterId) return false;
       }
 
-      // 7. Filtro por unidade ativa (activeVenueId)
-      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-        if (!masterVenueIds.has(activeVenueId)) return false;
+      // 7. Filtro por unidade ativa (effectiveActiveVenue)
+      if (effectiveActiveVenue && effectiveActiveVenue !== 'all' && effectiveActiveVenue !== 'multi') {
+        if (!tenantVenueIds.has(effectiveActiveVenue)) return false;
 
-        if (l.venueId === activeVenueId) return true;
+        if (l.venueId === effectiveActiveVenue) return true;
 
         // Se o lead pertence a um funil compartilhado com a unidade ativa:
         // Apenas é visível se a unidade do lead pertencer à unidade ativa (ou sem unidade e do master)
@@ -2449,17 +2568,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               ...(funnel.sharedVenueIds || []),
               ...((funnel as any).shared_venue_ids || []),
             ]);
-            if (linkedVenueIds.has(activeVenueId)) {
-              return l.venueId === activeVenueId;
+            if (linkedVenueIds.has(effectiveActiveVenue)) {
+              return l.venueId === effectiveActiveVenue;
             }
           }
         }
         return false;
       }
 
-      return l.venueId ? masterVenueIds.has(l.venueId) : l.masterId === scopedMasterId;
+      return l.venueId ? tenantVenueIds.has(l.venueId) : l.masterId === scopedMasterId;
     });
-  }, [leads, sources, scopedMasterId, scopedVenues, activeVenueId, effectiveUser, effectiveViewingAsCollaborator, funnels]);
+  }, [leads, sources, scopedMasterId, venues, activeVenueId, effectiveUser, effectiveViewingAsCollaborator, funnels]);
+
+  // Histórico de leads excluídos escopado estritamente por Conta Master (Vazamento Zero)
+  const scopedDeletedLeadsHistory = useMemo(() => {
+    if (!scopedMasterId) return deletedLeadsHistory;
+    return deletedLeadsHistory.filter(r => !r.masterId || r.masterId === scopedMasterId);
+  }, [deletedLeadsHistory, scopedMasterId]);
 
   // Mapa de casas conectadas dinamicamente a cada funil através das origens ativas E leads existentes E casas compartilhadas
   const funnelConnectedVenueIds = useMemo(() => {
@@ -2630,6 +2755,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     return templates.filter(t => Boolean(t.venueId && masterVenueIds.has(t.venueId)));
   }, [templates, scopedVenues, activeVenueId, currentUser, scopedMasterId]);
+
+  // Mensagens Rápidas do Tenant Ativo (estritamente isoladas por master_id e unidade ativa)
+  const scopedQuickMessages = useMemo(() => {
+    if (!currentUser) return [];
+    return quickMessages.filter(qm => {
+      if (qm.masterId && scopedMasterId && qm.masterId !== scopedMasterId) return false;
+      if (activeVenueId && activeVenueId !== 'all' && qm.venueId && qm.venueId !== activeVenueId) return false;
+      return true;
+    });
+  }, [quickMessages, scopedMasterId, activeVenueId, currentUser]);
 
   // Catálogo de Benefícios do Tenant Ativo
   const scopedBenefitsCatalog = useMemo(() => {
@@ -4667,7 +4802,51 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
       return updated;
     });
+    setDebutantes(prev => {
+      const updated = prev.filter(d => d.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
+      return updated;
+    });
+    setLeads(prev => {
+      const updated = prev.filter(l => l.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
     clientService.delete(id);
+    debutanteService.delete(id).catch(() => {});
+    leadService.delete(id).catch(() => {});
+  };
+
+  const deleteMultipleClients = async (clientIds: string[]) => {
+    if (!clientIds || clientIds.length === 0) return;
+    const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev || currentUser?.role === 'pos_venda';
+    if (!isMasterOrAdmin) {
+      alert('Permissão negada: apenas responsáveis autorizados podem excluir clientes.');
+      return;
+    }
+
+    const idSet = new Set(clientIds);
+    setClients(prev => {
+      const updated = prev.filter(c => !idSet.has(c.id));
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+      return updated;
+    });
+    setDebutantes(prev => {
+      const updated = prev.filter(d => !idSet.has(d.id));
+      safeLocalStorageSet(STORAGE_KEY_DEBUTANTES, JSON.stringify(updated));
+      return updated;
+    });
+    setLeads(prev => {
+      const updated = prev.filter(l => !idSet.has(l.id));
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
+      return updated;
+    });
+
+    for (const id of clientIds) {
+      clientService.delete(id);
+      debutanteService.delete(id).catch(() => {});
+      leadService.delete(id).catch(() => {});
+    }
   };
 
   const updateClientStage = (id: string, stage: ClientStage) => {
@@ -5152,12 +5331,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           let targetPostSaleStageId = postSaleTrigger?.targetStageId;
 
           if (!targetPostSaleFunnelId) {
-            const defaultPostSale = funnels.find(f => 
-              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
-              (!f.venueId || f.venueId === 'all' || f.venueId === targetLead.venueId || (f.sharedVenueIds && f.sharedVenueIds.includes(targetLead.venueId || '')))
-            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
-            targetPostSaleFunnelId = defaultPostSale?.id;
-            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+            // Se NÃO tem funil de pós-venda vinculado nos gatilhos da etapa de ganho,
+            // a venda permanece computada no lead e NÃO duplica no pós-venda
+            return prevClients;
           }
 
           if (existingIdx < 0) {
@@ -5641,7 +5817,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     group: string;
     notes?: string;
   }): string => {
-    const newLeadId = `lead_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const newLeadId = generateUuid();
     
     // Procura a Origem de Indicação da casa de festa para obter o funil configurado
     const venueReferralSource = sources.find(s => s.venueId === data.venueId && s.type === 'referral' && s.status === 'active');
@@ -5664,7 +5840,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const activities: LeadActivity[] = [
       {
-        id: `act_${Date.now()}`,
+        id: generateUuid(),
         leadId: newLeadId,
         timestamp: new Date().toISOString(),
         type: 'creation',
@@ -5720,6 +5896,40 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
 
     setLeads(prev => [newLead, ...prev]);
+
+    // Persistência no Supabase para garantir que a indicação não suma no F5
+    if (isSupabaseConfigured) {
+      leadService.upsert(newLead).catch(err => {
+        console.error('❌ Erro ao persistir lead de indicação no Supabase:', err);
+      });
+
+      const newRefId = generateUuid();
+      const referralPayload: any = {
+        id: newRefId,
+        name: cleanLeadName,
+        phone: data.phone,
+        age: data.age,
+        group: data.group,
+        notes: data.notes,
+        status: 'pending',
+        points_granted: 0,
+        lead_id: newLeadId,
+      };
+
+      if (data.debutanteId && isUuid(data.debutanteId)) {
+        referralPayload.debutante_id = data.debutanteId;
+      }
+      if (resolvedMasterId && isUuid(resolvedMasterId)) {
+        referralPayload.master_id = resolvedMasterId;
+      }
+
+      supabase.from('referrals').insert(referralPayload).then(({ error }: any) => {
+        if (error) {
+          console.error('❌ Erro ao inserir referral no Supabase:', error);
+        }
+      });
+    }
+
     return newLeadId;
   };
 
@@ -5758,6 +5968,53 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     initialFunnelId?: string;
     initialStage?: CrmStage;
   }): Promise<string> => {
+    const cleanPhoneDigits = data.phone.replace(/\D/g, '');
+    const isPostSaleTarget = data.initialFunnelId === 'post_sale_default' ||
+      funnels.some(f => f.id === data.initialFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
+
+    // Trava Suprema de Duplicidade (Áudio 1): Se o lead já existir no sistema, reutiliza-o sem duplicar
+    const existing = leadsRef.current.find(l => {
+      const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+      if (isPostSaleTarget ? !isClient : isClient) return false;
+      if ((l as any).isDeleted) return false;
+      const lp = (l.phone || '').replace(/\D/g, '');
+      return lp && cleanPhoneDigits && (lp === cleanPhoneDigits || (cleanPhoneDigits.length >= 8 && lp.endsWith(cleanPhoneDigits.slice(-8))));
+    });
+
+    if (existing) {
+      console.info(`[createLeadFromWhatsApp] Contato existente (${existing.id} - ${existing.name}), correspondência vinculada ao card existente.`);
+      if (data.firstMessage || data.mediaUrl) {
+        const newActId = generateUuid();
+        const newAct: LeadActivity = {
+          id: newActId,
+          leadId: existing.id,
+          timestamp: new Date().toISOString(),
+          type: 'contact',
+          title: data.fromMe ? 'Mensagem enviada via WhatsApp' : 'Mensagem recebida no WhatsApp',
+          text: data.firstMessage,
+          mediaUrl: data.mediaUrl,
+          mediaType: data.mediaType,
+          authorName: data.fromMe ? 'WhatsApp' : (existing.name || 'Cliente'),
+          authorId: data.fromMe ? 'whatsapp_mobile' : 'lead',
+          status: data.fromMe ? 'sent' : 'delivered',
+        };
+        const updatedActivities = mergeAndSortActivities(existing.activities || [], [newAct], existing.id);
+        const updates: Partial<Lead> = {
+          activities: updatedActivities,
+          updatedAt: new Date().toISOString().split('T')[0],
+          lastInteractionAt: new Date().toISOString(),
+          lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',
+          unreadCount: data.fromMe ? existing.unreadCount : (existing.unreadCount || 0) + 1,
+        };
+        updateLeadData(existing.id, updates);
+        if (isSupabaseConfigured) {
+          leadService.addActivity(existing.id, newAct).catch(() => {});
+          leadService.update(existing.id, updates).catch(() => {});
+        }
+      }
+      return existing.id;
+    }
+
     const newLeadId = generateUuid();
     
     // Procura a Origem do WhatsApp (pelo ID específico ou da casa de festa)
@@ -6046,7 +6303,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (!cleanPhone || cleanPhone.length < 8) return;
 
-      const rawJidClean = (incoming.rawPayload?.key?.remoteJid || incoming.rawPayload?.remoteJid || '').replace(/:\d+.*$/, '').replace(/:\d+@/, '@').replace(/@.*$/, '').replace(/\D/g, '');
 
       // Execução sequencial com trava atômica por telefone
       await enqueuePhoneAction(cleanPhone, async () => {
@@ -6104,59 +6360,48 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return true;
         });
 
-        // 1ª Prioridade (90%+ dos casos): Telefone Real dentro do mesmo Tenant
-        // 2ª Prioridade (Fallback): JID / LID dentro do mesmo Tenant
-        let { matchedLead } = findMatchingLead(tenantLeads, {
-          phone: cleanPhone,
-          jid: rawJid,
-          lid: rawLid,
-          rawPayload: incoming.rawPayload,
+        // Determina se a origem receptora é de Pós-Venda ou Comercial
+        const targetSourceFunnelId = matchedSource?.funnelId;
+        const isSourcePostSale = targetSourceFunnelId === 'post_sale_default' ||
+          funnels.some(f => f.id === targetSourceFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
+
+        // Separação estrita: se a origem for Comercial, filtra apenas leads comerciais (!isClient);
+        // se a origem for Pós-Venda, filtra apenas clientes (isClient === true)
+        const eligibleTypeLeads = tenantLeads.filter(l => {
+          const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+          return isSourcePostSale ? isClient : !isClient;
         });
 
-        // Fallback 1: se não achou em tenantLeads, tenta no estado react leads (filtrado para o tenant)
-        if (!matchedLead && leads && leads.length > 0) {
-          const tenantReactLeads = leads.filter(l => {
-            if (sourceMasterId && l.masterId && l.masterId !== sourceMasterId) return false;
-            if (tenantVenueIds.size > 0 && l.venueId && !tenantVenueIds.has(l.venueId)) return false;
-            return true;
-          });
-          const fallback = findMatchingLead(tenantReactLeads, {
+        // 1ª Prioridade: Buscar lead existente ESTRITAMENTE DENTRO DO FUNIL da origem receptora
+        let matchedLead: Lead | null = null;
+        if (targetSourceFunnelId) {
+          const funnelSpecificLeads = eligibleTypeLeads.filter(l => l.funnelId === targetSourceFunnelId);
+          const matchInFunnel = findMatchingLead(funnelSpecificLeads, {
             phone: cleanPhone,
             jid: rawJid,
             lid: rawLid,
             rawPayload: incoming.rawPayload,
           });
-          if (fallback.matchedLead) matchedLead = fallback.matchedLead;
-        }
-
-        // Fallback 2: se ainda não achou, consulta o Supabase antes de criar qualquer lead novo (com filtro de master/unidade)!
-        if (!matchedLead && isSupabaseConfigured && cleanPhone.length >= 8) {
-          const dbLead = await leadService.getByPhone(cleanPhone, sourceMasterId, Array.from(tenantVenueIds));
-          if (dbLead) {
-            matchedLead = dbLead;
-            leadsRef.current = [dbLead, ...leadsRef.current.filter(l => l.id !== dbLead.id)];
-            setLeads(prev => [dbLead, ...prev.filter(l => l.id !== dbLead.id)]);
+          if (matchInFunnel.matchedLead) {
+            matchedLead = matchInFunnel.matchedLead;
           }
         }
 
-        // Procura todos os leads equivalentes para auto-consolidação estritamente dentro do mesmo Tenant
-        const matchingLeads = tenantLeads.filter(l => {
-          if (cleanPhone && !isLidIdentifier(cleanPhone) && isPhoneMatch(l.phone, cleanPhone)) return true;
-          if (rawJidClean && !isLidIdentifier(rawJidClean) && isPhoneMatch(l.phone, rawJidClean)) return true;
-          if (rawLid && l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
-          if (rawLid && isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
-          return false;
-        });
+        // 2ª Prioridade (Áudio 1): Se não encontrou no funil da origem, mas o contato já existe no sistema do mesmo tipo (comercial ou pós-venda),
+        // NÃO PODE DUPLICAR! Reutiliza o lead existente e envia a correspondência para sua ficha devida.
+        if (!matchedLead) {
+          const globalMatch = findMatchingLead(eligibleTypeLeads, {
+            phone: cleanPhone,
+            jid: rawJid,
+            lid: rawLid,
+            rawPayload: incoming.rawPayload,
+          });
+          if (globalMatch.matchedLead) {
+            matchedLead = globalMatch.matchedLead;
+          }
+        }
 
         let existingLead: Lead | null = matchedLead;
-        if (matchingLeads.length > 1) {
-          const { consolidatedLeads } = await leadService.consolidateDuplicatesInDatabase(matchingLeads);
-          existingLead = consolidatedLeads[0] || matchedLead || matchingLeads[0];
-          const deletedIds = matchingLeads.filter(m => m.id !== existingLead!.id).map(m => m.id);
-          setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
-        } else if (matchingLeads.length === 1 && !existingLead) {
-          existingLead = matchingLeads[0];
-        }
 
         if (existingLead) {
           // ANTI-SPAM GUARD: Se o lead foi removido do funil (marcado como spam/telemarketing/removido),
@@ -6464,30 +6709,44 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const rawJid = msg.rawPayload?.key?.remoteJid || msg.rawPayload?.remoteJid || msg.rawPayload?.chatId || '';
         const rawLid = (isLidIdentifier(msg.senderPhone) ? msg.senderPhone : '') || (rawJid.includes('@lid') ? rawJid : '');
 
-        // 1ª Prioridade: Telefone Real | 2ª Prioridade: JID/LID
-        const { matchedLead } = findMatchingLead(currentLeads, {
-          phone: cleanPhone,
-          jid: rawJid,
-          lid: rawLid,
-          rawPayload: msg.rawPayload,
+        // Determina se a origem receptora é de Pós-Venda ou Comercial
+        const targetSourceFunnelId = targetSource?.funnelId;
+        const isSourcePostSale = targetSourceFunnelId === 'post_sale_default' ||
+          funnels.some(f => f.id === targetSourceFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
+
+        // Separação estrita: se a origem for Comercial, filtra apenas leads comerciais (!isClient);
+        // se a origem for Pós-Venda, filtra apenas clientes (isClient === true)
+        const eligibleTypeLeads = currentLeads.filter(l => {
+          const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
+          return isSourcePostSale ? isClient : !isClient;
         });
 
-        const matchingLeads = currentLeads.filter(l => {
-          if (cleanPhone && !isLidIdentifier(cleanPhone) && isPhoneMatch(l.phone, cleanPhone)) return true;
-          if (rawLid && l.whatsappLid && l.whatsappLid.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
-          if (rawLid && isLidIdentifier(l.phone) && l.phone.replace(/\D/g, '') === rawLid.replace(/\D/g, '')) return true;
-          return false;
-        });
+        // 1ª Prioridade: Buscar lead existente ESTRITAMENTE DENTRO DO FUNIL da origem
+        let matchedLead: Lead | null = null;
+        if (targetSourceFunnelId) {
+          const funnelSpecificLeads = eligibleTypeLeads.filter(l => l.funnelId === targetSourceFunnelId);
+          const matchInFunnel = findMatchingLead(funnelSpecificLeads, {
+            phone: cleanPhone,
+            jid: rawJid,
+            lid: rawLid,
+            rawPayload: msg.rawPayload,
+          });
+          if (matchInFunnel.matchedLead) {
+            matchedLead = matchInFunnel.matchedLead;
+          }
+        } else {
+          const fallbackMatch = findMatchingLead(eligibleTypeLeads, {
+            phone: cleanPhone,
+            jid: rawJid,
+            lid: rawLid,
+            rawPayload: msg.rawPayload,
+          });
+          if (fallbackMatch.matchedLead) {
+            matchedLead = fallbackMatch.matchedLead;
+          }
+        }
         
         let existingLead: Lead | null = matchedLead;
-        if (matchingLeads.length > 1) {
-          const { consolidatedLeads } = await leadService.consolidateDuplicatesInDatabase(matchingLeads);
-          existingLead = consolidatedLeads[0] || matchingLeads[0];
-          const deletedIds = matchingLeads.filter(m => m.id !== existingLead!.id).map(m => m.id);
-          setLeads(prev => prev.filter(l => !deletedIds.includes(l.id)).map(l => l.id === existingLead!.id ? existingLead! : l));
-        } else if (matchingLeads.length === 1 && !existingLead) {
-          existingLead = matchingLeads[0];
-        }
 
         if (existingLead?.isRemovedFromFunnel) {
           console.warn(`[Anti-Spam Guard] Mensagem de gap ignorada e descartada para lead removido: ${existingLead.name} (${existingLead.phone})`);
@@ -6863,7 +7122,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const deleteLead = (leadId: string) => {
+  const deleteLead = (leadId: string, reason?: string) => {
     // 1. Validação de perfil / permissão
     const isMasterOrAdmin = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.isDev;
     if (!isMasterOrAdmin) {
@@ -6872,7 +7131,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // 2. Trava de isolamento de tenant: garante que o lead pertence estritamente à rede do usuário
-    const targetLead = scopedLeads.find(l => l.id === leadId);
+    const targetLead = scopedLeads.find(l => l.id === leadId) || leadsRef.current.find(l => l.id === leadId);
     if (!targetLead) {
       alert('Acesso Negado: O lead selecionado não pertence à sua rede ou não existe.');
       return;
@@ -6885,6 +7144,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       alert('Ação bloqueada: Leads com contrato fechado (ganhos) ou perdidos não podem ser excluídos para preservação da auditoria financeira e integridade do CRM.');
       return;
     }
+
+    // 4. Grava no Histórico de Leads Apagados
+    const venueObj = venues.find(v => v.id === targetLead.venueId);
+    const deleteRecord: DeletedLeadRecord = {
+      id: generateUuid(),
+      leadId: targetLead.id,
+      leadName: targetLead.name,
+      leadPhone: targetLead.phone,
+      venueId: targetLead.venueId,
+      venueName: venueObj?.name || targetLead.venueName || 'Unidade Geral',
+      masterId: scopedMasterId || undefined,
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUser?.name || 'Administrador',
+      reason: reason || 'Motivo não informado',
+    };
+
+    setDeletedLeadsHistory(prev => {
+      const next = [deleteRecord, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_DELETED_LEADS, JSON.stringify(next));
+      return next;
+    });
 
     deletedLeadIdsRef.current.add(leadId);
     setLeads(prev => {
@@ -6990,7 +7270,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return true;
   };
 
-  const deleteMultipleLeads = async (leadIds: string[]) => {
+  const deleteMultipleLeads = async (leadIds: string[], reason?: string) => {
     if (!leadIds || leadIds.length === 0) return;
 
     // 1. Validação de perfil / permissão
@@ -7034,6 +7314,35 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     if (validIdsToDelete.length === 0) return;
 
+    // 4. Grava múltiplos registros no histórico
+    const newRecords: DeletedLeadRecord[] = [];
+    validIdsToDelete.forEach(id => {
+      const targetLead = currentLeads.find(l => l.id === id);
+      if (targetLead) {
+        const venueObj = venues.find(v => v.id === targetLead.venueId);
+        newRecords.push({
+          id: generateUuid(),
+          leadId: targetLead.id,
+          leadName: targetLead.name,
+          leadPhone: targetLead.phone,
+          venueId: targetLead.venueId,
+          venueName: venueObj?.name || targetLead.venueName || 'Unidade Geral',
+          masterId: scopedMasterId || undefined,
+          deletedAt: new Date().toISOString(),
+          deletedBy: currentUser?.name || 'Administrador',
+          reason: reason || 'Exclusão em lote',
+        });
+      }
+    });
+
+    if (newRecords.length > 0) {
+      setDeletedLeadsHistory(prev => {
+        const next = [...newRecords, ...prev];
+        safeLocalStorageSet(STORAGE_KEY_DELETED_LEADS, JSON.stringify(next));
+        return next;
+      });
+    }
+
     validIdsToDelete.forEach(id => deletedLeadIdsRef.current.add(id));
 
     // Atualização atômica instantânea sem piscar ou recarregar
@@ -7057,14 +7366,32 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const archiveLead = async (leadId: string): Promise<boolean> => {
+  const archiveLead = async (leadId: string, reason?: string): Promise<boolean> => {
     const now = new Date().toISOString();
+    const author = currentUser?.name || 'Administrador';
+    const authorId = currentUser?.id;
+    const authorAvatar = currentUser?.avatarUrl;
+
+    const archiveActivity: LeadActivity = {
+      id: generateUuid(),
+      leadId,
+      timestamp: now,
+      type: 'status_change',
+      title: 'Lead Arquivado',
+      text: reason ? `Lead arquivado pelo usuário. Motivo: ${reason}` : 'Lead arquivado pelo usuário.',
+      authorName: author,
+      authorId,
+      authorAvatarUrl: authorAvatar,
+    };
+
     setLeads(prev => {
       const updated = prev.map(l => l.id === leadId ? {
         ...l,
         isArchived: true,
         archivedAt: now,
+        archiveReason: reason || l.archiveReason,
         funnelId: undefined,
+        activities: [...(l.activities || []), archiveActivity],
       } : l);
       safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
       return updated;
@@ -7073,6 +7400,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       try {
         await leadService.archive(leadId);
+        await leadService.addActivity(leadId, archiveActivity);
       } catch (err) {
         console.error('❌ Erro ao arquivar lead no Supabase:', err);
       }
@@ -7252,12 +7580,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           let targetPostSaleStageId = postSaleTrigger?.targetStageId;
 
           if (!targetPostSaleFunnelId) {
-            const defaultPostSale = funnels.find(f => 
-              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
-              (!f.venueId || f.venueId === 'all' || f.venueId === currentLead.venueId || (f.sharedVenueIds && f.sharedVenueIds.includes(currentLead.venueId || '')))
-            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
-            targetPostSaleFunnelId = defaultPostSale?.id;
-            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+            targetPostSaleFunnelId = updated[existingIdx].funnelId;
+            targetPostSaleStageId = updated[existingIdx].stage;
           }
 
           updated[existingIdx] = {
@@ -7308,12 +7632,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           let targetPostSaleStageId = postSaleTrigger?.targetStageId;
 
           if (!targetPostSaleFunnelId) {
-            const defaultPostSale = funnels.find(f => 
-              (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda') || f.name.toLowerCase().includes('pos venda') || f.name.toLowerCase().includes('sucesso')) &&
-              (!f.venueId || f.venueId === 'all' || f.venueId === targetVenueId || (f.sharedVenueIds && f.sharedVenueIds.includes(targetVenueId)))
-            ) || funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda' || f.name.toLowerCase().includes('pós-venda'));
-            targetPostSaleFunnelId = defaultPostSale?.id;
-            targetPostSaleStageId = defaultPostSale?.stages?.[0]?.id || 'onboarding';
+            // Sem funil de pós-venda vinculado nos gatilhos da etapa de ganho:
+            // a venda foi computada e salva no Lead Comercial, SEM duplicar para clientes/pós-venda
+            return prevClients;
           }
 
           const initialActivities = [];
@@ -8243,6 +8564,66 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  // ── Quick Messages CRUD (Mensagens Rápidas com '/') ─────────────────────────
+
+  const addQuickMessage = async (data: Omit<QuickMessage, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    const id = generateUuid();
+    const effectiveMasterId = scopedMasterId || undefined;
+    const cleanKeyword = data.keyword.trim().toLowerCase().replace(/^\//, '').replace(/\s+/g, '');
+    const newMsg: QuickMessage = {
+      ...data,
+      id,
+      masterId: effectiveMasterId,
+      keyword: cleanKeyword,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setQuickMessages(prev => {
+      const updated = [newMsg, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_QUICK_MESSAGES, JSON.stringify(updated));
+      return updated;
+    });
+    await quickMessageService.upsert(newMsg);
+    return id;
+  };
+
+  const updateQuickMessage = async (id: string, data: Partial<QuickMessage>): Promise<void> => {
+    let toSave: QuickMessage | null = null;
+    setQuickMessages(prev => {
+      const updated = prev.map(qm => {
+        if (qm.id === id) {
+          const merged = {
+            ...qm,
+            ...data,
+            keyword: data.keyword ? data.keyword.trim().toLowerCase().replace(/^\//, '').replace(/\s+/g, '') : qm.keyword,
+            updatedAt: new Date().toISOString(),
+          };
+          toSave = merged;
+          return merged;
+        }
+        return qm;
+      });
+      safeLocalStorageSet(STORAGE_KEY_QUICK_MESSAGES, JSON.stringify(updated));
+      return updated;
+    });
+    if (toSave) {
+      await quickMessageService.upsert(toSave);
+    }
+  };
+
+  const deleteQuickMessage = async (id: string): Promise<void> => {
+    setQuickMessages(prev => {
+      const updated = prev.filter(qm => qm.id !== id);
+      safeLocalStorageSet(STORAGE_KEY_QUICK_MESSAGES, JSON.stringify(updated));
+      return updated;
+    });
+    await quickMessageService.delete(id);
+  };
+
+  const toggleQuickMessageActive = async (id: string, active: boolean): Promise<void> => {
+    await updateQuickMessage(id, { isActive: active });
+  };
+
   // ── Appointments Methods ─────────────────────────────────────────────────────
 
   const addAppointmentForDebutante = async (debutanteId: string, appData: Omit<Appointment, 'id'>) => {
@@ -8539,8 +8920,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return next;
     });
 
-    // Cria também na tabela central de appointments para visualização no calendário
-    await addAppointment({
+    // Localiza debutante vinculada (seja por lead, por cliente de pós-venda ou por telefone)
+    const associatedDebutanteId = (targetLead as any).debutanteId ||
+      clients.find(c => c.commercialLeadId === targetLead.id)?.debutanteId ||
+      debutantes.find(d => 
+        (d.phone && targetLead.phone && d.phone.replace(/\D/g, '') === targetLead.phone.replace(/\D/g, '')) ||
+        (d.name && targetLead.name && d.name.trim().toLowerCase() === targetLead.name.trim().toLowerCase())
+      )?.id;
+
+    // Cria também na tabela central de appointments para visualização no calendário e app da debutante
+    const createdApp = await addAppointment({
       title: `${type === 'visit' ? 'Visita Comercial' : 'Degustação Gastronômica'} • ${targetLead.name}`,
       category: type === 'visit' ? 'Visita Técnica / Apresentação' : 'Buffet & Degustação',
       date: commitmentData.date,
@@ -8550,6 +8939,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       targetType: 'lead',
       leadId: targetLead.id,
       leadName: targetLead.name,
+      debutanteId: associatedDebutanteId,
       pax: Number(commitmentData.pax || 2),
       guestsCount: Number(commitmentData.pax || 2),
       venueId: commitmentData.venueId || targetLead.venueId,
@@ -8557,6 +8947,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       responsibleName: commitmentData.responsibleName,
       notes: commitmentData.notes,
     });
+
+    // Se houver debutante vinculada, reflete imediatamente na conta da debutante
+    if (associatedDebutanteId && createdApp) {
+      setDebutantes(prevDebs => prevDebs.map(deb => {
+        if (deb.id === associatedDebutanteId || deb.slug === associatedDebutanteId) {
+          const debApps = deb.appointments || [];
+          return {
+            ...deb,
+            appointments: [...debApps.filter(a => a.id !== createdApp.id), createdApp],
+          };
+        }
+        return deb;
+      }));
+    }
 
     // Persistência no Lead no Supabase
     try {
@@ -9211,6 +9615,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       addClient,
       updateClient,
       deleteClient,
+      deleteMultipleClients,
       updateClientStage,
       addClientNote,
       addClientDocument,
@@ -9252,6 +9657,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       deleteMultipleLeads,
       archiveLead,
       unarchiveLead,
+      deletedLeadsHistory: scopedDeletedLeadsHistory,
       mergeLeads,
       consolidateAllDuplicateLeads,
       syncWhatsAppHistoryGap,
@@ -9291,6 +9697,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       applyTemplateToDebutante,
       shareJourneyTemplateToVenue,
       shareCatalogItemToVenue,
+      quickMessages: scopedQuickMessages,
+      addQuickMessage,
+      updateQuickMessage,
+      deleteQuickMessage,
+      toggleQuickMessageActive,
       addAppointmentForDebutante,
       updateAppointmentForDebutante,
       deleteAppointmentForDebutante,
@@ -9349,6 +9760,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       togglePinFunnel,
       reorderPinnedFunnels,
       isFunnelPinned,
+      systemSlaConfig,
+      updateSystemSlaConfig,
       forceLogout: (reason?: string) => {
         logout();
         if (reason) alert(reason);

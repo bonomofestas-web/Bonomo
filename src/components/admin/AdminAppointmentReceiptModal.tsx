@@ -66,7 +66,13 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
 
   const effectiveCloserPhoto = useMemo(() => {
     if (receipt.closerPhotoUrl && receipt.closerPhotoUrl.trim()) return receipt.closerPhotoUrl;
-    const cleanCloserName = (receipt.closerName || '').trim().toLowerCase();
+    
+    const rawCloserName = receipt.closerName || '';
+    const cleanCloserName = rawCloserName
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/\s*[-–—]\s*(closer|anfitrião|anfitriao|sdr|consultor|anfitriã).*/i, '')
+      .trim()
+      .toLowerCase();
     const closerFirstName = cleanCloserName.split(/\s+/)[0];
 
     const c = collaborators.find(c => {
@@ -76,7 +82,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
         c.id === (receipt as any).closerId ||
         c.id === (receipt as any).responsibleCollaboratorId ||
         (cleanCloserName && (cName === cleanCloserName || cName.includes(cleanCloserName) || cleanCloserName.includes(cName))) ||
-        (closerFirstName && closerFirstName.length >= 3 && cFirstName === closerFirstName)
+        (closerFirstName && closerFirstName.length >= 3 && (cFirstName === closerFirstName || cName.startsWith(closerFirstName)))
       );
     });
 
@@ -90,7 +96,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       }
     }
     return '';
-  }, [receipt.closerPhotoUrl, receipt.closerName, collaborators, currentUser]);
+  }, [receipt.closerPhotoUrl, receipt.closerName, (receipt as any).closerId, (receipt as any).responsibleCollaboratorId, collaborators, currentUser]);
 
   // Estados de imagem pré-convertida para Data URL (evita tainted canvas) e controle de erro
   const [closerPhotoDataUrl, setCloserPhotoDataUrl] = useState<string | null>(null);
@@ -244,8 +250,8 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
       // Fallback
     }
 
-    // 2. Se falhar, tenta via proxy de imagens se disponível
-    if (url.includes('r2.dev') || url.includes('cloudflarestorage.com')) {
+    // 2. Se falhar, tenta via proxy de imagens local do Vite para contornar qualquer CORS de terceiros
+    if (url.startsWith('http://') || url.startsWith('https://')) {
       try {
         const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
         const res = await fetch(proxyUrl);
@@ -701,20 +707,17 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                       <img 
                         src={closerPhotoDataUrl || effectiveCloserPhoto} 
                         alt={receipt.closerName || 'Anfitrião'} 
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          if (closerPhotoDataUrl && effectiveCloserPhoto && e.currentTarget.src !== effectiveCloserPhoto) {
-                            e.currentTarget.src = effectiveCloserPhoto;
-                          } else {
-                            setCloserPhotoFailed(true);
-                          }
-                        }}
+                        onError={() => setCloserPhotoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
                       />
                     ) : (
                       (() => {
-                        const nameParts = (receipt.closerName || '').trim().split(/\s+/).filter(Boolean);
+                        const nameParts = (receipt.closerName || '')
+                          .replace(/\s*\([^)]*\)/g, '')
+                          .replace(/\s*[-–—]\s*(closer|anfitrião|anfitriao|sdr|consultor|anfitriã).*/i, '')
+                          .trim()
+                          .split(/\s+/)
+                          .filter(Boolean);
                         const initials = nameParts.length >= 2 
                           ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
                           : (nameParts[0] ? nameParts[0].slice(0, 2).toUpperCase() : 'AF');

@@ -4,7 +4,7 @@ import {
   Search, Building2, AlertCircle,
   UtensilsCrossed, User, Sparkles, Clock,
   ArrowRight, ArrowLeft, MapPin,
-  RotateCw, Loader2, AlertTriangle
+  RotateCw, Loader2, AlertTriangle, Lock
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead, CommercialCommitmentType } from '../../types/admin';
@@ -116,9 +116,61 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return currentLead?.estimatedGuests ? Math.min(currentLead.estimatedGuests, 4) : (type === 'tasting' ? 4 : 2);
   });
 
+  // Filtro estrito: Apenas colaboradores com acesso ao Comercial (sem pós-venda exclusivo)
+  const commercialCollaborators = useMemo(() => {
+    return collaborators.filter(c => {
+      if (c.role === 'master' || (c as any).isDev) return true;
+      const sectors = (c as any).sectors as string[] | undefined;
+      if (Array.isArray(sectors) && sectors.length > 0) {
+        return sectors.includes('comercial') || sectors.includes('gerencia');
+      }
+      if (c.role === 'pos_venda' || (c as any).group === 'Pós-Venda') return false;
+      if (c.role === 'crm' || c.role === 'sdr' || c.role === 'closer' || c.role === 'admin' || (c as any).role === 'gerente') {
+        return true;
+      }
+      return true;
+    });
+  }, [collaborators]);
+
+  // ── REGRA DO CLOSER FIXO & SPLIT AUTOMÁTICO ──
+  const existingFixedCloserId = useMemo(() => {
+    return currentLead?.closerId || 
+      currentLead?.visitCommitment?.responsibleId || 
+      currentLead?.tastingCommitment?.responsibleId || 
+      null;
+  }, [currentLead]);
+
+  const isCloserFixed = Boolean(existingFixedCloserId);
+
+  // Split Automático de Closers por Unidade (caso não seja fixo)
+  const autoSplitCloserId = useMemo(() => {
+    if (isCloserFixed) return existingFixedCloserId;
+    if (venueConfig?.closerDistributionMode === 'round_robin') {
+      const configuredIds = venueConfig.closerIds && venueConfig.closerIds.length > 0
+        ? venueConfig.closerIds
+        : commercialCollaborators.filter(c => c.role === 'closer' || (c as any).roleTitle?.toLowerCase().includes('closer')).map(c => c.id);
+      
+      if (configuredIds.length > 0) {
+        const venueAppointmentsCount = appointments.filter(a => a.venueId === targetVenueId).length;
+        const nextIndex = venueAppointmentsCount % configuredIds.length;
+        return configuredIds[nextIndex] || configuredIds[0];
+      }
+    }
+    return null;
+  }, [isCloserFixed, existingFixedCloserId, venueConfig, commercialCollaborators, appointments, targetVenueId]);
+
   const [responsibleId, setResponsibleId] = useState<string>(() => {
-    return currentLead?.closerId || currentUser?.id || '';
+    return existingFixedCloserId || autoSplitCloserId || currentUser?.id || '';
   });
+
+  useEffect(() => {
+    if (isCloserFixed && existingFixedCloserId) {
+      setResponsibleId(existingFixedCloserId);
+    } else if (autoSplitCloserId && !responsibleId) {
+      setResponsibleId(autoSplitCloserId);
+    }
+  }, [isCloserFixed, existingFixedCloserId, autoSplitCloserId]);
+
   const [sdrId, setSdrId] = useState<string>(() => {
     return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
   });
@@ -135,22 +187,6 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
   });
   const [followUpNotes, setFollowUpNotes] = useState<string>('');
-
-  // Filtro estrito: Apenas colaboradores com acesso ao Comercial (sem pós-venda exclusivo)
-  const commercialCollaborators = useMemo(() => {
-    return collaborators.filter(c => {
-      if (c.role === 'master' || (c as any).isDev) return true;
-      const sectors = (c as any).sectors as string[] | undefined;
-      if (Array.isArray(sectors) && sectors.length > 0) {
-        return sectors.includes('comercial') || sectors.includes('gerencia');
-      }
-      if (c.role === 'pos_venda' || (c as any).group === 'Pós-Venda') return false;
-      if (c.role === 'crm' || c.role === 'sdr' || c.role === 'closer' || c.role === 'admin' || (c as any).role === 'gerente') {
-        return true;
-      }
-      return true;
-    });
-  }, [collaborators]);
 
   const getCollabJobTitle = (c: any) => {
     if (c.customJobTitle) return c.customJobTitle;
@@ -190,6 +226,22 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return aptTime - (hoursBefore * 3600 * 1000) < Date.now();
   }, [selectedDate, selectedTime]);
 
+  // Audio 2: Notificações automáticas não podem ser geradas no passado
+  useEffect(() => {
+    if (reminder1 && reminder1 !== 'none') {
+      const h = parseInt(reminder1);
+      if (!isNaN(h) && isReminderOptionRetroactive(h)) {
+        setReminder1('none');
+      }
+    }
+    if (reminder2 && reminder2 !== 'none') {
+      const h = parseInt(reminder2);
+      if (!isNaN(h) && isReminderOptionRetroactive(h)) {
+        setReminder2('none');
+      }
+    }
+  }, [selectedDate, selectedTime, reminder1, reminder2, isReminderOptionRetroactive]);
+
   // Helper para calcular a data efetiva da tarefa de follow-up
   const calculateFollowUpDate = useCallback(() => {
     if (!selectedDate) return new Date().toISOString().split('T')[0];
@@ -214,7 +266,15 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   // Comprovante Oficial após conclusão
   const [completedReceipt, setCompletedReceipt] = useState<AppointmentReceiptData | null>(null);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const currentTimeStr = useMemo(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }, []);
 
   // Filtragem de Leads para Autocomplete
   const filteredLeadOptions = useMemo(() => {
@@ -269,8 +329,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           appointments,
           venueConfig
         );
-        isAvailable = avail.isDayAvailable && avail.slots.some(s => s.isAvailable);
-        spotsCount = avail.slots.filter(s => s.isAvailable).length;
+        // Audio 2: No dia de hoje, desconsidera horários que já passaram em relação à hora atual local
+        const validSlots = dateStr === todayStr
+          ? avail.slots.filter(s => s.isAvailable && s.time > currentTimeStr)
+          : avail.slots.filter(s => s.isAvailable);
+
+        isAvailable = avail.isDayAvailable && validSlots.length > 0;
+        spotsCount = validSlots.length;
         reason = avail.reason || (isAvailable ? `${spotsCount} horários livres` : 'Sem horários');
       }
 
@@ -290,19 +355,29 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       firstDayIndex,
       days,
     };
-  }, [calendarMonth, todayStr, type, targetVenueId, appointments, venueConfig]);
+  }, [calendarMonth, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig]);
 
   // Slots do dia selecionado
   const selectedDayAvailability = useMemo(() => {
-    if (!selectedDate) return { isDayAvailable: false, slots: [], isFreeMode: false };
-    return agendaAvailabilityService.getAvailableSlots(
+    if (!selectedDate || selectedDate < todayStr) return { isDayAvailable: false, slots: [], isFreeMode: false };
+    const avail = agendaAvailabilityService.getAvailableSlots(
       selectedDate,
       type,
       targetVenueId,
       appointments,
       venueConfig
     );
-  }, [selectedDate, type, targetVenueId, appointments, venueConfig]);
+    // Audio 2: Bloquear e ocultar horários no próprio dia de hoje que já passaram em relação à hora atual local
+    if (selectedDate === todayStr) {
+      const activeSlots = avail.slots.filter(s => s.time > currentTimeStr);
+      return {
+        ...avail,
+        slots: activeSlots,
+        isDayAvailable: activeSlots.some(s => s.isAvailable),
+      };
+    }
+    return avail;
+  }, [selectedDate, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig]);
 
   // Submissão do agendamento com validação atômica em tempo real (Anti-Race Condition)
   const handleConfirmSchedule = async () => {
@@ -320,7 +395,15 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       return;
     }
 
-    // Validação estrita de data e horário no passado
+    // Validação estrita de data e horário no passado (Audio 2)
+    if (selectedDate < todayStr) {
+      setErrorMessage('Não é permitido agendar em data retroativa. Escolha uma data futura.');
+      return;
+    }
+    if (selectedDate === todayStr && selectedTime <= currentTimeStr) {
+      setErrorMessage(`O horário das ${selectedTime} já passou. Escolha um horário após as ${currentTimeStr}.`);
+      return;
+    }
     const scheduledDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
     if (scheduledDateTime.getTime() < Date.now()) {
       setErrorMessage('Não é permitido agendar em data ou horário que já passaram. Escolha um horário futuro.');
@@ -376,6 +459,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const assignedUser = collaborators.find(c => c.id === responsibleId);
       const sdrUser = collaborators.find(c => c.id === sdrId);
 
+      // Notificações limpas (sem lembretes gerados no passado)
+      const cleanReminder1 = reminder1 && reminder1 !== 'none' && !isReminderOptionRetroactive(parseInt(reminder1)) ? reminder1 : undefined;
+      const cleanReminder2 = reminder2 && reminder2 !== 'none' && !isReminderOptionRetroactive(parseInt(reminder2)) ? reminder2 : undefined;
+
       // Agenda no Lead / Supabase (atualiza Closer e SDR no lead automaticamente)
       if (scheduleCommercialCommitment) {
         await scheduleCommercialCommitment(currentLead.id, type, {
@@ -388,8 +475,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           venueId: targetVenueId,
           sdrId: sdrId || undefined,
           sdrName: sdrUser?.name || undefined,
-          reminder1: reminder1 || undefined,
-          reminder2: reminder2 || undefined,
+          reminder1: cleanReminder1,
+          reminder2: cleanReminder2,
         } as any);
       }
 
@@ -1229,6 +1316,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         <input
                           type="time"
                           value={selectedTime}
+                          min={selectedDate === todayStr ? currentTimeStr : undefined}
                           onChange={e => setSelectedTime(e.target.value)}
                           placeholder="HH:mm"
                           style={{
@@ -1311,6 +1399,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                     <input
                       type="time"
                       value={selectedTime}
+                      min={selectedDate === todayStr ? currentTimeStr : undefined}
                       onChange={e => setSelectedTime(e.target.value)}
                       style={{
                         padding: '4px 8px',
@@ -1335,11 +1424,48 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
               {/* Responsável / Anfitrião / Closer da Recepção */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
-                    ANFITRIÃO / CLOSER DA RECEPÇÃO *
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                      ANFITRIÃO / CLOSER DA RECEPÇÃO *
+                    </label>
+                    {isCloserFixed ? (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        color: '#2563EB',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                      }}>
+                        <Lock size={10} />
+                        <span>Closer Vinculado (Fixo)</span>
+                      </span>
+                    ) : autoSplitCloserId ? (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: '#059669',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                      }}>
+                        <Sparkles size={10} />
+                        <span>Split Automático Ativo</span>
+                      </span>
+                    ) : null}
+                  </div>
                   <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
-                    Define automaticamente o Closer deste lead ao agendar
+                    {isCloserFixed 
+                      ? 'Closer mantido fixo pelo histórico prévio do lead'
+                      : 'Define automaticamente o Closer deste lead ao agendar'}
                   </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>

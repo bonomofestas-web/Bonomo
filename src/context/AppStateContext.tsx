@@ -799,16 +799,51 @@ export const AppStateProvider: React.FC<{
 
     // Direct registration as a new lead in CRM Supabase Database
     const safeVenueId = isUuid(debutante.venueId) ? debutante.venueId : 'a1111111-1111-1111-1111-111111111111';
-    const safeFunnelId = 'f1111111-1111-1111-1111-111111111111';
     const safeDebutanteId = isUuid(debutante.id) ? debutante.id : (isUuid(debutante.venueId) ? debutante.venueId : null);
+
+    // Dynamic resolution of destination referral funnel and tenant masterId from local cache
+    let cachedMasterId: string | undefined = undefined;
+    let cachedFunnelId: string | undefined = undefined;
+    let cachedSourceId: string | undefined = undefined;
+
+    try {
+      const savedVenues = localStorage.getItem('bonomo_admin_venues_v7');
+      if (savedVenues) {
+        const vList = JSON.parse(savedVenues);
+        const v = vList.find((item: any) => item.id === debutante.venueId);
+        if (v) cachedMasterId = v.masterId || v.master_id;
+      }
+      const savedSources = localStorage.getItem('bonomo_admin_sources_v7');
+      if (savedSources) {
+        const sList = JSON.parse(savedSources);
+        const refSrc = sList.find((s: any) => s.venueId === debutante.venueId && (s.type === 'referral' || s.name?.includes('Indicaç')) && s.status === 'active');
+        if (refSrc) {
+          cachedSourceId = refSrc.id;
+          if (refSrc.funnelId && isUuid(refSrc.funnelId)) cachedFunnelId = refSrc.funnelId;
+        }
+      }
+      if (!cachedFunnelId) {
+        const savedFunnels = localStorage.getItem('bonomo_admin_funnels_v7');
+        if (savedFunnels) {
+          const fList = JSON.parse(savedFunnels);
+          const f = fList.find((item: any) => item.venueId === debutante.venueId);
+          if (f && isUuid(f.id)) cachedFunnelId = f.id;
+        }
+      }
+    } catch {
+      // Local cache lookup fallback
+    }
 
     const newLead: import('../types/admin').Lead = {
       id: newLeadId,
+      masterId: cachedMasterId,
       debutanteId: safeDebutanteId || '',
       debutanteName: debutante.name,
       debutanteSlug: debutante.slug || 'deb_slug',
       venueId: safeVenueId,
-      funnelId: safeFunnelId,
+      funnelId: cachedFunnelId || 'f1111111-1111-1111-1111-111111111111',
+      sourceId: cachedSourceId,
+      source: 'indicacao',
       name: data.name,
       phone: data.phone,
       age: data.age,
@@ -834,48 +869,92 @@ export const AppStateProvider: React.FC<{
     };
 
     if (isSupabaseConfigured) {
-      // 1. Salva o lead na tabela do CRM Supabase
-      leadService.upsert(newLead).then(success => {
-        if (!success) {
-          console.error('❌ Falha ao salvar indicação na tabela leads do Supabase');
-        }
-      }).catch(err => {
-        console.error('❌ Exceção ao salvar indicação na tabela leads do Supabase:', err);
-      });
+      const persistLeadAndReferral = async () => {
+        let masterId = cachedMasterId;
+        let funnelId = cachedFunnelId;
+        let sourceId = cachedSourceId;
 
-      // 2. Salva o registro de referral associado na tabela referrals
-      const referralPayload: any = {
-        id: newRefId,
-        name: data.name,
-        phone: data.phone,
-        age: data.age,
-        group: data.group,
-        notes: data.notes,
-        status: 'pending',
-        points_granted: 0,
-        is_renewal_referral: isPaused,
+        // Se faltou masterId ou funnelId no cache, busca diretamente no Supabase
+        if ((!masterId || !funnelId) && isUuid(safeVenueId)) {
+          try {
+            if (!masterId) {
+              const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', safeVenueId).maybeSingle();
+              if (vRow?.master_id) masterId = vRow.master_id;
+            }
+            if (!funnelId) {
+              const { data: sRow } = await supabase.from('sources').select('id, funnel_id').eq('venue_id', safeVenueId).eq('type', 'referral').eq('status', 'active').maybeSingle();
+              if (sRow?.funnel_id && isUuid(sRow.funnel_id)) {
+                funnelId = sRow.funnel_id;
+                sourceId = sRow.id;
+              } else {
+                const { data: fRow } = await supabase.from('funnels').select('id').eq('venue_id', safeVenueId).order('created_at', { ascending: true }).limit(1).maybeSingle();
+                if (fRow?.id && isUuid(fRow.id)) funnelId = fRow.id;
+              }
+            }
+          } catch (e) {
+            console.warn('[Referral Persistence]: Falha na resolução remota de metadados:', e);
+          }
+        }
+
+        const finalLead: import('../types/admin').Lead = {
+          ...newLead,
+          masterId: masterId || newLead.masterId,
+          funnelId: funnelId || newLead.funnelId,
+          sourceId: sourceId || newLead.sourceId,
+        };
+
+        // 1. Salva o lead na tabela do CRM Supabase
+        try {
+          const success = await leadService.upsert(finalLead);
+          if (!success) {
+            console.error('❌ Falha ao salvar indicação na tabela leads do Supabase');
+          }
+        } catch (err) {
+          console.error('❌ Exceção ao salvar indicação na tabela leads do Supabase:', err);
+        }
+
+        // 2. Salva o registro de referral associado na tabela referrals
+        const referralPayload: any = {
+          id: newRefId,
+          name: data.name,
+          phone: data.phone,
+          age: data.age,
+          group: data.group,
+          notes: data.notes,
+          status: 'pending',
+          points_granted: 0,
+          is_renewal_referral: isPaused,
+          lead_id: newLeadId,
+        };
+
+        if (safeDebutanteId) {
+          referralPayload.debutante_id = safeDebutanteId;
+        }
+        if (masterId) {
+          referralPayload.master_id = masterId;
+        }
+
+        try {
+          const { error } = await supabase.from('referrals').insert(referralPayload);
+          if (error) {
+            console.error('❌ Falha ao inserir referral na tabela referrals do Supabase:', error);
+          }
+        } catch (err) {
+          console.error('❌ Exceção ao inserir referral na tabela referrals do Supabase:', err);
+        }
+
+        // 3. Atualiza os dados da debutante se ID for UUID
+        if (safeDebutanteId) {
+          debutanteService.upsert({
+            id: safeDebutanteId,
+            validReferrals: debutante.validReferrals,
+          }).catch(err => {
+            console.error('❌ Falha ao sincronizar debutante após indicação:', err);
+          });
+        }
       };
 
-      if (safeDebutanteId) {
-        referralPayload.debutante_id = safeDebutanteId;
-      }
-      referralPayload.lead_id = newLeadId;
-
-      supabase.from('referrals').insert(referralPayload).then(({ error }) => {
-        if (error) {
-          console.error('❌ Falha ao inserir referral na tabela referrals do Supabase:', error);
-        }
-      });
-
-      // 3. Atualiza os dados da debutante se ID for UUID
-      if (safeDebutanteId) {
-        debutanteService.upsert({
-          id: safeDebutanteId,
-          validReferrals: debutante.validReferrals,
-        }).catch(err => {
-          console.error('❌ Falha ao sincronizar debutante após indicação:', err);
-        });
-      }
+      persistLeadAndReferral();
     }
   };
 

@@ -39,6 +39,8 @@ import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { leadService, mergeAndSortActivities } from '../../services/leadService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
+import { renderWhatsAppFormattedText } from '../../utils/whatsappFormatter';
+import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
@@ -46,7 +48,7 @@ import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
-import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig } from '../../utils/taskColors';
+import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
 import {
   AdminBulkMoveFunnelModal,
   AdminBulkMoveStageModal,
@@ -210,34 +212,11 @@ async function compressImageToWebpDataUrl(file: File, maxWidth = 1280, quality =
 }
 
 /**
- * Renderiza texto com links clicáveis seguros (target="_blank") para URLs
+ * Renderiza texto com formatação nativa do WhatsApp (*bold*, _italic_, ~strike~, code, citações, listas, URLs)
  */
 function renderFormattedTextWithLinks(text?: string, isDarkMode = false): React.ReactNode {
   if (!text) return null;
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
-  return parts.map((part, index) => {
-    if (part.match(urlRegex)) {
-      return (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: isDarkMode ? '#53bdeb' : '#0284c7',
-            textDecoration: 'underline',
-            wordBreak: 'break-all',
-            fontWeight: 600,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {part}
-        </a>
-      );
-    }
-    return part;
-  });
+  return renderWhatsAppFormattedText(text, { isDarkMode });
 }
 
 interface WhatsAppMessageInputBoxProps {
@@ -263,17 +242,54 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   hasPendingAttachment,
   pendingAttachmentCaption,
 }) => {
+  const { quickMessages } = useAdminState();
   const [localText, setLocalText] = useState('');
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [isSlashActive, setIsSlashActive] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashMatchIndex, setSlashMatchIndex] = useState(-1);
+  const [selectedQuickIndex, setSelectedQuickIndex] = useState(0);
+
+  const inputRef = useRef<HTMLInputElement>(null);
   const lastComposingCallRef = useRef<number>(0);
 
   // Limpa o texto local ao trocar de lead ou preenche com a legenda inicial do anexo
   useEffect(() => {
     setLocalText(pendingAttachmentCaption || '');
+    setIsSlashActive(false);
+    setSelectionRange(null);
   }, [leadId, pendingAttachmentCaption]);
+
+  // Filtra mensagens rápidas ativas baseadas no slashQuery
+  const matchingQuickMessages = useMemo(() => {
+    if (!isSlashActive) return [];
+    const q = slashQuery.toLowerCase();
+    return (quickMessages || []).filter(qm =>
+      qm.isActive && qm.keyword.toLowerCase().startsWith(q)
+    );
+  }, [quickMessages, isSlashActive, slashQuery]);
+
+  const checkSlashTrigger = (val: string, cursorPos: number) => {
+    const beforeCursor = val.slice(0, cursorPos);
+    const match = beforeCursor.match(/(?:^|\s)\/([a-zA-Z0-9_\-]*)$/);
+    if (match) {
+      setIsSlashActive(true);
+      setSlashQuery(match[1]);
+      setSlashMatchIndex(match.index! + (match[0].startsWith(' ') ? 1 : 0));
+      setSelectedQuickIndex(0);
+    } else {
+      setIsSlashActive(false);
+      setSlashQuery('');
+      setSlashMatchIndex(-1);
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setLocalText(val);
+
+    const cursor = e.target.selectionStart ?? val.length;
+    checkSlashTrigger(val, cursor);
 
     // Throttled presence trigger (evita spam de eventos de digitação)
     const now = Date.now();
@@ -283,12 +299,72 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     }
   };
 
+  const handleSelect = () => {
+    if (inputRef.current) {
+      const { selectionStart, selectionEnd } = inputRef.current;
+      if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+        setSelectionRange({ start: selectionStart, end: selectionEnd });
+      } else {
+        setSelectionRange(null);
+      }
+    }
+  };
+
+  const applyQuickMessage = (qm: typeof quickMessages[0]) => {
+    if (!qm) return;
+    const cursor = inputRef.current ? (inputRef.current.selectionStart ?? localText.length) : localText.length;
+    const before = localText.slice(0, slashMatchIndex >= 0 ? slashMatchIndex : cursor);
+    const after = localText.slice(cursor);
+    const newText = before + qm.message + (after.startsWith(' ') ? after : (after ? ' ' + after : ''));
+    setLocalText(newText);
+    setIsSlashActive(false);
+    setSlashQuery('');
+    setSlashMatchIndex(-1);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const newPos = before.length + qm.message.length;
+      inputRef.current?.setSelectionRange(newPos, newPos);
+    });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 1. Navegação no autocomplete de mensagens rápidas com '/'
+    if (isSlashActive && matchingQuickMessages.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedQuickIndex(prev => (prev + 1) % matchingQuickMessages.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedQuickIndex(prev => (prev - 1 + matchingQuickMessages.length) % matchingQuickMessages.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applyQuickMessage(matchingQuickMessages[selectedQuickIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsSlashActive(false);
+        return;
+      }
+      if (e.key === ' ') {
+        // Áudio 2: "Se ela por ventura der espaço, a opção some e ela pode continuar digitando o texto"
+        setIsSlashActive(false);
+        return;
+      }
+    }
+
+    // 2. Envio de mensagem com Enter
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
         const text = localText.trim();
         setLocalText('');
+        setIsSlashActive(false);
+        setSelectionRange(null);
         onSendMessageText(text);
       }
     }
@@ -299,18 +375,180 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
       const text = localText.trim();
       setLocalText('');
+      setIsSlashActive(false);
+      setSelectionRange(null);
       onSendMessageText(text);
     }
   };
 
+  // Detecta se há marcadores de formatação para prévia
+  const hasFormattingMarkers = /[*_~`]|(?:^|\n)(?:[-*]|\d+\.|>)\s/.test(localText);
+
   return (
-    <>
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: '6px' }}>
+      {/* ── POPOVER DE AUTOCOMPLETE DE MENSAGENS RÁPIDAS (ÁUDIO 2) ── */}
+      {isSlashActive && matchingQuickMessages.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            left: 0,
+            width: '100%',
+            maxWidth: '420px',
+            maxHeight: '260px',
+            overflowY: 'auto',
+            background: isDarkMode ? '#1e293b' : '#ffffff',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '8px 12px',
+              background: isDarkMode ? '#0f172a' : '#f8fafc',
+              borderBottom: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              color: '#14A9D7',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Zap size={13} />
+              <span>Mensagens Rápidas ({matchingQuickMessages.length})</span>
+            </div>
+            <span style={{ fontSize: '0.64rem', color: isDarkMode ? '#64748b' : '#94a3b8', fontWeight: 500, textTransform: 'none' }}>
+              Tab ou Enter para selecionar • Espaço para dispensar
+            </span>
+          </div>
+
+          <div style={{ maxHeight: '210px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {matchingQuickMessages.map((qm, idx) => {
+              const isSelected = idx === selectedQuickIndex;
+              return (
+                <div
+                  key={qm.id}
+                  onClick={() => applyQuickMessage(qm)}
+                  onMouseEnter={() => setSelectedQuickIndex(idx)}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    background: isSelected
+                      ? (isDarkMode ? 'rgba(20, 169, 215, 0.18)' : '#e0f2fe')
+                      : 'transparent',
+                    borderLeft: isSelected ? '3px solid #14A9D7' : '3px solid transparent',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: '0.80rem',
+                        color: isSelected ? '#14A9D7' : (isDarkMode ? '#f8fafc' : '#0f172a'),
+                      }}
+                    >
+                      /{qm.keyword}
+                    </span>
+                    <span style={{ fontSize: '0.64rem', color: isDarkMode ? '#64748b' : '#94a3b8' }}>
+                      {qm.createdBy}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.74rem',
+                      color: isDarkMode ? '#94a3b8' : '#64748b',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {qm.message}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── BARRA FLUTUANTE DE FORMATAÇÃO NA SELEÇÃO DE TEXTO (ÁUDIO 3) ── */}
+      {selectionRange && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: 0,
+            zIndex: 1001,
+          }}
+        >
+          <WhatsAppFormattingToolbar
+            inputRef={inputRef}
+            value={localText}
+            onChange={(val) => {
+              setLocalText(val);
+              setSelectionRange(null);
+            }}
+            isDarkMode={isDarkMode}
+            position="floating"
+          />
+        </div>
+      )}
+
+      {/* ── PRÉVIA EM TEMPO REAL DA FORMATAÇÃO (ÁUDIO 3) ── */}
+      {!isSlashActive && !selectionRange && hasFormattingMarkers && localText.trim().length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: 0,
+            maxWidth: '100%',
+            background: isDarkMode ? '#0b141a' : '#f0fdf4',
+            border: isDarkMode ? '1px solid rgba(0, 168, 132, 0.3)' : '1px solid #bbf7d0',
+            borderRadius: '8px',
+            padding: '4px 10px',
+            fontSize: '0.76rem',
+            color: isDarkMode ? '#e9edef' : '#14532d',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 999,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#00a884', textTransform: 'uppercase' }}>
+            Prévia:
+          </span>
+          <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+            {renderFormattedTextWithLinks(localText, isDarkMode)}
+          </div>
+        </div>
+      )}
+
       <input
+        ref={inputRef}
         type="text"
         value={localText}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem"}
+        onSelect={handleSelect}
+        placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem ou digite / para atalhos"}
         disabled={disabled || isSpectator}
         style={{
           flex: 1,
@@ -368,7 +606,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
           <Mic size={20} />
         </button>
       )}
-    </>
+    </div>
   );
 });
 
@@ -426,6 +664,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     loadOlderLeadActivities,
     loadLeadConversationDays,
     syncWhatsAppHistoryGap,
+    systemSlaConfig,
   } = useAdminState();
 
   const hasIcpConfigured = (targetLead: Lead) => {
@@ -514,6 +753,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     (currentUser?.role === 'pos_venda' && (!selectedFunnelId || selectedFunnelId === 'all' || selectedFunnelId === 'all_post_sale' || selectedFunnelId === 'post_sale_default'))
   );
   const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
+
+  const isManagerOrMaster = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role as string) || '';
+    const roleTitle = ((currentUser as any).roleTitle || '').toLowerCase();
+    return (
+      role === 'master' || 
+      role === 'admin' || 
+      role === 'gerencia' || 
+      role === 'gerente' || 
+      roleTitle.includes('geren') || 
+      roleTitle.includes('direto')
+    );
+  }, [currentUser]);
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
@@ -1276,6 +1529,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         }
         if (!lead.venueId && lead.masterId && scopedMasterId && lead.masterId !== scopedMasterId) {
           return false;
+        }
+      }
+
+      // Blindagem Estrita de Acesso por Etapa (Áudios 4 & 5):
+      // Gerente e Master sempre têm acesso irrestrito a todas as etapas e funis.
+      // Usuários normais só visualizam leads da etapa se ela não for restrita OU se o usuário estiver explicitamente em allowedCollaboratorIds.
+      if (!isManagerOrMaster && currentUser?.id) {
+        const leadFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : (currentFunnel || funnels[0]);
+        if (leadFunnel && Array.isArray(leadFunnel.stages)) {
+          const leadStageConfig = leadFunnel.stages.find(
+            st => st.id === lead.stage || (st as any).key === lead.stage || (st.name && lead.stage && st.name.toLowerCase() === lead.stage.toLowerCase())
+          );
+          if (leadStageConfig && Array.isArray(leadStageConfig.allowedCollaboratorIds) && leadStageConfig.allowedCollaboratorIds.length > 0) {
+            if (!leadStageConfig.allowedCollaboratorIds.includes(currentUser.id)) {
+              if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
+                return false;
+              }
+            }
+          }
         }
       }
 
@@ -4549,7 +4821,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               const lastTime = lastMessageActivity?.timestamp || lead.updatedAt || lead.createdAt;
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
-              const sla = getLeadWaitTimeSla(pendingWaitMs);
+              const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 
               const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
               const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
@@ -5520,7 +5792,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             )}
 
             {/* Barra de Abas Setoriais de WhatsApp (Comercial e Pós-Venda) */}
-            {(isPostSaleChat || Boolean(activeChannelsFunnel) || visiblePostSaleChannels.length > 0) && (
+            {(isPostSaleChat || Boolean(activeChannelsFunnel) || visiblePostSaleChannels.length > 0) && composerTab === 'whatsapp' && (
               <div style={{
                 padding: '7px 20px',
                 borderBottom: '1px solid var(--adm-border)',
@@ -7522,7 +7794,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {combinedLeadTasks.map((task, idx) => {
                         const isDone = task.status === 'completed';
-                        const isLate = !isDone && Boolean(task.dueDate) && new Date(task.dueDate!) < new Date();
+                        const isLate = isTaskOverdue(task);
                         const collabLabel = (task as any).assignedToName || task.createdByName || (task.assignedToIds && task.assignedToIds.length ? 'Equipe' : null);
                         const isInlineCompleting = inlineCompletingTaskId === task.id;
                         const outcome: 'success' | 'unsuccessful' = (task as any).customProperties?.outcome ||
@@ -9074,8 +9346,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       transition: 'all 0.15s ease',
                     }}
                   >
-                    {isPostSaleFunnel ? <Calendar size={13} /> : <PhoneCall size={13} />}
-                    <span>{isPostSaleFunnel ? 'Tarefas & Agendamentos' : 'Follow-ups'}</span>
+                    <CheckSquare size={13} />
+                    <span>Tarefas</span>
                     <span style={{
                       fontSize: '0.64rem',
                       padding: '1px 5px',

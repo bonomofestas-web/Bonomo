@@ -12,6 +12,7 @@ import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
+import { isTaskOverdue } from '../../utils/taskColors';
 import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 
 interface AdminClientInspectorProps {
@@ -2491,7 +2492,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {clientTasks.map(task => {
                     const isDone = task.status === 'completed';
-                    const isLate = !isDone && Boolean(task.dueDate) && new Date(task.dueDate!) < new Date();
+                    const isLate = isTaskOverdue(task);
                     const collabLabel = task.createdByName || (task.assignedToIds && task.assignedToIds.length ? 'Equipe' : null);
 
                     return (

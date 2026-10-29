@@ -111,7 +111,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     return found || funnels[0];
   }, [funnels, selectedFunnelId]);
 
-  // Role / Permission Control: Master or Venue Admin
   const canConfigure = useMemo(() => {
     if (!currentUser) return false;
     if (currentUser.role === 'master' || (currentUser as any).isDev) return true;
@@ -121,6 +120,37 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     }
     return false;
   }, [currentUser, activeFunnel]);
+
+  // Colaboradores vinculados às unidades físicas do funil ativo (Áudio 4)
+  const funnelCollaborators = useMemo(() => {
+    if (!activeFunnel) return collaborators;
+
+    const vId = activeFunnel.venueId;
+    const sharedIds: string[] = Array.isArray(activeFunnel.sharedVenueIds) 
+      ? activeFunnel.sharedVenueIds 
+      : Array.isArray((activeFunnel as any).shared_venue_ids)
+        ? (activeFunnel as any).shared_venue_ids
+        : [];
+    
+    const targetVenueIds = [
+      ...(vId && vId !== 'all' ? [vId] : []),
+      ...sharedIds
+    ].filter(Boolean);
+
+    // Se o funil não tem casa específica (ou é global para todas as unidades)
+    if (targetVenueIds.length === 0 || vId === 'all') {
+      return collaborators;
+    }
+
+    return collaborators.filter(c => {
+      // Masters e administradores têm visibilidade ampla
+      if (c.role === 'master' || c.role === 'admin' || (c as any).isDev) return true;
+      // Colaboradores sem restrição de casas também veem
+      if (!c.venueIds || c.venueIds.length === 0) return true;
+      // Colaborador deve estar vinculado a pelo menos uma das unidades do funil
+      return c.venueIds.some(venueId => targetVenueIds.includes(venueId));
+    });
+  }, [collaborators, activeFunnel]);
 
   const isPostSale = Boolean(
     activeFunnel?.isPostSale || 
@@ -1453,7 +1483,14 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       const venueConfig = venueDistributionConfig[venue.id] || {};
                       const venueDistMode = venueConfig.distributionMode || 'manual';
                       const venueSdrIds = venueConfig.assignedSdrIds || [];
-                      const displayCollaborators = collaborators.filter(c => c.active !== false);
+                      const displayCollaborators = collaborators.filter(c => {
+                        if (c.active === false) return false;
+                        if (c.role === 'master') return true;
+                        if (c.venueId === 'all') return true;
+                        if (c.venueId === venue.id) return true;
+                        if (Array.isArray(c.venueIds) && c.venueIds.includes(venue.id)) return true;
+                        return false;
+                      });
 
                       return (
                         <div
@@ -1779,8 +1816,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             {/* Quando Rodízio: Monte a lista de entrega com ordem e duplicação */}
                             {venueDistMode === 'round_robin' && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', background: 'var(--adm-bg-card)', padding: '8px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <span style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                                     Monte a lista de entrega ({venueSdrIds.length})
                                   </span>
                                   <button
@@ -1797,22 +1834,27 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                         }));
                                       }
                                     }}
+                                    disabled={displayCollaborators.length === 0}
                                     style={{
                                       background: 'var(--adm-accent-bg, rgba(59, 130, 246, 0.15))',
-                                      border: '1px solid var(--adm-accent, #3B82F6)',
+                                      border: '1px dashed var(--adm-accent, #3B82F6)',
                                       color: 'var(--adm-accent, #3B82F6)',
-                                      borderRadius: '4px',
-                                      padding: '2px 6px',
-                                      fontSize: '0.60rem',
+                                      borderRadius: '6px',
+                                      padding: '6px 10px',
+                                      fontSize: '0.68rem',
                                       fontWeight: 800,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
+                                      cursor: displayCollaborators.length === 0 ? 'not-allowed' : 'pointer',
+                                      opacity: displayCollaborators.length === 0 ? 0.5 : 1,
+                                      display: 'flex',
                                       alignItems: 'center',
-                                      gap: '3px',
+                                      justifyContent: 'center',
+                                      gap: '5px',
+                                      width: '100%',
+                                      transition: 'all 0.15s ease',
                                     }}
                                   >
-                                    <Plus size={10} />
-                                    <span>Adicionar</span>
+                                    <Plus size={12} strokeWidth={2.5} />
+                                    <span>{displayCollaborators.length === 0 ? 'Nenhum colaborador nesta unidade' : 'Adicionar ao Rodízio'}</span>
                                   </button>
                                 </div>
 
@@ -2260,6 +2302,97 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             {stage.hints || 'Nenhuma orientação cadastrada para esta etapa.'}
                           </p>
                         )}
+                      </div>
+
+                      {/* Permissões de Visualização da Etapa por Colaborador */}
+                      <div style={{
+                        background: 'var(--adm-bg-card)',
+                        border: '1px solid var(--adm-border)',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <ShieldCheck size={11} color="var(--adm-accent)" />
+                            <span>ACESSO À ETAPA</span>
+                          </span>
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? '#3B82F6' : '#10B981',
+                          }}>
+                            {(stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? `${stage.allowedCollaboratorIds.length} restrito(s)` : 'Acesso Geral'}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: 1.3 }}>
+                          {(stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0)
+                            ? 'Apenas os colaboradores marcados abaixo visualizam esta coluna no Kanban.'
+                            : 'Todos os colaboradores autorizados no funil visualizam esta etapa.'}
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: undefined } : s));
+                            }}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              border: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                              background: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                              color: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? '#10B981' : 'var(--adm-text-muted)',
+                              fontSize: '0.64rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Todos
+                          </button>
+
+                          {funnelCollaborators.map(c => {
+                            const isAllowed = (stage.allowedCollaboratorIds || []).includes(c.id);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  const currentAllowed = stage.allowedCollaboratorIds || [];
+                                  let nextAllowed: string[];
+                                  if (currentAllowed.includes(c.id)) {
+                                    nextAllowed = currentAllowed.filter(id => id !== c.id);
+                                  } else {
+                                    nextAllowed = [...currentAllowed, c.id];
+                                  }
+                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: nextAllowed.length > 0 ? nextAllowed : undefined } : s));
+                                }}
+                                style={{
+                                  padding: '3px 7px',
+                                  borderRadius: '4px',
+                                  border: isAllowed ? '1.5px solid var(--adm-accent, #3B82F6)' : '1px solid var(--adm-border)',
+                                  background: isAllowed ? 'var(--adm-accent-bg, rgba(59, 130, 246, 0.15))' : 'var(--adm-bg-input)',
+                                  color: isAllowed ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-text-muted)',
+                                  fontSize: '0.64rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                {isAllowed && <Check size={10} />}
+                                <span>{c.name.split(' ')[0]}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* Gatilhos / Automação da Etapa */}

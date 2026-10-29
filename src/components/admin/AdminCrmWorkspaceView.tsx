@@ -49,7 +49,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
     leads, venues, collaborators, currentUser, activeVenueId,
     updateLeadStage, closeLeadSaleWithValue, addLeadNote,
     assignLeadSdr,
-    tasks, addTask, updateTask, deleteTask, completeTaskWithFeedback
+    tasks, addTask, updateTask, deleteTask, completeTaskWithFeedback,
+    systemSlaConfig
   } = useAdminState();
 
   // ── Column 1 filter tabs ──────────────────────────────────────────────────
@@ -331,8 +332,8 @@ export const AdminCrmWorkspaceView: React.FC<AdminCrmWorkspaceViewProps> = ({
                 .find(a => a.type === 'contact' && (a.text || a.mediaUrl));
               const lastActivity = lastMessageActivity || lead.activities?.[lead.activities.length - 1];
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
-              const sla = getLeadWaitTimeSla(pendingWaitMs);
-              const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
+              const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
+              const hasSlaAlert = sla.level !== 'none';
 
               const itemBg = hasSlaAlert
                 ? (isSelected ? (sla.level === 'red' ? 'rgba(239, 68, 68, 0.12)' : sla.level === 'orange' ? 'rgba(249, 115, 22, 0.10)' : 'rgba(234, 179, 8, 0.08)') : sla.cardBg)

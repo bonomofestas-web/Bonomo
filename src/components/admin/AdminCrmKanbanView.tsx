@@ -40,6 +40,7 @@ import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { validateLeadForWon } from '../../utils/leadValidation';
 import { sortLeadsByCriteria, getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
+import { isPhoneMatch } from '../../services/leadService';
 import type { Lead, CrmStage, CommercialFunnel, FunnelStageConfig, CommercialCommitmentType } from '../../types/admin';
 
 interface AdminCrmKanbanViewProps {
@@ -224,6 +225,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     isFunnelPinned,
     reassignLeadFunnel,
     viewingAsCollaborator,
+    validateLead,
+    systemSlaConfig,
   } = useAdminState();
 
   const [unavailableModal, setUnavailableModal] = useState<{
@@ -764,9 +767,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // Allowed venues for user
   const userAllowedVenueIds = useMemo(() => {
-    if (!currentUser || currentUser.role === 'master') return null;
-    return currentUser.venueIds && currentUser.venueIds.length > 0 ? currentUser.venueIds : [];
-  }, [currentUser]);
+    if (!effectiveUser || effectiveRole === 'master') return null;
+    return effectiveUser.venueIds && effectiveUser.venueIds.length > 0
+      ? effectiveUser.venueIds
+      : ((effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? [(effectiveUser as any).venueId] : []);
+  }, [effectiveUser, effectiveRole]);
 
   // Sync selected funnel with external prop
   useEffect(() => {
@@ -876,8 +881,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
     return baseFunnels.filter(funnel => {
       // 1. Collaborator Access Restriction (Managers/Master can see all; regular SDRs/Closers see only allowed)
-      if (!canConfigureFunnels && funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0 && currentUser?.id) {
-        if (!funnel.allowedCollaboratorIds.includes(currentUser.id)) return false;
+      if (!canConfigureFunnels && funnel.allowedCollaboratorIds && funnel.allowedCollaboratorIds.length > 0 && effectiveUser?.id) {
+        if (!funnel.allowedCollaboratorIds.includes(effectiveUser.id)) return false;
       }
 
       // 2. Filtro estrito de Unidade Selecionada no Topo (activeVenueId)
@@ -1168,6 +1173,15 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     // Se isWonStageEnabled for expressamente falso, oculta a etapa de ganho deste funil (funil de passagem)
     if (currentFunnel?.isWonStageEnabled === false) {
       rawStages = rawStages.filter(st => !st.isWon && st.id !== 'deal_closed' && st.id !== 'contrato_fechado');
+    }
+
+    // Delimitação de Acesso por Colaborador: se a etapa tiver allowedCollaboratorIds configurado,
+    // apenas os colaboradores autorizados visualizam a etapa (Gerentes e Master têm acesso total irrestrito)
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      rawStages = rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
     }
 
     return rawStages.map((st, idx) => ({
@@ -3690,8 +3704,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
                           const isSelectedInMulti = selectedLeadIds.includes(lead.id);
                           const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
-                          const sla = getLeadWaitTimeSla(pendingWaitMs);
-                          const hasSlaAlert = sla.level !== 'none' && sla.level !== 'recent';
+                          const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
+                          const hasSlaAlert = sla.level !== 'none';
 
                           return (
                             <div
@@ -4199,6 +4213,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                   color: string;
                                   border: string;
                                   title?: string;
+                                  onClick?: (e: React.MouseEvent) => void;
                                 }> = [];
 
                                 // 0) Tempo de Espera / SLA (Prioridade Máxima com Ícone de Relógio Lucide)
@@ -4212,6 +4227,30 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     border: sla.border,
                                     title: `Aguardando resposta da equipe: ${sla.formattedTime} (${sla.label})`,
                                   });
+                                }
+
+                                // 0.1) Verificação de Lead / Cliente Duplicado (Mesmo telefone em outros funis da mesma modalidade)
+                                const isTargetClient = Boolean(lead.isClient || lead.group === 'Pós-Venda');
+                                const cleanLeadPhone = (lead.phone || '').replace(/\D/g, '');
+                                if (cleanLeadPhone.length >= 8) {
+                                  const hasDuplicate = leads.some(l => {
+                                    if (l.id === lead.id) return false;
+                                    const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
+                                    if (isTargetClient !== isLClient) return false;
+                                    return isPhoneMatch(l.phone, lead.phone);
+                                  });
+
+                                  if (hasDuplicate) {
+                                    chips.push({
+                                      id: 'duplicate_badge',
+                                      label: isTargetClient ? 'Cliente Duplicado' : 'Lead Duplicado',
+                                      icon: <Copy size={8.5} style={{ flexShrink: 0 }} />,
+                                      bg: 'rgba(245, 158, 11, 0.12)',
+                                      color: '#D97706',
+                                      border: 'rgba(245, 158, 11, 0.35)',
+                                      title: isTargetClient ? 'Cliente cadastrado em múltiplos funis de pós-venda' : 'Lead com mesmo telefone cadastrado em múltiplos funis comerciais',
+                                    });
+                                  }
                                 }
 
                                 // A) Casa de Festas (Ícone de Estabelecimento Comercial: Store)
@@ -4270,6 +4309,32 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     border: 'rgba(212, 175, 55, 0.25)',
                                     title: `Indicada por: ${lead.debutanteName || 'Indicação'}`,
                                   });
+
+                                  if (lead.isValidated) {
+                                    chips.push({
+                                      id: 'referral_validated',
+                                      label: 'Indicação Validada',
+                                      icon: <Check size={8.5} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+                                      bg: 'rgba(16, 185, 129, 0.12)',
+                                      color: '#059669',
+                                      border: 'rgba(16, 185, 129, 0.3)',
+                                      title: 'Indicação validada (+1 ponto creditado à debutante)',
+                                    });
+                                  } else {
+                                    chips.push({
+                                      id: 'validate_referral',
+                                      label: 'Validar Indicação',
+                                      icon: <Check size={8.5} strokeWidth={3} style={{ flexShrink: 0 }} />,
+                                      bg: '#10B981',
+                                      color: '#FFFFFF',
+                                      border: '#059669',
+                                      title: 'Clique para validar indicação (+1 ponto na jornada)',
+                                      onClick: (e: React.MouseEvent) => {
+                                        e.stopPropagation();
+                                        validateLead(lead.id);
+                                      },
+                                    });
+                                  }
                                 } else if (lead.source === 'trafego_pago' || lead.sourceName?.toLowerCase().includes('meta') || lead.sourceName?.toLowerCase().includes('ads')) {
                                   chips.push({
                                     id: 'source_ads',
@@ -4422,32 +4487,68 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                     minWidth: 0,
                                   }}>
                                     {chips.map(chip => (
-                                      <span
-                                        key={chip.id}
-                                        title={chip.title || chip.label}
-                                        style={{
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '3px',
-                                          padding: '2px 6px',
-                                          borderRadius: '9999px',
-                                          fontSize: '0.58rem',
-                                          fontWeight: 700,
-                                          background: chip.bg,
-                                          border: `1px solid ${chip.border}`,
-                                          color: chip.color,
-                                          whiteSpace: 'nowrap',
-                                          maxWidth: '120px',
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis',
-                                          lineHeight: 1.15,
-                                        }}
-                                      >
-                                        {chip.icon}
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                          {chip.label}
+                                      chip.onClick ? (
+                                        <button
+                                          key={chip.id}
+                                          type="button"
+                                          onClick={chip.onClick}
+                                          title={chip.title || chip.label}
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            padding: '2px 7px',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.58rem',
+                                            fontWeight: 800,
+                                            background: chip.bg,
+                                            border: `1px solid ${chip.border}`,
+                                            color: chip.color,
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            maxWidth: '130px',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            lineHeight: 1.15,
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)'; }}
+                                          onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+                                        >
+                                          {chip.icon}
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {chip.label}
+                                          </span>
+                                        </button>
+                                      ) : (
+                                        <span
+                                          key={chip.id}
+                                          title={chip.title || chip.label}
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            padding: '2px 6px',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.58rem',
+                                            fontWeight: 700,
+                                            background: chip.bg,
+                                            border: `1px solid ${chip.border}`,
+                                            color: chip.color,
+                                            whiteSpace: 'nowrap',
+                                            maxWidth: '120px',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            lineHeight: 1.15,
+                                          }}
+                                        >
+                                          {chip.icon}
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {chip.label}
+                                          </span>
                                         </span>
-                                      </span>
+                                      )
                                     ))}
 
                                     {/* Botão (+) Tracejado para Adicionar Tag Rápida com Popover Inline */}
@@ -5152,7 +5253,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     const hasNoAssignee = !lead.assignedTo || lead.assignedTo === 'Sem responsável' || lead.assignedTo === 'Não atribuído';
                     const isSelectedInMulti = selectedLeadIds.includes(lead.id);
                     const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
-                    const sla = getLeadWaitTimeSla(pendingWaitMs);
+                    const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 
                     return (
                       <tr 

@@ -1,4 +1,4 @@
-import type { Lead } from '../types/admin';
+import type { Lead, SystemSlaConfig } from '../types/admin';
 import { leadService } from '../services/leadService';
 
 /**
@@ -241,7 +241,7 @@ export function formatWaitTime(ms: number): string {
 }
 
 export interface WaitTimeSla {
-  level: 'none' | 'recent' | 'yellow' | 'orange' | 'red';
+  level: 'none' | 'ideal' | 'recent' | 'warning' | 'yellow' | 'orange' | 'critical' | 'red';
   label: string;
   formattedTime: string;
   color: string;
@@ -252,9 +252,12 @@ export interface WaitTimeSla {
 }
 
 /**
- * Retorna as propriedades visuais de SLA (Amarelo > 10m, Laranja > 1h, Vermelho > 2h)
+ * Retorna as propriedades visuais de SLA configuráveis:
+ * - Ideal: elapsed <= idealMinutes -> tom azul claro suave (#38BDF8)
+ * - Preocupante: idealMinutes < elapsed <= criticalMinutes -> tom amarelo (#F59E0B)
+ * - Alarmante: elapsed > criticalMinutes -> tom vermelho (#EF4444)
  */
-export function getLeadWaitTimeSla(pendingWaitMs: number): WaitTimeSla {
+export function getLeadWaitTimeSla(pendingWaitMs: number, slaConfig?: SystemSlaConfig): WaitTimeSla {
   if (pendingWaitMs <= 0) {
     return {
       level: 'none',
@@ -269,62 +272,50 @@ export function getLeadWaitTimeSla(pendingWaitMs: number): WaitTimeSla {
   }
 
   const formattedTime = formatWaitTime(pendingWaitMs);
-  const tenMinutesMs = 10 * 60 * 1000;
-  const oneHourMs = 60 * 60 * 1000;
-  const twoHoursMs = 120 * 60 * 1000;
+  const idealMinutes = slaConfig?.idealMinutes ?? 10;
+  const criticalMinutes = slaConfig?.criticalMinutes ?? 60;
+  const idealMs = idealMinutes * 60 * 1000;
+  const criticalMs = criticalMinutes * 60 * 1000;
 
-  // Nível 3: Vermelho (Crítico / Atraso grave > 2 horas)
-  if (pendingWaitMs >= twoHoursMs) {
+  // Nível 3: Alarmante (Vermelho > criticalMinutes)
+  if (pendingWaitMs > criticalMs) {
+    const critLabel = criticalMinutes >= 60 ? `${Math.round(criticalMinutes / 60)}h` : `${criticalMinutes}m`;
     return {
-      level: 'red',
-      label: 'Espera Crítica (> 2h)',
+      level: 'critical',
+      label: `Alarmante (> ${critLabel})`,
       formattedTime,
-      color: '#EF4444',
+      color: '#DC2626',
       bg: 'rgba(239, 68, 68, 0.14)',
       border: 'rgba(239, 68, 68, 0.40)',
-      cardBg: 'rgba(239, 68, 68, 0.06)',
-      cardBorder: 'rgba(239, 68, 68, 0.50)',
+      cardBg: 'rgba(239, 68, 68, 0.08)',
+      cardBorder: 'rgba(239, 68, 68, 0.55)',
     };
   }
 
-  // Nível 2: Laranja (Alerta moderado > 1 hora)
-  if (pendingWaitMs >= oneHourMs) {
+  // Nível 2: Preocupante (Amarelo idealMinutes < tempo <= criticalMinutes)
+  if (pendingWaitMs > idealMs) {
     return {
-      level: 'orange',
-      label: 'Alerta de Espera (> 1h)',
+      level: 'warning',
+      label: `Preocupante (> ${idealMinutes}m)`,
       formattedTime,
-      color: '#F97316',
-      bg: 'rgba(249, 115, 22, 0.12)',
-      border: 'rgba(249, 115, 22, 0.38)',
-      cardBg: 'rgba(249, 115, 22, 0.05)',
-      cardBorder: 'rgba(249, 115, 22, 0.45)',
+      color: '#D97706',
+      bg: 'rgba(245, 158, 11, 0.14)',
+      border: 'rgba(245, 158, 11, 0.38)',
+      cardBg: 'rgba(245, 158, 11, 0.06)',
+      cardBorder: 'rgba(245, 158, 11, 0.45)',
     };
   }
 
-  // Nível 1: Amarelo (Atenção > 10 minutos)
-  if (pendingWaitMs >= tenMinutesMs) {
-    return {
-      level: 'yellow',
-      label: 'Aguardando (> 10m)',
-      formattedTime,
-      color: '#EAB308',
-      bg: 'rgba(234, 179, 8, 0.12)',
-      border: 'rgba(234, 179, 8, 0.35)',
-      cardBg: 'rgba(234, 179, 8, 0.04)',
-      cardBorder: 'rgba(234, 179, 8, 0.40)',
-    };
-  }
-
-  // Nível 0: Recente (< 10 minutos)
+  // Nível 1: Ideal (Azul Claro Suave <= idealMinutes)
   return {
-    level: 'recent',
-    label: 'Aguardando (< 10m)',
+    level: 'ideal',
+    label: `Ideal (≤ ${idealMinutes}m)`,
     formattedTime,
-    color: '#10B981',
-    bg: 'rgba(16, 185, 129, 0.10)',
-    border: 'rgba(16, 185, 129, 0.28)',
-    cardBg: 'transparent',
-    cardBorder: 'transparent',
+    color: '#0284C7',
+    bg: 'rgba(56, 189, 248, 0.14)',
+    border: 'rgba(56, 189, 248, 0.35)',
+    cardBg: 'rgba(56, 189, 248, 0.08)',
+    cardBorder: 'rgba(56, 189, 248, 0.35)',
   };
 }
 

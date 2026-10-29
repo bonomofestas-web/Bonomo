@@ -22,35 +22,60 @@ export const formatPhone = (phone?: string | null): string => {
   // Se for LID do WhatsApp, não exibe string crua de dispositivo na interface
   if (isLidIdentifier(phone)) return '';
 
-  // Remove todos os caracteres não numéricos
-  const numbers = phone.replace(/\D/g, '');
-  
+  const trimmed = String(phone).trim();
+
+  const hasPlus = trimmed.startsWith('+');
+
+  // Remove caracteres não numéricos
+  const numbers = trimmed.replace(/\D/g, '');
   if (!numbers) return '';
 
-  // Se já tiver DDI do Brasil (55), remove para padronizar
-  const clean = numbers.startsWith('55') && numbers.length > 11 
-    ? numbers.substring(2) 
-    : numbers;
+  // 1. Número com DDI 55 (Brasil): 13 dígitos (+55 XX 9XXXX-XXXX)
+  if (numbers.length === 13 && numbers.startsWith('55')) {
+    const ddd = numbers.slice(2, 4);
+    const part1 = numbers.slice(4, 9);
+    const part2 = numbers.slice(9);
+    return `+55 (${ddd}) ${part1}-${part2}`;
+  }
 
-  // Celular com 11 dígitos: (XX) 9XXXX-XXXX
-  if (clean.length === 11) {
-    return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
+  // 2. Número com DDI 55 (Brasil) sem o 9 (fixo ou antigo): 12 dígitos (+55 XX XXXX-XXXX)
+  if (numbers.length === 12 && numbers.startsWith('55')) {
+    const ddd = numbers.slice(2, 4);
+    const part1 = numbers.slice(4, 8);
+    const part2 = numbers.slice(8);
+    return `+55 (${ddd}) ${part1}-${part2}`;
+  }
+
+  // 3. Celular nacional com 11 dígitos: (XX) 9XXXX-XXXX
+  if (numbers.length === 11) {
+    const ddd = numbers.slice(0, 2);
+    const part1 = numbers.slice(2, 7);
+    const part2 = numbers.slice(7);
+    return `${hasPlus ? '+55 ' : ''}(${ddd}) ${part1}-${part2}`;
   }
   
-  // Fixo com 10 dígitos: (XX) XXXX-XXXX
-  if (clean.length === 10) {
-    return `(${clean.slice(0, 2)}) ${clean.slice(2, 6)}-${clean.slice(6)}`;
+  // 4. Fixo nacional com 10 dígitos: (XX) XXXX-XXXX
+  if (numbers.length === 10) {
+    const ddd = numbers.slice(0, 2);
+    const part1 = numbers.slice(2, 6);
+    const part2 = numbers.slice(6);
+    return `${hasPlus ? '+55 ' : ''}(${ddd}) ${part1}-${part2}`;
   }
 
-  // Menor que 10 dígitos: formata progressivo
-  if (clean.length > 6) {
-    return `(${clean.slice(0, 2)}) ${clean.slice(2, clean.length - 4)}-${clean.slice(clean.length - 4)}`;
-  }
-  if (clean.length > 2) {
-    return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
+  // 5. Número internacional ou fora do padrão comum
+  if (hasPlus || numbers.length > 13) {
+    return hasPlus ? trimmed : `+${numbers}`;
   }
 
-  return clean;
+  // Menor que 10 dígitos: formatação progressiva
+  if (numbers.length > 6) {
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, numbers.length - 4)}-${numbers.slice(numbers.length - 4)}`;
+  }
+  if (numbers.length > 2) {
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+  }
+
+  return numbers;
 };
 
 export const maskPhoneInput = (value: string): string => {

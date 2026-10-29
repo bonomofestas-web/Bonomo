@@ -236,6 +236,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     updateClient, 
     updateLeadData,
     deleteClient, 
+    deleteMultipleClients,
     updateClientStage, 
     funnels, 
     addFunnel,
@@ -703,15 +704,19 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const extraClientsFromLeads: Client[] = (leads || [])
       .filter(l => {
         if (existingClientIds.has(l.id)) return false;
-        // Isolamento Estrito: se o lead tem funnelId, pertence APENAS àquele funil
+        // Áudio 1: REGRA SUPREMA - LEADS NÃO PODEM APARECER EM PÓS-VENDA
+        // Contatos com código LEAD- ou que não sejam clientes são terminantemente proibidos no Pós-Venda.
+        const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')) || (l as any).won || (l as any).status === 'won');
+        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
+        if (!isRealClient || isLeadCode) return false;
+
         if (l.funnelId) {
           return currentFunnel ? l.funnelId === currentFunnel.id : true;
         }
-        // Se não tem funnelId, pertence UNICAMENTE ao funil padrão de pós-venda (nunca a Decor ou outros)
         if (currentFunnel && currentFunnel.id !== defaultPostSaleId) {
           return false;
         }
-        return l.isClient || l.group === 'Pós-Venda';
+        return true;
       })
       .map(l => ({
         id: l.id,
@@ -940,11 +945,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     setIsMultiSelectMode(false);
   };
 
-  const handleBatchDelete = () => {
-    if (confirm(`Deseja realmente excluir os ${selectedClientIds.length} clientes selecionados?`)) {
-      selectedClientIds.forEach(id => deleteClient(id));
+  const handleBatchDelete = async () => {
+    if (selectedClientIds.length === 0) return;
+    if (confirm(`Deseja realmente excluir os ${selectedClientIds.length} clientes selecionados? Essa ação não pode ser desfeita.`)) {
+      const idsToDelete = [...selectedClientIds];
       setSelectedClientIds([]);
       setIsMultiSelectMode(false);
+      await deleteMultipleClients(idsToDelete);
     }
   };
 
@@ -2433,84 +2440,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         </div>
       </div>
 
-      {/* ── Barra de Ações em Massa (Quando seleção múltipla ativa com itens selecionados) ── */}
-      {isMultiSelectMode && selectedClientIds.length > 0 && (
-        <div style={{
-          background: 'var(--adm-accent-bg)',
-          borderBottom: '1px solid var(--adm-accent)',
-          padding: '6px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '0.74rem',
-          fontWeight: 700,
-          color: 'var(--adm-accent)',
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>{selectedClientIds.length} cliente(s) selecionado(s)</span>
-            <button
-              type="button"
-              onClick={() => setSelectedClientIds(filteredClients.map(c => c.id))}
-              style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-title)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.70rem' }}
-            >
-              Selecionar Todos ({filteredClients.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedClientIds([])}
-              style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.70rem' }}
-            >
-              Desmarcar
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.70rem', color: 'var(--adm-text-title)' }}>Mover para etapa:</span>
-            {activeStageColumns.map(col => (
-              <button
-                key={col.id}
-                type="button"
-                onClick={() => handleBatchMoveStage(col.id)}
-                style={{
-                  background: 'var(--adm-bg-card)',
-                  border: `1px solid ${col.color}`,
-                  color: col.color,
-                  borderRadius: '4px',
-                  padding: '2px 6px',
-                  fontSize: '0.66rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                }}
-              >
-                {col.title.split(' ')[0]}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={handleBatchDelete}
-              style={{
-                background: '#EF4444',
-                border: 'none',
-                color: '#fff',
-                borderRadius: '4px',
-                padding: '3px 8px',
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                marginLeft: '6px',
-              }}
-            >
-              <Trash2 size={11} />
-              <span>Excluir</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Top bar separator */}
 
       {/* ── 2. BARRA DE MÉTRICAS ULTRA-COMPACTA ── */}
       <div style={{
@@ -4123,6 +4053,128 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           </div>
         );
       })()}
+
+      {/* ── BARRA FLUTUANTE DE AÇÕES EM MASSA (PADRÃO COMERCIAL F5 SYSTEM) ── */}
+      {isMultiSelectMode && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: 'var(--adm-bg-card, #1E293B)',
+          border: '1px solid var(--adm-border, #334155)',
+          borderRadius: '8px',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.3)',
+          padding: '10px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--adm-text-title, #FFFFFF)' }}>
+            <span style={{ color: 'var(--adm-accent, #06B6D4)' }}>{selectedClientIds.length}</span> de {filteredClients.length} selecionado(s)
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedClientIds.length === filteredClients.length) {
+                setSelectedClientIds([]);
+              } else {
+                setSelectedClientIds(filteredClients.map(c => c.id));
+              }
+            }}
+            style={{
+              padding: '4px 8px',
+              borderRadius: '5px',
+              border: '1px solid var(--adm-border, #475569)',
+              background: 'transparent',
+              color: 'var(--adm-text-secondary, #94A3B8)',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {selectedClientIds.length === filteredClients.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+          </button>
+
+          <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
+
+          {/* Mover para Etapa */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--adm-text-muted, #94A3B8)' }}>Etapa:</span>
+            {activeStageColumns.slice(0, 4).map(col => (
+              <button
+                key={col.id}
+                type="button"
+                disabled={selectedClientIds.length === 0}
+                onClick={() => handleBatchMoveStage(col.id)}
+                style={{
+                  background: 'var(--adm-bg-input, #0F172A)',
+                  border: `1px solid ${col.borderColor || 'var(--adm-border)'}`,
+                  color: col.color || 'var(--adm-text-title)',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  cursor: selectedClientIds.length > 0 ? 'pointer' : 'not-allowed',
+                  opacity: selectedClientIds.length > 0 ? 1 : 0.5,
+                }}
+              >
+                {col.title.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+
+          {/* Excluir em Massa */}
+          <button
+            type="button"
+            disabled={selectedClientIds.length === 0}
+            onClick={handleBatchDelete}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              background: selectedClientIds.length > 0 ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: selectedClientIds.length > 0 ? '#EF4444' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: selectedClientIds.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: selectedClientIds.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <Trash2 size={13} />
+            <span>Excluir</span>
+          </button>
+
+          <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
+
+          {/* Cancelar Seleção */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedClientIds([]);
+              setIsMultiSelectMode(false);
+            }}
+            title="Cancelar seleção"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--adm-text-muted, #94A3B8)',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

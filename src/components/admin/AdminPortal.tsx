@@ -21,9 +21,11 @@ import { AdminSourcesView } from './AdminSourcesView';
 import { AdminWhatsAppWorkspaceView } from './AdminWhatsAppWorkspaceView';
 import { AdminTeamView } from './AdminTeamView';
 import { AdminTasksWorkspaceView } from './AdminTasksWorkspaceView';
+import { AdminQuickMessagesView } from './AdminQuickMessagesView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
 import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
 import { AdminUserSettingsView } from './AdminUserSettingsView';
+import { AdminSlaSettingsView } from './AdminSlaSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
 import { AdminDevUsersManagerView } from './AdminDevUsersManagerView';
 import { AdminDevAnnouncementsView } from './AdminDevAnnouncementsView';
@@ -604,6 +606,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         );
       case 'tasks':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
+      case 'quick-messages':
+        return <AdminQuickMessagesView />;
       case 'team-calendar':
         return <AdminTasksWorkspaceView onOpenLead={handleOpenLeadFromTask} workspaceContext="all" />;
       case 'dashboard':
@@ -729,6 +733,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminVenueGoalsView />;
       case 'master-dashboard':
         return <AdminMasterDashboardView />;
+      case 'sla-settings':
+        return <AdminSlaSettingsView />;
       case 'benefits':
         return <AdminBenefitsCatalogView onBack={() => handleSelectTab('debutantes')} />;
       case 'collaborators':
@@ -913,6 +919,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 category = 'Inicialização';
                 title = 'Registrar Primeira Casa de Festas';
               } else if (activeTab === 'tasks') { category = 'Ferramentas'; title = 'Central de Tarefas'; }
+              else if (activeTab === 'quick-messages') { category = 'Ferramentas'; title = 'Mensagens Rápidas'; }
               else if (activeTab === 'team-calendar') { category = 'Workspace'; title = 'Agenda'; }
               else if (activeTab === 'team') { category = 'Workspace'; title = 'Equipe'; }
               else if (activeTab === 'dashboard') { category = 'Comercial'; title = 'Dashboard'; }
@@ -1800,15 +1807,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 }}
                 title={
                   viewingAsCollaborator
-                    ? `Você está visualizando com os olhos de ${viewingAsCollaborator.name}. (Sua conta nativa: ${currentUser?.name})`
+                    ? `Visualizando com os olhos de ${viewingAsCollaborator.name} (${ROLE_LABELS[viewingAsCollaborator.role] || viewingAsCollaborator.role})`
                     : `${currentUser?.name || 'Administrador'} (${ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role})`
                 }
               >
-                <img
-                  src={(currentUser?.avatarUrl && !currentUser.avatarUrl.includes('unsplash.com')) ? currentUser.avatarUrl : createMonogramAvatar(currentUser?.name || 'Administrador')}
-                  alt="Perfil"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
+                {(() => {
+                  const displayUser = viewingAsCollaborator || currentUser;
+                  const avatarSrc = (displayUser?.avatarUrl && !displayUser.avatarUrl.includes('unsplash.com'))
+                    ? displayUser.avatarUrl
+                    : createMonogramAvatar(displayUser?.name || 'Administrador');
+                  return (
+                    <img
+                      src={avatarSrc}
+                      alt={displayUser?.name || 'Perfil'}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  );
+                })()}
               </button>
 
               {/* Profile Popover Dropdown */}
@@ -1817,7 +1832,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   position: 'absolute',
                   top: 'calc(100% + 8px)',
                   right: 0,
-                  width: '220px',
+                  width: '230px',
                   background: '#141118',
                   border: '1px solid rgba(20, 169, 215, 0.25)',
                   borderRadius: '14px',
@@ -1830,54 +1845,112 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   animation: 'fadeIn 0.15s ease-out',
                 }}>
                   {/* User Header Summary (aligned vertically, without duplicate photo) */}
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                    padding: '2px 4px 8px 4px',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                  }}>
-                    <div style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      color: '#FFFFFF',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      lineHeight: 1.2,
-                    }}>
-                      {currentUser?.name || 'Administrador'}
-                    </div>
-                    <div style={{
-                      fontSize: '0.68rem',
-                      color: '#8096A8',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      lineHeight: 1.2,
-                    }}>
-                      {currentUser?.email}
-                    </div>
-                    <div style={{ marginTop: '2px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        fontSize: '0.52rem',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(212, 175, 55, 0.15)',
-                        color: '#D4AF37',
-                        border: '1px solid rgba(212, 175, 55, 0.3)',
-                        letterSpacing: '0.4px',
+                  {(() => {
+                    const displayUser = viewingAsCollaborator || currentUser;
+                    return (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        padding: '2px 4px 8px 4px',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
                       }}>
-                        {ROLE_LABELS[currentUser?.role || 'master'] || currentUser?.role}
-                      </span>
-                    </div>
-                  </div>
+                        {viewingAsCollaborator && (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: 'rgba(20, 169, 215, 0.15)',
+                            border: '1px solid rgba(20, 169, 215, 0.4)',
+                            borderRadius: '6px',
+                            padding: '3px 6px',
+                            marginBottom: '4px',
+                          }}>
+                            <Eye size={11} color="#14A9D7" />
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#14A9D7' }}>
+                              Modo Olhar do Colaborador
+                            </span>
+                          </div>
+                        )}
+                        <div style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#FFFFFF',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.2,
+                        }}>
+                          {displayUser?.name || 'Administrador'}
+                        </div>
+                        <div style={{
+                          fontSize: '0.68rem',
+                          color: '#8096A8',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.2,
+                        }}>
+                          {displayUser?.email}
+                        </div>
+                        <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            fontSize: '0.52rem',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(212, 175, 55, 0.15)',
+                            color: '#D4AF37',
+                            border: '1px solid rgba(212, 175, 55, 0.3)',
+                            letterSpacing: '0.4px',
+                          }}>
+                            {ROLE_LABELS[displayUser?.role || 'master'] || displayUser?.role}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Menu Actions */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {viewingAsCollaborator && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          setViewingAsCollaborator(null);
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '7px 8px',
+                          borderRadius: '8px',
+                          background: 'rgba(20, 169, 215, 0.12)',
+                          border: '1px solid rgba(20, 169, 215, 0.35)',
+                          color: '#14A9D7',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.12s ease',
+                          marginBottom: '2px',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(20, 169, 215, 0.22)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(20, 169, 215, 0.12)';
+                        }}
+                      >
+                        <Eye size={15} color="#14A9D7" />
+                        <span>Sair da Visão ({viewingAsCollaborator.name.split(' ')[0]})</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {

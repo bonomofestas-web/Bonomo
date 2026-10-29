@@ -21,7 +21,9 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { getLeadStageLabel } from '../../utils/leadUtils';
 import { SafeAvatar } from './SafeAvatar';
-import type { CommercialFunnel } from '../../types/admin';
+import { AdminArchiveReasonModal } from './AdminArchiveReasonModal';
+import { AdminDeleteLeadModal } from './AdminDeleteLeadModal';
+import type { Lead, CommercialFunnel } from '../../types/admin';
 
 interface AdminLeadsListViewProps {
   onOpenLead: (leadId: string) => void;
@@ -46,6 +48,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
     unarchiveLead,
     deleteLead,
     deleteMultipleLeads,
+    deletedLeadsHistory,
   } = useAdminState();
 
   // Filtros
@@ -55,7 +58,11 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
   const [selectedCollabFilter, setSelectedCollabFilter] = useState<string>('all');
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>('all');
   const [selectedDateRange, setSelectedDateRange] = useState<'all' | 'today' | '7days' | '30days' | 'this_month' | 'this_year'>('all');
-  const [filterType, setFilterType] = useState<'all' | 'unindexed' | 'active' | 'hot' | 'won' | 'lost' | 'archived'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'unindexed' | 'active' | 'hot' | 'won' | 'lost' | 'archived' | 'deleted'>('all');
+  
+  // Modais de justificativa para manipulação de leads
+  const [leadToArchive, setLeadToArchive] = useState<Lead | null>(null);
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
   
   // Seleção múltipla para ações em lote
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
@@ -134,21 +141,24 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
 
   const handleBulkArchive = async () => {
     if (selectedLeadIds.length === 0) return;
-    if (confirm(`Deseja realmente arquivar os ${selectedLeadIds.length} leads selecionados? Eles serão desanexados dos funis ativos.`)) {
-      for (const id of selectedLeadIds) {
-        await archiveLead(id);
-      }
-      setSelectedLeadIds([]);
+    const reason = prompt(`Informe o motivo para arquivar os ${selectedLeadIds.length} leads selecionados:`);
+    if (reason === null) return;
+    for (const id of selectedLeadIds) {
+      await archiveLead(id, reason.trim() || undefined);
     }
+    setSelectedLeadIds([]);
   };
 
   const handleBulkDelete = async () => {
     if (selectedLeadIds.length === 0) return;
-    if (confirm(`Deseja realmente excluir os ${selectedLeadIds.length} leads selecionados? Essa ação não pode ser desfeita.`)) {
-      const idsToDelete = [...selectedLeadIds];
-      setSelectedLeadIds([]);
-      await deleteMultipleLeads(idsToDelete);
+    const reason = prompt(`Deseja realmente excluir os ${selectedLeadIds.length} leads selecionados? Essa ação registrará os dados no histórico de apagados.\n\nInforme o motivo da exclusão:`);
+    if (!reason || !reason.trim()) {
+      alert('A exclusão foi cancelada: é obrigatório informar o motivo.');
+      return;
     }
+    const idsToDelete = [...selectedLeadIds];
+    setSelectedLeadIds([]);
+    await deleteMultipleLeads(idsToDelete, reason.trim());
   };
 
   // Filtragem e Métricas
@@ -287,15 +297,44 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
       }
     });
 
-    return { total, unindexed, activeInFunnel, won, lost, archived };
-  }, [leads, funnelsMap]);
+    const deleted = (deletedLeadsHistory || []).length;
+    return { total, unindexed, activeInFunnel, won, lost, archived, deleted };
+  }, [leads, funnelsMap, deletedLeadsHistory]);
 
-  // Paginação dos itens filtrados
-  const totalPages = Math.ceil(filteredLeads.length / pageSize) || 1;
+  // Lista de leads apagados filtrada para a aba 'deleted'
+  const filteredDeletedLeads = useMemo(() => {
+    if (filterType !== 'deleted') return [];
+    return (deletedLeadsHistory || []).filter(record => {
+      if (selectedVenueFilter !== 'all' && record.venueId && record.venueId !== selectedVenueFilter) {
+        return false;
+      }
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase().trim();
+        const rawDigits = query.replace(/\D/g, '');
+        const matchesName = record.leadName?.toLowerCase().includes(query);
+        const matchesPhone = record.leadPhone?.includes(rawDigits || query);
+        const matchesReason = record.reason?.toLowerCase().includes(query);
+        const matchesAuthor = record.deletedBy?.toLowerCase().includes(query);
+        if (!matchesName && !matchesPhone && !matchesReason && !matchesAuthor) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [deletedLeadsHistory, filterType, selectedVenueFilter, searchTerm]);
+
+  // Paginação dos itens filtrados (CRM padrão ou Histórico de Apagados)
+  const activeTotalItems = filterType === 'deleted' ? filteredDeletedLeads.length : filteredLeads.length;
+  const totalPages = Math.ceil(activeTotalItems / pageSize) || 1;
   const paginatedLeads = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredLeads.slice(start, start + pageSize);
   }, [filteredLeads, currentPage, pageSize]);
+
+  const paginatedDeletedLeads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredDeletedLeads.slice(start, start + pageSize);
+  }, [filteredDeletedLeads, currentPage, pageSize]);
 
   // Seleção em massa
   const isAllPageSelected = paginatedLeads.length > 0 && paginatedLeads.every(l => selectedLeadIds.includes(l.id));
@@ -673,6 +712,45 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Histórico de Apagados */}
+        <div 
+          onClick={() => { setFilterType('deleted'); }}
+          style={{
+            background: filterType === 'deleted' ? 'rgba(239, 68, 68, 0.08)' : 'var(--adm-bg-card, #FFFFFF)',
+            border: filterType === 'deleted' ? '1.5px solid #EF4444' : '1px solid var(--adm-border, #E2E8F0)',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: 'rgba(239, 68, 68, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#EF4444',
+            flexShrink: 0,
+          }}>
+            <Trash2 size={19} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted, #64748B)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Leads Apagados
+            </span>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#EF4444', lineHeight: 1.2 }}>
+              {stats.deleted}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── BARRA DE FILTROS AVANÇADOS ── */}
@@ -996,6 +1074,25 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               <Archive size={13} color="#8B5CF6" />
               <span>Arquivados ({stats.archived})</span>
             </button>
+            <button
+              onClick={() => setFilterType('deleted')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: filterType === 'deleted' ? '1px solid #EF4444' : '1px solid var(--adm-border, #CBD5E1)',
+                background: filterType === 'deleted' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+                color: filterType === 'deleted' ? '#EF4444' : 'var(--adm-text-title, #334155)',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Trash2 size={13} color="#EF4444" />
+              <span>Histórico de Apagados ({stats.deleted})</span>
+            </button>
           </div>
 
           {/* Limpar Todos os Filtros */}
@@ -1141,7 +1238,102 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
         boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
       }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.80rem' }}>
+          {filterType === 'deleted' ? (
+            /* ── TABELA DE HISTÓRICO DE LEADS APAGADOS ── */
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.80rem' }}>
+              <thead>
+                <tr style={{
+                  background: 'var(--adm-bg-input, #F8FAFC)',
+                  borderBottom: '1.5px solid var(--adm-border, #E2E8F0)',
+                  color: 'var(--adm-text-muted, #64748B)',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}>
+                  <th style={{ padding: '14px 16px' }}>Lead Excluído</th>
+                  <th style={{ padding: '14px 16px' }}>Telefone</th>
+                  <th style={{ padding: '14px 16px' }}>Casa de Festas</th>
+                  <th style={{ padding: '14px 16px' }}>Data e Hora da Exclusão</th>
+                  <th style={{ padding: '14px 16px' }}>Excluído Por</th>
+                  <th style={{ padding: '14px 16px' }}>Motivo da Exclusão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedDeletedLeads.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--adm-text-muted, #64748B)' }}>
+                      <Trash2 size={36} style={{ opacity: 0.3, margin: '0 auto 10px auto' }} />
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)' }}>
+                        Nenhum lead apagado no histórico
+                      </div>
+                      <div style={{ fontSize: '0.78rem', marginTop: '4px' }}>
+                        Leads excluídos e suas justificativas de remoção aparecerão aqui para auditoria.
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedDeletedLeads.map(record => (
+                    <tr
+                      key={record.id}
+                      style={{
+                        borderBottom: '1px solid var(--adm-border, #E2E8F0)',
+                        background: 'transparent',
+                        transition: 'background 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--adm-bg-input, #F8FAFC)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title, #0F172A)' }}>
+                          {record.leadName}
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: 'var(--adm-text-muted, #94A3B8)' }}>
+                          ID: {record.leadId}
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--adm-text-title, #334155)', fontWeight: 600 }}>
+                        {formatPhone(record.leadPhone)}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--adm-text-title, #334155)', fontWeight: 600 }}>
+                        {record.venueName || (record.venueId ? venuesMap.get(record.venueId) : null) || 'Sem Casa'}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--adm-text-muted, #64748B)', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Clock size={12} />
+                          <span>{formatCreationDate(record.deletedAt)}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: 'var(--adm-text-title, #334155)', fontWeight: 700 }}>
+                        {record.deletedBy}
+                      </td>
+                      <td style={{ padding: '14px 16px', maxWidth: '380px' }}>
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'flex-start',
+                          gap: '6px',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          color: '#EF4444',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          lineHeight: 1.35,
+                          wordBreak: 'break-word',
+                        }}>
+                          <Trash2 size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                          <span>{record.reason}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          ) : (
+            /* ── TABELA PADRÃO DE LEADS NO CRM ── */
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.80rem' }}>
             <thead>
               <tr style={{
                 background: 'var(--adm-bg-input, #F8FAFC)',
@@ -1166,6 +1358,9 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                 <th style={{ padding: '14px 16px' }}>Origem</th>
                 <th style={{ padding: '14px 16px' }}>Responsáveis (SDR / Closer)</th>
                 <th style={{ padding: '14px 16px' }}>Funil / Etapa</th>
+                {filterType === 'lost' && (
+                  <th style={{ padding: '14px 16px', minWidth: '220px' }}>Motivo da Perda</th>
+                )}
                 <th style={{ padding: '14px 16px' }}>Data de Criação</th>
                 <th style={{ padding: '14px 16px', textAlign: 'right' }}>Ações</th>
               </tr>
@@ -1173,7 +1368,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
             <tbody>
               {paginatedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--adm-text-muted, #64748B)' }}>
+                  <td colSpan={filterType === 'lost' ? 10 : 9} style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--adm-text-muted, #64748B)' }}>
                     <Users size={36} style={{ opacity: 0.3, margin: '0 auto 10px auto' }} />
                     <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--adm-text-title, #0F172A)' }}>
                       Nenhum lead encontrado com os filtros selecionados
@@ -1385,6 +1580,29 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                         )}
                       </td>
 
+                      {/* Motivo da Perda (exibido na aba Perdidos) */}
+                      {filterType === 'lost' && (
+                        <td style={{ padding: '14px 16px', maxWidth: '300px' }}>
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'flex-start',
+                            gap: '6px',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            color: '#EF4444',
+                            fontSize: '0.74rem',
+                            fontWeight: 600,
+                            lineHeight: 1.35,
+                            wordBreak: 'break-word',
+                          }}>
+                            <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <span>{lead.rejectionReason || lead.lossReason || 'Sem motivo registrado'}</span>
+                          </div>
+                        </td>
+                      )}
+
                       {/* Data de Criação */}
                       <td style={{ padding: '14px 16px', color: 'var(--adm-text-muted, #64748B)', fontSize: '0.74rem', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1445,9 +1663,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                                   await unarchiveLead(lead.id);
                                 }
                               } else {
-                                if (confirm(`Deseja arquivar o lead "${lead.name}"?`)) {
-                                  await archiveLead(lead.id);
-                                }
+                                setLeadToArchive(lead);
                               }
                             }}
                             title={isArchived ? "Desarquivar Lead" : "Arquivar Lead"}
@@ -1470,9 +1686,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
                           {canDeleteLeads && !isWon && !isLost && (
                             <button
                               onClick={() => {
-                                if (confirm(`Deseja realmente excluir o lead "${lead.name}"? Todas as tarefas e dados serão removidos.`)) {
-                                  deleteLead(lead.id);
-                                }
+                                setLeadToDelete(lead);
                               }}
                               title="Excluir este lead permanentemente"
                               style={{
@@ -1498,6 +1712,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
               )}
             </tbody>
           </table>
+          )}
         </div>
 
         {/* ── PAGINAÇÃO E RODAPÉ DA TABELA ── */}
@@ -1512,7 +1727,7 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
           background: 'var(--adm-bg-input, #F8FAFC)',
         }}>
           <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted, #64748B)' }}>
-            Mostrando <strong>{filteredLeads.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</strong> a <strong>{Math.min(currentPage * pageSize, filteredLeads.length)}</strong> de <strong>{filteredLeads.length}</strong> leads filtrados
+            Mostrando <strong>{activeTotalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0}</strong> a <strong>{Math.min(currentPage * pageSize, activeTotalItems)}</strong> de <strong>{activeTotalItems}</strong> {filterType === 'deleted' ? 'registros no histórico' : 'leads filtrados'}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1757,6 +1972,28 @@ export const AdminLeadsListView: React.FC<AdminLeadsListViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ── MODAL DE JUSTIFICATIVA DE ARQUIVAMENTO ── */}
+      <AdminArchiveReasonModal
+        isOpen={Boolean(leadToArchive)}
+        lead={leadToArchive}
+        onClose={() => setLeadToArchive(null)}
+        onConfirmArchive={async (leadId: string, reason: string) => {
+          await archiveLead(leadId, reason);
+          setLeadToArchive(null);
+        }}
+      />
+
+      {/* ── MODAL DE JUSTIFICATIVA DE EXCLUSÃO ── */}
+      <AdminDeleteLeadModal
+        isOpen={Boolean(leadToDelete)}
+        lead={leadToDelete}
+        onClose={() => setLeadToDelete(null)}
+        onConfirmDelete={async (leadId: string, reason: string) => {
+          await deleteLead(leadId, reason);
+          setLeadToDelete(null);
+        }}
+      />
 
     </div>
   );

@@ -29,6 +29,7 @@ import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadVal
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { isPhoneMatch } from '../../services/leadService';
+import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
 import { generateUuid } from '../../utils/uuid';
 import type { 
@@ -140,6 +141,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     venueAgendaConfigs,
     appointments,
     updateFunnel,
+    systemSlaConfig,
   } = useAdminState();
 
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
@@ -1467,6 +1469,122 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Badge de Lead / Cliente Duplicado */}
+            {(() => {
+              if (!lead.phone) return null;
+              const cleanLeadPhone = lead.phone.replace(/\D/g, '');
+              if (cleanLeadPhone.length < 8) return null;
+              const isTargetClient = Boolean(lead.isClient || lead.group === 'Pós-Venda');
+
+              const hasDuplicate = leads.some(l => {
+                if (l.id === lead.id) return false;
+                const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
+                if (isTargetClient !== isLClient) return false;
+                return isPhoneMatch(l.phone, lead.phone);
+              });
+
+              if (!hasDuplicate) return null;
+
+              return (
+                <div
+                  title={isTargetClient ? 'Cliente cadastrado em múltiplos funis de pós-venda' : 'Lead com mesmo telefone cadastrado em múltiplos funis comerciais'}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    border: '1px solid rgba(245, 158, 11, 0.40)',
+                    color: '#F59E0B',
+                  }}
+                >
+                  <Copy size={11} strokeWidth={2.5} />
+                  <span>{isTargetClient ? 'Cliente Duplicado' : 'Lead Duplicado'}</span>
+                </div>
+              );
+            })()}
+
+            {/* Badge de SLA de Tempo de Resposta */}
+            {(() => {
+              const collabIdSet = new Set(collaborators.map(c => c.id));
+              const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIdSet);
+              if (pendingWaitMs <= 0) return null;
+              const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
+              return (
+                <div
+                  title={`Tempo de Espera: ${sla.formattedTime} (${sla.label})`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: sla.bg,
+                    border: `1px solid ${sla.border}`,
+                    color: sla.color,
+                  }}
+                >
+                  <Clock size={11} strokeWidth={2.5} />
+                  <span>{sla.formattedTime}</span>
+                </div>
+              );
+            })()}
+
+            {/* Botão de Validar Indicação para Leads de Debutante */}
+            {Boolean(lead.debutanteId || lead.source === 'indicacao' || (lead.debutanteName && lead.debutanteName !== 'Indicação Externa' && lead.debutanteName !== 'WhatsApp Direto')) && (
+              lead.isValidated ? (
+                <div
+                  title="Indicação validada (+1 ponto creditado à debutante)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    color: '#10B981',
+                  }}
+                >
+                  <Check size={11} strokeWidth={2.5} />
+                  <span>Validada</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsValidateModalOpen(true)}
+                  title="Validar indicação (+1 ponto na jornada da anfitriã)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 9px',
+                    borderRadius: '6px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: '#10B981',
+                    border: 'none',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 4px rgba(16, 185, 129, 0.3)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#059669'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#10B981'; }}
+                >
+                  <Check size={12} strokeWidth={3} />
+                  <span>Validar Indicação</span>
+                </button>
+              )
+            )}
+
             {isModal || onClose ? (
               <button
                 type="button"

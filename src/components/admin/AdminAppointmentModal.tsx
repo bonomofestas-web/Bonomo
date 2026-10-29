@@ -29,7 +29,11 @@ const CATEGORY_CONFIG: Record<AppointmentCategory, { label: string; icon: any; c
 const STATUS_CONFIG: Record<AppointmentStatus, { label: string; icon: any; color: string; bg: string }> = {
   confirmed: { label: 'Confirmado', icon: CheckCircle2, color: '#10B981', bg: 'rgba(16, 185, 129, 0.12)' },
   scheduled: { label: 'Agendado', icon: Clock, color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.12)' },
+  in_progress: { label: 'Em Execução', icon: Clock, color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.12)' },
   completed: { label: 'Concluído', icon: Sparkles, color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.12)' },
+  no_show: { label: 'Não Compareceu', icon: AlertCircle, color: '#F97316', bg: 'rgba(249, 115, 22, 0.12)' },
+  rescheduled: { label: 'Reagendado', icon: Calendar, color: '#EAB308', bg: 'rgba(234, 179, 8, 0.12)' },
+  reschedule_target: { label: 'Reagendado', icon: Calendar, color: '#EAB308', bg: 'rgba(234, 179, 8, 0.12)' },
   cancelled: { label: 'Cancelado', icon: AlertCircle, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)' },
 };
 
@@ -55,6 +59,16 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
   const [responsibleCollaboratorId, setResponsibleCollaboratorId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const currentTimeStr = useMemo(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }, []);
 
   // Find currently selected debutante and venue
   const selectedDebutante = useMemo(() => {
@@ -90,7 +104,8 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
       setDebutanteId(initialDebId);
       setTitle('Degustação do Menu de Gala');
       setCategory('Buffet & Degustação');
-      setDate(presetDate || new Date().toISOString().split('T')[0]);
+      const initialDate = presetDate && presetDate >= todayStr ? presetDate : todayStr;
+      setDate(initialDate);
       setTime('19:00');
       setLocation(selectedVenue?.name ? `${selectedVenue.name} - Salão Nobre` : 'Espaço Realizar - Salão Nobre');
       setStatus('confirmed');
@@ -108,6 +123,23 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
 
     setIsSubmitting(true);
     setConflictError(null);
+
+    // Validação estrita de datas e horários retroativos (Audio 2)
+    const now = new Date();
+    const currentTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (date < currentTodayStr) {
+      setConflictError('Não é permitido agendar compromissos em datas retroativas. Escolha a data de hoje ou uma data futura.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (date === currentTodayStr && time <= nowTimeStr) {
+      setConflictError(`O horário das ${time} já passou hoje. Escolha um horário após as ${nowTimeStr}.`);
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       // Checagem em tempo real para degustações ou visitas
@@ -506,6 +538,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                   <input
                     type="date"
                     required
+                    min={todayStr}
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     style={{
@@ -526,6 +559,7 @@ export const AdminAppointmentModal: React.FC<AdminAppointmentModalProps> = ({
                   <input
                     type="time"
                     required
+                    min={date === todayStr ? currentTimeStr : undefined}
                     value={time}
                     onChange={(e) => setTime(e.target.value)}
                     style={{

@@ -4,7 +4,8 @@ import {
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
   Repeat, CalendarRange, ArrowRight, ArrowLeft,
-  Edit3, CheckCircle2, AlertCircle, MapPin, RotateCcw
+  Edit3, CheckCircle2, AlertCircle, MapPin, RotateCcw,
+  Users, UserCheck
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -127,7 +128,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     venueAgendaConfigs, 
     updateVenueAgendaConfig,
     tasks,
-    updateTask
+    updateTask,
+    collaborators
   } = useAdminState();
 
   // Mini-App Etapas: 1: Selecionar Casa -> 2: Selecionar Tipo -> 3: Painel de Configurações
@@ -150,8 +152,25 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const existingConfig = venueAgendaConfigs.find(c => c.venueId === selectedVenueId) 
     || agendaAvailabilityService.getDefaultConfig(selectedVenueId);
 
-  // Modo ativo dentro da Etapa 3: 'hub', 'recurring', 'block', 'override'
-  const [activeMode, setActiveMode] = useState<'hub' | 'recurring' | 'block' | 'override'>('hub');
+  // Modo ativo dentro da Etapa 3: 'hub', 'recurring', 'block', 'override', 'closers'
+  const [activeMode, setActiveMode] = useState<'hub' | 'recurring' | 'block' | 'override' | 'closers'>('hub');
+
+  // Distribuição de Closers (Split)
+  const [closerDistributionMode, setCloserDistributionMode] = useState<'manual' | 'round_robin'>(() => existingConfig.closerDistributionMode || 'round_robin');
+  const [closerIds, setCloserIds] = useState<string[]>(() => existingConfig.closerIds || []);
+
+  // Closers elegíveis vinculados à casa ou comerciais
+  const availableClosers = useMemo(() => {
+    return (collaborators || []).filter(c => {
+      if (c.active === false) return false;
+      if (c.venueIds && c.venueIds.length > 0 && selectedVenueId !== 'all') {
+        if (!c.venueIds.includes(selectedVenueId)) return false;
+      }
+      const roleStr = (c.role || '').toLowerCase();
+      const titleStr = ((c as any).roleTitle || '').toLowerCase();
+      return roleStr.includes('closer') || roleStr.includes('commercial') || roleStr.includes('admin') || roleStr.includes('master') || titleStr.includes('closer');
+    });
+  }, [collaborators, selectedVenueId]);
 
   // Modo de Edição vs Leitura da Recorrência Semanal (por padrão entra em LEITURA)
   const [isEditingRecurring, setIsEditingRecurring] = useState(false);
@@ -221,6 +240,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     });
     setBlockRules(fresh.blockRules || []);
     setDateOverrides(fresh.dateOverrides || []);
+    setCloserDistributionMode(fresh.closerDistributionMode || 'round_robin');
+    setCloserIds(fresh.closerIds || []);
   }, [selectedVenueId, venueAgendaConfigs]);
 
   // Blocos por Período
@@ -512,7 +533,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const dur = newBlockDuration || 60;
       initialConfig[dateStr] = {
-        enabled: true,
+        enabled: false, // Áudio 6: Datas desativadas por padrão no bloco
         isConfigured: false, // Inicia branco (não configurado)
         startTime: newBlockDefaultStartTime,
         endTime: newBlockDefaultEndTime,
@@ -557,6 +578,16 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
 
 
 
+  // Nome amigável do dia da semana da data selecionada no bloco (Áudio 6)
+  const selectedWeekdayInfo = useMemo(() => {
+    if (!selectedBlockDate) return { dayIndex: -1, name: '', pluralName: '' };
+    const [y, m, d] = selectedBlockDate.split('-').map(Number);
+    const dayIndex = new Date(y, m - 1, d).getDay();
+    const names = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const plurals = ['Domingos', 'Segundas-feiras', 'Terças-feiras', 'Quartas-feiras', 'Quintas-feiras', 'Sextas-feiras', 'Sábados'];
+    return { dayIndex, name: names[dayIndex], pluralName: plurals[dayIndex] };
+  }, [selectedBlockDate]);
+
   // Copia a configuração do dia selecionado para todas as outras datas do bloco
   const handleApplySelectedBlockDayToAll = () => {
     if (!selectedBlockDate) return;
@@ -572,6 +603,68 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         };
       });
       return updated;
+    });
+  };
+
+  // Áudio 6: Replicar a configuração para os outros mesmos dias da semana dentro do período (ex: todas as terças-feiras)
+  const handleApplySelectedBlockDayToSameWeekday = () => {
+    if (!selectedBlockDate) return;
+    const sourceCfg = blockDaysConfig[selectedBlockDate];
+    if (!sourceCfg) return;
+
+    const [y, m, d] = selectedBlockDate.split('-').map(Number);
+    const sourceWeekday = new Date(y, m - 1, d).getDay();
+
+    setBlockDaysConfig(prev => {
+      const updated: Record<string, AgendaBlockDayConfig> = { ...prev };
+      blockPeriodDays.forEach(dateKey => {
+        const [dy, dm, dd] = dateKey.split('-').map(Number);
+        const targetWeekday = new Date(dy, dm - 1, dd).getDay();
+        if (targetWeekday === sourceWeekday) {
+          updated[dateKey] = {
+            ...sourceCfg,
+            isConfigured: true,
+            enabled: true, // Ativa automaticamente as datas replicadas
+          };
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Áudio 6: Ativar ou desativar rapidamente todas as datas do bloco
+  const handleToggleAllBlockDays = (enable: boolean) => {
+    setBlockDaysConfig(prev => {
+      const updated: Record<string, AgendaBlockDayConfig> = { ...prev };
+      blockPeriodDays.forEach(dateKey => {
+        if (updated[dateKey]) {
+          updated[dateKey] = {
+            ...updated[dateKey],
+            enabled: enable,
+            isConfigured: enable ? true : updated[dateKey].isConfigured,
+          };
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Áudio 1: Aumento e diminuição ponderada de closers na fila do split (listagem repetida/pesos)
+  const handleIncrementCloser = (closerId: string) => {
+    setCloserIds(prev => {
+      let currentList = prev.length === 0 ? availableClosers.map(c => c.id) : [...prev];
+      return [...currentList, closerId];
+    });
+  };
+
+  const handleDecrementCloser = (closerId: string) => {
+    setCloserIds(prev => {
+      let currentList = prev.length === 0 ? availableClosers.map(c => c.id) : [...prev];
+      const index = currentList.indexOf(closerId);
+      if (index >= 0) {
+        currentList.splice(index, 1);
+      }
+      return currentList;
     });
   };
 
@@ -856,6 +949,9 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       tastingsRule,
       blockRules: nextBlockRules,
       dateOverrides,
+      closerDistributionMode,
+      closerIds,
+      updatedAt: new Date().toISOString(),
     };
 
     try {
@@ -871,6 +967,35 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     } catch (err) {
       console.error('Erro ao salvar disponibilidade:', err);
       alert('Erro ao salvar as configurações no servidor.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Salvar configuração de distribuição de closers (Split)
+  const handleSaveCloserConfig = async () => {
+    setIsSaving(true);
+    const updatedConfig: VenueAgendaConfig = {
+      ...existingConfig,
+      id: existingConfig.id,
+      venueId: selectedVenueId,
+      visitsRule,
+      tastingsRule,
+      blockRules,
+      dateOverrides,
+      closerDistributionMode,
+      closerIds,
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await updateVenueAgendaConfig(updatedConfig);
+      if (onSaved) onSaved();
+      setSaveSuccessToast(true);
+      setTimeout(() => setSaveSuccessToast(false), 2500);
+      setActiveMode('hub');
+    } catch (err) {
+      console.error('Erro ao salvar split de closers:', err);
+      alert('Erro ao salvar as configurações.');
     } finally {
       setIsSaving(false);
     }
@@ -1807,6 +1932,83 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                 >
                   <span>Configurar Datas</span>
                   <ChevronRight size={15} color="#DC2626" />
+                </button>
+              </div>
+            </div>
+
+            {/* Card 4: Distribuição de Closers (Split de Atendimento) */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: '14px',
+              border: `1.5px solid ${closerDistributionMode === 'round_robin' ? '#8B5CF6' : 'var(--adm-border, #E2E8F0)'}`,
+              padding: '20px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              boxShadow: closerDistributionMode === 'round_robin' ? '0 4px 18px rgba(139, 92, 246, 0.1)' : '0 2px 8px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '12px',
+                  background: 'rgba(139, 92, 246, 0.10)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#8B5CF6',
+                  flexShrink: 0,
+                }}>
+                  <Users size={22} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--adm-text-title, #0F172A)' }}>
+                      Distribuição de Closers (Split de Atendimento)
+                    </span>
+                    <span style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: closerDistributionMode === 'round_robin' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(100,116,139,0.10)',
+                      color: closerDistributionMode === 'round_robin' ? '#7C3AED' : '#64748B',
+                      border: `1px solid ${closerDistributionMode === 'round_robin' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(100,116,139,0.18)'}`,
+                    }}>
+                      {closerDistributionMode === 'round_robin' ? 'Round-Robin Ativo' : 'Manual'}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.80rem', color: '#64748B', lineHeight: 1.45 }}>
+                    {closerDistributionMode === 'round_robin'
+                      ? `Distribuição automática e rotativa entre ${(closerIds.length > 0 ? closerIds.length : availableClosers.length)} closer(s) da unidade. Leads com atendimento anterior mantêm o Closer Fixo.`
+                      : 'Distribuição manual: o operador escolhe o closer no momento de registrar o agendamento.'}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('closers')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    color: '#7C3AED',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span>Configurar Split</span>
+                  <ChevronRight size={15} color="#7C3AED" />
                 </button>
               </div>
             </div>
@@ -2783,6 +2985,42 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#FEE2E2', border: '1px solid #EF4444' }} />
                                   <span style={{ color: '#DC2626', fontWeight: 700 }}>Desativado ({deactivatedDaysCount})</span>
                                 </div>
+
+                                {/* Áudio 6: Botões de ação rápida para ativar ou desativar todas as datas */}
+                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAllBlockDays(true)}
+                                    style={{
+                                      background: '#F0FDF4',
+                                      border: '1px solid #86EFAC',
+                                      color: '#15803D',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Ativar Todas
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleAllBlockDays(false)}
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECACA',
+                                      color: '#DC2626',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Desativar Todas
+                                  </button>
+                                </div>
                               </div>
 
                               {/* Grade de 7 Colunas: Seg a Dom */}
@@ -3153,6 +3391,31 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                           <Copy size={14} />
                                           <span>Aplicar Horário a Todas as Datas do Bloco</span>
                                         </button>
+
+                                        {/* Áudio 6: Replicar apenas para os mesmos dias da semana dentro do bloco */}
+                                        {selectedWeekdayInfo.pluralName && (
+                                          <button
+                                            type="button"
+                                            onClick={handleApplySelectedBlockDayToSameWeekday}
+                                            style={{
+                                              padding: '8px 12px',
+                                              borderRadius: '8px',
+                                              background: 'rgba(59, 130, 246, 0.08)',
+                                              border: '1px solid rgba(59, 130, 246, 0.35)',
+                                              color: '#1D4ED8',
+                                              fontSize: '0.76rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              gap: '6px',
+                                            }}
+                                          >
+                                            <Calendar size={14} />
+                                            <span>Replicar para todas as {selectedWeekdayInfo.pluralName} do bloco</span>
+                                          </button>
+                                        )}
 
                                         <button
                                           type="button"
@@ -3748,6 +4011,418 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeMode === 'closers' && (
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '14px',
+            border: '1px solid var(--adm-border, #E2E8F0)',
+            padding: '28px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+            maxWidth: '860px',
+            margin: '0 auto',
+            width: '100%',
+          }}>
+            {/* Header da Sub-View */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'rgba(139, 92, 246, 0.12)',
+                  color: '#7C3AED',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Users size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
+                    Distribuição de Closers (Split de Atendimento)
+                  </h3>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                    Unidade: <strong>{venueName}</strong> • Configure como os novos agendamentos serão atribuídos à equipe comercial.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Seleção do Modo de Distribuição */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              {/* Opção 1: Round-Robin */}
+              <div
+                onClick={() => setCloserDistributionMode('round_robin')}
+                style={{
+                  border: `2px solid ${closerDistributionMode === 'round_robin' ? '#7C3AED' : '#E2E8F0'}`,
+                  borderRadius: '12px',
+                  padding: '18px',
+                  cursor: 'pointer',
+                  background: closerDistributionMode === 'round_robin' ? 'rgba(139, 92, 246, 0.04)' : '#FFFFFF',
+                  transition: 'all 0.15s ease',
+                  boxShadow: closerDistributionMode === 'round_robin' ? '0 4px 12px rgba(139, 92, 246, 0.12)' : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Sparkles size={18} color={closerDistributionMode === 'round_robin' ? '#7C3AED' : '#64748B'} />
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: closerDistributionMode === 'round_robin' ? '#7C3AED' : '#0F172A' }}>
+                      Split Automático (Round-Robin)
+                    </span>
+                  </div>
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    border: `2px solid ${closerDistributionMode === 'round_robin' ? '#7C3AED' : '#CBD5E1'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {closerDistributionMode === 'round_robin' && (
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#7C3AED' }} />
+                    )}
+                  </div>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45 }}>
+                  Distribui os agendamentos de forma equilibrada e rotativa entre os closers selecionados. Se um lead já possui histórico de atendimento, seu <strong>Closer Fixo</strong> é mantido.
+                </p>
+              </div>
+
+              {/* Opção 2: Manual */}
+              <div
+                onClick={() => setCloserDistributionMode('manual')}
+                style={{
+                  border: `2px solid ${closerDistributionMode === 'manual' ? '#7C3AED' : '#E2E8F0'}`,
+                  borderRadius: '12px',
+                  padding: '18px',
+                  cursor: 'pointer',
+                  background: closerDistributionMode === 'manual' ? 'rgba(139, 92, 246, 0.04)' : '#FFFFFF',
+                  transition: 'all 0.15s ease',
+                  boxShadow: closerDistributionMode === 'manual' ? '0 4px 12px rgba(139, 92, 246, 0.12)' : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <UserCheck size={18} color={closerDistributionMode === 'manual' ? '#7C3AED' : '#64748B'} />
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: closerDistributionMode === 'manual' ? '#7C3AED' : '#0F172A' }}>
+                      Atribuição Manual
+                    </span>
+                  </div>
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    border: `2px solid ${closerDistributionMode === 'manual' ? '#7C3AED' : '#CBD5E1'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {closerDistributionMode === 'manual' && (
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#7C3AED' }} />
+                    )}
+                  </div>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', lineHeight: 1.45 }}>
+                  O closer responsável é escolhido manualmente pelo operador ou SDR em cada novo agendamento, sem sorteio rotativo prévio.
+                </p>
+              </div>
+            </div>
+
+            {/* Lista de Closers para o Split Automático */}
+            {closerDistributionMode === 'round_robin' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                      Closers Participantes do Split
+                    </span>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      background: 'rgba(139, 92, 246, 0.12)',
+                      color: '#7C3AED',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                    }}>
+                      {(closerIds.length > 0 ? closerIds.length : availableClosers.length)} ativo(s)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCloserIds(availableClosers.map(c => c.id))}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#7C3AED',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                      }}
+                    >
+                      Selecionar Todos
+                    </button>
+                    <span style={{ color: '#CBD5E1' }}>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setCloserIds([])}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748B',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                      }}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                  gap: '10px',
+                }}>
+                  {availableClosers.length === 0 ? (
+                    <div style={{ gridColumn: '1 / -1', padding: '20px', textAlign: 'center', color: '#64748B', fontSize: '0.82rem', background: '#F8FAFC', borderRadius: '10px' }}>
+                      Nenhum colaborador com função de Closer ou Comercial encontrado para esta unidade.
+                    </div>
+                  ) : (
+                    availableClosers.map(closer => {
+                      const count = closerIds.filter(id => id === closer.id).length;
+                      const effectiveCount = closerIds.length === 0 ? 1 : count;
+                      const isSelected = effectiveCount > 0;
+                      return (
+                        <div
+                          key={closer.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setCloserIds(prev => {
+                                const current = prev.length === 0 ? availableClosers.map(c => c.id) : prev;
+                                return current.filter(id => id !== closer.id);
+                              });
+                            } else {
+                              handleIncrementCloser(closer.id);
+                            }
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px 14px',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${isSelected ? '#7C3AED' : '#E2E8F0'}`,
+                            background: isSelected ? 'rgba(139, 92, 246, 0.04)' : '#FFFFFF',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            background: '#F1F5F9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            fontWeight: 800,
+                            fontSize: '0.80rem',
+                            color: '#475569',
+                          }}>
+                            {closer.avatarUrl ? (
+                              <img src={closer.avatarUrl} alt={closer.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              closer.name.substring(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {closer.name}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                              {(closer as any).roleTitle || (closer.role === 'closer' ? 'Closer Comercial' : closer.role)}
+                            </div>
+                          </div>
+
+                          {/* Controles de Peso / Repetição de Clientes por Ciclo (Áudio 1) */}
+                          <div 
+                            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleDecrementCloser(closer.id)}
+                              disabled={effectiveCount <= 0}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                background: '#F8FAFC',
+                                color: '#475569',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: effectiveCount <= 0 ? 'not-allowed' : 'pointer',
+                                fontWeight: 800,
+                                fontSize: '0.85rem',
+                                opacity: effectiveCount <= 0 ? 0.4 : 1,
+                              }}
+                              title="Reduzir proporção de clientes"
+                            >
+                              -
+                            </button>
+                            <span style={{
+                              minWidth: '24px',
+                              textAlign: 'center',
+                              fontSize: '0.82rem',
+                              fontWeight: 900,
+                              color: isSelected ? '#7C3AED' : '#94A3B8',
+                            }}>
+                              {effectiveCount}x
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleIncrementCloser(closer.id)}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '6px',
+                                border: '1px solid #DDD6FE',
+                                background: '#EDE9FE',
+                                color: '#7C3AED',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontWeight: 800,
+                                fontSize: '0.85rem',
+                              }}
+                              title="Aumentar proporção de clientes"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Prévia Visual da Fila do Split (Áudio 1) */}
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(124, 58, 237, 0.05)',
+                  border: '1px solid rgba(124, 58, 237, 0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 800, color: '#7C3AED' }}>
+                    <Sparkles size={15} />
+                    <span>Fila Ponderada do Split Automático (Ordem por Ciclo):</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                    {availableClosers
+                      .filter(c => (closerIds.length === 0 ? 1 : closerIds.filter(id => id === c.id).length) > 0)
+                      .map((c) => {
+                        const count = closerIds.length === 0 ? 1 : closerIds.filter(id => id === c.id).length;
+                        return (
+                          <span key={c.id} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            background: '#FFFFFF',
+                            border: '1px solid #DDD6FE',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            color: '#5B21B6',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                          }}>
+                            <span>{c.name}</span>
+                            <span style={{
+                              background: '#7C3AED',
+                              color: '#FFFFFF',
+                              borderRadius: '10px',
+                              padding: '1px 6px',
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                            }}>
+                              {count} {count === 1 ? 'cliente' : 'clientes'}
+                            </span>
+                          </span>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de Ações */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #E2E8F0' }}>
+              <button
+                type="button"
+                onClick={() => setActiveMode('hub')}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  border: '1px solid #CBD5E1',
+                  color: '#475569',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Voltar ao Menu
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCloserConfig}
+                disabled={isSaving}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 24px',
+                  borderRadius: '8px',
+                  background: '#7C3AED',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontSize: '0.84rem',
+                  fontWeight: 800,
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)',
+                }}
+              >
+                <Check size={16} />
+                <span>{isSaving ? 'Salvando...' : 'Salvar Distribuição de Closers'}</span>
+              </button>
             </div>
           </div>
         )}
