@@ -92,3 +92,29 @@ BEGIN
     END LOOP;
   END IF;
 END $$;
+
+-- 7. BLINDAGEM DE EGRESS: EXPURGO DE EVENTOS DO REALTIME E CRIAÇÃO DE ÍNDICES ESTRATÉGICOS
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'source_events') THEN
+    ALTER PUBLICATION supabase_realtime DROP TABLE public.source_events;
+    RAISE NOTICE 'Tabela source_events removida do supabase_realtime para blindagem de Egress.';
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'whatsapp_webhook_logs') THEN
+    ALTER PUBLICATION supabase_realtime DROP TABLE public.whatsapp_webhook_logs;
+    RAISE NOTICE 'Tabela whatsapp_webhook_logs removida do supabase_realtime para blindagem de Egress.';
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_leads_debutante_filter ON public.leads(debutante_id) WHERE debutante_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_debutante_slug_filter ON public.leads(debutante_slug) WHERE debutante_slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_lead_activities_type_timestamp ON public.lead_activities(type, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_lead_activities_lead_timestamp ON public.lead_activities(lead_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_source_events_recent ON public.source_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task_created ON public.task_comments(task_id, created_at DESC);

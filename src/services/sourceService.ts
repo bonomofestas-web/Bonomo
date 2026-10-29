@@ -20,10 +20,12 @@ export const sourceService = {
         return [];
       }
 
-      // Buscar eventos para calcular métricas
+      // BLINDAGEM DE EGRESS: Buscar eventos recentes (últimos 60 dias) para calcular métricas, evitando varredura de histórico infinito
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
       const { data: eventsData } = await supabase
         .from('source_events')
-        .select('source_id, event_type');
+        .select('source_id, event_type')
+        .gte('created_at', sixtyDaysAgo);
 
       const eventsMap: Record<string, { total: number; views: number; clicks: number; submits: number; leads: number }> = {};
 

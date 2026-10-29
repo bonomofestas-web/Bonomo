@@ -657,7 +657,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     updateTask,
     deleteTask,
     completeTaskWithFeedback,
-    updateSource,
     updateFunnel,
     addLeadActivity,
     markLeadAsRead,
@@ -2237,13 +2236,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     ).trim();
   }, []);
 
-  // Background Live Status Checker para todas as instâncias WhatsApp do F5 System
+  const sourcesRef = useRef(sources);
   useEffect(() => {
-    if (!sources || sources.length === 0) return;
+    sourcesRef.current = sources;
+  }, [sources]);
+
+  // Background Live Status Checker para todas as instâncias WhatsApp do F5 System (blindado contra loops de re-render e egress)
+  useEffect(() => {
     let isMounted = true;
 
     const checkStatuses = async () => {
-      const waSources = sources.filter(
+      const currentSources = sourcesRef.current || [];
+      const waSources = currentSources.filter(
         s => s.type === 'whatsapp_api' && Boolean(getSourceInstanceToken(s))
       );
       for (const src of waSources) {
@@ -2263,20 +2267,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               profileName: res.profileName || (src.configuration as any)?.profileName,
             }
           }));
-
-          // Se o status divergir do configurado no banco, atualiza no context
-          const currentCfg = (src.configuration as any) || {};
-          if (currentCfg.isConnected !== isConn && updateSource) {
-            updateSource(src.id, {
-              configuration: {
-                ...currentCfg,
-                isConnected: isConn,
-                connectionStatus: isConn ? 'connected' : 'disconnected',
-                profilePicUrl: res.profilePictureUrl || currentCfg.profilePicUrl,
-                connectedPhone: res.phone || currentCfg.connectedPhone,
-              }
-            });
-          }
         } catch {
           // Ignora timeout em background
         }
@@ -2284,12 +2274,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     };
 
     checkStatuses();
-    const interval = setInterval(checkStatuses, 15000);
+    const interval = setInterval(checkStatuses, 45000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [sources, getSourceInstanceToken, updateSource]);
+  }, [getSourceInstanceToken]);
 
   // Verifica se uma instância está efetivamente conectada (Live + Fallback)
   const isSourceOnline = (src?: any): boolean => {

@@ -23,11 +23,12 @@ export const taskService = {
         return [];
       }
 
-      // Buscar comentários de todas as tarefas
+      // BLINDAGEM DE EGRESS: Busca comentários recentes com projeção restrita (evita download de histórico ilimitado)
       const { data: commentsData } = await supabase
         .from('task_comments')
-        .select('*')
-        .order('created_at', { ascending: true });
+        .select('id, task_id, author_id, author_name, author_avatar, text, created_at')
+        .order('created_at', { ascending: false })
+        .limit(250);
 
       const commentsByTask: Record<string, TaskComment[]> = {};
       (commentsData || []).forEach((c: any) => {
@@ -219,6 +220,28 @@ export const taskService = {
     } catch (err) {
       console.error('Falha em addComment:', err);
       return null;
+    }
+  },
+
+  async getCommentsForTask(taskId: string): Promise<TaskComment[]> {
+    if (!isSupabaseConfigured || !taskId) return [];
+    try {
+      const { data } = await supabase
+        .from('task_comments')
+        .select('id, task_id, author_id, author_name, author_avatar, text, created_at')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true });
+      return (data || []).map((c: any) => ({
+        id: c.id,
+        taskId: c.task_id,
+        authorId: c.author_id,
+        authorName: c.author_name,
+        authorAvatar: c.author_avatar,
+        text: c.text,
+        createdAt: c.created_at,
+      }));
+    } catch {
+      return [];
     }
   },
 

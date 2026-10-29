@@ -489,14 +489,26 @@ export const AppStateProvider: React.FC<{
       }, 150);
     };
 
-    const debChannel = supabase
-      .channel(`debutante-realtime-${debutante.id}-${Date.now()}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, refreshActiveDeb)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, refreshActiveDeb)
-      .subscribe();
+    const isDebUuid = isUuid(debutante.id);
+    let channelBuilder = supabase.channel(`debutante-realtime-${debutante.id}-${Date.now()}`);
+
+    // BLINDAGEM DE EGRESS: Filtra rigorosamente eventos pelo debutante_id para que atividades globais do CRM não disparem downloads nos clientes
+    if (isDebUuid) {
+      channelBuilder = channelBuilder
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes', filter: `id=eq.${debutante.id}` }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guests', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `debutante_id=eq.${debutante.id}` }, refreshActiveDeb);
+    } else {
+      channelBuilder = channelBuilder
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'debutantes' }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'referrals' }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guests' }, refreshActiveDeb)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, refreshActiveDeb);
+    }
+
+    const debChannel = channelBuilder.subscribe();
 
     // Sincronização inteligente ao focar na aba (o Realtime WebSocket já cuida das mudanças em tempo real)
     const handleFocus = () => {

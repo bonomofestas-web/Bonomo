@@ -16,11 +16,30 @@ export const debutanteService = {
         return [];
       }
 
-      // Fetch related guests, referrals, appointments, and leads
-      const { data: guestsData } = await supabase.from('guests').select('*');
-      const { data: referralsData } = await supabase.from('referrals').select('*');
-      const { data: appointmentsData } = await supabase.from('appointments').select('*');
-      const { data: leadsData } = await supabase.from('leads').select('*');
+      // BLINDAGEM DE EGRESS: Seleciona exclusivamente colunas necessrias e filtra apenas registros de debutantes em paralelo
+      const [guestsRes, referralsRes, appointmentsRes, leadsRes] = await Promise.all([
+        supabase
+          .from('guests')
+          .select('id, debutante_id, name, phone, age, gender, group, status, plus_ones, companion_details, sweet_message, declined_message, is_self_registered, origin, allowed_capacity, companion_mode, confirmation_source, is_link_expired, is_companion, parent_guest_id, confirmed_at, is_removed, is_referred')
+          .not('debutante_id', 'is', null),
+        supabase
+          .from('referrals')
+          .select('id, debutante_id, lead_id, name, phone, age, group, notes, created_at, status, points_granted, is_renewal_referral, rejection_reason')
+          .not('debutante_id', 'is', null),
+        supabase
+          .from('appointments')
+          .select('id, debutante_id, title, category, date, time, location, address, status, notes, responsible_collaborator_id, responsible_name, responsible_role, responsible_phone, venue_id')
+          .not('debutante_id', 'is', null),
+        supabase
+          .from('leads')
+          .select('id, debutante_id, debutante_slug, name, phone, age, group, notes, is_validated, stage, points_granted, created_at')
+          .or('debutante_id.not.is.null,debutante_slug.not.is.null')
+      ]);
+
+      const guestsData = guestsRes.data || [];
+      const referralsData = referralsRes.data || [];
+      const appointmentsData = appointmentsRes.data || [];
+      const leadsData = leadsRes.data || [];
 
       return (debData || []).map(row => {
         const debGuests: Guest[] = (guestsData || [])
@@ -73,12 +92,13 @@ export const debutanteService = {
               status: l.is_validated ? 'validated' : (l.stage === 'lost' ? 'rejected' : 'pending'),
               points_granted: l.points_granted || (l.is_validated ? 1 : 0),
               is_renewal_referral: false,
+              rejection_reason: null,
               created_at: l.created_at,
             };
             rawRefs.push(genRef);
             refMap.set(l.id, genRef);
           } else {
-            const existing = refMap.get(l.id) || refMap.get(l.lead_id);
+            const existing = refMap.get(l.id);
             if (existing && l.is_validated && existing.status !== 'validated') {
               existing.status = 'validated';
               existing.points_granted = l.points_granted || 1;
@@ -371,7 +391,7 @@ export const debutanteService = {
         supabase.from('guests').select('*').eq('debutante_id', row.id),
         supabase.from('referrals').select('*').eq('debutante_id', row.id),
         supabase.from('appointments').select('*').eq('debutante_id', row.id),
-        supabase.from('leads').select('*').or(`debutante_id.eq.${row.id},debutante_slug.eq.${row.slug}`),
+        supabase.from('leads').select('id, debutante_id, debutante_slug, name, phone, age, group, notes, is_validated, stage, points_granted, created_at').or(`debutante_id.eq.${row.id},debutante_slug.eq.${row.slug}`),
       ]);
 
       const rawRefs = referralsRes.data || [];
@@ -396,12 +416,13 @@ export const debutanteService = {
             status: l.is_validated ? 'validated' : (l.stage === 'lost' ? 'rejected' : 'pending'),
             points_granted: l.points_granted || (l.is_validated ? 1 : 0),
             is_renewal_referral: false,
+            rejection_reason: null,
             created_at: l.created_at,
           };
           rawRefs.push(genRef);
           refMap.set(l.id, genRef);
         } else {
-          const existing = refMap.get(l.id) || refMap.get(l.lead_id);
+          const existing = refMap.get(l.id);
           if (existing && l.is_validated && existing.status !== 'validated') {
             existing.status = 'validated';
             existing.points_granted = l.points_granted || 1;

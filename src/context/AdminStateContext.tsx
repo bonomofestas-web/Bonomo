@@ -1814,9 +1814,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             });
 
             if (!found) {
+              // EGRESS SHIELD: Busca exclusivamente o lead pontual via ID em vez de recarregar todos os leads e 3000 mensagens
               triggerDebouncedSync(async () => {
-                const refreshed = await leadService.getAll();
-                if (isMounted) setLeads(refreshed);
+                const singleLead = await leadService.getById(targetLeadId);
+                if (singleLead && isMounted) {
+                  setLeads(current => {
+                    if (current.some(l => l.id === singleLead.id)) return current;
+                    const merged = [singleLead, ...current];
+                    leadsRef.current = merged;
+                    safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(merged));
+                    return merged;
+                  });
+                }
               });
               return prev;
             }
@@ -1894,10 +1903,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sources' }, async () => {
-        const updated = await sourceService.getAll();
-        if (isMounted && updated.length > 0) setSources(updated);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'source_events' }, async () => {
         const updated = await sourceService.getAll();
         if (isMounted && updated.length > 0) setSources(updated);
       })
