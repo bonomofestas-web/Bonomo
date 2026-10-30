@@ -1328,6 +1328,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [bulkAssigneeModalOpen, setBulkAssigneeModalOpen] = useState(false);
   const [bulkFunnelModalOpen, setBulkFunnelModalOpen] = useState(false);
 
+  const bulkAllowedStages = useMemo(() => {
+    const targetFunnel = activeFunnel || funnels[0];
+    let rawStages = targetFunnel?.stages || [];
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      rawStages = rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
+    }
+    return rawStages;
+  }, [activeFunnel, funnels, isManagerOrMaster, effectiveUser]);
+
   useEffect(() => {
     if (isMultiSelectActive !== undefined) {
       setInternalMultiSelectMode(isMultiSelectActive);
@@ -11897,7 +11909,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         isOpen={bulkStageModalOpen}
         onClose={() => setBulkStageModalOpen(false)}
         count={selectedLeadIds.length}
-        stages={activeFunnel?.stages || []}
+        stages={bulkAllowedStages}
         onConfirm={handleBulkMoveStage}
       />
 

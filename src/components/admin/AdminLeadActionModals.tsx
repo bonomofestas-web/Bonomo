@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   X, CheckSquare, GitBranch, Tag as TagIcon, 
   ArrowRight, Plus, Check, Users
 } from 'lucide-react';
 import type { Lead, CommercialFunnel, Collaborator, CrmStage } from '../../types/admin';
+import { useAdminState } from '../../context/AdminStateContext';
 
 // ── 1. MODAL DE MUDAR DE FUNIL ──────────────────────────────────────────────
 interface AdminMoveFunnelModalProps {
@@ -42,8 +43,33 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
 
   if (!isOpen || !lead) return null;
 
+  const { currentUser, viewingAsCollaborator } = useAdminState();
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const isManagerOrMaster = Boolean(
+    effectiveUser?.role === 'master' ||
+    effectiveUser?.role === 'admin' ||
+    (effectiveUser as any)?.role === 'gerencia' ||
+    (effectiveUser as any)?.role === 'gerente' ||
+    (effectiveUser as any)?.department === 'gerencia' ||
+    (effectiveUser as any)?.department === 'diretoria' ||
+    (effectiveUser as any)?.sectors?.includes('gerencia') ||
+    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
+    (effectiveUser as any)?.isDev
+  );
+
   const currentFunnelObj = funnels.find(f => f.id === selectedFunnelId);
-  const stages = currentFunnelObj?.stages || [];
+  const rawStages = currentFunnelObj?.stages || [];
+  const stages = useMemo(() => {
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      return rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
+    }
+    return rawStages;
+  }, [rawStages, isManagerOrMaster, effectiveUser]);
 
   const handleFunnelChange = (funnelId: string) => {
     setSelectedFunnelId(funnelId);
@@ -274,8 +300,33 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
 
   if (!isOpen) return null;
 
+  const { currentUser, viewingAsCollaborator } = useAdminState();
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const isManagerOrMaster = Boolean(
+    effectiveUser?.role === 'master' ||
+    effectiveUser?.role === 'admin' ||
+    (effectiveUser as any)?.role === 'gerencia' ||
+    (effectiveUser as any)?.role === 'gerente' ||
+    (effectiveUser as any)?.department === 'gerencia' ||
+    (effectiveUser as any)?.department === 'diretoria' ||
+    (effectiveUser as any)?.sectors?.includes('gerencia') ||
+    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
+    (effectiveUser as any)?.isDev
+  );
+
   const currentFunnelObj = funnels.find(f => f.id === selectedFunnelId);
-  const stages = currentFunnelObj?.stages || [];
+  const rawStages = currentFunnelObj?.stages || [];
+  const stages = useMemo(() => {
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      return rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
+    }
+    return rawStages;
+  }, [rawStages, isManagerOrMaster, effectiveUser]);
 
   const handleFunnelChange = (funnelId: string) => {
     setSelectedFunnelId(funnelId);
@@ -867,7 +918,7 @@ interface AdminBulkMoveStageModalProps {
   isOpen: boolean;
   onClose: () => void;
   count: number;
-  stages: Array<{ id: string; title?: string; name?: string; headerColor?: string; color?: string }>;
+  stages: Array<{ id: string; title?: string; name?: string; headerColor?: string; color?: string; allowedCollaboratorIds?: string[] }>;
   onConfirm: (stageId: CrmStage) => void;
 }
 
@@ -878,13 +929,38 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
   stages,
   onConfirm,
 }) => {
-  const [selectedStage, setSelectedStage] = useState<string>(stages[0]?.id || 'new_lead');
+  const { currentUser, viewingAsCollaborator } = useAdminState();
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const isManagerOrMaster = Boolean(
+    effectiveUser?.role === 'master' ||
+    effectiveUser?.role === 'admin' ||
+    (effectiveUser as any)?.role === 'gerencia' ||
+    (effectiveUser as any)?.role === 'gerente' ||
+    (effectiveUser as any)?.department === 'gerencia' ||
+    (effectiveUser as any)?.department === 'diretoria' ||
+    (effectiveUser as any)?.sectors?.includes('gerencia') ||
+    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
+    (effectiveUser as any)?.isDev
+  );
+
+  const allowedStages = React.useMemo(() => {
+    if (isManagerOrMaster || !effectiveUser?.id) return stages;
+    return stages.filter((st) => {
+      const allowed = st.allowedCollaboratorIds;
+      if (!allowed || !Array.isArray(allowed) || allowed.length === 0) return true;
+      return allowed.includes(effectiveUser.id);
+    });
+  }, [stages, isManagerOrMaster, effectiveUser?.id]);
+
+  const [selectedStage, setSelectedStage] = useState<string>(allowedStages[0]?.id || stages[0]?.id || 'new_lead');
 
   React.useEffect(() => {
-    if (isOpen && stages.length > 0) {
-      setSelectedStage(stages[0].id);
+    if (isOpen && allowedStages.length > 0) {
+      setSelectedStage(allowedStages[0].id);
     }
-  }, [isOpen, stages]);
+  }, [isOpen, allowedStages]);
 
   if (!isOpen) return null;
 
@@ -937,36 +1013,42 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '240px', overflowY: 'auto' }}>
-            {stages.map((st) => {
-              const isSelected = selectedStage === st.id;
-              const stageLabel = st.title || st.name || st.id;
-              const stageColor = st.headerColor || st.color || '#3B82F6';
-              return (
-                <div
-                  key={st.id}
-                  onClick={() => setSelectedStage(st.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: isSelected ? '1.5px solid #3B82F6' : '1px solid var(--adm-border, #E2E8F0)',
-                    background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-card, #ffffff)',
-                    cursor: 'pointer',
-                    transition: 'all 0.12s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stageColor }} />
-                    <span style={{ fontSize: '0.80rem', fontWeight: isSelected ? 700 : 500, color: 'var(--adm-text-title, #0F172A)' }}>
-                      {stageLabel}
-                    </span>
+            {allowedStages.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--adm-text-muted)' }}>
+                Nenhuma etapa disponível com permissão de acesso para o seu perfil.
+              </div>
+            ) : (
+              allowedStages.map((st) => {
+                const isSelected = selectedStage === st.id;
+                const stageLabel = st.title || st.name || st.id;
+                const stageColor = st.headerColor || st.color || '#3B82F6';
+                return (
+                  <div
+                    key={st.id}
+                    onClick={() => setSelectedStage(st.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: isSelected ? '1.5px solid #3B82F6' : '1px solid var(--adm-border, #E2E8F0)',
+                      background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-card, #ffffff)',
+                      cursor: 'pointer',
+                      transition: 'all 0.12s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stageColor }} />
+                      <span style={{ fontSize: '0.80rem', fontWeight: isSelected ? 700 : 500, color: 'var(--adm-text-title, #0F172A)' }}>
+                        {stageLabel}
+                      </span>
+                    </div>
+                    {isSelected && <Check size={14} color="#3B82F6" />}
                   </div>
-                  {isSelected && <Check size={14} color="#3B82F6" />}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
@@ -987,16 +1069,21 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
             </button>
             <button
               type="button"
-              onClick={() => onConfirm(selectedStage as CrmStage)}
+              disabled={!selectedStage || allowedStages.length === 0}
+              onClick={() => {
+                if (selectedStage) {
+                  onConfirm(selectedStage as CrmStage);
+                }
+              }}
               style={{
                 padding: '7px 16px',
                 borderRadius: '6px',
                 border: 'none',
-                background: '#3B82F6',
+                background: (!selectedStage || allowedStages.length === 0) ? '#94A3B8' : '#3B82F6',
                 color: '#ffffff',
                 fontSize: '0.78rem',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: (!selectedStage || allowedStages.length === 0) ? 'not-allowed' : 'pointer',
               }}
             >
               Confirmar e Mover

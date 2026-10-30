@@ -550,8 +550,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     if (leadFunnel?.isWonStageEnabled === false) {
       rawStages = rawStages.filter(s => !s.isWon && s.id !== 'contract_signed' && s.id !== 'deal_closed');
     }
+
+    // Delimitação Estrita de Acesso por Colaborador: se a etapa tiver allowedCollaboratorIds configurado,
+    // apenas os colaboradores autorizados visualizam e podem mover o lead para a etapa (Gerentes e Master têm acesso total irrestrito)
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      rawStages = rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
+    }
+
     return rawStages;
-  }, [leadFunnel]);
+  }, [leadFunnel, isManagerOrMaster, effectiveUser]);
 
   const currentStageConfig = useMemo(() => {
     const effectiveStage = currentStageId || lead.stage;
@@ -742,6 +752,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   const handleSelectStage = (newStageId: string) => {
     if (readOnly) return;
+
+    // Trava de segurança: Colaboradores sem autorização para a etapa não podem mover o lead para ela
+    if (!isManagerOrMaster && !funnelStages.some(s => s.id === newStageId)) {
+      alert('Acesso Restrito: Você não possui autorização para mover leads para esta etapa.');
+      return;
+    }
+
     const isBlockedEntry = (newStageId === 'new_lead' || newStageId === 'onboarding') && lead.stage !== 'new_lead' && (lead.stage as string) !== 'onboarding';
     if (isBlockedEntry) {
       alert('Regra do CRM: A etapa "NOVO LEAD" é exclusivamente para entrada. Leads que avançaram não podem retornar para ela.');
