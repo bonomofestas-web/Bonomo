@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS public.quick_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    master_id UUID REFERENCES public.masters(id) ON DELETE CASCADE,
+    master_id UUID REFERENCES public.collaborators(id) ON DELETE CASCADE,
     venue_id UUID REFERENCES public.venues(id) ON DELETE SET NULL,
     keyword TEXT NOT NULL,
     message TEXT NOT NULL,
