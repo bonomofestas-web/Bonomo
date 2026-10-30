@@ -359,6 +359,19 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     return false;
   }, [leadFunnel, lead.venueId]);
 
+  // Gerentes e Masters de unidades possuem liberdade de gestão para alterar/atribuir Closer manualmente
+  const isManagerOrMaster = Boolean(
+    currentUser?.role === 'master' || 
+    currentUser?.role === 'admin' || 
+    (currentUser as any)?.department === 'gerencia' || 
+    (currentUser as any)?.department === 'diretoria' ||
+    (currentUser as any)?.sectors?.includes('gerencia') ||
+    (currentUser as any)?.sectors?.includes('diretoria') ||
+    (currentUser as any)?.isDev
+  );
+
+  const isCloserLockedBySplit = isSplitActiveForLead && !isManagerOrMaster;
+
   const availableTags = useMemo(() => {
     const set = new Set<string>();
     (leadFunnel?.predefinedTags || []).forEach(t => { if (t) set.add(t.trim()); });
@@ -487,7 +500,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const leadSource = lead.sourceId ? sources.find(s => s.id === lead.sourceId) : undefined;
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
-  const isManagerOrMaster = currentUser?.role === 'master' || currentUser?.role === 'admin';
   const canAccessPostSale = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'pos_venda' || (currentUser as any)?.sectors?.includes('pos_venda');
   
   const commercialCollaborators = useMemo(() => {
@@ -3130,27 +3142,31 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   <div style={cardValueStyle}>
                     <div
                       onClick={() => {
-                        if (isSplitActiveForLead) return;
+                        if (isCloserLockedBySplit) return;
                         if (!readOnly) {
                           const next = !isCloserDropdownOpen;
                           closeAllDropdowns();
                           setIsCloserDropdownOpen(next);
                         }
                       }}
-                      title={isSplitActiveForLead ? 'Split Automático Ativo: o Closer deste lead é atribuído de forma sequencial pelo rodízio desta unidade.' : undefined}
+                      title={
+                        isCloserLockedBySplit
+                          ? 'Split Automático Ativo: O Closer deste lead é atribuído de forma sequencial pelo rodízio. Apenas Gerentes ou Master podem alterar manualmente.'
+                          : (isSplitActiveForLead ? 'Split Automático Ativo nesta unidade (Liberado para Gerência)' : undefined)
+                      }
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         width: '100%',
-                        cursor: isSplitActiveForLead ? 'not-allowed' : (!readOnly ? 'pointer' : 'default'),
+                        cursor: isCloserLockedBySplit ? 'not-allowed' : (!readOnly ? 'pointer' : 'default'),
                         padding: '2px 0',
                         borderRadius: '6px',
                         background: isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
-                        opacity: isSplitActiveForLead ? 0.85 : 1,
+                        opacity: isCloserLockedBySplit ? 0.85 : 1,
                         transition: 'background 0.15s ease',
                       }}
-                      onMouseEnter={(e) => { if (!readOnly && !isSplitActiveForLead) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
+                      onMouseEnter={(e) => { if (!readOnly && !isCloserLockedBySplit) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent'; }}
                     >
                       {lead.closerId ? (
@@ -3187,15 +3203,19 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       )}
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                        {isSplitActiveForLead ? (
+                        {isSplitActiveForLead && (
                           <span
-                            title="Split Automático Ativo para esta unidade"
+                            title={
+                              isCloserLockedBySplit
+                                ? 'Split Automático Ativo para esta unidade (Bloqueado para alteração manual)'
+                                : 'Split Automático Ativo (Liberado para alteração pela Gerência/Master)'
+                            }
                             style={{
                               fontSize: '0.60rem',
                               fontWeight: 700,
-                              color: '#10B981',
-                              background: 'rgba(16, 185, 129, 0.12)',
-                              border: '1px solid rgba(16, 185, 129, 0.25)',
+                              color: isCloserLockedBySplit ? '#10B981' : '#F59E0B',
+                              background: isCloserLockedBySplit ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                              border: isCloserLockedBySplit ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(245, 158, 11, 0.3)',
                               padding: '1px 5px',
                               borderRadius: '4px',
                               display: 'flex',
@@ -3203,39 +3223,37 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                               gap: '3px',
                             }}
                           >
-                            <Lock size={10} />
-                            <span>Split Ativo</span>
+                            {isCloserLockedBySplit ? <Lock size={10} /> : <Unlock size={10} />}
+                            <span>{isCloserLockedBySplit ? 'Split Ativo' : 'Split (Gerência)'}</span>
                           </span>
-                        ) : (
-                          <>
-                            {lead.closerId && !readOnly && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeLeadCloser(lead.id);
-                                }}
-                                title="Desatribuir Closer"
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: 'var(--adm-text-muted)',
-                                  cursor: 'pointer',
-                                  padding: '2px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  opacity: 0.6,
-                                  transition: 'opacity 0.15s ease',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
-                            {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
-                          </>
                         )}
+
+                        {lead.closerId && !readOnly && !isCloserLockedBySplit && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeLeadCloser(lead.id);
+                            }}
+                            title="Desatribuir Closer"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--adm-text-muted)',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              opacity: 0.6,
+                              transition: 'opacity 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                        {!readOnly && !isCloserLockedBySplit && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                       </div>
                     </div>
 

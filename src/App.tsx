@@ -20,6 +20,7 @@ import { WelcomeVideoIntroView } from './components/journey/WelcomeVideoIntroVie
 import { InactiveDebutanteView } from './components/common/InactiveDebutanteView';
 import { PublicTrackingRedirectView } from './components/public/PublicTrackingRedirectView';
 import { PublicFormLandingView } from './components/public/PublicFormLandingView';
+import { PublicChangelogView } from './components/public/PublicChangelogView';
 import { debutanteService } from './services/debutanteService';
 import { venueService } from './services/venueService';
 import type { Venue } from './types/admin';
@@ -220,7 +221,7 @@ export const AppContent: React.FC = () => {
 };
 
 const parseRouteFromLocation = (): { 
-  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'collab_invite'; 
+  mode: 'debutante' | 'admin' | 'tracking_link' | 'form' | 'convite' | 'collab_invite' | 'atualizacoes'; 
   slug?: string;
   guestId?: string;
   inviteToken?: string;
@@ -229,6 +230,18 @@ const parseRouteFromLocation = (): {
 
   const urlParams = new URLSearchParams(window.location.search);
   const pathname = window.location.pathname.replace(/^\/+|\/+$/g, '');
+
+  // 0. Página Pública de Atualizações / Deploys (/atualizacoes, /changelog ou ?atualizacoes ou ?changelog)
+  if (
+    pathname === 'atualizacoes' || 
+    pathname.startsWith('atualizacoes/') || 
+    pathname === 'changelog' || 
+    pathname.startsWith('changelog/') || 
+    urlParams.has('atualizacoes') || 
+    urlParams.has('changelog')
+  ) {
+    return { mode: 'atualizacoes', slug: '' };
+  }
 
   // 0. Link de Entrada / Ativação de Colaborador (?collab_invite=TOKEN ou ?invite_collab=TOKEN ou /collab/TOKEN)
   if (urlParams.has('collab_invite') || urlParams.has('invite_collab') || pathname.startsWith('collab/')) {
@@ -403,7 +416,13 @@ const RootAppRouter: React.FC = () => {
 
     const venueIcon = activeVenue?.logoUrl || '/favicon.png';
 
-    if (viewMode === 'admin') {
+    if (viewMode === 'atualizacoes') {
+      document.title = 'F5 System • Atualizações & Deploys';
+      link.href = '/favicon.png';
+      link.type = 'image/png';
+      appleLink.href = '/favicon.png';
+      appleTitleMeta.content = 'F5 System';
+    } else if (viewMode === 'admin') {
       document.title = 'F5 System • Painel de Gestão & CRM';
       link.href = '/favicon.png';
       link.type = 'image/png';
@@ -486,6 +505,10 @@ const RootAppRouter: React.FC = () => {
   };
 
   // ── Conditional rendering — AFTER all hooks ──
+
+  if (viewMode === 'atualizacoes') {
+    return <PublicChangelogView />;
+  }
 
   if (viewMode === 'tracking_link' && currentDebutanteSlug) {
     return <PublicTrackingRedirectView slug={currentDebutanteSlug} />;

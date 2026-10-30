@@ -43,3 +43,8 @@ Nenhuma tarefa deve ser executada sem levar em conta a visão do produto, a arqu
 - É terminantemente proibido o uso de emojis na interface visual do sistema (textos, botões, títulos, badges, selects e cards).
 - Toda e qualquer sinalização visual deve utilizar exclusivamente ícones modernos e elegantes da biblioteca `lucide-react`.
 - O uso de emojis só é permitido se expressamente solicitado pelo usuário para um caso pontual.
+
+## Regra Fundamental 9: Registro Público de Grandes Atualizações (/atualizacoes)
+- Toda atualização considerada uma **Grande Atualização** deve ter seu deploy registrado cronologicamente no arquivo `src/data/changelogData.ts` para exibição na página pública `/atualizacoes` (ou `/changelog`).
+- O histórico deve conter a data, versão, tipo de atualização, descrição e lista detalhada dos recursos adicionados, aprimorados ou descontinuados.
+- Antes de realizar qualquer push/deploy de grandes entregas ou pacotes de funcionalidades, o agente deve verificar e confirmar com o usuário se a entrega se enquadra como Grande Atualização para ser devidamente catalogada no changelog público.
