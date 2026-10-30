@@ -1071,6 +1071,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         if (l.venueId !== activeVenueId) return false;
       }
 
+      // Restrição Estrita de Etapa Autorizada no Kanban:
+      // Se o colaborador não é Gerente/Master, o lead só entra se sua etapa corresponder a uma coluna visível
+      if (!isManagerOrMaster && columns.length > 0) {
+        const matchedColId = getLeadMatchedColumnId(l, columns);
+        if (!matchedColId) return false;
+      }
+
       // Ownership Filter: Meus Leads vs Em Aberto vs Todos
       if (leadOwnershipFilter === 'mine') {
         const targetUserId = effectiveUser?.id || currentUser?.id;
@@ -1260,36 +1267,41 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     if (rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada')) {
       const entryCol = cols.find(c => (c.id as string) === 'new_lead' || (c.id as string) === 'onboarding' || c.title.toLowerCase().includes('entrada'));
       if (entryCol) return entryCol.id;
-      return cols[0].id;
+      return '';
     }
     
     if (rawStage === 'in_negotiation' || rawStage === 'in_analysis' || rawStage === 'qualificacao' || rawStage === 'em_negociacao') {
       const negCol = cols.find(c => (c.id as string) === 'in_negotiation' || (c.id as string) === 'in_analysis' || (c.id as string) === 'qualificacao' || c.title.toLowerCase().includes('negocia') || c.title.toLowerCase().includes('análise') || c.title.toLowerCase().includes('qualifica'));
       if (negCol) return negCol.id;
+      return '';
     }
     
     if (rawStage === 'scheduled' || rawStage === 'meeting_scheduled' || rawStage === 'visita_agendada' || rawStage === 'agendado') {
       const schCol = cols.find(c => (c.id as string) === 'scheduled' || (c.id as string) === 'meeting_scheduled' || (c.id as string) === 'visita_agendada' || c.title.toLowerCase().includes('agendad') || c.title.toLowerCase().includes('visita'));
       if (schCol) return schCol.id;
+      return '';
     }
     
     if (rawStage === 'decision' || rawStage === 'degustacao') {
       const decCol = cols.find(c => (c.id as string) === 'decision' || (c.id as string) === 'degustacao' || c.title.toLowerCase().includes('degusta') || c.title.toLowerCase().includes('decis'));
       if (decCol) return decCol.id;
+      return '';
     }
     
     if (rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage === 'contrato_fechado' || rawStage === 'ganho') {
       const wonCol = cols.find(c => c.isWon || (c.id as string) === 'deal_closed' || (c.id as string) === 'contract_signed' || (c.id as string) === 'contrato_fechado' || c.title.toLowerCase().includes('fechado') || c.title.toLowerCase().includes('ganho'));
       if (wonCol) return wonCol.id;
+      return '';
     }
     
     if (rawStage === 'lost' || rawStage === 'perdido') {
       const lossCol = cols.find(c => c.isLoss || (c.id as string) === 'lost' || c.title.toLowerCase().includes('perdid') || c.title.toLowerCase().includes('recusad'));
       if (lossCol) return lossCol.id;
+      return '';
     }
 
-    // 3. Fallback to first available column:
-    return cols[0].id;
+    // 3. Se o lead pertence a uma etapa que o colaborador não tem acesso, não aloca em nenhuma coluna
+    return '';
   };
 
   // Drag and Drop Handlers

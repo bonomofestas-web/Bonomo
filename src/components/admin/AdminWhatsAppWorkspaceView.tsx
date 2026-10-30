@@ -1616,14 +1616,42 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (!isManagerOrMaster && effectiveUser?.id) {
         const leadFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : (currentFunnel || funnels[0]);
         if (leadFunnel && Array.isArray(leadFunnel.stages)) {
-          const leadStageConfig = leadFunnel.stages.find(
-            st => st.id === lead.stage || (st as any).key === lead.stage || (st.name && lead.stage && st.name.toLowerCase() === lead.stage.toLowerCase())
-          );
+          const rawStage = String(lead.stage || '').trim().toLowerCase();
+          const leadStageConfig = leadFunnel.stages.find(st => {
+            const sId = String(st.id || '').trim().toLowerCase();
+            const sKey = String((st as any).key || '').trim().toLowerCase();
+            const sName = String(st.name || '').trim().toLowerCase();
+            if (sId === rawStage || sKey === rawStage || sName === rawStage) return true;
+            if ((!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('novo lead')) &&
+                (sId === 'new_lead' || sId === 'onboarding' || sName.includes('entrada') || sName.includes('novo lead') || (st as any).isFixed)) {
+              return true;
+            }
+            if ((rawStage.includes('conectad') || rawStage.includes('negocia') || rawStage === 'in_negotiation' || rawStage === 'qualificacao') &&
+                (sId === 'in_negotiation' || sId === 'qualificacao' || sName.includes('conectad') || sName.includes('negocia'))) {
+              return true;
+            }
+            if ((rawStage.includes('agendad') || rawStage.includes('visita') || rawStage === 'scheduled' || rawStage === 'meeting_scheduled') &&
+                (sId === 'scheduled' || sId === 'meeting_scheduled' || Boolean(st.isMeetingStage) || sName.includes('agendad') || sName.includes('visita'))) {
+              return true;
+            }
+            if ((rawStage.includes('degusta') || rawStage.includes('decis') || rawStage === 'decision' || rawStage === 'degustacao') &&
+                (sId === 'decision' || sId === 'degustacao' || sName.includes('degusta') || sName.includes('decis'))) {
+              return true;
+            }
+            if ((rawStage.includes('fechad') || rawStage.includes('ganho') || rawStage === 'deal_closed' || rawStage === 'contract_signed') &&
+                (Boolean(st.isWon) || sId === 'deal_closed' || sId === 'contract_signed' || sName.includes('fechad') || sName.includes('ganho'))) {
+              return true;
+            }
+            if ((rawStage.includes('perdid') || rawStage.includes('recusad') || rawStage.includes('cancelad') || rawStage === 'lost') &&
+                (Boolean(st.isLoss) || sId === 'lost' || sName.includes('perdid') || sName.includes('recusad') || sName.includes('cancelad'))) {
+              return true;
+            }
+            return false;
+          }) || (!rawStage ? leadFunnel.stages[0] : undefined);
+
           if (leadStageConfig && Array.isArray(leadStageConfig.allowedCollaboratorIds) && leadStageConfig.allowedCollaboratorIds.length > 0) {
             if (!leadStageConfig.allowedCollaboratorIds.includes(effectiveUser.id)) {
-              if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
-                return false;
-              }
+              return false; // BLOQUEIO TOTAL E ABSOLUTO (inclusive na busca!)
             }
           }
         }

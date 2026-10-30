@@ -2532,6 +2532,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Permissões do usuário efetivo (se for colaborador não-master ou master no modo olhar com olhos)
     const isMasterNative = effectiveUser.role === 'master' && !effectiveViewingAsCollaborator;
+    const isManagerOrMaster = Boolean(
+      effectiveUser.role === 'master' ||
+      effectiveUser.role === 'admin' ||
+      (effectiveUser as any).role === 'gerencia' ||
+      (effectiveUser as any).role === 'gerente' ||
+      (effectiveUser as any).department === 'gerencia' ||
+      (effectiveUser as any).department === 'diretoria' ||
+      (effectiveUser as any).sectors?.includes('gerencia') ||
+      (effectiveUser as any).sectors?.includes('diretoria') ||
+      ((effectiveUser as any).roleTitle || '').toLowerCase().includes('geren') ||
+      ((effectiveUser as any).roleTitle || '').toLowerCase().includes('direto') ||
+      (effectiveUser as any).isDev
+    );
     const userAllowedVenueIds = !isMasterNative && Array.isArray(effectiveUser.venueIds) && effectiveUser.venueIds.length > 0
       ? new Set(effectiveUser.venueIds)
       : (!isMasterNative && (effectiveUser as any).venueId && (effectiveUser as any).venueId !== 'all' ? new Set([(effectiveUser as any).venueId]) : null);
@@ -2557,6 +2570,59 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Colaborador restrito à Casa A NUNCA pode ver lead da Casa B!
       if (userAllowedVenueIds && l.venueId && !userAllowedVenueIds.has(l.venueId)) {
         return false;
+      }
+
+      // 3.1. REGRA CRÍTICA DE ISOLAMENTO POR ETAPA DE FUNIL (STAGE-LEVEL ACCESS CONTROL):
+      // Gerentes e Masters possuem acesso total irrestrito a todas as etapas.
+      // Colaboradores comuns só visualizam o lead se a etapa atual do lead NÃO for restrita
+      // OU se o ID do colaborador estiver explicitamente listado em allowedCollaboratorIds da etapa!
+      if (!isManagerOrMaster && effectiveUser.id) {
+        const rawFunnelId = l.funnelId ? l.funnelId.toLowerCase().trim() : '';
+        const leadFunnel = rawFunnelId
+          ? funnels.find(f => f.id === l.funnelId || f.name.toLowerCase().trim() === rawFunnelId)
+          : funnels[0];
+        
+        if (leadFunnel && Array.isArray(leadFunnel.stages) && leadFunnel.stages.length > 0) {
+          const rawStage = String(l.stage || '').trim().toLowerCase();
+          
+          const matchedStage = leadFunnel.stages.find(st => {
+            const sId = String(st.id || '').trim().toLowerCase();
+            const sKey = String((st as any).key || '').trim().toLowerCase();
+            const sName = String(st.name || '').trim().toLowerCase();
+            if (sId === rawStage || sKey === rawStage || sName === rawStage) return true;
+            if ((!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('novo lead')) &&
+                (sId === 'new_lead' || sId === 'onboarding' || sName.includes('entrada') || sName.includes('novo lead') || (st as any).isFixed)) {
+              return true;
+            }
+            if ((rawStage.includes('conectad') || rawStage.includes('negocia') || rawStage === 'in_negotiation' || rawStage === 'qualificacao') &&
+                (sId === 'in_negotiation' || sId === 'qualificacao' || sName.includes('conectad') || sName.includes('negocia'))) {
+              return true;
+            }
+            if ((rawStage.includes('agendad') || rawStage.includes('visita') || rawStage === 'scheduled' || rawStage === 'meeting_scheduled') &&
+                (sId === 'scheduled' || sId === 'meeting_scheduled' || Boolean(st.isMeetingStage) || sName.includes('agendad') || sName.includes('visita'))) {
+              return true;
+            }
+            if ((rawStage.includes('degusta') || rawStage.includes('decis') || rawStage === 'decision' || rawStage === 'degustacao') &&
+                (sId === 'decision' || sId === 'degustacao' || sName.includes('degusta') || sName.includes('decis'))) {
+              return true;
+            }
+            if ((rawStage.includes('fechad') || rawStage.includes('ganho') || rawStage === 'deal_closed' || rawStage === 'contract_signed') &&
+                (Boolean(st.isWon) || sId === 'deal_closed' || sId === 'contract_signed' || sName.includes('fechad') || sName.includes('ganho'))) {
+              return true;
+            }
+            if ((rawStage.includes('perdid') || rawStage.includes('recusad') || rawStage.includes('cancelad') || rawStage === 'lost') &&
+                (Boolean(st.isLoss) || sId === 'lost' || sName.includes('perdid') || sName.includes('recusad') || sName.includes('cancelad'))) {
+              return true;
+            }
+            return false;
+          }) || (!rawStage ? leadFunnel.stages[0] : undefined);
+
+          if (matchedStage && Array.isArray(matchedStage.allowedCollaboratorIds) && matchedStage.allowedCollaboratorIds.length > 0) {
+            if (!matchedStage.allowedCollaboratorIds.includes(effectiveUser.id)) {
+              return false; // BLOQUEIO TOTAL: O colaborador não tem permissão para esta etapa do funil
+            }
+          }
+        }
       }
 
       // 4. Se o lead não tem casa vinculada mas possui origem, verifica se a origem pertence ao tenant e às casas permitidas
