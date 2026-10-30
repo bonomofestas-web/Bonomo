@@ -115,6 +115,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 }) => {
   const { 
     currentUser, 
+    viewingAsCollaborator,
     leads,
     collaborators, 
     venues,
@@ -359,15 +360,17 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     return false;
   }, [leadFunnel, lead.venueId]);
 
+  const effectiveUser = viewingAsCollaborator || currentUser;
+
   // Gerentes e Masters de unidades possuem liberdade de gestão para alterar/atribuir Closer manualmente
   const isManagerOrMaster = Boolean(
-    currentUser?.role === 'master' || 
-    currentUser?.role === 'admin' || 
-    (currentUser as any)?.department === 'gerencia' || 
-    (currentUser as any)?.department === 'diretoria' ||
-    (currentUser as any)?.sectors?.includes('gerencia') ||
-    (currentUser as any)?.sectors?.includes('diretoria') ||
-    (currentUser as any)?.isDev
+    effectiveUser?.role === 'master' || 
+    effectiveUser?.role === 'admin' || 
+    (effectiveUser as any)?.department === 'gerencia' || 
+    (effectiveUser as any)?.department === 'diretoria' ||
+    (effectiveUser as any)?.sectors?.includes('gerencia') ||
+    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    (effectiveUser as any)?.isDev
   );
 
   const isCloserLockedBySplit = isSplitActiveForLead && !isManagerOrMaster;
@@ -500,7 +503,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const leadSource = lead.sourceId ? sources.find(s => s.id === lead.sourceId) : undefined;
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
-  const canAccessPostSale = currentUser?.role === 'master' || currentUser?.role === 'admin' || currentUser?.role === 'pos_venda' || (currentUser as any)?.sectors?.includes('pos_venda');
+  const canAccessPostSale = effectiveUser?.role === 'master' || effectiveUser?.role === 'admin' || effectiveUser?.role === 'pos_venda' || (effectiveUser as any)?.sectors?.includes('pos_venda');
   
   const commercialCollaborators = useMemo(() => {
     return collaborators.filter(c => {

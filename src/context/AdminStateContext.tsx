@@ -2244,13 +2244,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       sessionStorage.setItem('f5_viewing_as_collaborator', JSON.stringify(collab));
 
-      // Se o colaborador possui casas atribuídas, ajusta activeVenueId para a primeira casa permitida
+      // Se o colaborador possui casas atribuídas, ajusta activeVenueId com inteligência multiunidade
       const userVids = Array.isArray(collab.venueIds) && collab.venueIds.length > 0
         ? collab.venueIds
         : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : []);
-      if (userVids.length > 0 && (!activeVenueId || !userVids.includes(activeVenueId))) {
+      if (userVids.length === 1) {
         setActiveVenueIdState(userVids[0]);
         safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, userVids[0]);
+      } else if (userVids.length > 1) {
+        // Colaborador com múltiplas casas: se já estiver em uma de suas casas permitidas, mantém;
+        // caso contrário, mantém null para permitir a Visão Geral de todas as suas unidades autorizadas.
+        if (activeVenueId && !userVids.includes(activeVenueId)) {
+          setActiveVenueIdState(null);
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
+        }
       }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('f5_spectator_mode_changed', { detail: { isSpectator: true, collaborator: collab } }));
@@ -2306,10 +2313,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const userVids = Array.isArray(c.venueIds) && c.venueIds.length > 0
       ? c.venueIds
       : (c.venueId && c.venueId !== 'all' ? [c.venueId] : []);
-    if (userVids.length > 0) {
-      if (!activeVenueId || !userVids.includes(activeVenueId)) {
-        setActiveVenueIdState(userVids[0]);
-        safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, userVids[0]);
+    if (userVids.length === 1) {
+      setActiveVenueIdState(userVids[0]);
+      safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, userVids[0]);
+    } else if (userVids.length > 1) {
+      if (activeVenueId && !userVids.includes(activeVenueId)) {
+        setActiveVenueIdState(null);
+        localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
       }
     }
   };
@@ -2446,11 +2456,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (scopedVenues.length === 0) return;
     const isMasterNative = effectiveUser?.role === 'master' && !effectiveViewingAsCollaborator;
     if (!isMasterNative) {
-      // Colaborador de unidade única ou restrita: garante que activeVenueId está dentro de suas casas
-      if (!activeVenueId || activeVenueId === 'all' || activeVenueId === 'multi' || !scopedVenues.some(v => v.id === activeVenueId)) {
-        const fallback = scopedVenues[0]?.id || null;
-        setActiveVenueIdState(fallback);
-        if (fallback) safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, fallback);
+      // Colaborador de unidade única: fixa estritamente em sua única casa atribuída
+      if (scopedVenues.length === 1) {
+        if (activeVenueId !== scopedVenues[0].id) {
+          const fallback = scopedVenues[0].id;
+          setActiveVenueIdState(fallback);
+          safeLocalStorageSet(STORAGE_KEY_ACTIVE_VENUE, fallback);
+        }
+      } else {
+        // Colaborador multiunidade (scopedVenues.length > 1):
+        // Tem direito à Visão Geral (null / 'all') de todas as suas unidades autorizadas.
+        // Se estiver apontando para uma casa externa que NÃO pertence às suas unidades atribuídas:
+        if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi' && !scopedVenues.some(v => v.id === activeVenueId)) {
+          setActiveVenueIdState(null);
+          localStorage.removeItem(STORAGE_KEY_ACTIVE_VENUE);
+        }
       }
     } else if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
       const existsInScoped = scopedVenues.some(v => v.id === activeVenueId);

@@ -706,6 +706,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     sources,
     collaborators,
     currentUser,
+    viewingAsCollaborator,
     theme,
     activeVenueId,
     updateLeadData,
@@ -821,21 +822,29 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     (activeFunnelId && activeFunnelId.includes('post_sale')) ||
     (currentUser?.role === 'pos_venda' && (!selectedFunnelId || selectedFunnelId === 'all' || selectedFunnelId === 'all_post_sale' || selectedFunnelId === 'post_sale_default'))
   );
-  const isReadOnlyForPosVenda = currentUser?.role === 'pos_venda' && !isPostSaleFunnel;
+  const effectiveUser = viewingAsCollaborator || currentUser;
+  const isReadOnlyForPosVenda = effectiveUser?.role === 'pos_venda' && !isPostSaleFunnel;
 
   const isManagerOrMaster = useMemo(() => {
-    if (!currentUser) return false;
-    const role = (currentUser.role as string) || '';
-    const roleTitle = ((currentUser as any).roleTitle || '').toLowerCase();
+    const user = viewingAsCollaborator || currentUser;
+    if (!user) return false;
+    const role = (user.role as string) || '';
+    const roleTitle = ((user as any).roleTitle || '').toLowerCase();
+    const department = ((user as any).department || '').toLowerCase();
+    const sectors = (user as any).sectors || [];
     return (
       role === 'master' || 
       role === 'admin' || 
       role === 'gerencia' || 
       role === 'gerente' || 
+      department === 'gerencia' ||
+      department === 'diretoria' ||
+      sectors.includes('gerencia') ||
+      sectors.includes('diretoria') ||
       roleTitle.includes('geren') || 
       roleTitle.includes('direto')
     );
-  }, [currentUser]);
+  }, [currentUser, viewingAsCollaborator]);
 
   const [searchTerm, setSearchTerm] = useState(searchQuery);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
@@ -1586,13 +1595,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const cleanSearch = hasSearch ? term.toLowerCase().trim() : '';
     const cleanDigits = hasSearch ? cleanSearch.replace(/\D/g, '') : '';
 
-    const scopedMasterId = currentUser?.masterId || currentUser?.id;
+    const scopedMasterId = effectiveUser?.masterId || currentUser?.masterId || effectiveUser?.id || currentUser?.id;
     const allowedVenueIds = new Set(venues.map(v => v.id));
 
     const result = sourceLeads.filter(lead => {
       // ── BLINDAGEM MULTI-TENANT (Defesa em Profundidade Absoluta) ──
       // Garante que o lead pertença obrigatoriamente às casas do usuário logado
-      if (currentUser && !(currentUser as any).isDev) {
+      if (effectiveUser && !(effectiveUser as any).isDev) {
         if (lead.venueId && !allowedVenueIds.has(lead.venueId)) {
           return false;
         }
@@ -1604,14 +1613,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       // Blindagem Estrita de Acesso por Etapa (Áudios 4 & 5):
       // Gerente e Master sempre têm acesso irrestrito a todas as etapas e funis.
       // Usuários normais só visualizam leads da etapa se ela não for restrita OU se o usuário estiver explicitamente em allowedCollaboratorIds.
-      if (!isManagerOrMaster && currentUser?.id) {
+      if (!isManagerOrMaster && effectiveUser?.id) {
         const leadFunnel = lead.funnelId ? funnels.find(f => f.id === lead.funnelId) : (currentFunnel || funnels[0]);
         if (leadFunnel && Array.isArray(leadFunnel.stages)) {
           const leadStageConfig = leadFunnel.stages.find(
             st => st.id === lead.stage || (st as any).key === lead.stage || (st.name && lead.stage && st.name.toLowerCase() === lead.stage.toLowerCase())
           );
           if (leadStageConfig && Array.isArray(leadStageConfig.allowedCollaboratorIds) && leadStageConfig.allowedCollaboratorIds.length > 0) {
-            if (!leadStageConfig.allowedCollaboratorIds.includes(currentUser.id)) {
+            if (!leadStageConfig.allowedCollaboratorIds.includes(effectiveUser.id)) {
               if (lead.id !== selectedLeadId && lead.id !== initialLeadId) {
                 return false;
               }
@@ -1717,22 +1726,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           }
         }
       } else if (effectiveOwnership === 'my' || effectiveOwnership === 'mine') {
+        const targetUserId = effectiveUser?.id || currentUser?.id;
+        const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
         if (isPostSaleFunnel) {
           const isMyClient =
-            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id || lead.assignedTo === currentUser.id)) ||
-            Boolean(currentUser?.name && (
-              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
-              (lead.sdrName && lead.sdrName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+            Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
+            Boolean(targetUserName && (
+              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
+              (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName)
             ));
           if (!isMyClient && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         } else {
           // Estritamente leads atribuídos ao usuário logado (NUNCA trazer leads de terceiros)
           const isMyLead =
-            Boolean(currentUser?.id && (lead.sdrId === currentUser.id || lead.closerId === currentUser.id || lead.assignedTo === currentUser.id)) ||
-            Boolean(currentUser?.name && (
-              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
-              (lead.sdrName && lead.sdrName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) ||
-              (lead.closerName && lead.closerName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+            Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
+            Boolean(targetUserName && (
+              (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
+              (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName) ||
+              (lead.closerName && lead.closerName.trim().toLowerCase() === targetUserName)
             ));
           if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
@@ -1821,7 +1832,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [sourceLeads, activeFunnel, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
+  }, [sourceLeads, activeFunnel, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
 
   const lastInitialLeadIdRef = useRef<string | undefined>(initialLeadId);
 
