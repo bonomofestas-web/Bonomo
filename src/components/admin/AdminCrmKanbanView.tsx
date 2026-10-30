@@ -192,6 +192,58 @@ const AdminFilterDropdown: React.FC<AdminFilterDropdownProps> = ({
   );
 };
 
+// Robust lead to column matcher: guarantees no leads disappear or fall into unauthorized stages
+const getLeadMatchedColumnId = (
+  lead: Lead, 
+  cols: Array<{ id: string; title: string; isWon?: boolean; isLoss?: boolean }>
+): string => {
+  if (!cols || cols.length === 0) return '';
+  const rawStage = String((lead as { stage?: string }).stage || '').toLowerCase().trim();
+
+  // 1. Direct match:
+  const direct = cols.find(c => (c.id as string).toLowerCase().trim() === rawStage);
+  if (direct) return direct.id;
+
+  // 2. Semantic matching:
+  if (!rawStage || rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('novo lead')) {
+    const entryCol = cols.find(c => (c.id as string) === 'new_lead' || (c.id as string) === 'onboarding' || c.title.toLowerCase().includes('entrada') || c.title.toLowerCase().includes('novo lead'));
+    if (entryCol) return entryCol.id;
+    return '';
+  }
+
+  if (rawStage === 'in_negotiation' || rawStage === 'in_analysis' || rawStage === 'qualificacao' || rawStage === 'em_negociacao' || rawStage.includes('conectad') || rawStage.includes('negocia')) {
+    const negCol = cols.find(c => (c.id as string) === 'in_negotiation' || (c.id as string) === 'in_analysis' || (c.id as string) === 'qualificacao' || c.title.toLowerCase().includes('negocia') || c.title.toLowerCase().includes('conectad') || c.title.toLowerCase().includes('qualifica'));
+    if (negCol) return negCol.id;
+    return '';
+  }
+
+  if (rawStage === 'scheduled' || rawStage === 'meeting_scheduled' || rawStage === 'visita_agendada' || rawStage === 'agendado' || rawStage.includes('agendad') || rawStage.includes('visita')) {
+    const schCol = cols.find(c => (c.id as string) === 'scheduled' || (c.id as string) === 'meeting_scheduled' || (c.id as string) === 'visita_agendada' || c.title.toLowerCase().includes('agendad') || c.title.toLowerCase().includes('visita'));
+    if (schCol) return schCol.id;
+    return '';
+  }
+
+  if (rawStage === 'decision' || rawStage === 'degustacao' || rawStage.includes('degusta') || rawStage.includes('decis')) {
+    const decCol = cols.find(c => (c.id as string) === 'decision' || (c.id as string) === 'degustacao' || c.title.toLowerCase().includes('degusta') || c.title.toLowerCase().includes('decis'));
+    if (decCol) return decCol.id;
+    return '';
+  }
+
+  if (rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage === 'contrato_fechado' || rawStage === 'ganho' || rawStage.includes('fechad') || rawStage.includes('ganho')) {
+    const wonCol = cols.find(c => c.isWon || (c.id as string) === 'deal_closed' || (c.id as string) === 'contract_signed' || (c.id as string) === 'contrato_fechado' || c.title.toLowerCase().includes('fechado') || c.title.toLowerCase().includes('ganho'));
+    if (wonCol) return wonCol.id;
+    return '';
+  }
+
+  if (rawStage === 'lost' || rawStage === 'perdido' || rawStage.includes('perdid') || rawStage.includes('recusad') || rawStage.includes('cancelad')) {
+    const lossCol = cols.find(c => c.isLoss || (c.id as string) === 'lost' || c.title.toLowerCase().includes('perdid') || c.title.toLowerCase().includes('recusad') || c.title.toLowerCase().includes('cancelad'));
+    if (lossCol) return lossCol.id;
+    return '';
+  }
+
+  return '';
+};
+
 export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   initialLeadId,
   activeFunnelId,
@@ -1035,6 +1087,64 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   const collabIdSet = useMemo(() => new Set((collaborators || []).map(c => c.id)), [collaborators]);
 
+  const renderColumnIcon = (iconOrStage: string, size = 15, color?: string) => {
+    return renderFunnelOrStageIcon(iconOrStage, size, color, 'layers');
+  };
+
+  const columns = useMemo(() => {
+    let rawStages: FunnelStageConfig[] = (currentFunnel?.stages && currentFunnel.stages.length > 0)
+      ? currentFunnel.stages
+      : (isPostSaleView ? DEFAULT_POST_SALE_FORM_STAGES : DEFAULT_FORM_STAGES);
+
+    // Se isEntryStageActive for falso, oculta a primeira etapa se for a etapa de entrada
+    const isEntryActive = Boolean(currentFunnel?.isEntryStageActive);
+    if (!isEntryActive) {
+      rawStages = rawStages.filter((st, idx) => {
+        const isEntryName = st.name.toLowerCase().includes('entrada') || st.name.toLowerCase().includes('novo lead');
+        const isEntryId = st.id === 'new_lead' || st.id === 'onboarding';
+        if (idx === 0 && (isEntryName || isEntryId || (st.isFixed && !st.isWon && !st.isLoss))) {
+          return false;
+        }
+        return true;
+      });
+    } else {
+      const hasEntry = rawStages.some(st => st.id === 'new_lead' || st.id === 'onboarding' || st.name.toLowerCase().includes('entrada'));
+      if (!hasEntry) {
+        rawStages = [
+          { id: 'new_lead', name: 'NOVO LEAD', color: '#EF4444', icon: 'inbox', isFixed: true, order: 0 },
+          ...rawStages.map((st, i) => ({ ...st, order: i + 1 }))
+        ];
+      }
+    }
+
+    // Se isWonStageEnabled for expressamente falso, oculta a etapa de ganho deste funil (funil de passagem)
+    if (currentFunnel?.isWonStageEnabled === false) {
+      rawStages = rawStages.filter(st => !st.isWon && st.id !== 'deal_closed' && st.id !== 'contrato_fechado');
+    }
+
+    // Delimitação de Acesso por Colaborador: se a etapa tiver allowedCollaboratorIds configurado,
+    // apenas os colaboradores autorizados visualizam a etapa (Gerentes e Master têm acesso total irrestrito)
+    if (!isManagerOrMaster && effectiveUser?.id) {
+      rawStages = rawStages.filter(st => {
+        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+      });
+    }
+
+    return rawStages.map((st, idx) => ({
+      id: (st.id as string) || `stage_${idx}`,
+      title: st.name,
+      icon: st.icon,
+      hints: st.hints,
+      isMeetingStage: Boolean(st.isMeetingStage),
+      headerColor: st.color || '#3B82F6',
+      bgColor: `${st.color || '#3B82F6'}12`,
+      borderColor: `${st.color || '#3B82F6'}40`,
+      isWon: Boolean(st.isWon),
+      isLoss: Boolean(st.isLoss),
+    }));
+  }, [currentFunnel, isPostSaleView, isManagerOrMaster, effectiveUser]);
+
   // Filter and Sort leads strictly isolated for the selected Funnel
   const filteredLeads = useMemo(() => {
     const matching = leads.filter(l => {
@@ -1135,7 +1245,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     });
 
     return sortLeadsByCriteria(matching, filterState.sortBy || 'waiting_time', collabIdSet);
-  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, collabIdSet, showRemovedLeads]);
+  }, [leads, currentFunnel, activeVenueId, filterState, search, leadOwnershipFilter, currentUser, effectiveUser, isManagerOrMaster, columns, collabIdSet, showRemovedLeads]);
 
   const removedLeadsCount = useMemo(() => {
     return leads.filter(l => {
@@ -1146,64 +1256,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       return true;
     }).length;
   }, [leads, currentFunnel]);
-
-  const renderColumnIcon = (iconOrStage: string, size = 15, color?: string) => {
-    return renderFunnelOrStageIcon(iconOrStage, size, color, 'layers');
-  };
-
-  const columns = useMemo(() => {
-    let rawStages: FunnelStageConfig[] = (currentFunnel?.stages && currentFunnel.stages.length > 0)
-      ? currentFunnel.stages
-      : (isPostSaleView ? DEFAULT_POST_SALE_FORM_STAGES : DEFAULT_FORM_STAGES);
-
-    // Se isEntryStageActive for falso, oculta a primeira etapa se for a etapa de entrada
-    const isEntryActive = Boolean(currentFunnel?.isEntryStageActive);
-    if (!isEntryActive) {
-      rawStages = rawStages.filter((st, idx) => {
-        const isEntryName = st.name.toLowerCase().includes('entrada') || st.name.toLowerCase().includes('novo lead');
-        const isEntryId = st.id === 'new_lead' || st.id === 'onboarding';
-        if (idx === 0 && (isEntryName || isEntryId || (st.isFixed && !st.isWon && !st.isLoss))) {
-          return false;
-        }
-        return true;
-      });
-    } else {
-      const hasEntry = rawStages.some(st => st.id === 'new_lead' || st.id === 'onboarding' || st.name.toLowerCase().includes('entrada'));
-      if (!hasEntry) {
-        rawStages = [
-          { id: 'new_lead', name: 'NOVO LEAD', color: '#EF4444', icon: 'inbox', isFixed: true, order: 0 },
-          ...rawStages.map((st, i) => ({ ...st, order: i + 1 }))
-        ];
-      }
-    }
-
-    // Se isWonStageEnabled for expressamente falso, oculta a etapa de ganho deste funil (funil de passagem)
-    if (currentFunnel?.isWonStageEnabled === false) {
-      rawStages = rawStages.filter(st => !st.isWon && st.id !== 'deal_closed' && st.id !== 'contrato_fechado');
-    }
-
-    // Delimitação de Acesso por Colaborador: se a etapa tiver allowedCollaboratorIds configurado,
-    // apenas os colaboradores autorizados visualizam a etapa (Gerentes e Master têm acesso total irrestrito)
-    if (!isManagerOrMaster && effectiveUser?.id) {
-      rawStages = rawStages.filter(st => {
-        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
-        return st.allowedCollaboratorIds.includes(effectiveUser.id);
-      });
-    }
-
-    return rawStages.map((st, idx) => ({
-      id: (st.id as string) || `stage_${idx}`,
-      title: st.name,
-      icon: st.icon,
-      hints: st.hints,
-      isMeetingStage: Boolean(st.isMeetingStage),
-      headerColor: st.color || '#3B82F6',
-      bgColor: `${st.color || '#3B82F6'}12`,
-      borderColor: `${st.color || '#3B82F6'}40`,
-      isWon: Boolean(st.isWon),
-      isLoss: Boolean(st.isLoss),
-    }));
-  }, [currentFunnel, isPostSaleView]);
 
   // Funções para controle de colunas recolhidas com escopo estrito por funil
   const getFunnelColKey = (colId: string, funnelId?: string) => {
@@ -1252,56 +1304,6 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         });
       }, 240);
     }
-  };
-
-  // Robust lead to column matcher: guarantees no leads disappear from Kanban
-  const getLeadMatchedColumnId = (lead: Lead, cols: typeof columns): string => {
-    if (!cols || cols.length === 0) return '';
-    const rawStage = String((lead as { stage?: string }).stage || '').toLowerCase();
-
-    // 1. Direct match:
-    const direct = cols.find(c => (c.id as string).toLowerCase() === rawStage);
-    if (direct) return direct.id;
-
-    // 2. Semantic matching:
-    if (rawStage === 'new_lead' || rawStage === 'onboarding' || rawStage.includes('entrada')) {
-      const entryCol = cols.find(c => (c.id as string) === 'new_lead' || (c.id as string) === 'onboarding' || c.title.toLowerCase().includes('entrada'));
-      if (entryCol) return entryCol.id;
-      return '';
-    }
-    
-    if (rawStage === 'in_negotiation' || rawStage === 'in_analysis' || rawStage === 'qualificacao' || rawStage === 'em_negociacao') {
-      const negCol = cols.find(c => (c.id as string) === 'in_negotiation' || (c.id as string) === 'in_analysis' || (c.id as string) === 'qualificacao' || c.title.toLowerCase().includes('negocia') || c.title.toLowerCase().includes('análise') || c.title.toLowerCase().includes('qualifica'));
-      if (negCol) return negCol.id;
-      return '';
-    }
-    
-    if (rawStage === 'scheduled' || rawStage === 'meeting_scheduled' || rawStage === 'visita_agendada' || rawStage === 'agendado') {
-      const schCol = cols.find(c => (c.id as string) === 'scheduled' || (c.id as string) === 'meeting_scheduled' || (c.id as string) === 'visita_agendada' || c.title.toLowerCase().includes('agendad') || c.title.toLowerCase().includes('visita'));
-      if (schCol) return schCol.id;
-      return '';
-    }
-    
-    if (rawStage === 'decision' || rawStage === 'degustacao') {
-      const decCol = cols.find(c => (c.id as string) === 'decision' || (c.id as string) === 'degustacao' || c.title.toLowerCase().includes('degusta') || c.title.toLowerCase().includes('decis'));
-      if (decCol) return decCol.id;
-      return '';
-    }
-    
-    if (rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage === 'contrato_fechado' || rawStage === 'ganho') {
-      const wonCol = cols.find(c => c.isWon || (c.id as string) === 'deal_closed' || (c.id as string) === 'contract_signed' || (c.id as string) === 'contrato_fechado' || c.title.toLowerCase().includes('fechado') || c.title.toLowerCase().includes('ganho'));
-      if (wonCol) return wonCol.id;
-      return '';
-    }
-    
-    if (rawStage === 'lost' || rawStage === 'perdido') {
-      const lossCol = cols.find(c => c.isLoss || (c.id as string) === 'lost' || c.title.toLowerCase().includes('perdid') || c.title.toLowerCase().includes('recusad'));
-      if (lossCol) return lossCol.id;
-      return '';
-    }
-
-    // 3. Se o lead pertence a uma etapa que o colaborador não tem acesso, não aloca em nenhuma coluna
-    return '';
   };
 
   // Drag and Drop Handlers
