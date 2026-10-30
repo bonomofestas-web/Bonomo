@@ -118,3 +118,33 @@ CREATE INDEX IF NOT EXISTS idx_lead_activities_type_timestamp ON public.lead_act
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead_timestamp ON public.lead_activities(lead_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_source_events_recent ON public.source_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_comments_task_created ON public.task_comments(task_id, created_at DESC);
+
+-- 8. FLEXIBILIZAÇÃO E PERSISTÊNCIA COMPLETA DE FUNIS MULTIUNIDADES (COMMERCIAL_FUNNELS)
+DO $$
+BEGIN
+  -- Permite que venue_id seja NULL para funis multiunidades/globais da rede Master
+  ALTER TABLE IF EXISTS public.commercial_funnels ALTER COLUMN venue_id DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+ALTER TABLE IF EXISTS public.commercial_funnels
+ADD COLUMN IF NOT EXISTS shared_venue_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS disabled_venue_ids TEXT[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS allowed_collaborator_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS stages JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS stages_count INT DEFAULT 4,
+ADD COLUMN IF NOT EXISTS is_entry_stage_active BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS detect_duplicates BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS duplicate_rule_config JSONB DEFAULT '{}'::jsonb,
+ADD COLUMN IF NOT EXISTS is_won_stage_enabled BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS distribution_mode TEXT DEFAULT 'manual',
+ADD COLUMN IF NOT EXISTS assigned_sdr_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS venue_distribution_config JSONB DEFAULT '{}'::jsonb,
+ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS package_options JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS payment_options JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS predefined_tags JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS allow_collaborators_create_tags BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS default_whatsapp_source_id UUID DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS priority_whatsapp_per_venue JSONB DEFAULT '{}'::jsonb;
+

@@ -346,6 +346,19 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       funnels[0];
   }, [funnels, currentFunnelId, lead.funnelId, lead.venueId]);
 
+  // Se o Split Automático / Rodízio estiver ativo para a unidade deste lead, trava a seleção manual de Closer
+  const isSplitActiveForLead = useMemo(() => {
+    if (!leadFunnel) return false;
+    const venueConfig = (leadFunnel.venueDistributionConfig || {})[lead.venueId];
+    if (venueConfig?.distributionMode === 'round_robin' && (venueConfig.assignedSdrIds?.length || 0) > 0) {
+      return true;
+    }
+    if (leadFunnel.distributionMode === 'round_robin' && (leadFunnel.assignedSdrIds?.length || 0) > 0) {
+      return true;
+    }
+    return false;
+  }, [leadFunnel, lead.venueId]);
+
   const availableTags = useMemo(() => {
     const set = new Set<string>();
     (leadFunnel?.predefinedTags || []).forEach(t => { if (t) set.add(t.trim()); });
@@ -3117,24 +3130,27 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   <div style={cardValueStyle}>
                     <div
                       onClick={() => {
+                        if (isSplitActiveForLead) return;
                         if (!readOnly) {
                           const next = !isCloserDropdownOpen;
                           closeAllDropdowns();
                           setIsCloserDropdownOpen(next);
                         }
                       }}
+                      title={isSplitActiveForLead ? 'Split Automático Ativo: o Closer deste lead é atribuído de forma sequencial pelo rodízio desta unidade.' : undefined}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         width: '100%',
-                        cursor: !readOnly ? 'pointer' : 'default',
+                        cursor: isSplitActiveForLead ? 'not-allowed' : (!readOnly ? 'pointer' : 'default'),
                         padding: '2px 0',
                         borderRadius: '6px',
                         background: isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent',
+                        opacity: isSplitActiveForLead ? 0.85 : 1,
                         transition: 'background 0.15s ease',
                       }}
-                      onMouseEnter={(e) => { if (!readOnly) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
+                      onMouseEnter={(e) => { if (!readOnly && !isSplitActiveForLead) e.currentTarget.style.background = 'var(--adm-bg-hover)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = isCloserDropdownOpen ? 'var(--adm-bg-hover)' : 'transparent'; }}
                     >
                       {lead.closerId ? (
@@ -3166,37 +3182,60 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         </div>
                       ) : (
                         <span style={{ fontSize: '0.76rem', color: 'var(--adm-text-muted)', fontStyle: 'italic' }}>
-                          Atribuir Closer...
+                          {isSplitActiveForLead ? 'Aguardando Split Automático' : 'Atribuir Closer...'}
                         </span>
                       )}
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                        {lead.closerId && !readOnly && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeLeadCloser(lead.id);
-                            }}
-                            title="Desatribuir Closer"
+                        {isSplitActiveForLead ? (
+                          <span
+                            title="Split Automático Ativo para esta unidade"
                             style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--adm-text-muted)',
-                              cursor: 'pointer',
-                              padding: '2px',
+                              fontSize: '0.60rem',
+                              fontWeight: 700,
+                              color: '#10B981',
+                              background: 'rgba(16, 185, 129, 0.12)',
+                              border: '1px solid rgba(16, 185, 129, 0.25)',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
                               display: 'flex',
                               alignItems: 'center',
-                              opacity: 0.6,
-                              transition: 'opacity 0.15s ease',
+                              gap: '3px',
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
                           >
-                            <X size={12} />
-                          </button>
+                            <Lock size={10} />
+                            <span>Split Ativo</span>
+                          </span>
+                        ) : (
+                          <>
+                            {lead.closerId && !readOnly && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeLeadCloser(lead.id);
+                                }}
+                                title="Desatribuir Closer"
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--adm-text-muted)',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  opacity: 0.6,
+                                  transition: 'opacity 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                            {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
+                          </>
                         )}
-                        {!readOnly && <ChevronDown size={12} color="var(--adm-text-muted)" />}
                       </div>
                     </div>
 

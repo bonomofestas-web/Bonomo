@@ -157,12 +157,23 @@ export const funnelService = {
       if (funnel.pinnedAt !== undefined) payload.pinned_at = funnel.pinnedAt || null;
       if (funnel.order !== undefined) payload.order = funnel.order;
 
-      // Sanitiza strings vazias em campos UUID para evitar erro de tipo no PostgreSQL
+      // Sanitiza strings vazias e filtra estritamente UUIDs válidos para evitar erro de tipo no PostgreSQL
       if (payload.default_whatsapp_source_id === '' || payload.default_whatsapp_source_id === 'none') {
         payload.default_whatsapp_source_id = null;
       }
       if (payload.venue_id === '' || payload.venue_id === 'all') {
         payload.venue_id = null;
+      }
+
+      // Sanitização estrita de arrays UUID do PostgreSQL
+      if (Array.isArray(payload.shared_venue_ids)) {
+        payload.shared_venue_ids = payload.shared_venue_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+      }
+      if (Array.isArray(payload.assigned_sdr_ids)) {
+        payload.assigned_sdr_ids = payload.assigned_sdr_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+      }
+      if (Array.isArray(payload.allowed_collaborator_ids)) {
+        payload.allowed_collaborator_ids = payload.allowed_collaborator_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
       }
 
       // Se venue_id for nulo mas houver shared_venue_ids válidos, usa o primeiro como primário
@@ -171,7 +182,19 @@ export const funnelService = {
         if (firstValidVenue) payload.venue_id = firstValidVenue;
       }
 
+      // Se o funil já existe no banco, busca seu registro para garantir venue_id e integridade
       if (isUuid) {
+        const { data: existingRow } = await supabase
+          .from('commercial_funnels')
+          .select('id, venue_id')
+          .eq('id', funnel.id)
+          .maybeSingle();
+
+        // Preserva venue_id prévio se o novo for nulo, prevenindo violação de constraint NOT NULL
+        if (existingRow && !payload.venue_id && existingRow.venue_id) {
+          payload.venue_id = existingRow.venue_id;
+        }
+
         const { data: updated, error: updateErr } = await supabase
           .from('commercial_funnels')
           .update(payload)
@@ -207,7 +230,7 @@ export const funnelService = {
             post_sale_custom_stage_names: funnel.postSaleCustomStageNames,
             duplicate_rule_config: payload.duplicate_rule_config,
           };
-          if (payload.venue_id) fallbackPayload.venue_id = payload.venue_id;
+          if (payload.venue_id || existingRow?.venue_id) fallbackPayload.venue_id = payload.venue_id || existingRow?.venue_id;
           Object.keys(fallbackPayload).forEach(k => fallbackPayload[k] === undefined && delete fallbackPayload[k]);
 
           const { data: retryUpdated, error: retryErr } = await supabase
@@ -222,6 +245,11 @@ export const funnelService = {
         }
 
         payload.id = funnel.id;
+        // Se ainda não tiver venue_id e for insert, busca primeira casa existente
+        if (!payload.venue_id) {
+          const { data: vList } = await supabase.from('venues').select('id').limit(1);
+          if (vList && vList[0]) payload.venue_id = vList[0].id;
+        }
         let { error: insertErr } = await supabase.from('commercial_funnels').insert(payload);
 
         // Se falhou por venue_id not-null violation, busca a primeira casa disponível no banco
@@ -258,23 +286,41 @@ export const funnelService = {
         }
         return true;
       } else {
-        // Se id não for UUID puro (ex: indicacao_venueId), busca pelo venue_id correspondente
-        const venueMatch = funnel.venueId || (funnel.id.includes('_') ? funnel.id.split('_')[1] : null);
-        if (venueMatch) {
-          const { data: found } = await supabase
-            .from('commercial_funnels')
-            .select('id')
-            .eq('venue_id', venueMatch)
-            .eq('is_primary', true)
-            .maybeSingle();
-
-          if (found?.id) {
-            const { error: updErr } = await supabase
+        // Se id não for UUID puro (ex: funil legado ou chave personalizada), busca por nome e masterId ou venue_id
+        let targetId: string | null = null;
+        if (funnel.name) {
+          let query = supabase.from('commercial_funnels').select('id').eq('name', funnel.name);
+          if (funnel.masterId) query = query.eq('master_id', funnel.masterId);
+          const { data: foundByName } = await query.limit(1).maybeSingle();
+          if (foundByName?.id) targetId = foundByName.id;
+        }
+        if (!targetId) {
+          const venueMatch = funnel.venueId || (funnel.id.includes('_') ? funnel.id.split('_')[1] : null);
+          if (venueMatch && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(venueMatch)) {
+            const { data: found } = await supabase
               .from('commercial_funnels')
-              .update(payload)
-              .eq('id', found.id);
-            if (!updErr) return true;
+              .select('id')
+              .eq('venue_id', venueMatch)
+              .limit(1)
+              .maybeSingle();
+            if (found?.id) targetId = found.id;
           }
+        }
+        if (targetId) {
+          const { error: updErr } = await supabase
+            .from('commercial_funnels')
+            .update(payload)
+            .eq('id', targetId);
+          if (!updErr) return true;
+        } else {
+          // Se não encontrou linha prévia, insere com novo UUID válido
+          payload.id = generateUuid();
+          if (!payload.venue_id) {
+            const { data: vList } = await supabase.from('venues').select('id').limit(1);
+            if (vList && vList[0]) payload.venue_id = vList[0].id;
+          }
+          const { error: insErr } = await supabase.from('commercial_funnels').insert(payload);
+          if (!insErr) return true;
         }
         return false;
       }

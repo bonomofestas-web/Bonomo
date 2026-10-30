@@ -4,7 +4,8 @@ import {
   ShieldAlert, ShieldCheck, Sparkles, AlertTriangle, Building2, FileText, Settings,
   Calendar, Tag, Sliders, Check,
   ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter,
-  Eye, EyeOff, Thermometer, CreditCard
+  Eye, EyeOff, Thermometer, CreditCard,
+  Users, ArrowUp, ArrowDown, ClipboardCheck, Search, UserCheck, Loader2
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
@@ -152,6 +153,40 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     });
   }, [collaborators, activeFunnel]);
 
+  // Helper para exibir o cargo executivo / customizado do colaborador (nunca "admin")
+  const getCollabRoleTitle = (c: any) => {
+    if (!c) return 'Comercial';
+    return (
+      c.customJobTitle ||
+      c.roleTitle ||
+      (c.role === 'closer' ? 'Closer de Vendas' :
+       c.role === 'sdr' ? 'SDR Pré-Vendas' :
+       c.department === 'comercial' ? 'Consultor Comercial' :
+       c.role === 'master' ? 'Diretoria' :
+       c.role === 'admin' ? 'Gerência' : 'Equipe Comercial')
+    );
+  };
+
+  // Equipe comercial elegível para Acesso à Etapa:
+  // - Exclui gerentes/diretoria/masters/devs (possuem acesso irrestrito garantido por padrão)
+  // - Exclui colaboradores que atuam exclusivamente em outros setores (financeiro, pós-venda)
+  // - Apenas colaboradores com atribuição comercial vinculados às unidades do funil
+  const commercialTeamForStageAccess = useMemo(() => {
+    return funnelCollaborators.filter(c => {
+      if (c.active === false) return false;
+      if (c.role === 'master' || c.role === 'admin' || (c as any).isDev) return false;
+      if (c.department === 'gerencia' || c.department === 'diretoria') return false;
+
+      const hasCommercial = 
+        c.sectors?.includes('comercial') || 
+        c.primarySector === 'comercial' ||
+        c.department === 'comercial' || 
+        ['crm', 'sdr', 'closer', 'comercial'].includes(c.role || '');
+
+      return hasCommercial;
+    });
+  }, [funnelCollaborators]);
+
   const isPostSale = Boolean(
     activeFunnel?.isPostSale || 
     activeFunnel?.category === 'Pós-Venda' || 
@@ -261,6 +296,21 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   // Inline Stage Creation State
   const [insertingStageAtIndex, setInsertingStageAtIndex] = useState<number | null>(null);
   const [newStageInputText, setNewStageInputText] = useState('');
+
+  // Estados para Cópia e Configuração Avançada de Acesso à Etapa
+  const [copiedStageAccess, setCopiedStageAccess] = useState<{ mode: 'all' | 'custom'; allowedIds?: string[] } | null>(null);
+  const [activeAccessModalStageId, setActiveAccessModalStageId] = useState<string | null>(null);
+  const [accessSearchQuery, setAccessSearchQuery] = useState('');
+  const [justCopiedStageId, setJustCopiedStageId] = useState<string | null>(null);
+  const [justPastedStageId, setJustPastedStageId] = useState<string | null>(null);
+
+  // Estados de Salvamento com Feedback Visual
+  const [isSavingFunnel, setIsSavingFunnel] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState(false);
+
+  // Estados de Adição de Vendedor no Split de Unidade
+  const [activeAddCloserVenueId, setActiveAddCloserVenueId] = useState<string | null>(null);
+  const [closerSearchQuery, setCloserSearchQuery] = useState('');
 
   // Horizontal Pan / Drag-to-Scroll
   const pipelineScrollRef = useRef<HTMLDivElement>(null);
@@ -420,91 +470,103 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!activeFunnel) return;
+    setIsSavingFunnel(true);
 
-    let finalStages = [...stages];
-    if (isEntryStageActive) {
-      const hasEntry = finalStages.some(s => s.id === 'new_lead' || s.name.toLowerCase().includes('entrada'));
-      if (!hasEntry) {
-        finalStages = [isPostSale ? POST_SALE_ENTRY_STAGE_DEF : ENTRY_STAGE_DEF, ...finalStages];
-      }
-    } else {
-      finalStages = finalStages.filter(s => s.id !== 'new_lead' && !s.name.toLowerCase().includes('entrada'));
-    }
-    finalStages = finalStages.map((s, idx) => ({
-      ...s,
-      name: (s.name || '').trim().toUpperCase(),
-      order: idx,
-    }));
-
-    const effectiveVenueId = sharedVenueIds.length === 1 
-      ? sharedVenueIds[0] 
-      : (sharedVenueIds.length > 1 ? sharedVenueIds[0] : (funnelVenueId === 'all' ? 'all' : funnelVenueId));
-
-    const wonStage = finalStages.find(s => s.isWon);
-    const lostStage = finalStages.find(s => s.isLoss);
-    const customStageNames = isPostSale ? {
-      won: wonStage?.name || undefined,
-      lost: lostStage?.name || undefined,
-    } : undefined;
-
-    updateFunnel(activeFunnel.id, {
-      name: funnelName.trim() || activeFunnel.name,
-      venueId: effectiveVenueId,
-      sharedVenueIds: sharedVenueIds,
-      disabledVenueIds,
-      icon: funnelIcon,
-      badgeColor: funnelBadgeColor,
-      description: funnelDescription,
-      isEntryStageActive,
-      enableInboxStage: isEntryStageActive,
-      postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
-      isWonStageEnabled,
-      distributionMode,
-      assignedSdrIds,
-      venueDistributionConfig,
-      detectDuplicates,
-      duplicateRuleConfig: {
-        ...duplicateRuleConfig,
-        _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
-        _disabledVenueIds: disabledVenueIds,
-        _enableInboxStage: isEntryStageActive,
-        _isEntryStageActive: isEntryStageActive,
-        _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
-        ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
-      },
-      enabledWhatsAppSourceIds,
-      stages: finalStages,
-      stagesCount: finalStages.length,
-      packageOptions,
-      paymentOptions,
-      predefinedTags,
-      allowCollaboratorsCreateTags,
-      customFields,
-      defaultWhatsAppSourceId,
-      priorityWhatsappPerVenue,
-    } as any);
-
-    // Persistência de fontes WhatsApp habilitadas/desabilitadas para este funil no banco de dados
-    const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
-      ? venues.filter(v => v.active !== false)
-      : venues.filter(v => v.id === activeFunnel.venueId);
-    const targetVenueIds = new Set(targetVenues.map(v => v.id));
-
-    (sources || []).forEach(src => {
-      if (src.type === 'whatsapp_api' && (src.venueId && targetVenueIds.has(src.venueId))) {
-        const isChecked = enabledWhatsAppSourceIds.includes(src.id);
-        if (isChecked && src.funnelId !== activeFunnel.id) {
-          updateSource(src.id, { funnelId: activeFunnel.id, status: 'active' });
-        } else if (!isChecked && src.funnelId === activeFunnel.id) {
-          updateSource(src.id, { funnelId: '' });
+    try {
+      let finalStages = [...stages];
+      if (isEntryStageActive) {
+        const hasEntry = finalStages.some(s => s.id === 'new_lead' || s.name.toLowerCase().includes('entrada'));
+        if (!hasEntry) {
+          finalStages = [isPostSale ? POST_SALE_ENTRY_STAGE_DEF : ENTRY_STAGE_DEF, ...finalStages];
         }
+      } else {
+        finalStages = finalStages.filter(s => s.id !== 'new_lead' && !s.name.toLowerCase().includes('entrada'));
       }
-    });
+      finalStages = finalStages.map((s, idx) => ({
+        ...s,
+        name: (s.name || '').trim().toUpperCase(),
+        order: idx,
+      }));
 
-    if (onSaved) onSaved();
-    onClose();
+      const effectiveVenueId = sharedVenueIds.length === 1 
+        ? sharedVenueIds[0] 
+        : (sharedVenueIds.length > 1 ? sharedVenueIds[0] : (funnelVenueId === 'all' ? 'all' : funnelVenueId));
+
+      const wonStage = finalStages.find(s => s.isWon);
+      const lostStage = finalStages.find(s => s.isLoss);
+      const customStageNames = isPostSale ? {
+        won: wonStage?.name || undefined,
+        lost: lostStage?.name || undefined,
+      } : undefined;
+
+      await updateFunnel(activeFunnel.id, {
+        name: funnelName.trim() || activeFunnel.name,
+        venueId: effectiveVenueId,
+        sharedVenueIds: sharedVenueIds,
+        disabledVenueIds,
+        icon: funnelIcon,
+        badgeColor: funnelBadgeColor,
+        description: funnelDescription,
+        isEntryStageActive,
+        enableInboxStage: isEntryStageActive,
+        postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
+        isWonStageEnabled,
+        distributionMode,
+        assignedSdrIds,
+        venueDistributionConfig,
+        detectDuplicates,
+        duplicateRuleConfig: {
+          ...duplicateRuleConfig,
+          _enabledWhatsAppSourceIds: enabledWhatsAppSourceIds,
+          _disabledVenueIds: disabledVenueIds,
+          _enableInboxStage: isEntryStageActive,
+          _isEntryStageActive: isEntryStageActive,
+          _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
+          ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
+        },
+        enabledWhatsAppSourceIds,
+        stages: finalStages,
+        stagesCount: finalStages.length,
+        packageOptions,
+        paymentOptions,
+        predefinedTags,
+        allowCollaboratorsCreateTags,
+        customFields,
+        defaultWhatsAppSourceId,
+        priorityWhatsappPerVenue,
+      } as any);
+
+      // Persistência de fontes WhatsApp habilitadas/desabilitadas para este funil no banco de dados
+      const targetVenues = (!activeFunnel || activeFunnel.venueId === 'all' || !activeFunnel.venueId)
+        ? venues.filter(v => v.active !== false)
+        : venues.filter(v => v.id === activeFunnel.venueId);
+      const targetVenueIds = new Set(targetVenues.map(v => v.id));
+
+      (sources || []).forEach(src => {
+        if (src.type === 'whatsapp_api' && (src.venueId && targetVenueIds.has(src.venueId))) {
+          const isChecked = enabledWhatsAppSourceIds.includes(src.id);
+          if (isChecked && src.funnelId !== activeFunnel.id) {
+            updateSource(src.id, { funnelId: activeFunnel.id, status: 'active' });
+          } else if (!isChecked && src.funnelId === activeFunnel.id) {
+            updateSource(src.id, { funnelId: '' });
+          }
+        }
+      });
+
+      setSaveSuccessMessage(true);
+      if (onSaved) onSaved();
+      setTimeout(() => {
+        setSaveSuccessMessage(false);
+        onClose();
+      }, 700);
+    } catch (err) {
+      console.error('Erro ao salvar funil:', err);
+      alert('Erro ao salvar as configurações do funil. Verifique a conexão com o banco.');
+    } finally {
+      setIsSavingFunnel(false);
+    }
   };
 
   const handleDuplicate = () => {
@@ -1049,20 +1111,38 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           <button
             type="button"
             onClick={handleSave}
+            disabled={isSavingFunnel}
             style={{
-              background: 'var(--adm-accent, #3B82F6)',
+              background: saveSuccessMessage 
+                ? '#10B981' 
+                : isSavingFunnel 
+                  ? 'var(--adm-text-muted)' 
+                  : 'var(--adm-accent, #3B82F6)',
               color: '#FFFFFF',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 22px',
               fontSize: '0.84rem',
               fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: '0 2px 10px rgba(59, 130, 246, 0.35)',
+              cursor: isSavingFunnel ? 'not-allowed' : 'pointer',
+              boxShadow: saveSuccessMessage ? '0 2px 10px rgba(16, 185, 129, 0.4)' : '0 2px 10px rgba(59, 130, 246, 0.35)',
               transition: 'all 0.15s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            Salvar
+            {isSavingFunnel && <Loader2 size={14} className="animate-spin" />}
+            {saveSuccessMessage ? (
+              <>
+                <Check size={14} />
+                <span>Salvo!</span>
+              </>
+            ) : isSavingFunnel ? (
+              <span>Salvando...</span>
+            ) : (
+              <span>Salvar</span>
+            )}
           </button>
         </div>
       </div>
@@ -1483,14 +1563,6 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       const venueConfig = venueDistributionConfig[venue.id] || {};
                       const venueDistMode = venueConfig.distributionMode || 'manual';
                       const venueSdrIds = venueConfig.assignedSdrIds || [];
-                      const displayCollaborators = collaborators.filter(c => {
-                        if (c.active === false) return false;
-                        if (c.role === 'master') return true;
-                        if (c.venueId === 'all') return true;
-                        if (c.venueId === venue.id) return true;
-                        if (Array.isArray(c.venueIds) && c.venueIds.includes(venue.id)) return true;
-                        return false;
-                      });
 
                       return (
                         <div
@@ -1814,173 +1886,334 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                             </div>
 
                             {/* Quando Rodízio: Monte a lista de entrega com ordem e duplicação */}
-                            {venueDistMode === 'round_robin' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', background: 'var(--adm-bg-card)', padding: '8px', borderRadius: '8px', border: '1px solid var(--adm-border)' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  <span style={{ fontSize: '0.66rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                    Monte a lista de entrega ({venueSdrIds.length})
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const firstCollab = displayCollaborators[0]?.id;
-                                      if (firstCollab) {
-                                        setVenueDistributionConfig(prev => ({
-                                          ...prev,
-                                          [venue.id]: {
-                                            ...(prev[venue.id] || {}),
-                                            assignedSdrIds: [...venueSdrIds, firstCollab],
-                                          },
-                                        }));
-                                      }
-                                    }}
-                                    disabled={displayCollaborators.length === 0}
-                                    style={{
-                                      background: 'var(--adm-accent-bg, rgba(59, 130, 246, 0.15))',
-                                      border: '1px dashed var(--adm-accent, #3B82F6)',
-                                      color: 'var(--adm-accent, #3B82F6)',
-                                      borderRadius: '6px',
-                                      padding: '6px 10px',
-                                      fontSize: '0.68rem',
-                                      fontWeight: 800,
-                                      cursor: displayCollaborators.length === 0 ? 'not-allowed' : 'pointer',
-                                      opacity: displayCollaborators.length === 0 ? 0.5 : 1,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '5px',
-                                      width: '100%',
-                                      transition: 'all 0.15s ease',
-                                    }}
-                                  >
-                                    <Plus size={12} strokeWidth={2.5} />
-                                    <span>{displayCollaborators.length === 0 ? 'Nenhum colaborador nesta unidade' : 'Adicionar ao Rodízio'}</span>
-                                  </button>
-                                </div>
+                            {venueDistMode === 'round_robin' && (() => {
+                              const venueCommercialClosers = collaborators.filter(c => {
+                                if (c.active === false) return false;
+                                const inVenue = c.venueId === venue.id || (Array.isArray(c.venueIds) && c.venueIds.includes(venue.id)) || c.venueId === 'all';
+                                if (!inVenue) return false;
+                                const isComm = 
+                                  c.sectors?.includes('comercial') || 
+                                  c.primarySector === 'comercial' ||
+                                  c.department === 'comercial' || 
+                                  ['crm', 'sdr', 'closer', 'comercial'].includes(c.role || '') ||
+                                  c.role === 'admin' || c.role === 'master';
+                                return isComm;
+                              });
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
-                                  {venueSdrIds.map((collabId, idx) => {
-                                    const collab = displayCollaborators.find(c => c.id === collabId);
-                                    return (
-                                      <div
-                                        key={`${collabId}-${idx}`}
+                              const filteredAvailableClosers = venueCommercialClosers.filter(c => {
+                                if (!closerSearchQuery.trim()) return true;
+                                const q = closerSearchQuery.toLowerCase();
+                                return c.name.toLowerCase().includes(q) || (c.customJobTitle || '').toLowerCase().includes(q);
+                              });
+
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', background: 'var(--adm-bg-card)', padding: '10px', borderRadius: '8px', border: '1px solid var(--adm-border)', position: 'relative' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <Users size={12} color="#10B981" />
+                                      <span>Ordem de Distribuição ({venueSdrIds.length})</span>
+                                    </span>
+
+                                    {/* Botão de Adicionar Vendedor ao Rodízio */}
+                                    <div style={{ position: 'relative' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveAddCloserVenueId(activeAddCloserVenueId === venue.id ? null : venue.id);
+                                          setCloserSearchQuery('');
+                                        }}
+                                        disabled={venueCommercialClosers.length === 0}
                                         style={{
+                                          background: 'rgba(16, 185, 129, 0.15)',
+                                          border: '1px solid #10B981',
+                                          color: '#10B981',
+                                          borderRadius: '6px',
+                                          padding: '4px 8px',
+                                          fontSize: '0.68rem',
+                                          fontWeight: 800,
+                                          cursor: venueCommercialClosers.length === 0 ? 'not-allowed' : 'pointer',
+                                          opacity: venueCommercialClosers.length === 0 ? 0.5 : 1,
                                           display: 'flex',
                                           alignItems: 'center',
-                                          justifyContent: 'space-between',
-                                          gap: '6px',
-                                          padding: '4px 6px',
-                                          borderRadius: '6px',
-                                          background: 'var(--adm-bg-input)',
-                                          border: '1px solid var(--adm-border)',
+                                          gap: '4px',
+                                          transition: 'all 0.15s ease',
                                         }}
                                       >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                                          <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#10B981', minWidth: '18px' }}>
-                                            #{idx + 1}
-                                          </span>
-                                          <SafeAvatar name={collab?.name || 'Colaborador'} src={collab?.avatarUrl} size={18} />
-                                          <select
-                                            value={collabId}
-                                            onChange={(e) => {
-                                              const newId = e.target.value;
-                                              const updated = [...venueSdrIds];
-                                              updated[idx] = newId;
-                                              setVenueDistributionConfig(prev => ({
-                                                ...prev,
-                                                [venue.id]: {
-                                                  ...(prev[venue.id] || {}),
-                                                  assignedSdrIds: updated,
-                                                },
-                                              }));
-                                            }}
-                                            style={{
-                                              background: 'transparent',
-                                              border: 'none',
-                                              color: 'var(--adm-text-title)',
-                                              fontSize: '0.68rem',
-                                              fontWeight: 700,
-                                              outline: 'none',
-                                              cursor: 'pointer',
-                                              maxWidth: '130px',
-                                            }}
-                                          >
-                                            {displayCollaborators.map(c => (
-                                              <option key={c.id} value={c.id} style={{ background: 'var(--adm-bg-card)', color: 'var(--adm-text-title)' }}>
-                                                {c.name}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
+                                        <Plus size={12} strokeWidth={2.5} />
+                                        <span>Adicionar Vendedor</span>
+                                      </button>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                          <button
-                                            type="button"
-                                            title="Duplicar no rodízio"
-                                            onClick={() => {
-                                              const updated = [...venueSdrIds];
-                                              updated.splice(idx + 1, 0, collabId);
-                                              setVenueDistributionConfig(prev => ({
-                                                ...prev,
-                                                [venue.id]: {
-                                                  ...(prev[venue.id] || {}),
-                                                  assignedSdrIds: updated,
-                                                },
-                                              }));
-                                            }}
-                                            style={{
-                                              background: 'transparent',
-                                              border: 'none',
-                                              color: 'var(--adm-text-muted)',
-                                              cursor: 'pointer',
-                                              padding: '2px 4px',
-                                              fontSize: '0.58rem',
-                                              borderRadius: '4px',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                            }}
-                                          >
-                                            <Copy size={11} />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            title="Remover do rodízio"
-                                            onClick={() => {
-                                              const updated = venueSdrIds.filter((_, i) => i !== idx);
-                                              setVenueDistributionConfig(prev => ({
-                                                ...prev,
-                                                [venue.id]: {
-                                                  ...(prev[venue.id] || {}),
-                                                  assignedSdrIds: updated,
-                                                },
-                                              }));
-                                            }}
-                                            style={{
-                                              background: 'transparent',
-                                              border: 'none',
-                                              color: '#EF4444',
-                                              cursor: 'pointer',
-                                              padding: '2px 4px',
-                                              fontSize: '0.58rem',
-                                              borderRadius: '4px',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                            }}
-                                          >
-                                            <Trash2 size={11} />
-                                          </button>
+                                      {/* Dropdown / Popover de Seleção de Vendedor */}
+                                      {activeAddCloserVenueId === venue.id && (
+                                        <div
+                                          style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            right: 0,
+                                            marginTop: '6px',
+                                            width: '240px',
+                                            background: 'var(--adm-bg-card)',
+                                            border: '1px solid var(--adm-border)',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                                            zIndex: 50,
+                                            padding: '8px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '4px', borderBottom: '1px solid var(--adm-border)' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                              Selecionar Vendedor
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => setActiveAddCloserVenueId(null)}
+                                              style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0 }}
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+
+                                          {/* Busca rápida */}
+                                          <div style={{ position: 'relative' }}>
+                                            <Search size={11} style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted)' }} />
+                                            <input
+                                              type="text"
+                                              value={closerSearchQuery}
+                                              onChange={(e) => setCloserSearchQuery(e.target.value)}
+                                              placeholder="Buscar vendedor..."
+                                              style={{
+                                                width: '100%',
+                                                padding: '4px 6px 4px 22px',
+                                                borderRadius: '4px',
+                                                background: 'var(--adm-bg-input)',
+                                                border: '1px solid var(--adm-border)',
+                                                color: 'var(--adm-text-title)',
+                                                fontSize: '0.68rem',
+                                                outline: 'none',
+                                                boxSizing: 'border-box',
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            {filteredAvailableClosers.map(collab => (
+                                              <div
+                                                key={collab.id}
+                                                onClick={() => {
+                                                  setVenueDistributionConfig(prev => ({
+                                                    ...prev,
+                                                    [venue.id]: {
+                                                      ...(prev[venue.id] || {}),
+                                                      assignedSdrIds: [...venueSdrIds, collab.id],
+                                                    },
+                                                  }));
+                                                  setActiveAddCloserVenueId(null);
+                                                }}
+                                                style={{
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '6px',
+                                                  padding: '5px 6px',
+                                                  borderRadius: '6px',
+                                                  cursor: 'pointer',
+                                                  transition: 'background 0.12s ease',
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--adm-bg-input)')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                              >
+                                                <SafeAvatar name={collab.name} src={collab.avatarUrl} size={20} />
+                                                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {collab.name}
+                                                  </span>
+                                                  <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
+                                                    {getCollabRoleTitle(collab)}
+                                                  </span>
+                                                </div>
+                                                <Plus size={12} color="#10B981" />
+                                              </div>
+                                            ))}
+                                            {filteredAvailableClosers.length === 0 && (
+                                              <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '10px 0' }}>
+                                                Nenhum vendedor comercial encontrado.
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
-                                  {venueSdrIds.length === 0 && (
-                                    <div style={{ fontSize: '0.62rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '6px' }}>
-                                      Nenhum colaborador no rodízio. Clique em "+ Adicionar".
+                                      )}
                                     </div>
-                                  )}
+                                  </div>
+
+                                  {/* Lista Ordenada de Vendedores no Rodízio */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {venueSdrIds.map((collabId, idx) => {
+                                      const collab = collaborators.find(c => c.id === collabId);
+                                      return (
+                                        <div
+                                          key={`${collabId}-${idx}`}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '6px',
+                                            padding: '5px 8px',
+                                            borderRadius: '6px',
+                                            background: 'var(--adm-bg-input)',
+                                            border: '1px solid var(--adm-border)',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#10B981', minWidth: '18px' }}>
+                                              #{idx + 1}
+                                            </span>
+                                            <SafeAvatar name={collab?.name || 'Colaborador'} src={collab?.avatarUrl} size={20} />
+                                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                              <span style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {collab?.name || 'Vendedor'}
+                                              </span>
+                                              <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>
+                                                {getCollabRoleTitle(collab)}
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                            {/* Subir Ordem */}
+                                            {idx > 0 && (
+                                              <button
+                                                type="button"
+                                                title="Subir posição na ordem"
+                                                onClick={() => {
+                                                  const updated = [...venueSdrIds];
+                                                  const temp = updated[idx - 1];
+                                                  updated[idx - 1] = updated[idx];
+                                                  updated[idx] = temp;
+                                                  setVenueDistributionConfig(prev => ({
+                                                    ...prev,
+                                                    [venue.id]: {
+                                                      ...(prev[venue.id] || {}),
+                                                      assignedSdrIds: updated,
+                                                    },
+                                                  }));
+                                                }}
+                                                style={{
+                                                  background: 'transparent',
+                                                  border: 'none',
+                                                  color: 'var(--adm-text-muted)',
+                                                  cursor: 'pointer',
+                                                  padding: '2px',
+                                                  display: 'flex',
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--adm-text-title)')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted)')}
+                                              >
+                                                <ArrowUp size={11} />
+                                              </button>
+                                            )}
+
+                                            {/* Descer Ordem */}
+                                            {idx < venueSdrIds.length - 1 && (
+                                              <button
+                                                type="button"
+                                                title="Descer posição na ordem"
+                                                onClick={() => {
+                                                  const updated = [...venueSdrIds];
+                                                  const temp = updated[idx + 1];
+                                                  updated[idx + 1] = updated[idx];
+                                                  updated[idx] = temp;
+                                                  setVenueDistributionConfig(prev => ({
+                                                    ...prev,
+                                                    [venue.id]: {
+                                                      ...(prev[venue.id] || {}),
+                                                      assignedSdrIds: updated,
+                                                    },
+                                                  }));
+                                                }}
+                                                style={{
+                                                  background: 'transparent',
+                                                  border: 'none',
+                                                  color: 'var(--adm-text-muted)',
+                                                  cursor: 'pointer',
+                                                  padding: '2px',
+                                                  display: 'flex',
+                                                }}
+                                                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--adm-text-title)')}
+                                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted)')}
+                                              >
+                                                <ArrowDown size={11} />
+                                              </button>
+                                            )}
+
+                                            {/* Duplicar no rodízio (para peso e rotação personalizada A, B, B, A) */}
+                                            <button
+                                              type="button"
+                                              title="Repetir vendedor na ordem de entrega"
+                                              onClick={() => {
+                                                const updated = [...venueSdrIds];
+                                                updated.splice(idx + 1, 0, collabId);
+                                                setVenueDistributionConfig(prev => ({
+                                                  ...prev,
+                                                  [venue.id]: {
+                                                    ...(prev[venue.id] || {}),
+                                                    assignedSdrIds: updated,
+                                                  },
+                                                }));
+                                              }}
+                                              style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: 'var(--adm-text-muted)',
+                                                cursor: 'pointer',
+                                                padding: '2px 4px',
+                                                display: 'flex',
+                                              }}
+                                              onMouseEnter={(e) => (e.currentTarget.style.color = '#3B82F6')}
+                                              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted)')}
+                                            >
+                                              <Copy size={11} />
+                                            </button>
+
+                                            {/* Remover */}
+                                            <button
+                                              type="button"
+                                              title="Remover do rodízio"
+                                              onClick={() => {
+                                                const updated = venueSdrIds.filter((_, i) => i !== idx);
+                                                setVenueDistributionConfig(prev => ({
+                                                  ...prev,
+                                                  [venue.id]: {
+                                                    ...(prev[venue.id] || {}),
+                                                    assignedSdrIds: updated,
+                                                  },
+                                                }));
+                                              }}
+                                              style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: '#EF4444',
+                                                cursor: 'pointer',
+                                                padding: '2px 4px',
+                                                display: 'flex',
+                                              }}
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    {venueSdrIds.length === 0 && (
+                                      <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '10px 0' }}>
+                                        Nenhum vendedor na fila. Clique em "+ Adicionar Vendedor" acima para montar a ordem de entrega.
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
                           </div>
                         </>
                       )}
@@ -2305,95 +2538,402 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                       </div>
 
                       {/* Permissões de Visualização da Etapa por Colaborador */}
-                      <div style={{
-                        background: 'var(--adm-bg-card)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '8px',
-                        padding: '10px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <ShieldCheck size={11} color="var(--adm-accent)" />
-                            <span>ACESSO À ETAPA</span>
-                          </span>
-                          <span style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            background: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                            color: (stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? '#3B82F6' : '#10B981',
+                      {(() => {
+                        const isCustomAccess = Boolean(stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0);
+                        const allowedCollabs = commercialTeamForStageAccess.filter(c => (stage.allowedCollaboratorIds || []).includes(c.id));
+                        const isThisCopied = justCopiedStageId === stage.id;
+                        const isThisPasted = justPastedStageId === stage.id;
+
+                        const filteredTeam = commercialTeamForStageAccess.filter(c => {
+                          if (!accessSearchQuery.trim()) return true;
+                          const q = accessSearchQuery.toLowerCase();
+                          return c.name.toLowerCase().includes(q) || (c.customJobTitle || '').toLowerCase().includes(q);
+                        });
+
+                        return (
+                          <div style={{
+                            background: 'var(--adm-bg-card)',
+                            border: '1px solid var(--adm-border)',
+                            borderRadius: '8px',
+                            padding: '10px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            position: 'relative',
                           }}>
-                            {(stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0) ? `${stage.allowedCollaboratorIds.length} restrito(s)` : 'Acesso Geral'}
-                          </span>
-                        </div>
+                            {/* Header: Título, Badge e Botões de Copiar / Colar */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                              <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <ShieldCheck size={12} color="var(--adm-accent)" />
+                                <span>Acesso à etapa</span>
+                              </span>
 
-                        <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', lineHeight: 1.3 }}>
-                          {(stage.allowedCollaboratorIds && stage.allowedCollaboratorIds.length > 0)
-                            ? 'Apenas os colaboradores marcados abaixo visualizam esta coluna no Kanban.'
-                            : 'Todos os colaboradores autorizados no funil visualizam esta etapa.'}
-                        </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {/* Botão Copiar */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCopiedStageAccess({
+                                      mode: isCustomAccess ? 'custom' : 'all',
+                                      allowedIds: stage.allowedCollaboratorIds,
+                                    });
+                                    setJustCopiedStageId(stage.id);
+                                    setTimeout(() => setJustCopiedStageId(null), 1800);
+                                  }}
+                                  title="Copiar configuração de acesso desta etapa"
+                                  style={{
+                                    background: isThisCopied ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                                    border: isThisCopied ? '1px solid #10B981' : '1px solid var(--adm-border)',
+                                    color: isThisCopied ? '#10B981' : 'var(--adm-text-muted)',
+                                    borderRadius: '5px',
+                                    padding: '2px 6px',
+                                    fontSize: '0.62rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {isThisCopied ? <Check size={10} /> : <Copy size={10} />}
+                                  <span>{isThisCopied ? 'Copiado' : 'Copiar'}</span>
+                                </button>
 
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: undefined } : s));
-                            }}
-                            style={{
-                              padding: '3px 8px',
-                              borderRadius: '4px',
-                              border: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
-                              background: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
-                              color: (!stage.allowedCollaboratorIds || stage.allowedCollaboratorIds.length === 0) ? '#10B981' : 'var(--adm-text-muted)',
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Todos
-                          </button>
+                                {/* Botão Colar (se houver configuração copiada e não for a mesma etapa) */}
+                                {copiedStageAccess && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (copiedStageAccess.mode === 'all') {
+                                        setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: undefined } : s));
+                                      } else {
+                                        setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: copiedStageAccess.allowedIds || [] } : s));
+                                      }
+                                      setJustPastedStageId(stage.id);
+                                      setTimeout(() => setJustPastedStageId(null), 1800);
+                                    }}
+                                    title="Colar configuração de acesso copiada nesta etapa"
+                                    style={{
+                                      background: isThisPasted ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.15)',
+                                      border: isThisPasted ? '1px solid #10B981' : '1px solid var(--adm-accent, #3B82F6)',
+                                      color: isThisPasted ? '#10B981' : 'var(--adm-accent, #3B82F6)',
+                                      borderRadius: '5px',
+                                      padding: '2px 6px',
+                                      fontSize: '0.62rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                  >
+                                    <ClipboardCheck size={10} />
+                                    <span>{isThisPasted ? 'Colado!' : 'Colar'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
 
-                          {funnelCollaborators.map(c => {
-                            const isAllowed = (stage.allowedCollaboratorIds || []).includes(c.id);
-                            return (
+                            {/* Alternador de Modo: Todos vs Personalizado */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                               <button
-                                key={c.id}
                                 type="button"
                                 onClick={() => {
-                                  const currentAllowed = stage.allowedCollaboratorIds || [];
-                                  let nextAllowed: string[];
-                                  if (currentAllowed.includes(c.id)) {
-                                    nextAllowed = currentAllowed.filter(id => id !== c.id);
-                                  } else {
-                                    nextAllowed = [...currentAllowed, c.id];
-                                  }
-                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: nextAllowed.length > 0 ? nextAllowed : undefined } : s));
+                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: undefined } : s));
+                                  setActiveAccessModalStageId(null);
                                 }}
                                 style={{
-                                  padding: '3px 7px',
-                                  borderRadius: '4px',
-                                  border: isAllowed ? '1.5px solid var(--adm-accent, #3B82F6)' : '1px solid var(--adm-border)',
-                                  background: isAllowed ? 'var(--adm-accent-bg, rgba(59, 130, 246, 0.15))' : 'var(--adm-bg-input)',
-                                  color: isAllowed ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-text-muted)',
-                                  fontSize: '0.64rem',
+                                  padding: '4px 8px',
+                                  borderRadius: '5px',
+                                  border: !isCustomAccess ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
+                                  background: !isCustomAccess ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
+                                  color: !isCustomAccess ? '#10B981' : 'var(--adm-text-muted)',
+                                  fontSize: '0.66rem',
                                   fontWeight: 700,
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '3px',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.12s ease',
                                 }}
                               >
-                                {isAllowed && <Check size={10} />}
-                                <span>{c.name.split(' ')[0]}</span>
+                                {!isCustomAccess && <Check size={10} />}
+                                <span>Todos</span>
                               </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!isCustomAccess) {
+                                    setActiveAccessModalStageId(stage.id);
+                                    setAccessSearchQuery('');
+                                  } else {
+                                    setActiveAccessModalStageId(activeAccessModalStageId === stage.id ? null : stage.id);
+                                  }
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '5px',
+                                  border: isCustomAccess ? '1.5px solid var(--adm-accent, #3B82F6)' : '1px solid var(--adm-border)',
+                                  background: isCustomAccess ? 'rgba(59, 130, 246, 0.15)' : 'var(--adm-bg-input)',
+                                  color: isCustomAccess ? 'var(--adm-accent, #3B82F6)' : 'var(--adm-text-muted)',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.12s ease',
+                                }}
+                              >
+                                {isCustomAccess && <Check size={10} />}
+                                <span>Personalizado</span>
+                              </button>
+                            </div>
+
+                            {/* Conteúdo do Modo: Todos (Acesso Geral) vs Personalizado (Avatares) */}
+                            {!isCustomAccess ? (
+                              <div style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)', lineHeight: 1.35, padding: '2px 0' }}>
+                                Acesso Geral: Toda a equipe comercial desta unidade tem acesso a esta etapa.
+                              </div>
+                            ) : (
+                              <div>
+                                <div
+                                  onClick={() => {
+                                    setActiveAccessModalStageId(activeAccessModalStageId === stage.id ? null : stage.id);
+                                    setAccessSearchQuery('');
+                                  }}
+                                  title="Clique para editar colaboradores permitidos nesta etapa"
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    padding: '6px 8px',
+                                    background: 'var(--adm-bg-input)',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--adm-border)',
+                                    gap: '6px',
+                                  }}
+                                >
+                                  {allowedCollabs.length === 0 ? (
+                                    <span style={{ fontSize: '0.66rem', color: '#EF4444', fontStyle: 'italic' }}>
+                                      Nenhum colaborador selecionado. Clique para escolher.
+                                    </span>
+                                  ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                                      {/* Mostra até 5 avatares circulares sobrepostos, igual à imagem enviada pelo usuário */}
+                                      {allowedCollabs.slice(0, 5).map((collab, i) => (
+                                        <div
+                                          key={collab.id}
+                                          title={`${collab.name} (${getCollabRoleTitle(collab)})`}
+                                          style={{
+                                            marginLeft: i === 0 ? 0 : -6,
+                                            border: '2px solid var(--adm-bg-card)',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: 5 - i,
+                                          }}
+                                        >
+                                          <SafeAvatar name={collab.name} src={collab.avatarUrl} size={24} />
+                                        </div>
+                                      ))}
+
+                                      {/* Círculo +N quando tiver mais de 5 pessoas, igual à imagem (+12) */}
+                                      {allowedCollabs.length > 5 && (
+                                        <div
+                                          style={{
+                                            marginLeft: -6,
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            background: '#111b21',
+                                            border: '2px solid var(--adm-bg-card)',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.60rem',
+                                            fontWeight: 800,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: 0,
+                                          }}
+                                        >
+                                          +{allowedCollabs.length - 5}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <span style={{ marginLeft: 'auto', fontSize: '0.62rem', fontWeight: 700, color: 'var(--adm-accent)' }}>
+                                    {allowedCollabs.length > 0 ? `${allowedCollabs.length} selecionado(s)` : 'Selecionar'}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Dropdown / Popover Modal Contextual de Seleção de Colaboradores da Etapa */}
+                            {activeAccessModalStageId === stage.id && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  right: 0,
+                                  marginTop: '6px',
+                                  background: 'var(--adm-bg-card)',
+                                  border: '1px solid var(--adm-border)',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                                  zIndex: 50,
+                                  padding: '10px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '8px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--adm-border)', paddingBottom: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <UserCheck size={12} color="var(--adm-accent)" />
+                                    <span style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                                      Colaboradores Comerciais
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveAccessModalStageId(null)}
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer', padding: 0 }}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+
+                                <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)', lineHeight: 1.3 }}>
+                                  Gerentes e Master possuem acesso automático total. Selecione abaixo os colaboradores comerciais com permissão para esta coluna.
+                                </div>
+
+                                {/* Busca rápida */}
+                                <div style={{ position: 'relative' }}>
+                                  <Search size={11} style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', color: 'var(--adm-text-muted)' }} />
+                                  <input
+                                    type="text"
+                                    value={accessSearchQuery}
+                                    onChange={(e) => setAccessSearchQuery(e.target.value)}
+                                    placeholder="Buscar por nome ou cargo..."
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 6px 4px 22px',
+                                      borderRadius: '4px',
+                                      background: 'var(--adm-bg-input)',
+                                      border: '1px solid var(--adm-border)',
+                                      color: 'var(--adm-text-title)',
+                                      fontSize: '0.68rem',
+                                      outline: 'none',
+                                      boxSizing: 'border-box',
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Lista de Colaboradores com Checkbox */}
+                                <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {filteredTeam.map(c => {
+                                    const isAllowed = (stage.allowedCollaboratorIds || []).includes(c.id);
+                                    return (
+                                      <div
+                                        key={c.id}
+                                        onClick={() => {
+                                          const currentAllowed = stage.allowedCollaboratorIds || [];
+                                          let nextAllowed: string[];
+                                          if (currentAllowed.includes(c.id)) {
+                                            nextAllowed = currentAllowed.filter(id => id !== c.id);
+                                          } else {
+                                            nextAllowed = [...currentAllowed, c.id];
+                                          }
+                                          setStages(prev => prev.map(s => s.id === stage.id ? { ...s, allowedCollaboratorIds: nextAllowed.length > 0 ? nextAllowed : [] } : s));
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          padding: '5px 8px',
+                                          borderRadius: '6px',
+                                          background: isAllowed ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                                          border: isAllowed ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.12s ease',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isAllowed) e.currentTarget.style.background = 'var(--adm-bg-input)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (!isAllowed) e.currentTarget.style.background = 'transparent';
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '4px',
+                                            border: isAllowed ? '1.5px solid var(--adm-accent, #3B82F6)' : '1px solid var(--adm-border)',
+                                            background: isAllowed ? 'var(--adm-accent, #3B82F6)' : 'transparent',
+                                            color: '#FFFFFF',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {isAllowed && <Check size={11} strokeWidth={3} />}
+                                        </div>
+
+                                        <SafeAvatar name={c.name} src={c.avatarUrl} size={22} />
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {c.name}
+                                          </span>
+                                          <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
+                                            {getCollabRoleTitle(c)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {filteredTeam.length === 0 && (
+                                    <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', textAlign: 'center', padding: '12px 0' }}>
+                                      Nenhum colaborador comercial encontrado.
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Botão Concluir */}
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveAccessModalStageId(null)}
+                                  style={{
+                                    background: 'var(--adm-accent, #3B82F6)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '6px',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    marginTop: '2px',
+                                  }}
+                                >
+                                  Concluir Seleção
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Gatilhos / Automação da Etapa */}
                       <div style={{
