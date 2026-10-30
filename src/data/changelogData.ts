@@ -212,3 +212,4 @@ export const CHANGELOG_DATA: ChangelogItem[] = [
     ],
   },
 ];
+
