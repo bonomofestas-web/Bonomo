@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Zap, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { X, Zap, Sparkles, Check, AlertCircle, CheckCheck } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { renderWhatsAppFormattedText } from '../../utils/whatsappFormatter';
 import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
@@ -305,25 +305,45 @@ export const AdminQuickMessageModal: React.FC<AdminQuickMessageModalProps> = ({
               </div>
               <div
                 style={{
-                  background: '#0b141a',
+                  background: '#efeae2',
                   borderRadius: '10px',
-                  padding: '12px 16px',
-                  border: '1px solid rgba(0, 168, 132, 0.25)',
+                  padding: '14px 16px',
+                  border: '1px solid rgba(0, 0, 0, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
                 }}
               >
                 <div
                   style={{
-                    background: '#005c4b',
-                    color: '#e9edef',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
+                    background: '#d9fdd3',
+                    color: '#111b21',
+                    padding: '8px 12px 6px 12px',
+                    borderRadius: '8px 0px 8px 8px',
                     maxWidth: '85%',
                     fontSize: '0.84rem',
                     lineHeight: 1.45,
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                    boxShadow: '0 1px 1px rgba(11,20,26,0.13)',
+                    wordBreak: 'break-word',
                   }}
                 >
-                  {renderWhatsAppFormattedText(messageText, { isDarkMode: true })}
+                  <div>
+                    {renderWhatsAppFormattedText(messageText, { isDarkMode: false })}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: '3px',
+                      marginTop: '4px',
+                      fontSize: '0.68rem',
+                      color: '#667781',
+                    }}
+                  >
+                    <span>12:00</span>
+                    <CheckCheck size={14} color="#53bdeb" />
+                  </div>
                 </div>
               </div>
             </div>

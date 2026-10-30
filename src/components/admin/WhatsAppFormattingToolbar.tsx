@@ -3,17 +3,19 @@ import { Bold, Italic, Strikethrough, Code, List, ListOrdered, Quote } from 'luc
 import { applyWhatsAppFormatting } from '../../utils/whatsappFormatter';
 
 interface WhatsAppFormattingToolbarProps {
-  inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
-  value: string;
-  onChange: (newValue: string) => void;
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | HTMLElement | null>;
+  value?: string;
+  onChange?: (newValue: string) => void;
+  onExecFormat?: (format: 'bold' | 'italic' | 'strike' | 'monospace' | 'quote' | 'bullet' | 'number') => void;
   isDarkMode?: boolean;
   position?: 'top' | 'floating' | 'inline';
 }
 
 export const WhatsAppFormattingToolbar: React.FC<WhatsAppFormattingToolbarProps> = ({
   inputRef,
-  value,
+  value = '',
   onChange,
+  onExecFormat,
   isDarkMode = true,
   position = 'inline',
 }) => {
@@ -24,8 +26,14 @@ export const WhatsAppFormattingToolbar: React.FC<WhatsAppFormattingToolbarProps>
     e.preventDefault();
     e.stopPropagation();
 
-    const element = inputRef.current;
-    if (!element) return;
+    // Se houver callback customizado de formatação direta (WYSIWYG)
+    if (onExecFormat) {
+      onExecFormat(format);
+      return;
+    }
+
+    const element = inputRef?.current as (HTMLInputElement | HTMLTextAreaElement | null);
+    if (!element || !onChange) return;
 
     const start = element.selectionStart ?? 0;
     const end = element.selectionEnd ?? 0;

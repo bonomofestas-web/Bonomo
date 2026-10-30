@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Zap, Plus, Search, Edit3, Trash2, CheckCircle2,
-  XCircle, User, Calendar, MessageSquare
+  XCircle, User, Calendar, MessageSquare, LayoutGrid, List as ListIcon, CheckCheck
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminQuickMessageModal } from './AdminQuickMessageModal';
@@ -14,6 +14,7 @@ export const AdminQuickMessagesView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [messageToEdit, setMessageToEdit] = useState<QuickMessage | null>(null);
   const [messageToDelete, setMessageToDelete] = useState<QuickMessage | null>(null);
@@ -280,6 +281,62 @@ export const AdminQuickMessagesView: React.FC = () => {
             Inativas ({quickMessages.filter(m => !m.isActive).length})
           </button>
         </div>
+
+        {/* Alternador de Modo de Visualização (Cards vs Lista) */}
+        <div
+          style={{
+            display: 'inline-flex',
+            borderRadius: '8px',
+            background: 'var(--adm-bg-card, #1e293b)',
+            border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.1))',
+            padding: '3px',
+            gap: '2px',
+            marginLeft: 'auto',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode('grid')}
+            title="Visualização em Cards"
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: 'none',
+              background: viewMode === 'grid' ? '#14A9D7' : 'transparent',
+              color: viewMode === 'grid' ? '#ffffff' : 'var(--adm-text-muted, #94a3b8)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              transition: 'all 0.12s ease',
+            }}
+          >
+            <LayoutGrid size={14} /> Cards
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            title="Visualização em Lista"
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: 'none',
+              background: viewMode === 'list' ? '#14A9D7' : 'transparent',
+              color: viewMode === 'list' ? '#ffffff' : 'var(--adm-text-muted, #94a3b8)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              transition: 'all 0.12s ease',
+            }}
+          >
+            <ListIcon size={14} /> Lista
+          </button>
+        </div>
       </div>
 
       {/* ── LISTAGEM DE MENSAGENS RÁPIDAS ── */}
@@ -318,6 +375,181 @@ export const AdminQuickMessagesView: React.FC = () => {
             {searchQuery
               ? 'Tente ajustar os termos de busca para encontrar o atalho desejado.'
               : 'Clique no botão acima para cadastrar seu primeiro atalho de mensagem rápida.'}
+          </div>
+        </div>
+      ) : viewMode === 'list' ? (
+        /* ── MODO LISTA (TABELA COMPACTA E EFICIENTE) ── */
+        <div
+          style={{
+            background: 'var(--adm-bg-card, #1e293b)',
+            borderRadius: '12px',
+            border: '1px solid var(--adm-border, rgba(255, 255, 255, 0.1))',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '140px 1fr 180px 100px 90px',
+              padding: '12px 16px',
+              background: 'rgba(0, 0, 0, 0.2)',
+              borderBottom: '1px solid var(--adm-border, rgba(255, 255, 255, 0.08))',
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              color: 'var(--adm-text-muted, #94a3b8)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            <div>Atalho</div>
+            <div>Mensagem (WhatsApp)</div>
+            <div>Criado por</div>
+            <div style={{ textAlign: 'center' }}>Status</div>
+            <div style={{ textAlign: 'right' }}>Ações</div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {filteredMessages.map((msg, index) => (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '140px 1fr 180px 100px 90px',
+                  alignItems: 'center',
+                  padding: '12px 16px',
+                  gap: '12px',
+                  borderBottom: index < filteredMessages.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
+                  opacity: msg.isActive ? 1 : 0.6,
+                  transition: 'background 0.12s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                {/* Atalho */}
+                <div>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(20, 169, 215, 0.15)',
+                      border: '1px solid rgba(20, 169, 215, 0.3)',
+                      color: '#14A9D7',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                    }}
+                  >
+                    /{msg.keyword}
+                  </span>
+                </div>
+
+                {/* Balão WhatsApp Compacto */}
+                <div style={{ minWidth: 0, paddingRight: '8px' }}>
+                  <div
+                    style={{
+                      background: '#efeae2',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      border: '1px solid rgba(0,0,0,0.06)',
+                      display: 'inline-flex',
+                      flexDirection: 'column',
+                      maxWidth: '100%',
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: '#d9fdd3',
+                        color: '#111b21',
+                        padding: '4px 8px',
+                        borderRadius: '6px 0px 6px 6px',
+                        fontSize: '0.80rem',
+                        lineHeight: 1.4,
+                        boxShadow: '0 1px 1px rgba(11,20,26,0.12)',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {renderWhatsAppFormattedText(msg.message, { isDarkMode: false })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Criado por & Data */}
+                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted, #94a3b8)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ color: 'var(--adm-text-title, #f8fafc)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <User size={12} /> {msg.createdBy || 'Sistema'}
+                  </span>
+                  <span style={{ fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Calendar size={11} /> {formatCreationDate(msg.createdAt)}
+                  </span>
+                </div>
+
+                {/* Status Toggle */}
+                <div style={{ textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleQuickMessageActive(msg.id, !msg.isActive)}
+                    style={{
+                      border: 'none',
+                      background: msg.isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.12)',
+                      color: msg.isActive ? '#10B981' : '#94a3b8',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {msg.isActive ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    {msg.isActive ? 'Ativa' : 'Inativa'}
+                  </button>
+                </div>
+
+                {/* Ações */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(msg)}
+                    title="Editar mensagem"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--adm-text-muted, #94a3b8)',
+                      cursor: 'pointer',
+                      padding: '5px',
+                      borderRadius: '6px',
+                      display: 'flex',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#14A9D7')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted, #94a3b8)')}
+                  >
+                    <Edit3 size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMessageToDelete(msg)}
+                    title="Excluir mensagem"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--adm-text-muted, #94a3b8)',
+                      cursor: 'pointer',
+                      padding: '5px',
+                      borderRadius: '6px',
+                      display: 'flex',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--adm-text-muted, #94a3b8)')}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
@@ -460,33 +692,60 @@ export const AdminQuickMessagesView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Corpo da Mensagem (Renderizado com o formatador nativo do WhatsApp) */}
+              {/* Corpo da Mensagem (Simulação WhatsApp com Fundo Claro e Balão Verde) */}
               <div
                 style={{
-                  background: '#0b141a',
-                  borderRadius: '8px',
-                  padding: '10px 12px',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  background: '#efeae2',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  border: '1px solid rgba(0, 0, 0, 0.08)',
                   flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
+                  justifyContent: 'flex-end',
+                  minHeight: '85px',
                 }}
               >
                 <div
                   style={{
-                    color: '#e9edef',
-                    fontSize: '0.82rem',
-                    lineHeight: 1.45,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
+                    alignSelf: 'flex-end',
+                    maxWidth: '92%',
+                    background: '#d9fdd3',
+                    color: '#111b21',
+                    padding: '7px 10px 5px 12px',
+                    borderRadius: '8px 0px 8px 8px',
+                    boxShadow: '0 1px 1px rgba(11,20,26,0.13)',
+                    position: 'relative',
                   }}
                 >
-                  {renderWhatsAppFormattedText(msg.message, { isDarkMode: true })}
+                  <div
+                    style={{
+                      fontSize: '0.84rem',
+                      lineHeight: 1.45,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {renderWhatsAppFormattedText(msg.message, { isDarkMode: false })}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: '3px',
+                      marginTop: '3px',
+                      fontSize: '0.68rem',
+                      color: '#667781',
+                    }}
+                  >
+                    <span>12:00</span>
+                    <CheckCheck size={14} color="#53bdeb" />
+                  </div>
                 </div>
               </div>
 
-              {/* Rodapé: Criado por e Data de criação (Requisito do Áudio 2) */}
+              {/* Rodapé: Criado por e Data de criação */}
               <div
                 style={{
                   display: 'flex',

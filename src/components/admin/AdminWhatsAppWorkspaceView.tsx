@@ -219,6 +219,68 @@ function renderFormattedTextWithLinks(text?: string, isDarkMode = false): React.
   return renderWhatsAppFormattedText(text, { isDarkMode });
 }
 
+/**
+ * Utilitários para o editor com formatação direta (WYSIWYG)
+ */
+function htmlToWhatsAppText(html: string): string {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+
+  function traverse(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent || '';
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+      let children = '';
+      el.childNodes.forEach(child => {
+        children += traverse(child);
+      });
+
+      if (tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700') {
+        const trimmed = children.trim();
+        return trimmed ? `*${trimmed}* ` : '';
+      }
+      if (tag === 'i' || tag === 'em' || el.style.fontStyle === 'italic') {
+        const trimmed = children.trim();
+        return trimmed ? `_${trimmed}_ ` : '';
+      }
+      if (tag === 's' || tag === 'strike' || tag === 'del' || el.style.textDecoration?.includes('line-through')) {
+        const trimmed = children.trim();
+        return trimmed ? `~${trimmed}~ ` : '';
+      }
+      if (tag === 'code' || el.style.fontFamily?.includes('monospace')) {
+        const trimmed = children.trim();
+        return trimmed ? `\`\`\`${trimmed}\`\`\` ` : '';
+      }
+      if (tag === 'br') {
+        return '\n';
+      }
+      if (tag === 'div' || tag === 'p') {
+        return children ? `\n${children}` : '\n';
+      }
+      return children;
+    }
+    return '';
+  }
+
+  return traverse(temp).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function whatsappTextToHtml(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>')
+    .replace(/~([^~\n]+)~/g, '<del>$1</del>')
+    .replace(/```([^`]+)```/g, '<code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 3px;border-radius:3px;">$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
 interface WhatsAppMessageInputBoxProps {
   leadId: string;
   isDarkMode: boolean;
@@ -243,55 +305,67 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
   pendingAttachmentCaption,
 }) => {
   const { quickMessages } = useAdminState();
-  const [localText, setLocalText] = useState('');
-  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [hasText, setHasText] = useState(false);
+  const [showFormatBar, setShowFormatBar] = useState(false);
   const [isSlashActive, setIsSlashActive] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
-  const [slashMatchIndex, setSlashMatchIndex] = useState(-1);
   const [selectedQuickIndex, setSelectedQuickIndex] = useState(0);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const lastComposingCallRef = useRef<number>(0);
 
-  // Limpa o texto local ao trocar de lead ou preenche com a legenda inicial do anexo
+  // Inicializa o conteúdo do editor ao trocar de lead ou preenche com a legenda inicial
   useEffect(() => {
-    setLocalText(pendingAttachmentCaption || '');
+    if (editorRef.current) {
+      if (pendingAttachmentCaption) {
+        editorRef.current.innerHTML = whatsappTextToHtml(pendingAttachmentCaption);
+        setHasText(true);
+      } else {
+        editorRef.current.innerHTML = '';
+        setHasText(false);
+      }
+    }
     setIsSlashActive(false);
-    setSelectionRange(null);
+    setShowFormatBar(false);
   }, [leadId, pendingAttachmentCaption]);
 
-  // Filtra mensagens rápidas ativas baseadas no slashQuery
+  // Filtra no máximo 3 sugestões de mensagens rápidas ativas baseadas no slashQuery
   const matchingQuickMessages = useMemo(() => {
     if (!isSlashActive) return [];
     const q = slashQuery.toLowerCase();
-    return (quickMessages || []).filter(qm =>
+    const filtered = (quickMessages || []).filter(qm =>
       qm.isActive && qm.keyword.toLowerCase().startsWith(q)
     );
+    return filtered.slice(0, 3);
   }, [quickMessages, isSlashActive, slashQuery]);
 
-  const checkSlashTrigger = (val: string, cursorPos: number) => {
-    const beforeCursor = val.slice(0, cursorPos);
-    const match = beforeCursor.match(/(?:^|\s)\/([a-zA-Z0-9_\-]*)$/);
+  const checkSlashTrigger = () => {
+    if (!editorRef.current) return;
+    const plainText = editorRef.current.innerText || '';
+    const sel = window.getSelection();
+    let textBeforeCaret = plainText;
+    if (sel && sel.focusNode) {
+      const nodeText = sel.focusNode.textContent || '';
+      textBeforeCaret = nodeText.slice(0, sel.focusOffset);
+    }
+    const match = textBeforeCaret.match(/(?:^|\s)\/([a-zA-Z0-9_\-]*)$/);
     if (match) {
       setIsSlashActive(true);
       setSlashQuery(match[1]);
-      setSlashMatchIndex(match.index! + (match[0].startsWith(' ') ? 1 : 0));
       setSelectedQuickIndex(0);
     } else {
       setIsSlashActive(false);
       setSlashQuery('');
-      setSlashMatchIndex(-1);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setLocalText(val);
+  const handleInput = () => {
+    if (!editorRef.current) return;
+    const currentHtml = editorRef.current.innerHTML;
+    const text = (editorRef.current.innerText || '').trim();
+    setHasText(text.length > 0 || currentHtml.includes('<img'));
+    checkSlashTrigger();
 
-    const cursor = e.target.selectionStart ?? val.length;
-    checkSlashTrigger(val, cursor);
-
-    // Throttled presence trigger (evita spam de eventos de digitação)
     const now = Date.now();
     if (now - lastComposingCallRef.current > 3000) {
       lastComposingCallRef.current = now;
@@ -299,35 +373,82 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     }
   };
 
-  const handleSelect = () => {
-    if (inputRef.current) {
-      const { selectionStart, selectionEnd } = inputRef.current;
-      if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
-        setSelectionRange({ start: selectionStart, end: selectionEnd });
-      } else {
-        setSelectionRange(null);
-      }
+  const checkSelection = () => {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+      setShowFormatBar(true);
+    } else {
+      setShowFormatBar(false);
     }
   };
 
   const applyQuickMessage = (qm: typeof quickMessages[0]) => {
-    if (!qm) return;
-    const cursor = inputRef.current ? (inputRef.current.selectionStart ?? localText.length) : localText.length;
-    const before = localText.slice(0, slashMatchIndex >= 0 ? slashMatchIndex : cursor);
-    const after = localText.slice(cursor);
-    const newText = before + qm.message + (after.startsWith(' ') ? after : (after ? ' ' + after : ''));
-    setLocalText(newText);
+    if (!qm || !editorRef.current) return;
+    // Substitui a chamada do atalho /peloTexto pela mensagem formatada visualmente
+    const htmlToInsert = whatsappTextToHtml(qm.message);
+    const plainText = editorRef.current.innerText || '';
+    const slashIdx = plainText.lastIndexOf('/' + slashQuery);
+
+    if (slashIdx >= 0) {
+      const beforeSlash = plainText.slice(0, slashIdx);
+      const afterSlash = plainText.slice(slashIdx + slashQuery.length + 1);
+      editorRef.current.innerHTML = whatsappTextToHtml(beforeSlash) + htmlToInsert + (afterSlash ? ' ' + whatsappTextToHtml(afterSlash) : ' ');
+    } else {
+      editorRef.current.innerHTML = htmlToInsert + ' ';
+    }
+
+    setHasText(true);
     setIsSlashActive(false);
     setSlashQuery('');
-    setSlashMatchIndex(-1);
+
+    // Posiciona o cursor no final do editor
     requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      const newPos = before.length + qm.message.length;
-      inputRef.current?.setSelectionRange(newPos, newPos);
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editorRef.current);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleExecFormat = (format: 'bold' | 'italic' | 'strike' | 'monospace' | 'quote' | 'bullet' | 'number') => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+
+    if (format === 'bold') {
+      document.execCommand('bold', false);
+    } else if (format === 'italic') {
+      document.execCommand('italic', false);
+    } else if (format === 'strike') {
+      document.execCommand('strikeThrough', false);
+    } else if (format === 'monospace') {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        const code = document.createElement('code');
+        code.style.fontFamily = 'monospace';
+        code.style.background = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
+        code.style.padding = '1px 3px';
+        code.style.borderRadius = '3px';
+        code.appendChild(range.extractContents());
+        range.insertNode(code);
+      }
+    } else if (format === 'quote') {
+      document.execCommand('formatBlock', false, 'blockquote');
+    } else if (format === 'bullet') {
+      document.execCommand('insertUnorderedList', false);
+    } else if (format === 'number') {
+      document.execCommand('insertOrderedList', false);
+    }
+
+    setShowFormatBar(false);
+    handleInput();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // 1. Navegação no autocomplete de mensagens rápidas com '/'
     if (isSlashActive && matchingQuickMessages.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -345,48 +466,34 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         applyQuickMessage(matchingQuickMessages[selectedQuickIndex]);
         return;
       }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setIsSlashActive(false);
-        return;
-      }
-      if (e.key === ' ') {
-        // Áudio 2: "Se ela por ventura der espaço, a opção some e ela pode continuar digitando o texto"
+      if (e.key === 'Escape' || e.key === ' ') {
         setIsSlashActive(false);
         return;
       }
     }
 
-    // 2. Envio de mensagem com Enter
+    // 2. Envio de mensagem com Enter (Shift+Enter quebra a linha)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
-        const text = localText.trim();
-        setLocalText('');
-        setIsSlashActive(false);
-        setSelectionRange(null);
-        onSendMessageText(text);
-      }
+      triggerSend();
     }
   };
 
-  const handleSendClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if ((localText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
-      const text = localText.trim();
-      setLocalText('');
+  const triggerSend = () => {
+    if (!editorRef.current) return;
+    const finalFormattedText = htmlToWhatsAppText(editorRef.current.innerHTML);
+    if ((finalFormattedText.trim() || hasPendingAttachment) && !disabled && !isSpectator) {
+      editorRef.current.innerHTML = '';
+      setHasText(false);
       setIsSlashActive(false);
-      setSelectionRange(null);
-      onSendMessageText(text);
+      setShowFormatBar(false);
+      onSendMessageText(finalFormattedText);
     }
   };
-
-  // Detecta se há marcadores de formatação para prévia
-  const hasFormattingMarkers = /[*_~`]|(?:^|\n)(?:[-*]|\d+\.|>)\s/.test(localText);
 
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: '6px' }}>
-      {/* ── POPOVER DE AUTOCOMPLETE DE MENSAGENS RÁPIDAS (ÁUDIO 2) ── */}
+      {/* ── POPOVER DE AUTOCOMPLETE DE MENSAGENS RÁPIDAS (EXIBE NO MÁXIMO 3 SUGESTÕES) ── */}
       {isSlashActive && matchingQuickMessages.length > 0 && (
         <div
           style={{
@@ -394,9 +501,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
             bottom: 'calc(100% + 8px)',
             left: 0,
             width: '100%',
-            maxWidth: '420px',
-            maxHeight: '260px',
-            overflowY: 'auto',
+            maxWidth: '380px',
             background: isDarkMode ? '#1e293b' : '#ffffff',
             border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #e2e8f0',
             borderRadius: '12px',
@@ -407,6 +512,7 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
             overflow: 'hidden',
           }}
         >
+          {/* Cabeçalho Limpo sem contagem e sem instrução cinza */}
           <div
             style={{
               padding: '8px 12px',
@@ -414,7 +520,6 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
               borderBottom: isDarkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
               fontSize: '0.72rem',
               fontWeight: 700,
               color: '#14A9D7',
@@ -422,16 +527,13 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
               letterSpacing: '0.5px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Zap size={13} />
-              <span>Mensagens Rápidas ({matchingQuickMessages.length})</span>
+              <span>Mensagens Rápidas</span>
             </div>
-            <span style={{ fontSize: '0.64rem', color: isDarkMode ? '#64748b' : '#94a3b8', fontWeight: 500, textTransform: 'none' }}>
-              Tab ou Enter para selecionar • Espaço para dispensar
-            </span>
           </div>
 
-          <div style={{ maxHeight: '210px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             {matchingQuickMessages.map((qm, idx) => {
               const isSelected = idx === selectedQuickIndex;
               return (
@@ -484,8 +586,8 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
         </div>
       )}
 
-      {/* ── BARRA FLUTUANTE DE FORMATAÇÃO NA SELEÇÃO DE TEXTO (ÁUDIO 3) ── */}
-      {selectionRange && (
+      {/* ── BARRA FLUTUANTE DE FORMATAÇÃO DIRETA NA SELEÇÃO DE TEXTO ── */}
+      {showFormatBar && (
         <div
           style={{
             position: 'absolute',
@@ -495,77 +597,45 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
           }}
         >
           <WhatsAppFormattingToolbar
-            inputRef={inputRef}
-            value={localText}
-            onChange={(val) => {
-              setLocalText(val);
-              setSelectionRange(null);
-            }}
+            onExecFormat={handleExecFormat}
             isDarkMode={isDarkMode}
             position="floating"
           />
         </div>
       )}
 
-      {/* ── PRÉVIA EM TEMPO REAL DA FORMATAÇÃO (ÁUDIO 3) ── */}
-      {!isSlashActive && !selectionRange && hasFormattingMarkers && localText.trim().length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 'calc(100% + 6px)',
-            left: 0,
-            maxWidth: '100%',
-            background: isDarkMode ? '#0b141a' : '#f0fdf4',
-            border: isDarkMode ? '1px solid rgba(0, 168, 132, 0.3)' : '1px solid #bbf7d0',
-            borderRadius: '8px',
-            padding: '4px 10px',
-            fontSize: '0.76rem',
-            color: isDarkMode ? '#e9edef' : '#14532d',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            zIndex: 999,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            pointerEvents: 'none',
-          }}
-        >
-          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#00a884', textTransform: 'uppercase' }}>
-            Prévia:
-          </span>
-          <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-            {renderFormattedTextWithLinks(localText, isDarkMode)}
-          </div>
-        </div>
-      )}
-
-      <input
-        ref={inputRef}
-        type="text"
-        value={localText}
-        onChange={handleChange}
+      {/* ── CAMPO DE DIGITAÇÃO COM FORMATAÇÃO VISUAL DIRETA (SEM PRÉVIA FLUTUANTE) ── */}
+      <div
+        ref={editorRef}
+        contentEditable={!disabled && !isSpectator}
+        onInput={handleInput}
+        onSelect={checkSelection}
+        onKeyUp={checkSelection}
+        onMouseUp={checkSelection}
         onKeyDown={handleKeyDown}
-        onSelect={handleSelect}
-        placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem ou digite / para atalhos"}
-        disabled={disabled || isSpectator}
+        data-placeholder={hasPendingAttachment ? "Adicionar uma legenda à foto (opcional)..." : isSpectator ? "Modo espectador (apenas leitura)" : "Digite uma mensagem ou digite / para atalhos"}
         style={{
           flex: 1,
-          height: '36px',
+          minHeight: '24px',
+          maxHeight: '120px',
+          overflowY: 'auto',
           background: 'transparent',
           border: 'none',
           outline: 'none',
           color: isDarkMode ? '#e9edef' : '#111b21',
           fontSize: '0.86rem',
-          padding: '0 4px',
+          padding: '6px 4px',
+          lineHeight: '1.45',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          cursor: (disabled || isSpectator) ? 'not-allowed' : 'text',
         }}
       />
 
-      {(localText.trim().length > 0 || hasPendingAttachment) ? (
+      {(hasText || hasPendingAttachment) ? (
         <button
           type="button"
-          onClick={handleSendClick}
+          onClick={triggerSend}
           title="Enviar mensagem (Enter)"
           style={{
             width: '36px',
@@ -2404,23 +2474,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setQuickFollowupNote('');
   };
 
-  // WhatsApp Sender Selection isolado e vinculado estritamente à Casa de Festa do Lead
+  // WhatsApp Sender Selection isolado e vinculado estritamente à Casa de Festa do Lead (REGRA DE OURO F5 SYSTEM: VAZAMENTO ZERO ENTRE UNIDADES)
   const venueSenderSources = useMemo(() => {
     const allWhatsappSources = (sources || []).filter(
       s => s.type === 'whatsapp_api' &&
         Boolean(getSourceInstanceToken(s) || (s.configuration as any)?.connectedPhone)
     );
 
-    if (selectedLead?.venueId && selectedLead.venueId !== 'all') {
-      const matchVenue = allWhatsappSources.filter(s => s.venueId === selectedLead.venueId);
-      if (matchVenue.length > 0) return matchVenue;
+    // 1. Se o Lead possui unidade definida, ele SÓ PODE ser respondido por instâncias desta unidade
+    const leadVenueId = selectedLead?.venueId;
+    if (leadVenueId && leadVenueId !== 'all' && leadVenueId !== 'multi') {
+      return allWhatsappSources.filter(s => s.venueId === leadVenueId);
     }
 
+    // 2. Se o lead não possui unidade definida mas há uma unidade ativa no painel
     if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-      const matchGlobal = allWhatsappSources.filter(s => s.venueId === activeVenueId);
-      if (matchGlobal.length > 0) return matchGlobal;
+      return allWhatsappSources.filter(s => s.venueId === activeVenueId);
     }
 
+    // 3. Apenas para visão global irrestrita (leads multiunidades sem sede física fixa)
     return allWhatsappSources;
   }, [sources, selectedLead?.venueId, activeVenueId]);
 
@@ -2505,10 +2577,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [activeSenderSource]);
 
   const connectedAlternativeSource = useMemo(() => {
-    const onlineInVenue = venueSenderSources.find(s => s.id !== activeSenderSource?.id && isSourceOnline(s));
-    if (onlineInVenue) return onlineInVenue;
-    return (sources || []).find(s => s.type === 'whatsapp_api' && s.id !== activeSenderSource?.id && isSourceOnline(s)) || null;
-  }, [venueSenderSources, activeSenderSource, sources]);
+    // Busca alternativa exclusivamente dentro das instâncias permitidas da unidade do lead
+    return venueSenderSources.find(s => s.id !== activeSenderSource?.id && isSourceOnline(s)) || null;
+  }, [venueSenderSources, activeSenderSource]);
 
   const activeSenderToken = useMemo(() => {
     if (activeSenderSource) {
