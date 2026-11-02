@@ -361,15 +361,23 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   }, [leadFunnel, lead.venueId]);
 
   const effectiveUser = viewingAsCollaborator || currentUser;
+  const effectiveRole = effectiveUser?.role;
+  const effectiveSectors: string[] = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+    ? (effectiveUser as any).sectors
+    : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
 
   // Gerentes e Masters de unidades possuem liberdade de gestão para alterar/atribuir Closer manualmente
   const isManagerOrMaster = Boolean(
-    effectiveUser?.role === 'master' || 
-    effectiveUser?.role === 'admin' || 
+    effectiveRole === 'master' || 
+    (effectiveRole === 'admin' && effectiveSectors.includes('gerencia')) || 
+    effectiveRole === 'gerencia' ||
+    (effectiveUser as any)?.role === 'gerente' ||
     (effectiveUser as any)?.department === 'gerencia' || 
     (effectiveUser as any)?.department === 'diretoria' ||
-    (effectiveUser as any)?.sectors?.includes('gerencia') ||
-    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    effectiveSectors.includes('gerencia') ||
+    effectiveSectors.includes('diretoria') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
+    ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
     (effectiveUser as any)?.isDev
   );
 
@@ -534,6 +542,21 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     if (lead.source === 'whatsapp' || lead.sourceName?.toLowerCase().includes('whatsapp')) return 'WhatsApp';
     return lead.sourceName || lead.source || 'Entrada Direta';
   }, [isReferralLead, lead.subSource, lead.source, lead.sourceName]);
+
+  // Verificação estrita de regra: No máximo 1 Aniversariante / Debutante por ficha
+  const alreadyHasDebutanteOrAniversariante = useMemo(() => {
+    const mainIsIt = lead.primaryContactRole === 'debutante' || lead.primaryContactRole === 'aniversariante';
+    const subWithRole = (lead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+    return {
+      hasAny: mainIsIt || Boolean(subWithRole),
+      mainIsIt,
+      subContactId: subWithRole?.id,
+      subRole: subWithRole?.role,
+    };
+  }, [lead.primaryContactRole, lead.contacts]);
+
+  // Contato principal é o Decisor se nenhum subcontato estiver marcado e o contato principal não for Debutante
+  const isMainDecisor = !(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'debutante';
 
   // Estágios dinâmicos obtidos diretamente do Funil do Lead
   const funnelStages = useMemo(() => {
@@ -1095,6 +1118,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   // Designation of Decisor does NOT overwrite the Aniversariante's name or phone!
   const handleSetPrimaryDecisor = (contact: LeadContact) => {
+    if (contact.role === 'debutante') {
+      alert('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
+      return;
+    }
+
     const updatedContacts = (lead.contacts || []).map(c => ({
       ...c,
       isPrimaryDecisionMaker: c.id === contact.id,
@@ -1110,7 +1138,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       timestamp: new Date().toISOString(),
       type: 'note',
       title: 'Decisor Principal Definido',
-      text: `Decisor adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${contact.name}" (${contact.role}) e número de telefone ${contact.phone} por ${author}.`,
+      text: `Decisor adicionado no dia ${new Date().toLocaleDateString('pt-BR')}, com o nome "${contact.name}" (${CONTACT_ROLE_LABELS[contact.role] || contact.role}) e número de telefone ${contact.phone} por ${author}.`,
       authorName: author,
       authorId,
       authorAvatarUrl: authorAvatar,
@@ -1118,12 +1146,20 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     handleUpdate({
       contacts: updatedContacts,
-      primaryContactRole: contact.role,
       activities: [...(lead.activities || []), decisorActivity],
+      ...(contact.cpf ? { cpf: contact.cpf } : {}),
+      ...(contact.email ? { email: contact.email } : {}),
+      ...(contact.address ? { address: contact.address } : {}),
+      ...(contact.neighborhood ? { neighborhood: contact.neighborhood } : {}),
     });
   };
 
   const handleSetLeadAsDecisor = () => {
+    if (lead.primaryContactRole === 'debutante') {
+      alert('Atenção: A Debutante (15 Anos) não pode ser classificada como decisora legal do contrato.');
+      return;
+    }
+
     const updatedContacts = (lead.contacts || []).map(c => ({
       ...c,
       isPrimaryDecisionMaker: false,
@@ -1139,7 +1175,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       timestamp: new Date().toISOString(),
       type: 'note',
       title: 'Decisor Principal Definido',
-      text: `Lead / Aniversariante "${lead.name}" definido como decisor principal no dia ${new Date().toLocaleDateString('pt-BR')}, telefone ${lead.phone || 'não informado'} por ${author}.`,
+      text: `Contato principal "${lead.name}" definido como decisor do contrato no dia ${new Date().toLocaleDateString('pt-BR')}, telefone ${lead.phone || 'não informado'} por ${author}.`,
       authorName: author,
       authorId,
       authorAvatarUrl: authorAvatar,
@@ -1147,7 +1183,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     handleUpdate({
       contacts: updatedContacts,
-      primaryContactRole: 'aniversariante',
       activities: [...(lead.activities || []), decisorActivity],
     });
   };
@@ -2144,10 +2179,20 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
                   {otherVisibleFunnels.map(f => {
                     const isExpanded = expandedFunnelId === f.id;
-                    const targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
+                    let targetStages = (f.stages && f.stages.length > 0) ? f.stages : [
                       { id: 'new_lead', name: 'NOVO LEAD', color: '#60A5FA', icon: 'inbox' },
                       { id: 'in_analysis', name: 'EM ANÁLISE', color: '#FBBF24', icon: 'clock' },
                     ];
+
+                    // Delimitação Estrita de Acesso por Colaborador nas etapas do outro funil
+                    if (!isManagerOrMaster && effectiveUser?.id) {
+                      targetStages = targetStages.filter(st => {
+                        if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+                        return st.allowedCollaboratorIds.includes(effectiveUser.id);
+                      });
+                    }
+
+                    if (targetStages.length === 0) return null;
 
                     return (
                       <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '2px' }}>
@@ -4173,7 +4218,20 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     {isFieldMissing('birthdayPersonName') && (
                       <span style={{ fontSize: '0.62rem', color: '#EF4444', fontWeight: 800 }}>* Nome Obrigatório</span>
                     )}
-                    {!(lead.contacts || []).some(c => c.isPrimaryDecisionMaker) && lead.primaryContactRole !== 'none' ? (
+                    {lead.primaryContactRole === 'debutante' ? (
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: '#A855F7',
+                        background: 'rgba(168, 85, 247, 0.12)',
+                        border: '1px solid rgba(168, 85, 247, 0.35)',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        Debutante (Não Decisora)
+                      </span>
+                    ) : isMainDecisor ? (
                       <span style={{
                         fontSize: '0.65rem',
                         fontWeight: 800,
@@ -4231,7 +4289,12 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         padding: '2px 0',
                       }}
                     >
-                      <option value="debutante">Aniversariante / Debutante</option>
+                      <option value="debutante" disabled={Boolean(alreadyHasDebutanteOrAniversariante.subContactId)}>
+                        Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.subContactId ? '• Já cadastrada nos contatos' : ''}
+                      </option>
+                      <option value="aniversariante" disabled={Boolean(alreadyHasDebutanteOrAniversariante.subContactId)}>
+                        Aniversariante {alreadyHasDebutanteOrAniversariante.subContactId ? '• Já cadastrado nos contatos' : ''}
+                      </option>
                       <option value="mother">Mãe</option>
                       <option value="father">Pai</option>
                       <option value="responsavel">Responsável Legal</option>
@@ -4293,7 +4356,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* Campos de Aniversário & Data Evento: Exibidos APENAS se o papel for Aniversariante/Debutante */}
-                {(lead.primaryContactRole === 'debutante' || !lead.primaryContactRole) && (
+                {(lead.primaryContactRole === 'debutante' || lead.primaryContactRole === 'aniversariante' || !lead.primaryContactRole) && (
                   <>
                     <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('debutanteBirthDate') }}>
                       <span style={cardLabelStyle}>
@@ -4342,207 +4405,212 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   </>
                 )}
 
-                {/* Dados Contratuais: CPF, E-mail, Bairro e Endereço */}
-                {(draftCpf || showCpfField || isFieldMissing('cpf')) && (
-                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('cpf') }}>
-                    <span style={cardLabelStyle}>
-                      CPF {isFieldMissing('cpf') && <span style={{ color: '#EF4444' }}>*</span>}
-                    </span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftCpf}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftCpf(maskCpfInput(e.target.value))}
-                        onBlur={() => {
-                          if (draftCpf !== (lead.cpf || '')) {
-                            handleUpdate({ cpf: draftCpf.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="000.000.000-00"
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(draftEmail || showEmailField || isFieldMissing('email')) && (
-                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('email') }}>
-                    <span style={cardLabelStyle}>
-                      E-mail {isFieldMissing('email') && <span style={{ color: '#EF4444' }}>*</span>}
-                    </span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="email"
-                        value={draftEmail}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftEmail(e.target.value)}
-                        onBlur={() => {
-                          if (draftEmail !== (lead.email || '')) {
-                            handleUpdate({ email: draftEmail.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="email@cliente.com"
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(draftNeighborhood || showNeighborhoodField || isFieldMissing('neighborhood')) && (
-                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('neighborhood') }}>
-                    <span style={cardLabelStyle}>
-                      Bairro {isFieldMissing('neighborhood') && <span style={{ color: '#EF4444' }}>*</span>}
-                    </span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftNeighborhood}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftNeighborhood(e.target.value)}
-                        onBlur={() => {
-                          if (draftNeighborhood !== (lead.neighborhood || '')) {
-                            handleUpdate({ neighborhood: draftNeighborhood.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="Bairro..."
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(draftAddress || showAddressField || isFieldMissing('address')) && (
-                  <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('address') }}>
-                    <span style={cardLabelStyle}>
-                      Endereço {isFieldMissing('address') && <span style={{ color: '#EF4444' }}>*</span>}
-                    </span>
-                    <div style={cardValueStyle}>
-                      <input
-                        type="text"
-                        value={draftAddress}
-                        disabled={effectiveReadOnly}
-                        onChange={(e) => setDraftAddress(e.target.value)}
-                        onBlur={() => {
-                          if (draftAddress !== (lead.address || '')) {
-                            handleUpdate({ address: draftAddress.trim() });
-                          }
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        placeholder="Rua, número..."
-                        style={seamlessInputStyle}
-                        onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                        onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Contato Principal */}
-                {!effectiveReadOnly && (
-                  (!draftEmail && !showEmailField && !isFieldMissing('email')) ||
-                  (!draftCpf && !showCpfField && !isFieldMissing('cpf')) ||
-                  (!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood')) ||
-                  (!draftAddress && !showAddressField && !isFieldMissing('address'))
-                ) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Dado adicional:</span>
-                    {!draftEmail && !showEmailField && !isFieldMissing('email') && (
-                      <button
-                        type="button"
-                        onClick={() => setShowEmailField(true)}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '0.68rem',
-                          color: 'var(--adm-text-title)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                        }}
-                      >
-                        <Plus size={10} /> E-mail
-                      </button>
+                {/* Dados Contratuais: CPF, E-mail, Bairro e Endereço (EXIBIDOS EXCLUSIVAMENTE SE FOR O DECISOR) */}
+                {isMainDecisor && (
+                  <>
+                    {(draftCpf || showCpfField || isFieldMissing('cpf')) && (
+                      <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('cpf') }}>
+                        <span style={cardLabelStyle}>
+                          CPF {isFieldMissing('cpf') && <span style={{ color: '#EF4444' }}>*</span>}
+                        </span>
+                        <div style={cardValueStyle}>
+                          <input
+                            type="text"
+                            value={draftCpf}
+                            disabled={effectiveReadOnly}
+                            onChange={(e) => setDraftCpf(maskCpfInput(e.target.value))}
+                            onBlur={() => {
+                              if (draftCpf !== (lead.cpf || '')) {
+                                handleUpdate({ cpf: draftCpf.trim() });
+                              }
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="000.000.000-00"
+                            style={seamlessInputStyle}
+                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                          />
+                        </div>
+                      </div>
                     )}
-                    {!draftCpf && !showCpfField && !isFieldMissing('cpf') && (
-                      <button
-                        type="button"
-                        onClick={() => setShowCpfField(true)}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '0.68rem',
-                          color: 'var(--adm-text-title)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                        }}
-                      >
-                        <Plus size={10} /> CPF
-                      </button>
+
+                    {(draftEmail || showEmailField || isFieldMissing('email')) && (
+                      <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('email') }}>
+                        <span style={cardLabelStyle}>
+                          E-mail {isFieldMissing('email') && <span style={{ color: '#EF4444' }}>*</span>}
+                        </span>
+                        <div style={cardValueStyle}>
+                          <input
+                            type="email"
+                            value={draftEmail}
+                            disabled={effectiveReadOnly}
+                            onChange={(e) => setDraftEmail(e.target.value)}
+                            onBlur={() => {
+                              if (draftEmail !== (lead.email || '')) {
+                                handleUpdate({ email: draftEmail.trim() });
+                              }
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="email@cliente.com"
+                            style={seamlessInputStyle}
+                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                          />
+                        </div>
+                      </div>
                     )}
-                    {!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood') && (
-                      <button
-                        type="button"
-                        onClick={() => setShowNeighborhoodField(true)}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '0.68rem',
-                          color: 'var(--adm-text-title)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                        }}
-                      >
-                        <Plus size={10} /> Bairro
-                      </button>
+
+                    {(draftNeighborhood || showNeighborhoodField || isFieldMissing('neighborhood')) && (
+                      <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('neighborhood') }}>
+                        <span style={cardLabelStyle}>
+                          Bairro {isFieldMissing('neighborhood') && <span style={{ color: '#EF4444' }}>*</span>}
+                        </span>
+                        <div style={cardValueStyle}>
+                          <input
+                            type="text"
+                            value={draftNeighborhood}
+                            disabled={effectiveReadOnly}
+                            onChange={(e) => setDraftNeighborhood(e.target.value)}
+                            onBlur={() => {
+                              if (draftNeighborhood !== (lead.neighborhood || '')) {
+                                handleUpdate({ neighborhood: draftNeighborhood.trim() });
+                              }
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Bairro..."
+                            style={seamlessInputStyle}
+                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                          />
+                        </div>
+                      </div>
                     )}
-                    {!draftAddress && !showAddressField && !isFieldMissing('address') && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddressField(true)}
-                        style={{
-                          background: 'var(--adm-bg-input)',
-                          border: '1px solid var(--adm-border)',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '0.68rem',
-                          color: 'var(--adm-text-title)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                        }}
-                      >
-                        <Plus size={10} /> Endereço
-                      </button>
+
+                    {(draftAddress || showAddressField || isFieldMissing('address')) && (
+                      <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('address') }}>
+                        <span style={cardLabelStyle}>
+                          Endereço {isFieldMissing('address') && <span style={{ color: '#EF4444' }}>*</span>}
+                        </span>
+                        <div style={cardValueStyle}>
+                          <input
+                            type="text"
+                            value={draftAddress}
+                            disabled={effectiveReadOnly}
+                            onChange={(e) => setDraftAddress(e.target.value)}
+                            onBlur={() => {
+                              if (draftAddress !== (lead.address || '')) {
+                                handleUpdate({ address: draftAddress.trim() });
+                              }
+                            }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                            placeholder="Rua, número..."
+                            style={seamlessInputStyle}
+                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                          />
+                        </div>
+                      </div>
                     )}
-                  </div>
+
+                    {/* Botões Rápidos para Adicionar Dados Opcionais Ocultos ao Contato Principal */}
+                    {!effectiveReadOnly && (
+                      (!draftEmail && !showEmailField && !isFieldMissing('email')) ||
+                      (!draftCpf && !showCpfField && !isFieldMissing('cpf')) ||
+                      (!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood')) ||
+                      (!draftAddress && !showAddressField && !isFieldMissing('address'))
+                    ) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', marginTop: '2px', borderTop: '1px dashed var(--adm-border)' }}>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>+ Dado adicional:</span>
+                        {!draftEmail && !showEmailField && !isFieldMissing('email') && (
+                          <button
+                            type="button"
+                            onClick={() => setShowEmailField(true)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              fontSize: '0.68rem',
+                              color: 'var(--adm-text-title)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Plus size={10} /> E-mail
+                          </button>
+                        )}
+                        {!draftCpf && !showCpfField && !isFieldMissing('cpf') && (
+                          <button
+                            type="button"
+                            onClick={() => setShowCpfField(true)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              fontSize: '0.68rem',
+                              color: 'var(--adm-text-title)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Plus size={10} /> CPF
+                          </button>
+                        )}
+                        {!draftNeighborhood && !showNeighborhoodField && !isFieldMissing('neighborhood') && (
+                          <button
+                            type="button"
+                            onClick={() => setShowNeighborhoodField(true)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              fontSize: '0.68rem',
+                              color: 'var(--adm-text-title)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Plus size={10} /> Bairro
+                          </button>
+                        )}
+                        {!draftAddress && !showAddressField && !isFieldMissing('address') && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAddressField(true)}
+                            style={{
+                              background: 'var(--adm-bg-input)',
+                              border: '1px solid var(--adm-border)',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              fontSize: '0.68rem',
+                              color: 'var(--adm-text-title)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Plus size={10} /> Endereço
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
               {/* DEMAIS CONTATOS VINCULADOS: CADA UM EM SEU PRÓPRIO CARD MODULAR */}
               {(lead.contacts || []).map((contact) => {
                 const isAniversariante = contact.role === 'debutante' || (contact.role as any) === 'aniversariante';
+                const isDebutante = contact.role === 'debutante';
                 return (
                   <div key={contact.id} style={{
                     ...cardStyle,
@@ -4569,15 +4637,45 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           {contact.name ? contact.name.trim().substring(0, 2).toUpperCase() : 'CT'}
                         </div>
 
+                        {/* Nome Editável do Contato Vinculado */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                            {contact.name}
-                          </span>
+                          <input
+                            type="text"
+                            value={contact.name}
+                            disabled={effectiveReadOnly}
+                            onChange={(e) => {
+                              const newName = e.target.value;
+                              const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, name: newName } : c);
+                              handleUpdate({ contacts: updated });
+                            }}
+                            placeholder="Nome do contato..."
+                            style={{
+                              ...seamlessInputStyle,
+                              fontWeight: 800,
+                              fontSize: '0.86rem',
+                              color: 'var(--adm-text-title)',
+                            }}
+                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                          />
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        {contact.isPrimaryDecisionMaker ? (
+                        {isDebutante ? (
+                          <span style={{
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            color: '#A855F7',
+                            background: 'rgba(168, 85, 247, 0.12)',
+                            border: '1px solid rgba(168, 85, 247, 0.35)',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            Debutante (Não Decisora)
+                          </span>
+                        ) : contact.isPrimaryDecisionMaker ? (
                           <span style={{
                             fontSize: '0.65rem',
                             fontWeight: 800,
@@ -4648,7 +4746,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           disabled={effectiveReadOnly}
                           onChange={(e) => {
                             const newRole = e.target.value as LeadContactRole;
-                            const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, role: newRole } : c);
+                            const updated = (lead.contacts || []).map(c => {
+                              if (c.id !== contact.id) return c;
+                              return {
+                                ...c,
+                                role: newRole,
+                                isPrimaryDecisionMaker: newRole === 'debutante' ? false : c.isPrimaryDecisionMaker,
+                              };
+                            });
                             handleUpdate({ contacts: updated });
                           }}
                           style={{
@@ -4660,7 +4765,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                             padding: '2px 0',
                           }}
                         >
-                          <option value="debutante">Aniversariante / Debutante</option>
+                          <option
+                            value="debutante"
+                            disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
+                          >
+                            Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrada' : ''}
+                          </option>
+                          <option
+                            value="aniversariante"
+                            disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
+                          >
+                            Aniversariante {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrado' : ''}
+                          </option>
                           <option value="mother">Mãe</option>
                           <option value="father">Pai</option>
                           <option value="responsavel">Responsável Legal</option>
@@ -4671,7 +4787,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       </div>
                     </div>
 
-                    {/* Telefone (opcional) */}
+                    {/* Telefone */}
                     <div style={cardRowStyle}>
                       <span style={cardLabelStyle}>Telefone</span>
                       <div style={cardValueStyle}>
@@ -4735,7 +4851,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       </div>
                     </div>
 
-                    {/* Se for Aniversariante, exibir Aniversário e Data do Evento */}
+                    {/* Se for Aniversariante / Debutante, exibir Aniversário e Data do Evento */}
                     {isAniversariante && (
                       <>
                         <div style={cardRowStyle}>
@@ -4743,16 +4859,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           <div style={cardValueStyle}>
                             <input
                               type="date"
-                              value={lead.birthday || lead.debutanteBirthDate || ''}
+                              value={contact.birthday || lead.birthday || lead.debutanteBirthDate || ''}
                               disabled={effectiveReadOnly}
                               onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
                               onChange={(e) => {
-                                handleUpdate({ birthday: e.target.value, debutanteBirthDate: e.target.value });
+                                const newBirth = e.target.value;
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, birthday: newBirth } : c);
+                                handleUpdate({ contacts: updated, birthday: newBirth, debutanteBirthDate: newBirth });
                               }}
                               style={{
                                 ...seamlessInputStyle,
                                 cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                                color: (lead.birthday || lead.debutanteBirthDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                                color: (contact.birthday || lead.birthday || lead.debutanteBirthDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
                               }}
                               onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
                               onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
@@ -4765,14 +4883,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                           <div style={cardValueStyle}>
                             <input
                               type="date"
-                              value={lead.eventDate || lead.partyDate || ''}
+                              value={contact.eventDate || lead.eventDate || lead.partyDate || ''}
                               disabled={effectiveReadOnly}
                               onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                              onChange={(e) => handleUpdate({ eventDate: e.target.value, partyDate: e.target.value })}
+                              onChange={(e) => {
+                                const newDate = e.target.value;
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, eventDate: newDate } : c);
+                                handleUpdate({ contacts: updated, eventDate: newDate, partyDate: newDate });
+                              }}
                               style={{
                                 ...seamlessInputStyle,
                                 cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                                color: (lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                                color: (contact.eventDate || lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
                               }}
                               onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
                               onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
@@ -4782,37 +4904,106 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       </>
                     )}
 
-                    {/* Dados Contratuais Opcionais deste Contato */}
-                    {(contact.cpf || contact.email || contact.address) && (
+                    {/* DADOS CONTRATUAIS DO DECISOR: EXIBIDOS EXCLUSIVAMENTE SE FOR O DECISOR */}
+                    {contact.isPrimaryDecisionMaker && (
                       <div style={{
-                        marginTop: '4px',
-                        padding: '6px 8px',
+                        marginTop: '6px',
+                        padding: '8px 10px',
                         background: 'var(--adm-bg-input)',
                         border: '1px solid var(--adm-border)',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '4px',
-                        fontSize: '0.72rem',
+                        gap: '6px',
+                        fontSize: '0.74rem',
                       }}>
-                        {contact.cpf && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>CPF:</span>
-                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 700 }}>{contact.cpf}</span>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                          Dados Contratuais do Decisor
+                        </div>
+
+                        {/* CPF */}
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>CPF *</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="text"
+                              value={contact.cpf || ''}
+                              disabled={effectiveReadOnly}
+                              onChange={(e) => {
+                                const masked = maskCpfInput(e.target.value);
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, cpf: masked } : c);
+                                handleUpdate({ contacts: updated, cpf: masked });
+                              }}
+                              placeholder="000.000.000-00"
+                              style={seamlessInputStyle}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
                           </div>
-                        )}
-                        {contact.email && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>E-mail:</span>
-                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 600 }}>{contact.email}</span>
+                        </div>
+
+                        {/* E-mail */}
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>E-mail *</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="email"
+                              value={contact.email || ''}
+                              disabled={effectiveReadOnly}
+                              onChange={(e) => {
+                                const mail = e.target.value;
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, email: mail } : c);
+                                handleUpdate({ contacts: updated, email: mail });
+                              }}
+                              placeholder="decisor@email.com"
+                              style={seamlessInputStyle}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
                           </div>
-                        )}
-                        {contact.address && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <span style={{ color: 'var(--adm-text-muted)', fontWeight: 600 }}>Endereço:</span>
-                            <span style={{ color: 'var(--adm-text-title)', fontWeight: 600 }}>{contact.address}</span>
+                        </div>
+
+                        {/* Bairro */}
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>Bairro</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="text"
+                              value={(contact as any).neighborhood || ''}
+                              disabled={effectiveReadOnly}
+                              onChange={(e) => {
+                                const neigh = e.target.value;
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, neighborhood: neigh } : c);
+                                handleUpdate({ contacts: updated, neighborhood: neigh });
+                              }}
+                              placeholder="Bairro..."
+                              style={seamlessInputStyle}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
                           </div>
-                        )}
+                        </div>
+
+                        {/* Endereço */}
+                        <div style={cardRowStyle}>
+                          <span style={cardLabelStyle}>Endereço</span>
+                          <div style={cardValueStyle}>
+                            <input
+                              type="text"
+                              value={contact.address || ''}
+                              disabled={effectiveReadOnly}
+                              onChange={(e) => {
+                                const addr = e.target.value;
+                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, address: addr } : c);
+                                handleUpdate({ contacts: updated, address: addr });
+                              }}
+                              placeholder="Rua, número, complemento..."
+                              style={seamlessInputStyle}
+                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -4937,7 +5128,12 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         cursor: 'pointer',
                       }}
                     >
-                      <option value="debutante">Aniversariante / Debutante</option>
+                      <option value="debutante" disabled={alreadyHasDebutanteOrAniversariante.hasAny}>
+                        Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.hasAny ? '• Já cadastrada na ficha' : ''}
+                      </option>
+                      <option value="aniversariante" disabled={alreadyHasDebutanteOrAniversariante.hasAny}>
+                        Aniversariante {alreadyHasDebutanteOrAniversariante.hasAny ? '• Já cadastrado na ficha' : ''}
+                      </option>
                       <option value="mother">Mãe</option>
                       <option value="father">Pai</option>
                       <option value="responsavel">Responsável Legal</option>
@@ -5644,6 +5840,14 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       >
                         {funnels.map(f => {
                           const isCurrent = f.id === leadFunnel?.id;
+                          let allowedStagesForF = f.stages || [];
+                          if (!isManagerOrMaster && effectiveUser?.id) {
+                            allowedStagesForF = allowedStagesForF.filter(st => {
+                              if (!st.allowedCollaboratorIds || st.allowedCollaboratorIds.length === 0) return true;
+                              return st.allowedCollaboratorIds.includes(effectiveUser.id);
+                            });
+                          }
+                          const targetFirstStageId = allowedStagesForF[0]?.id || f.stages?.[0]?.id;
                           return (
                             <button
                               key={f.id}
@@ -5651,7 +5855,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                               onClick={async () => {
                                 setIsFunnelPickerOpen(false);
                                 if (!isCurrent) {
-                                  await reassignLeadFunnel(lead.id, f.id, f.stages?.[0]?.id);
+                                  await reassignLeadFunnel(lead.id, f.id, targetFirstStageId);
                                 }
                               }}
                               style={{
@@ -7433,3 +7637,4 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 };
 
 export const AdminLeadInspector = React.memo(AdminLeadInspectorComponent);
+

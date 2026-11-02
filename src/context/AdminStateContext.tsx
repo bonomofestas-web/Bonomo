@@ -7706,13 +7706,29 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const venueObj = venues.find(v => v.id === targetVenueId);
           const pDate = currentLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          const birthdayName = (currentLead as any).birthdayPersonName?.trim() || currentLead.name.trim();
+          // Identificar o(a) Aniversariante real a partir da ficha/contatos
+          const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+          const birthdayName = birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
           
-          // Extrair decisor dos contatos se houver
-          const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (currentLead.contacts || [])[0];
+          // Identificar o Decisor Legal do Contrato
+          const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+            (currentLead.primaryContactRole !== 'debutante' ? {
+              name: currentLead.name,
+              phone: currentLead.phone,
+              role: currentLead.primaryContactRole || 'responsavel',
+              email: currentLead.email,
+              cpf: currentLead.cpf,
+              address: currentLead.address,
+              neighborhood: currentLead.neighborhood,
+            } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
+
           const payer = primaryDecisor?.name || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
           const payerPhone = primaryDecisor?.phone || currentLead.phone.trim();
-          const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'mother';
+          const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
+          const payerCpf = primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
+          const payerEmail = primaryDecisor?.email || currentLead.email?.trim() || '';
+          const payerAddress = primaryDecisor?.address || (currentLead as any).address || '';
+          const payerNeighborhood = (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
 
           // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
           const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
@@ -7723,7 +7739,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           let targetPostSaleStageId = postSaleTrigger?.targetStageId;
 
           if (!targetPostSaleFunnelId) {
-            // Sem funil de pós-venda vinculado nos gatilhos da etapa de ganho:
+            // Se não houver gatilho configurado na etapa, busca o primeiro funil de pós-venda disponível da unidade
+            const defaultPostSaleFunnel = funnels.find(f => f.isPostSale && (f.venueId === targetVenueId || (f as any).venueIds?.includes(targetVenueId)));
+            if (defaultPostSaleFunnel) {
+              targetPostSaleFunnelId = defaultPostSaleFunnel.id;
+              targetPostSaleStageId = defaultPostSaleFunnel.stages?.[0]?.id || 'onboarding';
+            }
+          }
+
+          if (!targetPostSaleFunnelId) {
+            // Sem funil de pós-venda vinculado nos gatilhos da etapa de ganho e sem funil na unidade:
             // a venda foi computada e salva no Lead Comercial, SEM duplicar para clientes/pós-venda
             return prevClients;
           }
@@ -7751,20 +7776,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
           const newClient: Client = {
             id: newCliId,
+            masterId: scopedMasterId || currentLead.masterId || currentUser?.masterId || currentUser?.id,
             code: generateClientCode(),
             name: birthdayName, // O nome principal é o nome da Aniversariante
             payerName: payer,
             payerRelationship: payerRel,
-            payerCpf: (currentLead as any).payerCpf || (currentLead as any).cpf || '',
+            payerCpf: payerCpf,
             payerPhone: payerPhone,
-            payerEmail: currentLead.email?.trim() || '',
-            payerAddress: (currentLead as any).address || '',
-            payerNeighborhood: (currentLead as any).neighborhood || '',
+            payerEmail: payerEmail,
+            payerAddress: payerAddress,
+            payerNeighborhood: payerNeighborhood,
             payerCity: (currentLead as any).city || '',
             birthdayPersonName: birthdayName,
             birthdayPersonAge: (currentLead as any).birthdayPersonAge || 15,
-            birthdayPersonBirthdate: (currentLead as any).debutanteBirthDate || '',
-            birthdayPersonPhone: (currentLead as any).birthdayPersonPhone || '',
+            birthdayPersonBirthdate: birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '',
+            birthdayPersonPhone: birthdayContact?.phone || (currentLead as any).birthdayPersonPhone || '',
             eventType: currentLead.eventType || '15_anos',
             eventDate: pDate,
             eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
@@ -7781,6 +7807,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractInstallmentsCount: installCount,
             contractInstallmentsRemaining: installRemaining,
             hasCreditCard: hasCard,
+            profession: (currentLead as any).profession || undefined,
             contractDate: cDate,
             contractStatus: 'aguardando_sinal',
             contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
@@ -7818,12 +7845,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     if (isSupabaseConfigured) {
+      const downPay = extraOptions?.downPayment ?? 0;
+      const installCount = extraOptions?.installmentsCount ?? 10;
+      const hasCard = extraOptions?.hasCreditCard ?? false;
+      const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
+      const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear;
+
       leadService.upsert({
         id: leadId,
         stage: 'contract_signed',
         dealValue,
         packageSold,
         contractDate: cDate,
+        downPayment: downPay,
+        installments: installCount,
+        hasCreditCard: hasCard,
+        estimatedGuests: gCount,
+        eventYear: eYear ? String(eYear) : undefined,
       }).catch(err => console.error('❌ Erro ao fechar venda no Supabase:', err));
 
       leadService.addActivity(leadId, {
@@ -9945,3 +9983,4 @@ export const useAdminState = () => {
   }
   return context;
 };
+

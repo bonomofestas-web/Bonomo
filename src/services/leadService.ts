@@ -37,9 +37,13 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   
   if (lead.dealValue !== undefined) payload.deal_value = lead.dealValue;
   if (lead.packageSold !== undefined) payload.package_sold = lead.packageSold;
-  if (lead.contractDate !== undefined) payload.contract_date = lead.contractDate;
+  if (lead.contractDate !== undefined) {
+    const cd = typeof lead.contractDate === 'string' ? lead.contractDate.trim() : '';
+    payload.contract_date = cd && cd !== 'null' && cd !== 'undefined' ? cd : null;
+  }
   if (lead.partyDate !== undefined || lead.eventDate !== undefined) {
-    payload.party_date = lead.partyDate || lead.eventDate;
+    const pd = typeof (lead.partyDate || lead.eventDate) === 'string' ? (lead.partyDate || lead.eventDate)!.trim() : '';
+    payload.party_date = pd && pd !== 'null' && pd !== 'undefined' ? pd : null;
   }
   
   if (lead.venueId !== undefined) payload.venue_id = isUuid(lead.venueId) ? lead.venueId : null;
@@ -59,9 +63,15 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.contacts !== undefined) payload.contacts = lead.contacts;
   if (lead.primaryContactRole !== undefined) payload.primary_contact_role = lead.primaryContactRole;
   if (lead.eventType !== undefined) payload.event_type = lead.eventType;
-  if (lead.eventDate !== undefined) payload.event_date = lead.eventDate;
-  if (lead.eventYear !== undefined) payload.event_year = lead.eventYear;
-  if (lead.debutanteBirthDate !== undefined) payload.debutante_birth_date = lead.debutanteBirthDate;
+  if (lead.eventDate !== undefined) {
+    const ed = typeof lead.eventDate === 'string' ? lead.eventDate.trim() : '';
+    payload.event_date = ed && ed !== 'null' && ed !== 'undefined' ? ed : null;
+  }
+  if (lead.eventYear !== undefined) payload.event_year = String(lead.eventYear);
+  if (lead.debutanteBirthDate !== undefined) {
+    const bd = typeof lead.debutanteBirthDate === 'string' ? lead.debutanteBirthDate.trim() : '';
+    payload.debutante_birth_date = bd && bd !== 'null' && bd !== 'undefined' ? bd : null;
+  }
   if (lead.estimatedGuests !== undefined) payload.estimated_guests = lead.estimatedGuests;
   if (lead.desiredPeriod !== undefined) payload.desired_period = lead.desiredPeriod;
   if (lead.urgencyLevel !== undefined) payload.urgency_level = lead.urgencyLevel;
@@ -104,6 +114,8 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
     ...(lead.hasCreditCard !== undefined ? { hasCreditCard: lead.hasCreditCard } : {}),
     ...(lead.profession !== undefined ? { profession: lead.profession } : {}),
     ...(lead.decisionMakers !== undefined ? { decisionMakers: lead.decisionMakers } : {}),
+    ...(lead.desiredPeriod !== undefined ? { desiredPeriod: lead.desiredPeriod } : {}),
+    ...(lead.contacts !== undefined ? { contacts: lead.contacts } : {}),
     ...(lead.isArchived !== undefined ? { is_archived: lead.isArchived } : {}),
     ...(lead.archivedAt !== undefined ? { archived_at: lead.archivedAt } : {}),
     ...(lead.isRemovedFromFunnel !== undefined ? { is_removed_from_funnel: lead.isRemovedFromFunnel } : {}),
@@ -115,7 +127,12 @@ function mapLeadToDatabase(lead: Partial<Lead>): Record<string, any> {
   if (lead.createdByName !== undefined) payload.created_by_name = lead.createdByName || null;
   if (lead.createdByAvatar !== undefined) payload.created_by_avatar = lead.createdByAvatar || null;
   if (lead.cpf !== undefined) payload.cpf = lead.cpf || null;
-  if (lead.birthday !== undefined) payload.birthday = lead.birthday || null;
+  if (lead.birthday !== undefined) {
+    const by = typeof lead.birthday === 'string' ? lead.birthday.trim() : '';
+    payload.birthday = by && by !== 'null' && by !== 'undefined' ? by : null;
+  }
+
+  return payload;
 
   return payload;
 }
@@ -245,14 +262,14 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     avatarUrl: row.custom_field_values?.avatarUrl || row.avatar_url || row.photo_url || row.avatar || undefined,
     neighborhood: row.neighborhood || row.custom_field_values?.neighborhood,
     address: row.address || row.custom_field_values?.address,
-    contacts: row.contacts || [],
+    contacts: (row.contacts && Array.isArray(row.contacts) && row.contacts.length > 0) ? row.contacts : (row.custom_field_values?.contacts || []),
     primaryContactRole: row.primary_contact_role || 'debutante',
     eventType: row.event_type || row.custom_field_values?.eventType || undefined,
     eventDate: row.event_date || row.party_date,
     eventYear: row.event_year || row.custom_field_values?.eventYear || (row.party_date ? new Date(row.party_date).getFullYear().toString() : undefined),
     debutanteBirthDate: row.debutante_birth_date,
-    estimatedGuests: row.estimated_guests,
-    desiredPeriod: row.desired_period,
+    estimatedGuests: row.estimated_guests !== undefined && row.estimated_guests !== null ? row.estimated_guests : row.custom_field_values?.estimatedGuests,
+    desiredPeriod: row.desired_period || row.custom_field_values?.desiredPeriod || undefined,
     urgencyLevel: row.urgency_level || row.custom_field_values?.urgencyLevel || undefined,
     interestService: row.interest_service || row.package_sold,
     estimatedBudget: row.estimated_budget ? Number(row.estimated_budget) : (row.deal_value ? Number(row.deal_value) : undefined),
@@ -502,8 +519,23 @@ export const leadService = {
 
       // 1. Tenta atualizar diretamente por ID se for UUID
       if (isUuid(id)) {
-        const { data, error } = await supabase.from('leads').update(payload).eq('id', id).select('id');
+        let { data, error } = await supabase.from('leads').update(payload).eq('id', id).select('id');
         if (!error && data && data.length > 0) return true;
+
+        if (error) {
+          console.warn('⚠️ Supabase update error no lead, tentando fallback seguro com custom_field_values:', error.message);
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.has_credit_card;
+          delete fallbackPayload.profession;
+          delete fallbackPayload.desired_period;
+          delete fallbackPayload.event_year;
+          delete fallbackPayload.down_payment;
+          delete fallbackPayload.installments;
+          delete fallbackPayload.installment_value;
+          delete fallbackPayload.decision_makers;
+          const { data: retryData, error: retryErr } = await supabase.from('leads').update(fallbackPayload).eq('id', id).select('id');
+          if (!retryErr && retryData && retryData.length > 0) return true;
+        }
       }
 
       // 2. Tenta por code

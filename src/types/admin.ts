@@ -361,6 +361,8 @@ export interface LeadContact {
   cpf?: string;
   address?: string;
   neighborhood?: string;
+  birthday?: string;
+  eventDate?: string;
   role: LeadContactRole;
   roleCustomName?: string;
   isPrimaryDecisionMaker?: boolean;
@@ -762,6 +764,8 @@ export type ClientStage =
   | 'archived';        // Arquivado
 
 export interface Client {
+  masterId?: string;
+  profession?: string;
   id: string;
   code: string;                          // ex: 'CLI-8W3K9P'
   name: string;                          // Nome da Aniversariante / Homenageada (ex: Fernanda)
@@ -1118,4 +1122,6 @@ export interface QuickMessage {
   updatedAt?: string;
   isActive: boolean;
 }
+
+
 

@@ -45,15 +45,20 @@ export const AdminMoveFunnelModal: React.FC<AdminMoveFunnelModalProps> = ({
 
   const { currentUser, viewingAsCollaborator } = useAdminState();
   const effectiveUser = viewingAsCollaborator || currentUser;
+  const effectiveRole = effectiveUser?.role;
+  const effectiveSectors: string[] = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+    ? (effectiveUser as any).sectors
+    : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+
   const isManagerOrMaster = Boolean(
-    effectiveUser?.role === 'master' ||
-    effectiveUser?.role === 'admin' ||
-    (effectiveUser as any)?.role === 'gerencia' ||
+    effectiveRole === 'master' ||
+    (effectiveRole === 'admin' && effectiveSectors.includes('gerencia')) ||
+    effectiveRole === 'gerencia' ||
     (effectiveUser as any)?.role === 'gerente' ||
     (effectiveUser as any)?.department === 'gerencia' ||
     (effectiveUser as any)?.department === 'diretoria' ||
-    (effectiveUser as any)?.sectors?.includes('gerencia') ||
-    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    effectiveSectors.includes('gerencia') ||
+    effectiveSectors.includes('diretoria') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
     (effectiveUser as any)?.isDev
@@ -302,15 +307,20 @@ export const AdminBulkMoveFunnelModal: React.FC<AdminBulkMoveFunnelModalProps> =
 
   const { currentUser, viewingAsCollaborator } = useAdminState();
   const effectiveUser = viewingAsCollaborator || currentUser;
+  const effectiveRole = effectiveUser?.role;
+  const effectiveSectors: string[] = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+    ? (effectiveUser as any).sectors
+    : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+
   const isManagerOrMaster = Boolean(
-    effectiveUser?.role === 'master' ||
-    effectiveUser?.role === 'admin' ||
-    (effectiveUser as any)?.role === 'gerencia' ||
+    effectiveRole === 'master' ||
+    (effectiveRole === 'admin' && effectiveSectors.includes('gerencia')) ||
+    effectiveRole === 'gerencia' ||
     (effectiveUser as any)?.role === 'gerente' ||
     (effectiveUser as any)?.department === 'gerencia' ||
     (effectiveUser as any)?.department === 'diretoria' ||
-    (effectiveUser as any)?.sectors?.includes('gerencia') ||
-    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    effectiveSectors.includes('gerencia') ||
+    effectiveSectors.includes('diretoria') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
     (effectiveUser as any)?.isDev
@@ -931,15 +941,20 @@ export const AdminBulkMoveStageModal: React.FC<AdminBulkMoveStageModalProps> = (
 }) => {
   const { currentUser, viewingAsCollaborator } = useAdminState();
   const effectiveUser = viewingAsCollaborator || currentUser;
+  const effectiveRole = effectiveUser?.role;
+  const effectiveSectors: string[] = (effectiveUser && 'sectors' in effectiveUser && Array.isArray((effectiveUser as any).sectors) && (effectiveUser as any).sectors.length > 0)
+    ? (effectiveUser as any).sectors
+    : (effectiveRole === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : effectiveRole === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
+
   const isManagerOrMaster = Boolean(
-    effectiveUser?.role === 'master' ||
-    effectiveUser?.role === 'admin' ||
-    (effectiveUser as any)?.role === 'gerencia' ||
+    effectiveRole === 'master' ||
+    (effectiveRole === 'admin' && effectiveSectors.includes('gerencia')) ||
+    effectiveRole === 'gerencia' ||
     (effectiveUser as any)?.role === 'gerente' ||
     (effectiveUser as any)?.department === 'gerencia' ||
     (effectiveUser as any)?.department === 'diretoria' ||
-    (effectiveUser as any)?.sectors?.includes('gerencia') ||
-    (effectiveUser as any)?.sectors?.includes('diretoria') ||
+    effectiveSectors.includes('gerencia') ||
+    effectiveSectors.includes('diretoria') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('geren') ||
     ((effectiveUser as any)?.roleTitle || '').toLowerCase().includes('direto') ||
     (effectiveUser as any)?.isDev
@@ -1250,3 +1265,4 @@ export const AdminBulkAssignModal: React.FC<AdminBulkAssignModalProps> = ({
     </div>
   );
 };
+

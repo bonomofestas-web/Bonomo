@@ -220,9 +220,59 @@ function renderFormattedTextWithLinks(text?: string, isDarkMode = false): React.
 }
 
 /**
- * Utilitários para o editor com formatação direta (WYSIWYG)
+ * Utilitários para o editor com formatação direta estilo WhatsApp
+ * Delimitadores (*, _, ~, ```) permanecem visíveis com o estilo visual aplicado inline.
  */
+function getCaretCharacterOffsetWithin(element: Node): number {
+  let caretOffset = 0;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(element);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+    caretOffset = preCaretRange.toString().length;
+  }
+  return caretOffset;
+}
+
+function setCaretPosition(element: Node, offset: number) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const range = document.createRange();
+  let currentOffset = 0;
+  let found = false;
+
+  function traverse(node: Node) {
+    if (found) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const len = node.textContent?.length || 0;
+      if (currentOffset + len >= offset) {
+        range.setStart(node, Math.min(offset - currentOffset, len));
+        range.collapse(true);
+        found = true;
+        return;
+      }
+      currentOffset += len;
+    } else {
+      for (let i = 0; i < node.childNodes.length; i++) {
+        traverse(node.childNodes[i]);
+        if (found) return;
+      }
+    }
+  }
+
+  traverse(element);
+  if (!found) {
+    range.selectNodeContents(element);
+    range.collapse(false);
+  }
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 function htmlToWhatsAppText(html: string): string {
+  if (!html) return '';
   const temp = document.createElement('div');
   temp.innerHTML = html;
 
@@ -238,21 +288,25 @@ function htmlToWhatsAppText(html: string): string {
         children += traverse(child);
       });
 
-      if (tag === 'b' || tag === 'strong' || el.style.fontWeight === 'bold' || el.style.fontWeight === '700') {
+      if (tag === 'b' || tag === 'strong') {
         const trimmed = children.trim();
-        return trimmed ? `*${trimmed}* ` : '';
+        if (trimmed.startsWith('*') && trimmed.endsWith('*')) return children;
+        return trimmed ? `*${trimmed}*` : '';
       }
-      if (tag === 'i' || tag === 'em' || el.style.fontStyle === 'italic') {
+      if (tag === 'i' || tag === 'em') {
         const trimmed = children.trim();
-        return trimmed ? `_${trimmed}_ ` : '';
+        if (trimmed.startsWith('_') && trimmed.endsWith('_')) return children;
+        return trimmed ? `_${trimmed}_` : '';
       }
-      if (tag === 's' || tag === 'strike' || tag === 'del' || el.style.textDecoration?.includes('line-through')) {
+      if (tag === 's' || tag === 'strike' || tag === 'del') {
         const trimmed = children.trim();
-        return trimmed ? `~${trimmed}~ ` : '';
+        if (trimmed.startsWith('~') && trimmed.endsWith('~')) return children;
+        return trimmed ? `~${trimmed}~` : '';
       }
-      if (tag === 'code' || el.style.fontFamily?.includes('monospace')) {
+      if (tag === 'code') {
         const trimmed = children.trim();
-        return trimmed ? `\`\`\`${trimmed}\`\`\` ` : '';
+        if (trimmed.startsWith('```') && trimmed.endsWith('```')) return children;
+        return trimmed ? `\`\`\`${trimmed}\`\`\`` : '';
       }
       if (tag === 'br') {
         return '\n';
@@ -274,10 +328,10 @@ function whatsappTextToHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
-    .replace(/_([^_\n]+)_/g, '<em>$1</em>')
-    .replace(/~([^~\n]+)~/g, '<del>$1</del>')
-    .replace(/```([^`]+)```/g, '<code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 3px;border-radius:3px;">$1</code>')
+    .replace(/```([^`\n]+)```/g, '<code style="font-family:monospace;background:rgba(255,255,255,0.1);padding:1px 3px;border-radius:3px;">```$1```</code>')
+    .replace(/(^|[\s.,;:!?([{])\*([^*\n\r]+)\*($|[\s.,;:!?)]])/g, '$1<strong style="font-weight:700;">*$2*</strong>$3')
+    .replace(/(^|[\s.,;:!?([{])_([^_\n\r]+)_($|[\s.,;:!?)]])/g, '$1<em style="font-style:italic;">_$2_</em>$3')
+    .replace(/(^|[\s.,;:!?([{])~([^~\n\r]+)~($|[\s.,;:!?)]])/g, '$1<del style="text-decoration:line-through;">~$2~</del>$3')
     .replace(/\n/g, '<br>');
 }
 
@@ -366,6 +420,20 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     setHasText(text.length > 0 || currentHtml.includes('<img'));
     checkSlashTrigger();
 
+    // Formatação em tempo real estilo WhatsApp:
+    // Se o usuário digitou ou modificou delimitadores (*, _, ~, ```), atualiza os spans com estilo
+    // preservando a posição exata do cursor e mantendo os delimitadores visíveis.
+    const rawWhatsAppText = htmlToWhatsAppText(currentHtml);
+    const formattedHtml = whatsappTextToHtml(rawWhatsAppText);
+    if (editorRef.current && currentHtml !== formattedHtml && (
+      currentHtml.includes('*') || currentHtml.includes('_') || currentHtml.includes('~') || currentHtml.includes('```') ||
+      currentHtml.includes('<strong>') || currentHtml.includes('<em>') || currentHtml.includes('<del>') || currentHtml.includes('<code>')
+    )) {
+      const caretOffset = getCaretCharacterOffsetWithin(editorRef.current);
+      editorRef.current.innerHTML = formattedHtml;
+      setCaretPosition(editorRef.current, caretOffset);
+    }
+
     const now = Date.now();
     if (now - lastComposingCallRef.current > 3000) {
       lastComposingCallRef.current = now;
@@ -418,30 +486,83 @@ const WhatsAppMessageInputBox: React.FC<WhatsAppMessageInputBoxProps> = React.me
     if (!editorRef.current) return;
     editorRef.current.focus();
 
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setShowFormatBar(false);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    const selectedText = range.toString();
+    if (!selectedText) {
+      setShowFormatBar(false);
+      return;
+    }
+
+    let marker = '';
+    let endMarker = '';
+    let styledTag = 'strong';
+    let styleAttr = 'font-weight:700;';
+
     if (format === 'bold') {
-      document.execCommand('bold', false);
+      marker = '*';
+      endMarker = '*';
+      styledTag = 'strong';
+      styleAttr = 'font-weight:700;';
     } else if (format === 'italic') {
-      document.execCommand('italic', false);
+      marker = '_';
+      endMarker = '_';
+      styledTag = 'em';
+      styleAttr = 'font-style:italic;';
     } else if (format === 'strike') {
-      document.execCommand('strikeThrough', false);
+      marker = '~';
+      endMarker = '~';
+      styledTag = 'del';
+      styleAttr = 'text-decoration:line-through;';
     } else if (format === 'monospace') {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
-        const range = sel.getRangeAt(0);
-        const code = document.createElement('code');
-        code.style.fontFamily = 'monospace';
-        code.style.background = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
-        code.style.padding = '1px 3px';
-        code.style.borderRadius = '3px';
-        code.appendChild(range.extractContents());
-        range.insertNode(code);
-      }
+      marker = '```';
+      endMarker = '```';
+      styledTag = 'code';
+      styleAttr = 'font-family:monospace;background:rgba(255,255,255,0.1);padding:1px 3px;border-radius:3px;';
     } else if (format === 'quote') {
-      document.execCommand('formatBlock', false, 'blockquote');
+      const quoted = selectedText.split('\n').map(l => `> ${l}`).join('\n');
+      document.execCommand('insertText', false, quoted);
+      setShowFormatBar(false);
+      handleInput();
+      return;
     } else if (format === 'bullet') {
-      document.execCommand('insertUnorderedList', false);
+      const bulleted = selectedText.split('\n').map(l => `- ${l}`).join('\n');
+      document.execCommand('insertText', false, bulleted);
+      setShowFormatBar(false);
+      handleInput();
+      return;
     } else if (format === 'number') {
-      document.execCommand('insertOrderedList', false);
+      const numbered = selectedText.split('\n').map((l, i) => `${i + 1}. ${l}`).join('\n');
+      document.execCommand('insertText', false, numbered);
+      setShowFormatBar(false);
+      handleInput();
+      return;
+    }
+
+    // Toggle: se a seleção já possui os marcadores correspondentes, desfaz
+    if (selectedText.startsWith(marker) && selectedText.endsWith(endMarker) && selectedText.length >= marker.length + endMarker.length) {
+      const unformatted = selectedText.slice(marker.length, selectedText.length - endMarker.length);
+      document.execCommand('insertText', false, unformatted);
+    } else {
+      // Insere com os delimitadores visíveis e estilização nativa
+      const newText = `${marker}${selectedText}${endMarker}`;
+      const elem = document.createElement(styledTag);
+      elem.setAttribute('style', styleAttr);
+      elem.textContent = newText;
+      range.deleteContents();
+      range.insertNode(elem);
+
+      // Reposiciona o cursor logo após o elemento formatado
+      const newRange = document.createRange();
+      newRange.setStartAfter(elem);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
     }
 
     setShowFormatBar(false);
@@ -831,10 +952,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const role = (user.role as string) || '';
     const roleTitle = ((user as any).roleTitle || '').toLowerCase();
     const department = ((user as any).department || '').toLowerCase();
-    const sectors = (user as any).sectors || [];
+    const sectors: string[] = (user && 'sectors' in user && Array.isArray((user as any).sectors) && (user as any).sectors.length > 0)
+      ? (user as any).sectors
+      : (role === 'admin' ? ['gerencia', 'comercial', 'pos_venda'] : role === 'pos_venda' ? ['pos_venda', 'comercial'] : ['comercial']);
     return (
       role === 'master' || 
-      role === 'admin' || 
+      (role === 'admin' && sectors.includes('gerencia')) || 
       role === 'gerencia' || 
       role === 'gerente' || 
       department === 'gerencia' ||
@@ -842,7 +965,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       sectors.includes('gerencia') ||
       sectors.includes('diretoria') ||
       roleTitle.includes('geren') || 
-      roleTitle.includes('direto')
+      roleTitle.includes('direto') ||
+      Boolean((user as any).isDev)
     );
   }, [currentUser, viewingAsCollaborator]);
 

@@ -31,6 +31,16 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   onConfirmSale,
 }) => {
   const { currentUser } = useAdminState();
+  const birthdayContact = (lead?.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+  const birthdayName = birthdayContact?.name?.trim() || (lead as any)?.birthdayPersonName?.trim() || (lead?.primaryContactRole === 'debutante' || lead?.primaryContactRole === 'aniversariante' ? lead?.name?.trim() : (lead?.debutanteName && lead.debutanteName !== 'Indicação Externa' ? lead.debutanteName.trim() : lead?.name?.trim())) || 'Aniversariante';
+
+  const primaryDecisor = (lead?.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+    (lead?.primaryContactRole !== 'debutante' ? {
+      name: lead?.name,
+      phone: lead?.phone,
+      role: lead?.primaryContactRole || 'responsavel',
+    } : (lead?.contacts || []).find(c => c.role !== 'debutante')) || (lead?.contacts || [])[0];
+
   const [dealValueStr, setDealValueStr] = useState(() => {
     if (!lead) return '';
     const val = lead.dealValue || lead.estimatedBudget || 0;
@@ -38,21 +48,23 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   });
   const [downPaymentStr, setDownPaymentStr] = useState(() => {
     if (!lead) return '';
-    const val = (lead as any).downPayment || (lead as any).contractDownPayment || (lead as any).signalValue || 0;
+    const val = lead.downPayment ?? (lead as any).contractDownPayment ?? (lead as any).signalValue ?? 0;
     return val > 0 ? String(val) : '';
   });
   const [installmentsCount, setInstallmentsCount] = useState<number>(() => {
-    return (lead as any)?.contractInstallmentsCount || 10;
+    return lead?.installments || (lead as any)?.contractInstallmentsCount || 10;
   });
   const [hasCreditCard, setHasCreditCard] = useState<boolean>(() => {
-    return Boolean((lead as any)?.hasCreditCard);
+    return Boolean(lead?.hasCreditCard ?? (lead as any)?.customFieldValues?.hasCreditCard);
   });
   const [guestCount, setGuestCount] = useState<number>(() => {
-    return (lead as any)?.guestCount || (lead as any)?.estimatedGuests || 150;
+    return lead?.estimatedGuests || (lead as any)?.guestCount || 150;
   });
   const [eventYear, setEventYear] = useState<string>(() => {
-    if (lead?.partyDate) return String(new Date(lead.partyDate).getFullYear());
-    return String((lead as any)?.eventYear || new Date().getFullYear());
+    if (lead?.eventYear) return String(lead.eventYear);
+    if (lead?.partyDate) return String(new Date(lead.partyDate + 'T12:00:00').getFullYear());
+    if (lead?.eventDate) return String(new Date(lead.eventDate + 'T12:00:00').getFullYear());
+    return String(new Date().getFullYear());
   });
   const [packageSold, setPackageSold] = useState(() => {
     if (!lead) return '';
@@ -63,26 +75,30 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   const [contractSignedFileName, setContractSignedFileName] = useState<string>('');
   const [error, setError] = useState('');
 
-  // Sync state when lead changes
+  // Sync state strictly from lead data when modal opens or lead changes
   React.useEffect(() => {
-    if (lead) {
+    if (lead && isOpen) {
       const val = lead.dealValue || lead.estimatedBudget || 0;
       setDealValueStr(val > 0 ? String(val) : '');
-      const down = (lead as any).downPayment || (lead as any).contractDownPayment || (lead as any).signalValue || 0;
+      const down = lead.downPayment ?? (lead as any).contractDownPayment ?? (lead as any).signalValue ?? 0;
       setDownPaymentStr(down > 0 ? String(down) : '');
       setPackageSold(lead.packageSold || lead.interestService || '');
-      setInstallmentsCount((lead as any)?.contractInstallmentsCount || 10);
-      setHasCreditCard(Boolean((lead as any)?.hasCreditCard));
-      setGuestCount((lead as any)?.guestCount || (lead as any)?.estimatedGuests || 150);
-      if (lead?.partyDate) {
-        setEventYear(String(new Date(lead.partyDate).getFullYear()));
+      setInstallmentsCount(lead.installments || (lead as any)?.contractInstallmentsCount || 10);
+      setHasCreditCard(Boolean(lead.hasCreditCard ?? (lead as any)?.customFieldValues?.hasCreditCard));
+      setGuestCount(lead.estimatedGuests || (lead as any)?.guestCount || 150);
+      if (lead.eventYear) {
+        setEventYear(String(lead.eventYear));
+      } else if (lead.partyDate) {
+        setEventYear(String(new Date(lead.partyDate + 'T12:00:00').getFullYear()));
+      } else if (lead.eventDate) {
+        setEventYear(String(new Date(lead.eventDate + 'T12:00:00').getFullYear()));
       }
       setCloserNotes('');
       setContractSignedFileUrl('');
       setContractSignedFileName('');
       setError('');
     }
-  }, [lead?.id]);
+  }, [lead?.id, isOpen]);
 
   if (!isOpen || !lead) return null;
 
@@ -153,8 +169,6 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     fontFamily: "'Inter', sans-serif",
   };
 
-  const primaryDecisor = (lead.contacts || []).find(c => c.isPrimaryDecisionMaker) || (lead.contacts || [])[0];
-
   const valueNum = parseFloat(dealValueStr.replace(/\./g, '').replace(',', '.')) || 0;
   const downNum = parseFloat(downPaymentStr.replace(/\./g, '').replace(',', '.')) || 0;
   const remainingNum = Math.max(0, valueNum - downNum);
@@ -220,7 +234,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 Fechamento de Venda & Passagem de Bastão
               </h2>
               <p style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', margin: '2px 0 0 0' }}>
-                Aniversariante: <strong style={{ color: 'var(--adm-text-title)' }}>{lead.name}</strong> • Decisor: <strong style={{ color: 'var(--adm-accent)' }}>{primaryDecisor?.name || 'Decisor'}</strong>
+                Aniversariante: <strong style={{ color: 'var(--adm-text-title)' }}>{birthdayName}</strong> • Decisor: <strong style={{ color: 'var(--adm-accent)' }}>{primaryDecisor?.name || 'Decisor'}</strong>
               </p>
             </div>
           </div>

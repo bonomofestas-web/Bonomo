@@ -1142,6 +1142,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       borderColor: `${st.color || '#3B82F6'}40`,
       isWon: Boolean(st.isWon),
       isLoss: Boolean(st.isLoss),
+      allowedCollaboratorIds: st.allowedCollaboratorIds,
     }));
   }, [currentFunnel, isPostSaleView, isManagerOrMaster, effectiveUser]);
 
@@ -3436,7 +3437,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         flex: '0 0 40px',
                         padding: '10px 3px',
                         cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                        boxShadow: 'none',
                         gap: '10px',
                         transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                         animation: 'fadeIn 0.18s ease-out',
@@ -3532,7 +3533,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                         top: '0px',
                         zIndex: 30,
                         flexShrink: 0,
-                        boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                        boxShadow: 'none',
                         overflow: 'hidden',
                         whiteSpace: 'nowrap',
                       }}
