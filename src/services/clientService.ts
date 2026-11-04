@@ -7,6 +7,11 @@ const cleanDate = (d?: string | null): string | null => {
   if (!d || typeof d !== 'string') return null;
   const trimmed = d.trim();
   if (!trimmed || trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined') return null;
+  // Se for ISO string (ex: '2026-11-03T12:00:00.000Z'), extrai apenas 'YYYY-MM-DD' para colunas do tipo DATE no Postgres
+  if (trimmed.includes('T')) {
+    const onlyDate = trimmed.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(onlyDate)) return onlyDate;
+  }
   return trimmed;
 };
 
@@ -166,24 +171,37 @@ export const clientService = {
         .upsert(payload, { onConflict: 'id' });
 
       if (error) {
-        console.error('Erro ao salvar cliente no Supabase, tentando fallback seguro:', error);
-        // Fallback: se falhar por colunas adicionais ainda não migradas no Postgres (ex: has_credit_card, profession, master_id)
-        // removemos as novas colunas e tentamos salvar com payload essencial
+        console.warn('⚠️ Erro ao salvar cliente no Supabase, tentando fallback seguro com colunas essenciais:', error.message);
+        // Fallback: se falhar por colunas adicionais ainda não migradas no Postgres
+        // removemos as novas colunas e salvamos com a estrutura essencial padrão da tabela clients
         const strippedPayload = { ...payload };
         delete strippedPayload.has_credit_card;
         delete strippedPayload.profession;
         delete strippedPayload.master_id;
         delete strippedPayload.event_year;
         delete strippedPayload.funnel_id;
+        delete strippedPayload.contacts;
+        delete strippedPayload.signal_paid;
+        delete strippedPayload.signal_value;
+        delete strippedPayload.contract_down_payment;
+        delete strippedPayload.contract_installments_remaining;
+        delete strippedPayload.contract_installments_count;
+        delete strippedPayload.signal_paid_at;
+        delete strippedPayload.base_contract_value;
+        delete strippedPayload.contract_status;
+        delete strippedPayload.contract_signed_at;
 
-        if (payload.commercial_lead_id || payload.venue_id || payload.debutante_id || payload.assigned_success_manager_id) {
+        let { error: retryError } = await supabase.from('clients').upsert(strippedPayload, { onConflict: 'id' });
+        
+        // Se ainda falhar por alguma chave estrangeira (FK) legada inexistente
+        if (retryError && (retryError.message?.includes('foreign key') || retryError.code === '23503')) {
           strippedPayload.commercial_lead_id = null;
-          strippedPayload.venue_id = null;
           strippedPayload.debutante_id = null;
           strippedPayload.assigned_success_manager_id = null;
+          const retryFk = await supabase.from('clients').upsert(strippedPayload, { onConflict: 'id' });
+          retryError = retryFk.error;
         }
 
-        const { error: retryError } = await supabase.from('clients').upsert(strippedPayload, { onConflict: 'id' });
         if (retryError) {
           console.error('Falha crítica ao salvar cliente no Supabase (fallback):', retryError);
         } else {

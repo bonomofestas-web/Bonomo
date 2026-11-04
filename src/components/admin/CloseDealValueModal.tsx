@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, DollarSign, Package, FileText } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead } from '../../types/admin';
 
@@ -20,6 +20,8 @@ interface CloseDealValueModalProps {
       contractSignedFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
+      updateExistingClient?: boolean;
+      existingClientId?: string;
     }
   ) => void;
 }
@@ -30,7 +32,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   lead,
   onConfirmSale,
 }) => {
-  const { currentUser } = useAdminState();
+  const { currentUser, clients, funnels } = useAdminState();
   const birthdayContact = (lead?.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
   const birthdayName = birthdayContact?.name?.trim() || (lead as any)?.birthdayPersonName?.trim() || (lead?.primaryContactRole === 'debutante' || lead?.primaryContactRole === 'aniversariante' ? lead?.name?.trim() : (lead?.debutanteName && lead.debutanteName !== 'Indicação Externa' ? lead.debutanteName.trim() : lead?.name?.trim())) || 'Aniversariante';
 
@@ -40,6 +42,51 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       phone: lead?.phone,
       role: lead?.primaryContactRole || 'responsavel',
     } : (lead?.contacts || []).find(c => c.role !== 'debutante')) || (lead?.contacts || [])[0];
+
+  // ── DETECÇÃO DE SEGURANÇA EM TODOS OS FUNIS DE PÓS-VENDA ──
+  // Verifica se este lead já possui cliente cadastrado no pós-venda para evitar duplicidades
+  const existingClient = useMemo(() => {
+    if (!lead) return null;
+    const cleanLeadPhone = (lead.phone || '').replace(/\D/g, '');
+    const cleanDecisorPhone = (primaryDecisor?.phone || '').replace(/\D/g, '');
+    const leadNameClean = (lead.name || '').trim().toLowerCase();
+    const bdayNameClean = birthdayName.trim().toLowerCase();
+
+    return clients.find(c => {
+      // 1. Por ID do lead comercial
+      if (c.commercialLeadId && c.commercialLeadId === lead.id) return true;
+      // 2. Por código comercial
+      if (c.commercialLeadCode && lead.code && c.commercialLeadCode === lead.code) return true;
+      // 3. Por telefone do pagador ou aniversariante
+      const cPayerPhone = (c.payerPhone || '').replace(/\D/g, '');
+      const cBdayPhone = ((c as any).birthdayPersonPhone || '').replace(/\D/g, '');
+      if (cleanLeadPhone && (cleanLeadPhone === cPayerPhone || cleanLeadPhone === cBdayPhone)) return true;
+      if (cleanDecisorPhone && (cleanDecisorPhone === cPayerPhone || cleanDecisorPhone === cBdayPhone)) return true;
+      // 4. Por nome idêntico da aniversariante ou contratante na mesma unidade
+      const cNameClean = (c.name || '').trim().toLowerCase();
+      const cBdayClean = (c.birthdayPersonName || '').trim().toLowerCase();
+      const cPayerClean = (c.payerName || '').trim().toLowerCase();
+      if ((c.venueId === lead.venueId || !c.venueId) && (
+        (bdayNameClean && (bdayNameClean === cNameClean || bdayNameClean === cBdayClean)) ||
+        (leadNameClean && (leadNameClean === cNameClean || leadNameClean === cPayerClean))
+      )) {
+        return true;
+      }
+      return false;
+    }) || null;
+  }, [clients, lead, primaryDecisor, birthdayName]);
+
+  const existingClientFunnel = useMemo(() => {
+    if (!existingClient) return null;
+    return funnels.find(f => f.id === existingClient.funnelId) || null;
+  }, [funnels, existingClient]);
+
+  const existingClientStage = useMemo(() => {
+    if (!existingClient || !existingClientFunnel) return null;
+    return existingClientFunnel.stages?.find(s => s.id === existingClient.stage) || null;
+  }, [existingClientFunnel, existingClient]);
+
+  const [updateExistingMode, setUpdateExistingMode] = useState<'update' | 'keep_as_is'>('update');
 
   const [dealValueStr, setDealValueStr] = useState(() => {
     if (!lead) return '';
@@ -97,6 +144,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       setContractSignedFileUrl('');
       setContractSignedFileName('');
       setError('');
+      setUpdateExistingMode('update');
     }
   }, [lead?.id, isOpen]);
 
@@ -141,6 +189,8 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       contractSignedFileName: contractSignedFileName || undefined,
       guestCount: Number(guestCount) || 150,
       eventYear: eventYear || undefined,
+      updateExistingClient: Boolean(existingClient ? updateExistingMode === 'update' : true),
+      existingClientId: existingClient?.id,
     });
     onClose();
   };
@@ -271,6 +321,83 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
               fontWeight: 700,
             }}>
               {error}
+            </div>
+          )}
+
+          {/* ── BANNER DE DETECÇÃO DE CLIENTE EXISTENTE (SEGURANÇA ANTI-DUPLICIDADE) ── */}
+          {existingClient && (
+            <div style={{
+              background: 'rgba(20, 169, 215, 0.08)',
+              border: '1.5px solid rgba(20, 169, 215, 0.35)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <UserCheck size={16} color="var(--adm-accent)" />
+                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Cliente Já Cadastrado no Pós-Venda
+                </span>
+                <span style={{ fontSize: '0.64rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--adm-accent-bg)', color: 'var(--adm-accent)', fontWeight: 700, marginLeft: 'auto' }}>
+                  {existingClient.code}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-body)', lineHeight: 1.4 }}>
+                Este lead já possui vínculo com o cliente <strong>"{existingClient.name}"</strong> no funil <strong>"{existingClientFunnel?.name || 'Pós-Venda'}"</strong> na etapa <strong>"{existingClientStage?.name || (existingClient.stage as string)}"</strong>.
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <label style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: updateExistingMode === 'update' ? 'var(--adm-accent-bg)' : 'var(--adm-bg-input)',
+                  border: updateExistingMode === 'update' ? '1.5px solid var(--adm-accent)' : '1px solid var(--adm-border)',
+                  cursor: 'pointer',
+                  fontSize: '0.72rem',
+                  fontWeight: updateExistingMode === 'update' ? 800 : 500,
+                  color: updateExistingMode === 'update' ? 'var(--adm-accent)' : 'var(--adm-text-muted)',
+                }}>
+                  <input
+                    type="radio"
+                    name="updateExistingMode"
+                    checked={updateExistingMode === 'update'}
+                    onChange={() => setUpdateExistingMode('update')}
+                    style={{ accentColor: 'var(--adm-accent)' }}
+                  />
+                  <span>Atualizar dados do cliente existente</span>
+                </label>
+
+                <label style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: updateExistingMode === 'keep_as_is' ? 'var(--adm-bg-hover)' : 'var(--adm-bg-input)',
+                  border: updateExistingMode === 'keep_as_is' ? '1.5px solid var(--adm-border)' : '1px solid var(--adm-border)',
+                  cursor: 'pointer',
+                  fontSize: '0.72rem',
+                  fontWeight: updateExistingMode === 'keep_as_is' ? 800 : 500,
+                  color: updateExistingMode === 'keep_as_is' ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                }}>
+                  <input
+                    type="radio"
+                    name="updateExistingMode"
+                    checked={updateExistingMode === 'keep_as_is'}
+                    onChange={() => setUpdateExistingMode('keep_as_is')}
+                    style={{ accentColor: 'var(--adm-accent)' }}
+                  />
+                  <span>Não atualizar pós-venda (manter como está)</span>
+                </label>
+              </div>
             </div>
           )}
 
@@ -489,7 +616,9 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
               <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FileText size={13} color="var(--adm-accent)" />
-                <span>Relatório do Closer / Passagem de Bastão *</span>
+                <span>
+                  {existingClient ? 'Relatório do Closer & Motivo da Retomada (Passagem de Bastão) *' : 'Relatório do Closer / Passagem de Bastão *'}
+                </span>
               </label>
               <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 700 }}>
                 Fechador: {currentUser?.name}
@@ -503,7 +632,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 setCloserNotes(e.target.value);
                 setError('');
               }}
-              placeholder="Descreva o fechamento, particularidades da família, promessas, cortesias acordadas, com quem tratar novos upsells..."
+              placeholder={existingClient ? "Explique por que este lead voltou para negociação, quais condições foram renegociadas e instruções para a equipe de Pós-Venda..." : "Descreva o fechamento, particularidades da família, promessas, cortesias acordadas, com quem tratar novos upsells..."}
               style={{
                 ...inputStyle,
                 resize: 'vertical',

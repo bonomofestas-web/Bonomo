@@ -519,6 +519,26 @@ export const leadService = {
 
       // 1. Tenta atualizar diretamente por ID se for UUID
       if (isUuid(id)) {
+        // Preserva e mescla custom_field_values com o que já existe no banco para nunca perder campos
+        if (payload.custom_field_values) {
+          try {
+            const { data: existingRow } = await supabase
+              .from('leads')
+              .select('custom_field_values')
+              .eq('id', id)
+              .maybeSingle();
+
+            if (existingRow?.custom_field_values && typeof existingRow.custom_field_values === 'object') {
+              payload.custom_field_values = {
+                ...existingRow.custom_field_values,
+                ...payload.custom_field_values,
+              };
+            }
+          } catch {
+            // Continua normalmente se a consulta falhar
+          }
+        }
+
         let { data, error } = await supabase.from('leads').update(payload).eq('id', id).select('id');
         if (!error && data && data.length > 0) return true;
 
@@ -533,6 +553,7 @@ export const leadService = {
           delete fallbackPayload.installments;
           delete fallbackPayload.installment_value;
           delete fallbackPayload.decision_makers;
+          delete fallbackPayload.contacts;
           const { data: retryData, error: retryErr } = await supabase.from('leads').update(fallbackPayload).eq('id', id).select('id');
           if (!retryErr && retryData && retryData.length > 0) return true;
         }

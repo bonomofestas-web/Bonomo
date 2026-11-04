@@ -33,6 +33,7 @@ import type {
   VenueAgendaConfig,
   CommercialCommitment,
   DeletedLeadRecord,
+  LeadContact,
   SystemSlaConfig,
   QuickMessage
 } from '../types/admin';
@@ -461,6 +462,8 @@ export interface AdminContextType {
       contractSignedFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
+      updateExistingClient?: boolean;
+      existingClientId?: string;
     }
   ) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
@@ -7575,6 +7578,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       contractSignedFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
+      updateExistingClient?: boolean;
+      existingClientId?: string;
     }
   ) => {
     const author = currentUser?.name || 'Administrador';
@@ -7630,12 +7635,104 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const currentLead = leads.find(l => l.id === leadId);
     if (currentLead) {
       setClients(prevClients => {
-        const existingIdx = prevClients.findIndex(c => c.commercialLeadId === leadId || (c.payerPhone && c.payerPhone === currentLead.phone));
+        // Dispositivo de segurança anti-duplicidade em todos os funis de pós-venda
+        const cleanLeadPhone = (currentLead.phone || '').replace(/\D/g, '');
+        const existingIdx = prevClients.findIndex(c => {
+          if (extraOptions?.existingClientId && c.id === extraOptions.existingClientId) return true;
+          if (c.commercialLeadId && c.commercialLeadId === leadId) return true;
+          if (c.commercialLeadCode && currentLead.code && c.commercialLeadCode === currentLead.code) return true;
+          const cPayer = (c.payerPhone || '').replace(/\D/g, '');
+          const cBday = ((c as any).birthdayPersonPhone || '').replace(/\D/g, '');
+          if (cleanLeadPhone && (cleanLeadPhone === cPayer || cleanLeadPhone === cBday)) return true;
+          return false;
+        });
+
+        // Se o usuário selecionou expressamente manter o pós-venda como está
+        if (extraOptions?.updateExistingClient === false) {
+          return prevClients;
+        }
+
         const downPay = extraOptions?.downPayment ?? 0;
         const installCount = extraOptions?.installmentsCount ?? 10;
         const installRemaining = Math.max(0, dealValue - downPay);
         const hasCard = extraOptions?.hasCreditCard ?? false;
+        const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
+        const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear || new Date(currentLead.partyDate || Date.now()).getFullYear();
 
+        // Identificar o(a) Aniversariante real a partir da ficha/contatos
+        const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+        const birthdayName = birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
+        const birthdayPhone = birthdayContact?.phone?.trim() || (currentLead as any).birthdayPersonPhone?.trim() || '';
+        const birthdayDate = birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
+
+        // Identificar o Decisor Legal do Contrato
+        const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+          (currentLead.primaryContactRole !== 'debutante' ? {
+            name: currentLead.name,
+            phone: currentLead.phone,
+            role: currentLead.primaryContactRole || 'responsavel',
+            email: currentLead.email,
+            cpf: currentLead.cpf,
+            address: currentLead.address,
+            neighborhood: currentLead.neighborhood,
+          } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
+
+        const payer = primaryDecisor?.name?.trim() || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
+        const payerPhone = primaryDecisor?.phone?.trim() || currentLead.phone?.trim() || '';
+        const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
+        const payerCpf = primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
+        const payerEmail = primaryDecisor?.email || currentLead.email?.trim() || '';
+        const payerAddress = primaryDecisor?.address || (currentLead as any).address || '';
+        const payerNeighborhood = (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
+        const leadProfession = (currentLead as any).profession || (primaryDecisor as any)?.profession || '';
+
+        const targetVenueId = currentLead.venueId || venues[0]?.id || '';
+        const venueObj = venues.find(v => v.id === targetVenueId);
+        const venueName = venueObj?.name || 'Bonomo Festas';
+
+        const formattedDown = downPay > 0 
+          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(downPay)
+          : 'Sem entrada';
+        const parcelVal = installCount > 0 ? (dealValue - downPay) / installCount : 0;
+        const formattedParcel = parcelVal > 0 
+          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parcelVal)
+          : 'R$ 0,00';
+        const eventTypeLabel = (currentLead.eventType as any) === 'casamento' 
+          ? 'Casamento' 
+          : (currentLead.eventType as any) === 'corporativo' 
+          ? 'Corporativo' 
+          : (currentLead.eventType as any) === 'infantil' 
+          ? 'Festa Infantil' 
+          : '15 Anos (Debutante)';
+        const formattedPartyDate = currentLead.partyDate || currentLead.eventDate || cDate;
+
+        // Montagem do Relatório Estruturado de Passagem de Bastão do Closer
+        const handoverFormattedReport = [
+          `PASSAGEM DE BASTÃO • FECHAMENTO COMERCIAL`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `Aniversariante / Homenageada: ${birthdayName} (Tel: ${birthdayPhone || 'Não informado'})`,
+          `Data de Nascimento: ${birthdayDate || 'Não informada'}`,
+          `Tomador de Decisão (Contratante): ${payer} (${payerRel})`,
+          `Tel. Decisor: ${payerPhone || 'Não informado'} | CPF: ${payerCpf || 'Não informado'}`,
+          `E-mail: ${payerEmail || 'Não informado'}`,
+          `Endereço / Bairro: ${[payerAddress, payerNeighborhood].filter(Boolean).join(' - ') || 'Não informado'}`,
+          `Profissão: ${leadProfession || 'Não informada'}`,
+          ``,
+          `Cartão de Crédito: ${hasCard ? 'Sim' : 'Não'}`,
+          `Valor Total do Contrato: ${formattedVal}`,
+          `Valor de Entrada (Sinal): ${formattedDown}`,
+          `Condição de Pagamento: ${installCount}x de ${formattedParcel}`,
+          `Tipo do Evento: ${eventTypeLabel}`,
+          `Data Prevista do Evento: ${formattedPartyDate}`,
+          `Número de Convidados (Pax): ${gCount} pessoas`,
+          `Unidade / Casa: ${venueName}`,
+          `Pacote Contratado: ${packageSold}`,
+          ``,
+          `RELATÓRIO DO CLOSER:`,
+          closerNotes || 'Sem observações adicionais.'
+        ].join('\n');
+
+        // Documentos de fechamento
         const docList: ClientDocument[] = [];
         if (extraOptions?.contractSignedFileUrl) {
           docList.push({
@@ -7649,18 +7746,43 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           });
         }
 
+        // Subcontatos unificados (garantindo contratante e aniversariante com ambos telefones vinculados)
+        const mergedContacts: LeadContact[] = [...(currentLead.contacts || [])];
+        if (birthdayPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === birthdayPhone.replace(/\D/g, ''))) {
+          mergedContacts.push({
+            id: generateUuid(),
+            name: birthdayName,
+            phone: birthdayPhone,
+            role: 'debutante',
+            birthday: birthdayDate || undefined,
+            isPrimaryDecisionMaker: false,
+          });
+        }
+        if (payerPhone && !mergedContacts.some(c => c.phone && c.phone.replace(/\D/g, '') === payerPhone.replace(/\D/g, ''))) {
+          mergedContacts.push({
+            id: generateUuid(),
+            name: payer,
+            phone: payerPhone,
+            role: payerRel as any,
+            email: payerEmail || undefined,
+            cpf: payerCpf || undefined,
+            address: payerAddress || undefined,
+            isPrimaryDecisionMaker: true,
+          });
+        }
+
         if (existingIdx >= 0) {
-          // Já existe, atualiza com os novos dados de fechamento
+          // Já existe no pós-venda: Atualiza dados do cliente existente e anexa nova passagem de bastão
           const updated = [...prevClients];
-          const handoverActs = closerNotes ? [
+          const handoverActs = [
             {
               id: generateUuid(),
               type: 'status_change' as const,
-              description: `Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              description: handoverFormattedReport,
               createdAt: new Date().toISOString(),
               createdBy: author,
             }
-          ] : [];
+          ];
 
           // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
           const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
@@ -7689,9 +7811,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractInstallmentsCount: installCount || updated[existingIdx].contractInstallmentsCount,
             contractInstallmentsRemaining: installRemaining,
             hasCreditCard: hasCard || updated[existingIdx].hasCreditCard,
-            guestCount: extraOptions?.guestCount || updated[existingIdx].guestCount,
-            eventYear: extraOptions?.eventYear || updated[existingIdx].eventYear,
-            contacts: currentLead.contacts && currentLead.contacts.length > 0 ? currentLead.contacts : updated[existingIdx].contacts,
+            guestCount: gCount || updated[existingIdx].guestCount,
+            eventYear: eYear || updated[existingIdx].eventYear,
+            profession: leadProfession || updated[existingIdx].profession,
+            payerName: payer || updated[existingIdx].payerName,
+            payerPhone: payerPhone || updated[existingIdx].payerPhone,
+            payerEmail: payerEmail || updated[existingIdx].payerEmail,
+            payerCpf: payerCpf || updated[existingIdx].payerCpf,
+            payerAddress: payerAddress || updated[existingIdx].payerAddress,
+            payerNeighborhood: payerNeighborhood || updated[existingIdx].payerNeighborhood,
+            birthdayPersonName: birthdayName || updated[existingIdx].birthdayPersonName,
+            birthdayPersonPhone: birthdayPhone || updated[existingIdx].birthdayPersonPhone,
+            birthdayPersonBirthdate: birthdayDate || updated[existingIdx].birthdayPersonBirthdate,
+            contacts: mergedContacts.length > 0 ? mergedContacts : updated[existingIdx].contacts,
             documents: [...docList, ...(updated[existingIdx].documents || [])],
             activities: [...handoverActs, ...(updated[existingIdx].activities || [])],
             updatedAt: new Date().toISOString().split('T')[0],
@@ -7700,35 +7832,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           clientService.upsert(updated[existingIdx]);
           return updated;
         } else {
-          // Cria novo Cliente no Pós-Venda duplicando o Lead Comercial
+          // Cria novo Cliente no Pós-Venda com HISTÓRICO LIMPO (apenas a passagem de bastão)
           const newCliId = generateUuid();
-          const targetVenueId = currentLead.venueId || venues[0]?.id || '';
-          const venueObj = venues.find(v => v.id === targetVenueId);
           const pDate = currentLead.partyDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-          // Identificar o(a) Aniversariante real a partir da ficha/contatos
-          const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
-          const birthdayName = birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
-          
-          // Identificar o Decisor Legal do Contrato
-          const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
-            (currentLead.primaryContactRole !== 'debutante' ? {
-              name: currentLead.name,
-              phone: currentLead.phone,
-              role: currentLead.primaryContactRole || 'responsavel',
-              email: currentLead.email,
-              cpf: currentLead.cpf,
-              address: currentLead.address,
-              neighborhood: currentLead.neighborhood,
-            } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
-
-          const payer = primaryDecisor?.name || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
-          const payerPhone = primaryDecisor?.phone || currentLead.phone.trim();
-          const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
-          const payerCpf = primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
-          const payerEmail = primaryDecisor?.email || currentLead.email?.trim() || '';
-          const payerAddress = primaryDecisor?.address || (currentLead as any).address || '';
-          const payerNeighborhood = (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
 
           // Localizar gatilho de pós-venda configurado na etapa de ganho do funil
           const currentLeadFunnel = funnels.find(f => f.id === currentLead.funnelId);
@@ -7753,23 +7859,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             return prevClients;
           }
 
-          const initialActivities = [];
-          if (closerNotes) {
-            initialActivities.push({
+          // Histórico limpo: única atividade inicial é o Relatório de Passagem de Bastão do Closer
+          const initialActivities: ClientActivity[] = [
+            {
               id: generateUuid(),
-              type: 'status_change' as const,
-              description: `Passagem de Bastão do Closer (${author}): "${closerNotes}"`,
+              type: 'status_change',
+              description: handoverFormattedReport,
               createdAt: new Date().toISOString(),
               createdBy: author,
-            });
-          }
-          initialActivities.push({
-            id: generateUuid(),
-            type: 'status_change' as const,
-            description: `Venda Ganha confirmada no CRM por ${author} (Pacote: ${packageSold} • ${formattedVal}). Cliente integrado ao Pós-Venda.`,
-            createdAt: new Date().toISOString(),
-            createdBy: author,
-          });
+            }
+          ];
 
           // Ajusta clientID nos documentos criados
           docList.forEach(d => { d.clientId = newCliId; });
@@ -7789,15 +7888,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             payerCity: (currentLead as any).city || '',
             birthdayPersonName: birthdayName,
             birthdayPersonAge: (currentLead as any).birthdayPersonAge || 15,
-            birthdayPersonBirthdate: birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '',
-            birthdayPersonPhone: birthdayContact?.phone || (currentLead as any).birthdayPersonPhone || '',
+            birthdayPersonBirthdate: birthdayDate,
+            birthdayPersonPhone: birthdayPhone,
             eventType: currentLead.eventType || '15_anos',
             eventDate: pDate,
             eventTime: (currentLead as any).eventTime || '20:00 às 02:00',
-            eventYear: extraOptions?.eventYear || (currentLead as any).eventYear || new Date(pDate).getFullYear(),
-            guestCount: extraOptions?.guestCount || (currentLead as any).guestCount || (currentLead as any).estimatedGuests || 150,
+            eventYear: eYear,
+            guestCount: gCount,
             venueId: targetVenueId,
-            venueName: venueObj?.name || 'Bonomo Festas',
+            venueName: venueName,
             packageSold,
             dealValue,
             baseContractValue: dealValue,
@@ -7807,7 +7906,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractInstallmentsCount: installCount,
             contractInstallmentsRemaining: installRemaining,
             hasCreditCard: hasCard,
-            profession: (currentLead as any).profession || undefined,
+            profession: leadProfession || undefined,
             contractDate: cDate,
             contractStatus: 'aguardando_sinal',
             contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
@@ -7815,7 +7914,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             paymentStatus: downPay > 0 ? 'up_to_date' : 'pending',
             funnelId: targetPostSaleFunnelId,
             stage: (targetPostSaleStageId || 'onboarding') as any,
-            contacts: currentLead.contacts || [],
+            contacts: mergedContacts,
             assignedSuccessManagerId: undefined,
             assignedSuccessManagerName: undefined,
             debutanteId: null,
@@ -8382,7 +8481,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     if (isSupabaseConfigured) {
-      leadService.update(leadId, data).catch(err => {
+      const mergedPayload: Partial<Lead> = {
+        ...data,
+        customFieldValues: {
+          ...(targetLead?.customFieldValues || {}),
+          ...(targetLead?.hasCreditCard !== undefined ? { hasCreditCard: targetLead.hasCreditCard } : {}),
+          ...(targetLead?.profession !== undefined ? { profession: targetLead.profession } : {}),
+          ...(targetLead?.contacts !== undefined ? { contacts: targetLead.contacts } : {}),
+          ...(targetLead?.decisionMakers !== undefined ? { decisionMakers: targetLead.decisionMakers } : {}),
+          ...(targetLead?.desiredPeriod !== undefined ? { desiredPeriod: targetLead.desiredPeriod } : {}),
+          ...(targetLead?.eventYear !== undefined ? { eventYear: targetLead.eventYear } : {}),
+          ...(targetLead?.downPayment !== undefined ? { downPayment: targetLead.downPayment } : {}),
+          ...(targetLead?.installments !== undefined ? { installments: targetLead.installments } : {}),
+          ...(data.customFieldValues || {}),
+          ...(data.hasCreditCard !== undefined ? { hasCreditCard: data.hasCreditCard } : {}),
+          ...(data.profession !== undefined ? { profession: data.profession } : {}),
+          ...(data.contacts !== undefined ? { contacts: data.contacts } : {}),
+          ...(data.decisionMakers !== undefined ? { decisionMakers: data.decisionMakers } : {}),
+          ...(data.desiredPeriod !== undefined ? { desiredPeriod: data.desiredPeriod } : {}),
+          ...(data.eventYear !== undefined ? { eventYear: data.eventYear } : {}),
+          ...(data.downPayment !== undefined ? { downPayment: data.downPayment } : {}),
+          ...(data.installments !== undefined ? { installments: data.installments } : {}),
+        }
+      };
+
+      leadService.update(leadId, mergedPayload).catch(err => {
         console.error('❌ Erro ao atualizar leadData no Supabase:', err);
       });
       if (newAuditActivities.length > 0) {

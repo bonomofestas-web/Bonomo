@@ -5,7 +5,7 @@ import {
   Shield, PartyPopper, Users,
   CheckCircle2, Clock, X, Sparkles,
   Globe, ExternalLink, FileText, Copy, Tag,
-  Building2, Eye, EyeOff, MessageSquare,
+  Building2, Eye, MessageSquare,
   User, UserCheck, Calendar as CalendarIcon, Utensils,
   Lock, Unlock, AlertTriangle, Send, Edit3,
   ArrowRightLeft, GitBranch, UserX, Repeat,
@@ -141,7 +141,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     closeLeadSaleWithValue,
     venueAgendaConfigs,
     appointments,
-    updateFunnel,
     systemSlaConfig,
   } = useAdminState();
 
@@ -186,21 +185,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     return null;
   }, [lead]);
 
-  // Checagem de campo ocultado no funil
-  const isFieldHidden = useCallback((fieldKey: string) => {
-    const fn = (funnels || []).find(f => f.id === lead.funnelId);
-    return Boolean(fn?.hiddenFieldKeys?.includes(fieldKey));
-  }, [funnels, lead.funnelId]);
-
-  // Ação para ocultar ou exibir campo específico para todos os leads do funil
-  const handleToggleHideField = useCallback(async (fieldKey: string) => {
-    const fn = (funnels || []).find(f => f.id === lead.funnelId);
-    if (!fn) return;
-    const currentHidden = fn.hiddenFieldKeys || [];
-    const isHidden = currentHidden.includes(fieldKey);
-    const updated = isHidden ? currentHidden.filter(k => k !== fieldKey) : [...currentHidden, fieldKey];
-    updateFunnel(fn.id, { hiddenFieldKeys: updated });
-  }, [funnels, lead.funnelId, updateFunnel]);
 
   const [isTransferVenueModalOpen, setIsTransferVenueModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'principal' | 'origem' | 'jornada' | 'mql' | 'comercial' | 'tasks'>('principal');
@@ -3420,36 +3404,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               )}
 
               {/* 3. Temperatura */}
-              {!isPostSale && !isFieldHidden('temperature') && (
+              {!isPostSale && (
                 <div data-inspector-dropdown style={{ ...cardRowStyle, position: 'relative' }}>
-                  <span style={{ ...cardLabelStyle, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                    <span>Temperatura</span>
-                    {!readOnly && leadFunnel && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Deseja inibir a visualização da Temperatura neste funil? Você pode reativá-la em Campos & Tags.')) {
-                            handleToggleHideField('temperature');
-                          }
-                        }}
-                        title="Ocultar Temperatura neste funil"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '1px',
-                          cursor: 'pointer',
-                          color: 'var(--adm-text-muted)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          opacity: 0.5,
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
-                      >
-                        <EyeOff size={11} />
-                      </button>
-                    )}
+                  <span style={cardLabelStyle}>
+                    Temperatura
                   </span>
                   <div style={cardValueStyle}>
                     <div
@@ -3605,39 +3563,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* 7. Cartão de Crédito */}
-              {!isFieldHidden('hasCreditCard') && (
-                <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('hasCreditCard'), position: 'relative' }}>
-                  <span style={{ ...cardLabelStyle, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                    <span>Cartão Crédito</span>
-                    {isFieldMissing('hasCreditCard') && <span style={{ color: '#EF4444' }}>*</span>}
-                    {!readOnly && leadFunnel && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Deseja inibir a visualização do Cartão de Crédito neste funil? Você pode reativá-lo em Campos & Tags.')) {
-                            handleToggleHideField('hasCreditCard');
-                          }
-                        }}
-                        title="Ocultar Cartão de Crédito neste funil"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: '1px',
-                          cursor: 'pointer',
-                          color: 'var(--adm-text-muted)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          opacity: 0.5,
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
-                      >
-                        <EyeOff size={11} />
-                      </button>
-                    )}
-                  </span>
-                  <div style={cardValueStyle}>
+              <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('hasCreditCard'), position: 'relative' }}>
+                <span style={cardLabelStyle}>
+                  Cartão Crédito {isFieldMissing('hasCreditCard') && <span style={{ color: '#EF4444' }}>*</span>}
+                </span>
+                <div style={cardValueStyle}>
                   <div
                     onClick={() => {
                       if (!readOnly) {
@@ -3718,7 +3648,6 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   )}
                 </div>
               </div>
-              )}
 
               {/* 8. Tipo de Evento (Dropdown Popover Integrado) */}
               <div data-inspector-dropdown style={{ ...cardRowStyle, ...getMissingHighlightStyle('eventType'), position: 'relative' }}>
