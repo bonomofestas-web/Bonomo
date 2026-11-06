@@ -6,7 +6,7 @@ import {
   MessageSquare, Trash2, ExternalLink,
   Eye, Check, X, Gem, Calendar, CheckSquare, UserPlus,
   Copy, Building2, Layers, Users, DollarSign, ArrowRight, ChevronLeft, Pin, ShieldCheck,
-  Smartphone
+  Smartphone, ArrowRightLeft
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
@@ -237,6 +237,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     updateLeadData,
     deleteClient, 
     deleteMultipleClients,
+    moveMultipleClientsToLead,
     updateClientStage, 
     funnels, 
     addFunnel,
@@ -313,6 +314,25 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // Estados de Ações e Interatividades dos Cards
   const [activeClientMenuId, setActiveClientMenuId] = useState<string | null>(null);
   const [hoveredRevenueClientId, setHoveredRevenueClientId] = useState<string | null>(null);
+  const [isMoveToLeadModalOpen, setIsMoveToLeadModalOpen] = useState(false);
+  const [targetCommercialFunnelId, setTargetCommercialFunnelId] = useState('');
+  const [targetCommercialStageId, setTargetCommercialStageId] = useState('');
+  const [isMovingToLead, setIsMovingToLead] = useState(false);
+
+  const handleBulkMoveToLead = async () => {
+    if (!targetCommercialFunnelId || selectedClientIds.length === 0) return;
+    setIsMovingToLead(true);
+    try {
+      await moveMultipleClientsToLead(selectedClientIds, targetCommercialFunnelId, targetCommercialStageId || undefined);
+      setSelectedClientIds([]);
+      setIsMultiSelectMode(false);
+      setIsMoveToLeadModalOpen(false);
+    } catch (err) {
+      console.error('Erro ao mover clientes para lead:', err);
+    } finally {
+      setIsMovingToLead(false);
+    }
+  };
   const [addTagClientId, setAddTagClientId] = useState<string | null>(null);
   const [newTagInput, setNewTagInput] = useState<string>('');
 
@@ -839,24 +859,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
     return list;
   }, [clients, activeVenueId, filterState, clientOwnershipFilter, search, currentUser]);
-
-  // Overall metrics
-  const metrics = useMemo(() => {
-    const totalActive = filteredClients.filter(c => c.stage !== 'completed' && c.stage !== 'lost' && c.stage !== 'archived').length;
-    const totalCompleted = filteredClients.filter(c => c.stage === 'completed').length;
-    const totalLost = filteredClients.filter(c => c.stage === 'lost').length;
-    const totalRevenue = filteredClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
-    const partiesNext60Days = filteredClients.filter(c => {
-      const pStr = c.partyDate || c.eventDate;
-      if (!pStr) return false;
-      const pTime = new Date(pStr).getTime();
-      const now = Date.now();
-      const diffDays = Math.ceil((pTime - now) / (1000 * 60 * 60 * 24));
-      return diffDays >= 0 && diffDays <= 60;
-    }).length;
-
-    return { totalActive, totalCompleted, totalLost, totalRevenue, partiesNext60Days };
-  }, [filteredClients]);
 
   // Handlers para Drag-to-Scroll horizontal do Kanban (arraste livre com a mãozinha)
   const handleBoardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -2442,38 +2444,29 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
       {/* Top bar separator */}
 
-      {/* ── 2. BARRA DE MÉTRICAS ULTRA-COMPACTA ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        gap: '14px',
-        padding: '3px 16px',
-        background: 'var(--adm-bg-app)',
-        borderBottom: '1px solid var(--adm-border)',
-        flexShrink: 0,
-      }}>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Total: <strong style={{ color: 'var(--adm-text-title)' }}>{filteredClients.length}</strong>
+      {/* ── 2. BARRA DE MÉTRICAS ULTRA-COMPACTA (IDÊNTICA AO COMERCIAL) ── */}
+      {viewMode !== 'inbox' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: '14px',
+          padding: '3px 16px',
+          background: 'var(--adm-bg-app)',
+          borderBottom: '1px solid var(--adm-border)',
+          flexShrink: 0,
+        }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+            Total: <strong style={{ color: 'var(--adm-text-title)' }}>{filteredClients.length}</strong>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+            Em Andamento: <strong style={{ color: 'var(--adm-green, #10B981)' }}>{filteredClients.filter(c => c.stage !== 'completed' && c.stage !== 'cancelled').length}</strong>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+            Realizadas: <strong style={{ color: 'var(--adm-accent, #6366F1)' }}>{filteredClients.filter(c => c.stage === 'completed').length}</strong>
+          </div>
         </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Próximas Festas (60d): <strong style={{ color: '#F59E0B' }}>{metrics.partiesNext60Days}</strong>
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Em Andamento: <strong style={{ color: '#06B6D4' }}>{metrics.totalActive}</strong>
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Realizadas: <strong style={{ color: '#10B981' }}>{metrics.totalCompleted}</strong>
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Cancelados: <strong style={{ color: '#EF4444' }}>{metrics.totalLost}</strong>
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
-          Carteira Total: <strong style={{ color: 'var(--adm-accent)' }}>
-            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(metrics.totalRevenue)}
-          </strong>
-        </div>
-      </div>
+      )}
 
       {/* ── 3. MAIN CONTENT: Kanban, Inbox, or List ── */}
       <div style={{ flex: 1, overflow: 'hidden', padding: viewMode === 'inbox' ? 0 : '8px 16px 20px', display: 'flex', flexDirection: 'column' }}>
@@ -2555,7 +2548,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       flex: '0 0 40px',
                       padding: '10px 3px',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                      boxShadow: 'none',
                       gap: '10px',
                       transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                       animation: 'fadeIn 0.18s ease-out',
@@ -2653,7 +2646,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       top: '0px',
                       zIndex: 30,
                       flexShrink: 0,
-                      boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                      boxShadow: 'none',
                       overflow: 'hidden',
                       whiteSpace: 'nowrap',
                     }}
@@ -4127,6 +4120,37 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             ))}
           </div>
 
+          {/* Mover para Lead (Funil Comercial) */}
+          <button
+            type="button"
+            disabled={selectedClientIds.length === 0}
+            onClick={() => {
+              const commercialFuns = funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda');
+              const first = commercialFuns[0];
+              setTargetCommercialFunnelId(first?.id || '');
+              setTargetCommercialStageId(first?.stages?.[0]?.id || 'new_lead');
+              setIsMoveToLeadModalOpen(true);
+            }}
+            title="Converter clientes selecionados em leads no funil comercial"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              background: selectedClientIds.length > 0 ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
+              color: selectedClientIds.length > 0 ? 'var(--adm-accent, #6366F1)' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: selectedClientIds.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: selectedClientIds.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <ArrowRightLeft size={13} color="var(--adm-accent, #6366F1)" />
+            <span>Mover para Lead</span>
+          </button>
+
           {/* Excluir em Massa */}
           <button
             type="button"
@@ -4173,6 +4197,133 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
           >
             <X size={16} />
           </button>
+        </div>
+      )}
+
+      {/* Modal Mover Clientes Selecionados para Lead (Funil Comercial) */}
+      {isMoveToLeadModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card, #1E1A29)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '12px',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+            width: '100%',
+            maxWidth: '440px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--adm-border)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ArrowRightLeft size={16} color="var(--adm-accent, #6366F1)" />
+                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Mover {selectedClientIds.length} Cliente(s) para Lead
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMoveToLeadModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)', margin: 0, lineHeight: 1.45 }}>
+                Os contatos selecionados serão transferidos para a base de <strong>Leads Comerciais</strong> com novo código oficial <strong>LEAD-XXXXXX</strong>. Todo o histórico de WhatsApp, anotações e documentos serão preservados integralmente.
+              </p>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
+                  Funil Comercial de Destino
+                </label>
+                <select
+                  value={targetCommercialFunnelId}
+                  onChange={(e) => {
+                    const fId = e.target.value;
+                    setTargetCommercialFunnelId(fId);
+                    const selF = funnels.find(f => f.id === fId);
+                    setTargetCommercialStageId(selF?.stages?.[0]?.id || 'new_lead');
+                  }}
+                  className="adm-input"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '0.82rem' }}
+                >
+                  {funnels.filter(f => !f.isPostSale && f.category !== 'Pós-Venda').map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
+                  Etapa Inicial no Comercial
+                </label>
+                <select
+                  value={targetCommercialStageId}
+                  onChange={(e) => setTargetCommercialStageId(e.target.value)}
+                  className="adm-input"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '0.82rem' }}
+                >
+                  {(funnels.find(f => f.id === targetCommercialFunnelId)?.stages || []).map(st => (
+                    <option key={st.id} value={st.id}>{st.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsMoveToLeadModalOpen(false)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--adm-border)',
+                    background: 'transparent',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!targetCommercialFunnelId || isMovingToLead}
+                  onClick={handleBulkMoveToLead}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: (!targetCommercialFunnelId || isMovingToLead) ? 'not-allowed' : 'pointer',
+                    opacity: (!targetCommercialFunnelId || isMovingToLead) ? 0.6 : 1,
+                  }}
+                >
+                  {isMovingToLead ? 'Transferindo...' : 'Confirmar Migração'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

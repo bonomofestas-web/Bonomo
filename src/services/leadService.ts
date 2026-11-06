@@ -221,6 +221,10 @@ export function formatActivityFromDb(a: any): LeadActivity {
     }
   }
 
+  const meta = (typeof a.metadata === 'object' && a.metadata !== null) ? a.metadata : {};
+  const messageId = a.message_id || meta.messageId || a.rawPayload?.key?.id || a.rawPayload?.id || undefined;
+  const quotedMessage = a.quoted_message || meta.quotedMessage || undefined;
+
   return {
     id: a.id,
     leadId: a.lead_id,
@@ -235,7 +239,12 @@ export function formatActivityFromDb(a: any): LeadActivity {
     mediaType,
     status,
     errorMessage,
-    metadata: (typeof a.metadata === 'object' && a.metadata !== null) ? a.metadata : {},
+    messageId,
+    quotedMessage,
+    channelId: a.channel_id || meta.channelId,
+    channelName: a.channel_name || meta.channelName,
+    instanceId: a.instance_id || meta.instanceId,
+    metadata: meta,
   };
 }
 
@@ -714,6 +723,15 @@ export const leadService = {
 
       const activityId = ('id' in activity && activity.id && isUuid(activity.id)) ? activity.id : generateUuid();
 
+      const meta = {
+        ...((activity as any).metadata || {}),
+        ...(activity.messageId ? { messageId: activity.messageId } : {}),
+        ...(activity.quotedMessage ? { quotedMessage: activity.quotedMessage } : {}),
+        ...(activity.channelId ? { channelId: activity.channelId } : {}),
+        ...(activity.channelName ? { channelName: activity.channelName } : {}),
+        ...(activity.instanceId ? { instanceId: activity.instanceId } : {}),
+      };
+
       const insertPayload: Record<string, any> = {
         id: activityId,
         lead_id: finalLeadId,
@@ -724,7 +742,7 @@ export const leadService = {
         author_id: isUuid(activity.authorId) ? activity.authorId : null,
         author_avatar_url: activity.authorAvatarUrl || '',
         timestamp: activity.timestamp || new Date().toISOString(),
-        metadata: (activity as any).metadata || {},
+        metadata: meta,
       };
 
       if (activity.status) insertPayload.status = activity.status;
@@ -854,6 +872,8 @@ export const leadService = {
         mediaUrl: a.mediaUrl,
         mediaType: a.mediaType,
         status: a.status,
+        messageId: a.messageId,
+        quotedMessage: a.quotedMessage,
         metadata: a.metadata,
       }));
       localStorage.setItem(cacheKey, JSON.stringify(simplified));

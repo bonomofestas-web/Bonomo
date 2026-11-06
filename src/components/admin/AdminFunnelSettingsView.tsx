@@ -3326,39 +3326,41 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                       Tipo de Gatilho
                                     </span>
 
-                                    {/* Opção 1: Agendamento Automático */}
-                                    <button
-                                      type="button"
-                                      disabled={hasSchedule}
-                                      onClick={() => {
-                                        setSelectedTriggerType('open_schedule');
-                                        setSelectedScheduleType('visit');
-                                        setActiveTriggerStageId(stage.id);
-                                        setTriggerMenuOpenStageId(null);
-                                      }}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '6px 8px',
-                                        borderRadius: '6px',
-                                        border: '1px solid transparent',
-                                        background: hasSchedule ? 'transparent' : 'rgba(59, 130, 246, 0.08)',
-                                        cursor: hasSchedule ? 'not-allowed' : 'pointer',
-                                        opacity: hasSchedule ? 0.4 : 1,
-                                        textAlign: 'left',
-                                        transition: 'all 0.15s ease',
-                                      }}
-                                    >
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Calendar size={13} color="#3B82F6" />
-                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Agendamento</span>
-                                          <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Visita ou Degustação</span>
+                                    {/* Opção 1: Agendamento Automático (Apenas em funis comerciais) */}
+                                    {!isPostSale && (
+                                      <button
+                                        type="button"
+                                        disabled={hasSchedule}
+                                        onClick={() => {
+                                          setSelectedTriggerType('open_schedule');
+                                          setSelectedScheduleType('visit');
+                                          setActiveTriggerStageId(stage.id);
+                                          setTriggerMenuOpenStageId(null);
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          padding: '6px 8px',
+                                          borderRadius: '6px',
+                                          border: '1px solid transparent',
+                                          background: hasSchedule ? 'transparent' : 'rgba(59, 130, 246, 0.08)',
+                                          cursor: hasSchedule ? 'not-allowed' : 'pointer',
+                                          opacity: hasSchedule ? 0.4 : 1,
+                                          textAlign: 'left',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <Calendar size={13} color="#3B82F6" />
+                                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Agendamento</span>
+                                            <span style={{ fontSize: '0.58rem', color: 'var(--adm-text-muted)' }}>Visita ou Degustação</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                      {hasSchedule && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
-                                    </button>
+                                        {hasSchedule && <span style={{ fontSize: '0.56rem', color: '#EF4444', fontWeight: 700 }}>1/1 ativo</span>}
+                                      </button>
+                                    )}
 
                                     {/* Opção 2: Transferência de Funil */}
                                     <button

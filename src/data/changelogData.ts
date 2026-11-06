@@ -21,7 +21,7 @@ export const CHANGELOG_DATA: ChangelogItem[] = [
     title: 'Citação e Resposta de Mensagens, Preview de PDF, Sincronização por Número e Purga de Instâncias',
     type: 'major',
     badge: 'Grande Atualização',
-    summary: 'Lançamento do recurso de resposta com citação (Quote / Reply) no WhatsApp, visualização refinada de documentos PDF com capa e metadados, sincronização de histórico por número com direcionamento obrigatório para o funil da origem, purga automática de instâncias na API e login direto.',
+    summary: 'Lançamento do recurso de resposta com citação (Quote / Reply) no WhatsApp, visualização refinada de documentos PDF com capa e metadados, sincronização de histórico por número com direcionamento obrigatório para o funil da origem, purga automática de instâncias na API, padronização visual e estrutural do funil de pós-venda, migração em massa entre Lead e Cliente com novos códigos oficiais e login direto.',
     features: [
       {
         name: 'Resposta com Citação (Quote / Reply) no WhatsApp',
@@ -32,6 +32,21 @@ export const CHANGELOG_DATA: ChangelogItem[] = [
         name: 'Preview e Card Elegante de Documentos PDF',
         description: 'Visualização de documentos PDF estilo WhatsApp oficial com banner de capa superior, badge vermelho de identificação, nome do arquivo completo e contagem de páginas e tamanho. Preservação estrita dos nomes de arquivos e diferenciação entre mídias embedadas e documentos.',
         status: 'new',
+      },
+      {
+        name: 'Padronização do Funil de Pós-Venda & Visual Clean',
+        description: 'Alinhamento visual e estrutural do funil de pós-venda à referência do funil comercial, adotando a barra de métricas ultra-compacta (Total, Em Andamento, Realizadas) e eliminando sombras pesadas nos cabeçalhos das etapas para um design moderno e polido.',
+        status: 'improved',
+      },
+      {
+        name: 'Migração Atômica em Massa (Mover para Cliente / Mover para Lead)',
+        description: 'Ação em lote no Kanban e na visualização de lista para transferir contatos entre funis comerciais e de pós-venda. O código anterior morre e um novo identificador oficial é emitido (CLI-XXXXXX ou LEAD-XXXXXX), preservando 100% das conversas de WhatsApp, anotações, tarefas e histórico sem qualquer perda.',
+        status: 'new',
+      },
+      {
+        name: 'Regras de Automação Dedicadas por Tipo de Funil',
+        description: 'Gatilhos de agendamento automático de visita blindados exclusivamente para o funil comercial, sendo ocultados e desabilitados automaticamente nas configurações de funis de pós-venda.',
+        status: 'improved',
       },
       {
         name: 'Sincronização de Conversas por Número & Funil Dedicado',

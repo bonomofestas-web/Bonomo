@@ -434,6 +434,10 @@ export interface AdminContextType {
   removeLeadFromFunnel: (leadId: string, reason: string) => Promise<boolean>;
   restoreLeadToFunnel: (leadId: string) => Promise<boolean>;
   deleteMultipleLeads: (leadIds: string[], reason?: string) => Promise<void>;
+  moveLeadToClient: (leadId: string, targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
+  moveMultipleLeadsToClient: (leadIds: string[], targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
+  moveClientToLead: (clientId: string, targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
+  moveMultipleClientsToLead: (clientIds: string[], targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
   archiveLead: (leadId: string, reason?: string) => Promise<boolean>;
   unarchiveLead: (leadId: string, funnelId?: string, stageId?: string) => Promise<boolean>;
   deletedLeadsHistory: DeletedLeadRecord[];
@@ -7480,6 +7484,209 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const moveLeadToClient = async (leadId: string, targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
+    const lead = scopedLeads.find(l => l.id === leadId) || leadsRef.current.find(l => l.id === leadId);
+    if (!lead) {
+      console.warn(`[moveLeadToClient] Lead não encontrado: ${leadId}`);
+      return false;
+    }
+
+    const targetFunnel = funnels.find(f => f.id === targetFunnelId);
+    const resolvedStageId = targetStageId || targetFunnel?.stages?.[0]?.id || 'onboarding';
+
+    const newClientId = generateUuid();
+    const newCode = generateClientCode();
+
+    const primaryContact = (lead.contacts && lead.contacts.length > 0)
+      ? lead.contacts.find(c => c.isPrimaryDecisionMaker) || lead.contacts[0]
+      : undefined;
+
+    const payerName = (lead as any).payerName || primaryContact?.name || lead.name;
+    const payerPhone = (lead as any).payerPhone || primaryContact?.phone || lead.phone;
+    const birthdayName = (lead as any).birthdayPersonName || lead.debutanteName || lead.name;
+
+    const newClient: Client = {
+      id: newClientId,
+      masterId: scopedMasterId || lead.masterId || currentUser?.masterId,
+      code: newCode,
+      name: birthdayName || payerName || lead.name,
+      payerName,
+      payerRelationship: (primaryContact as any)?.role || 'Responsável',
+      payerPhone,
+      payerEmail: lead.email || primaryContact?.email || '',
+      payerCpf: lead.cpf || (lead as any).payerCpf || '',
+      payerAddress: lead.address || (lead as any).payerAddress || '',
+      payerNeighborhood: lead.neighborhood || (lead as any).payerNeighborhood || '',
+      payerCity: (lead as any).city || '',
+      birthdayPersonName: birthdayName,
+      birthdayPersonAge: (lead as any).birthdayPersonAge || 15,
+      birthdayPersonBirthdate: lead.birthday || (lead as any).birthdayPersonBirthdate || '',
+      birthdayPersonPhone: (lead as any).birthdayPersonPhone || '',
+      eventType: lead.eventType || '15_anos',
+      eventDate: lead.partyDate || lead.eventDate || '',
+      eventTime: (lead as any).eventTime || '20:00 às 02:00',
+      eventYear: lead.eventYear || (lead.partyDate ? lead.partyDate.split('-')[0] : ''),
+      guestCount: (lead as any).guestCount || (lead as any).guests || 100,
+      venueId: lead.venueId,
+      venueName: lead.venueName || '',
+      packageSold: lead.packageSold || (lead as any).selectedPackageName || 'Personalizado',
+      dealValue: lead.dealValue || 0,
+      baseContractValue: lead.dealValue || 0,
+      contractDate: lead.contractDate || new Date().toISOString().split('T')[0],
+      contractDownPayment: lead.downPayment || 0,
+      signalPaid: (lead.downPayment || 0) > 0,
+      signalValue: lead.downPayment || 0,
+      contractInstallmentsCount: lead.installments || 1,
+      contractInstallmentsRemaining: lead.installments || 1,
+      hasCreditCard: lead.hasCreditCard || false,
+      profession: lead.profession || '',
+      contacts: lead.contacts || [],
+      documents: (lead as any).documents || [],
+      activities: (lead.activities || []).map(a => ({
+        id: a.id,
+        type: (a.type === 'status_change' ? 'status_change' : 'note') as any,
+        description: a.text || a.title || 'Atividade migrada',
+        createdAt: a.timestamp,
+        createdBy: a.authorName || 'Sistema',
+      })),
+      funnelId: targetFunnelId,
+      stage: resolvedStageId,
+      createdAt: lead.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    deletedLeadIdsRef.current.add(lead.id);
+    setLeads(prev => {
+      const next = prev.filter(l => l.id !== lead.id);
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    setClients(prev => {
+      const next = [newClient, ...prev.filter(c => c.id !== newClientId)];
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(next));
+      return next;
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await clientService.upsert(newClient);
+        await supabase.from('lead_activities').update({ lead_id: newClientId }).eq('lead_id', lead.id);
+        await supabase.from('admin_tasks').update({ client_id: newClientId, lead_id: null }).eq('lead_id', lead.id);
+        await supabase.from('leads').delete().eq('id', lead.id);
+      } catch (err) {
+        console.error('Falha ao persistir migração de lead para cliente:', err);
+      }
+    }
+
+    return true;
+  };
+
+  const moveMultipleLeadsToClient = async (leadIds: string[], targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
+    for (const id of leadIds) {
+      await moveLeadToClient(id, targetFunnelId, targetStageId);
+    }
+    return true;
+  };
+
+  const moveClientToLead = async (clientId: string, targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
+    const client = scopedClients.find(c => c.id === clientId) || clients.find(c => c.id === clientId);
+    if (!client) {
+      console.warn(`[moveClientToLead] Cliente não encontrado: ${clientId}`);
+      return false;
+    }
+
+    const targetFunnel = funnels.find(f => f.id === targetFunnelId);
+    const resolvedStageId = targetStageId || targetFunnel?.stages?.[0]?.id || 'new_lead';
+
+    const newLeadId = generateUuid();
+    const newCode = generateLeadCode();
+
+    const newLead: Lead = {
+      id: newLeadId,
+      masterId: scopedMasterId || client.masterId || currentUser?.masterId,
+      code: newCode,
+      funnelId: targetFunnelId,
+      stage: resolvedStageId as any,
+      debutanteId: client.debutanteId || newLeadId,
+      debutanteName: client.birthdayPersonName || client.name,
+      debutanteSlug: client.debutanteSlug || newLeadId.slice(0, 8),
+      age: client.birthdayPersonAge || 15,
+      group: 'Geral',
+      venueId: client.venueId,
+      venueName: client.venueName,
+      name: client.name || client.birthdayPersonName || client.payerName,
+      phone: client.payerPhone || client.birthdayPersonPhone || '',
+      email: client.payerEmail || '',
+      birthday: client.birthdayPersonBirthdate || '',
+      cpf: client.payerCpf || '',
+      address: client.payerAddress || '',
+      neighborhood: client.payerNeighborhood || '',
+      contacts: (client.contacts || []) as any,
+      dealValue: client.dealValue || client.baseContractValue || 0,
+      downPayment: client.contractDownPayment || client.signalValue || 0,
+      installments: client.contractInstallmentsCount || 1,
+      hasCreditCard: client.hasCreditCard || false,
+      profession: client.profession || '',
+      partyDate: client.eventDate || '',
+      eventDate: client.eventDate || '',
+      eventYear: client.eventYear || '',
+      estimatedGuests: (client as any).guestCount || 100,
+      eventType: (client.eventType || '15_anos') as any,
+      source: 'outros' as any,
+      sourceName: 'Migrado do Pós-Venda',
+      subSource: 'Cliente Retornado a Lead',
+      temperature: undefined,
+      isValidated: true,
+      pointsGranted: 1,
+      participants: [],
+      tasks: [],
+      activities: (client.activities || []).map((a: any) => ({
+        id: a.id || generateUuid(),
+        leadId: newLeadId,
+        timestamp: a.createdAt || a.timestamp || new Date().toISOString(),
+        type: (a.type === 'status_change' ? 'status_change' : 'note') as any,
+        title: a.title || 'Histórico migrado do Pós-Venda',
+        text: a.description || a.text || '',
+        authorName: a.createdBy || a.authorName || 'Sistema',
+      })),
+      createdAt: client.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setClients(prev => {
+      const next = prev.filter(c => c.id !== client.id);
+      safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(next));
+      return next;
+    });
+
+    setLeads(prev => {
+      const next = [newLead, ...prev.filter(l => l.id !== newLeadId)];
+      safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(next));
+      return next;
+    });
+
+    if (isSupabaseConfigured) {
+      try {
+        await leadService.upsert(newLead);
+        await supabase.from('lead_activities').update({ lead_id: newLeadId }).eq('lead_id', client.id);
+        await supabase.from('admin_tasks').update({ lead_id: newLeadId, client_id: null }).eq('client_id', client.id);
+        await supabase.from('clients').delete().eq('id', client.id);
+      } catch (err) {
+        console.error('Falha ao persistir migração de cliente para lead:', err);
+      }
+    }
+
+    return true;
+  };
+
+  const moveMultipleClientsToLead = async (clientIds: string[], targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
+    for (const id of clientIds) {
+      await moveClientToLead(id, targetFunnelId, targetStageId);
+    }
+    return true;
+  };
+
   const archiveLead = async (leadId: string, reason?: string): Promise<boolean> => {
     const now = new Date().toISOString();
     const author = currentUser?.name || 'Administrador';
@@ -9927,6 +10134,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       removeLeadFromFunnel,
       restoreLeadToFunnel,
       deleteMultipleLeads,
+      moveLeadToClient,
+      moveMultipleLeadsToClient,
+      moveClientToLead,
+      moveMultipleClientsToLead,
       archiveLead,
       unarchiveLead,
       deletedLeadsHistory: scopedDeletedLeadsHistory,

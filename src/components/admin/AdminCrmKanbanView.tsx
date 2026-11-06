@@ -11,7 +11,8 @@ import {
   UserPlus, Eye, AlertTriangle,
   User, SunMedium, Snowflake, Tag as TagIcon,
   MoreVertical, CheckSquare, Trash2, GitBranch, Archive,
-  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock, UserX
+  Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock, UserX,
+  ArrowRightLeft
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
@@ -270,6 +271,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     mqlQuestions,
     deleteLead,
     deleteMultipleLeads,
+    moveMultipleLeadsToClient,
     archiveLead,
     addLeadTask,
     updateLeadData,
@@ -724,6 +726,25 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [bulkStageModalOpen, setBulkStageModalOpen] = useState(false);
   const [bulkAssigneeModalOpen, setBulkAssigneeModalOpen] = useState(false);
   const [bulkFunnelModalOpen, setBulkFunnelModalOpen] = useState(false);
+  const [isMoveToClientModalOpen, setIsMoveToClientModalOpen] = useState(false);
+  const [targetPostSaleFunnelId, setTargetPostSaleFunnelId] = useState('');
+  const [targetPostSaleStageId, setTargetPostSaleStageId] = useState('');
+  const [isMovingToClient, setIsMovingToClient] = useState(false);
+
+  const handleBulkMoveToClient = async () => {
+    if (!targetPostSaleFunnelId || selectedLeadIds.length === 0) return;
+    setIsMovingToClient(true);
+    try {
+      await moveMultipleLeadsToClient(selectedLeadIds, targetPostSaleFunnelId, targetPostSaleStageId || undefined);
+      setSelectedLeadIds([]);
+      setIsMultiSelectMode(false);
+      setIsMoveToClientModalOpen(false);
+    } catch (err) {
+      console.error('Erro ao mover leads para cliente:', err);
+    } finally {
+      setIsMovingToClient(false);
+    }
+  };
 
   // Fast Switcher Dropdown dos Funis Comerciais
   const [isFunnelSwitcherOpen, setIsFunnelSwitcherOpen] = useState(false);
@@ -5693,6 +5714,37 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
           <div style={{ height: '18px', width: '1px', background: 'var(--adm-border, #334155)' }} />
 
+          {/* Ação 0: Mover para Cliente (Pós-Venda) */}
+          <button
+            type="button"
+            disabled={selectedLeadIds.length === 0}
+            onClick={() => {
+              const postSaleFuns = funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda');
+              const first = postSaleFuns[0];
+              setTargetPostSaleFunnelId(first?.id || '');
+              setTargetPostSaleStageId(first?.stages?.[0]?.id || 'onboarding');
+              setIsMoveToClientModalOpen(true);
+            }}
+            title="Converter leads selecionados em clientes no funil de pós-venda"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              background: selectedLeadIds.length > 0 ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+              border: '1px solid rgba(6, 182, 212, 0.35)',
+              color: selectedLeadIds.length > 0 ? '#06B6D4' : 'var(--adm-text-muted, #64748B)',
+              fontSize: '0.76rem',
+              fontWeight: 700,
+              cursor: selectedLeadIds.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: selectedLeadIds.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <ArrowRightLeft size={13} color="#06B6D4" />
+            <span>Mover para Cliente</span>
+          </button>
+
           {/* Ação 0: Mudar Funil */}
           <button
             type="button"
@@ -5839,6 +5891,133 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         collaborators={collaborators}
         onConfirm={handleBulkAssignCollab}
       />
+
+      {/* Modal Mover Leads Selecionados para Cliente (Pós-Venda) */}
+      {isMoveToClientModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '16px',
+        }}>
+          <div style={{
+            background: 'var(--adm-bg-card, #1E1A29)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '12px',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+            width: '100%',
+            maxWidth: '440px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 16px',
+              borderBottom: '1px solid var(--adm-border)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ArrowRightLeft size={16} color="#06B6D4" />
+                <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
+                  Mover {selectedLeadIds.length} Lead(s) para Cliente
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMoveToClientModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--adm-text-muted)', cursor: 'pointer' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <p style={{ fontSize: '0.78rem', color: 'var(--adm-text-body)', margin: 0, lineHeight: 1.45 }}>
+                Os contatos selecionados serão transferidos para a base de <strong>Clientes (Pós-Venda)</strong> com novo código oficial <strong>CLI-XXXXXX</strong>. Todo o histórico de WhatsApp, anotações e documentos serão preservados integralmente.
+              </p>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
+                  Funil de Pós-Venda de Destino
+                </label>
+                <select
+                  value={targetPostSaleFunnelId}
+                  onChange={(e) => {
+                    const fId = e.target.value;
+                    setTargetPostSaleFunnelId(fId);
+                    const selF = funnels.find(f => f.id === fId);
+                    setTargetPostSaleStageId(selF?.stages?.[0]?.id || 'onboarding');
+                  }}
+                  className="adm-input"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '0.82rem' }}
+                >
+                  {funnels.filter(f => f.isPostSale || f.category === 'Pós-Venda').map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)', marginBottom: '5px' }}>
+                  Etapa Inicial no Pós-Venda
+                </label>
+                <select
+                  value={targetPostSaleStageId}
+                  onChange={(e) => setTargetPostSaleStageId(e.target.value)}
+                  className="adm-input"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '0.82rem' }}
+                >
+                  {(funnels.find(f => f.id === targetPostSaleFunnelId)?.stages || []).map(st => (
+                    <option key={st.id} value={st.id}>{st.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsMoveToClientModalOpen(false)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--adm-border)',
+                    background: 'transparent',
+                    color: 'var(--adm-text-muted)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!targetPostSaleFunnelId || isMovingToClient}
+                  onClick={handleBulkMoveToClient}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: (!targetPostSaleFunnelId || isMovingToClient) ? 'not-allowed' : 'pointer',
+                    opacity: (!targetPostSaleFunnelId || isMovingToClient) ? 0.6 : 1,
+                  }}
+                >
+                  {isMovingToClient ? 'Transferindo...' : 'Confirmar Migração'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
