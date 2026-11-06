@@ -338,6 +338,19 @@ export interface LeadActivity {
   channelId?: string;
   channelName?: string;
   instanceId?: string;
+  messageId?: string;
+  quotedMessage?: {
+    id: string;
+    messageId?: string;
+    text: string;
+    authorName?: string;
+    sender?: string;
+    mediaType?: string;
+    type?: string;
+    mediaUrl?: string;
+    audioDuration?: string;
+    fromMe?: boolean;
+  };
 }
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';

@@ -35,8 +35,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Mobile 2-step navigation state ('welcome' | 'form')
-  const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('welcome');
+  // Mobile direct login (tutorial inicial descontinuado para acesso imediato)
+  const [mobileStep, setMobileStep] = useState<'welcome' | 'form'>('form');
 
   // First Access Flow State
   const [activationEmail, setActivationEmail] = useState('');
@@ -493,9 +493,8 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       }
 
       // 2. Atualiza colaborador no banco de dados e localmente:
-      // Se for primeiro acesso (!isResetMode ou isFirstAccess true), MANTÉM isFirstAccess: true
-      // para que a tela obrigatória de onboarding de perfil (foto e whatsapp) seja exibida após o login!
-      const shouldKeepFirstAccess = !isResetMode && (target ? (target.isFirstAccess ?? true) : true);
+      // Primeiro acesso com perfil obrigatório descontinuado: o colaborador entra direto no sistema
+      const shouldKeepFirstAccess = false;
 
       // Persiste a nova senha na tabela collaborators
       if (isSupabaseConfigured) {

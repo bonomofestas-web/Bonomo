@@ -28,6 +28,8 @@ interface TriageChatGroup {
   lastMessageTime: string;
   lastMessageIsFromMe: boolean;
   messages: Array<{
+    id?: string;
+    messageId?: string;
     timestamp: string;
     text: string;
     fromMe: boolean;
@@ -39,6 +41,7 @@ interface TriageChatGroup {
   targetFunnelId?: string;
   targetStage?: CrmStage;
   existingLeadId?: string;
+  isNewLead: boolean;
 }
 
 interface AdminWhatsAppHistoryTriageModalProps {
@@ -62,7 +65,7 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
     consolidateAllDuplicateLeads 
   } = useAdminState();
 
-  const [periodDays, setPeriodDays] = useState<'7' | '15' | '30' | 'custom'>('7');
+  const [periodDays, setPeriodDays] = useState<'7' | '30' | '40' | '60' | '90' | 'custom'>('7');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   
@@ -113,10 +116,14 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
       let startTimestamp = now - 7 * 24 * 60 * 60 * 1000;
       let endTimestamp = now;
 
-      if (periodDays === '15') {
-        startTimestamp = now - 15 * 24 * 60 * 60 * 1000;
-      } else if (periodDays === '30') {
+      if (periodDays === '30') {
         startTimestamp = now - 30 * 24 * 60 * 60 * 1000;
+      } else if (periodDays === '40') {
+        startTimestamp = now - 40 * 24 * 60 * 60 * 1000;
+      } else if (periodDays === '60') {
+        startTimestamp = now - 60 * 24 * 60 * 60 * 1000;
+      } else if (periodDays === '90') {
+        startTimestamp = now - 90 * 24 * 60 * 60 * 1000;
       } else if (periodDays === 'custom') {
         if (customStartDate) startTimestamp = new Date(customStartDate + 'T00:00:00').getTime();
         if (customEndDate) endTimestamp = new Date(customEndDate + 'T23:59:59').getTime();
@@ -166,9 +173,10 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
             lastMessageIsFromMe: false,
             messages: [],
             selected: true, // Selecionado por padrão para agilizar
-            targetFunnelId: matchedLead?.funnelId || globalFunnelId,
+            targetFunnelId: !matchedLead ? (source?.funnelId || globalFunnelId) : (matchedLead.funnelId || globalFunnelId),
             targetStage: (matchedLead?.stage as CrmStage) || 'new_lead',
             existingLeadId: matchedLead?.id,
+            isNewLead: !matchedLead,
           };
           chatMap.set(cleanPhone, group);
         }
@@ -178,7 +186,11 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
         else group.incomingCount++;
         group.totalCount++;
 
+        const msgId = (msg as any).messageId || msg.rawPayload?.key?.id || msg.rawPayload?.id || msg.rawPayload?.wamid;
+
         group.messages.push({
+          id: generateUuid(),
+          messageId: msgId,
           timestamp: msg.timestamp,
           text: msg.text,
           fromMe: isFromMe,
@@ -268,11 +280,12 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
         // Ordena mensagens cronologicamente
         item.messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-        // Converte mensagens em LeadActivities
+        // Converte mensagens em LeadActivities com código único de mensagem (messageId) e milissegundos
         const activities: LeadActivity[] = item.messages.map(m => {
           const isAudio = m.mediaType === 'audio' || m.text.includes('🎵') || m.text.toLowerCase().includes('voz');
           return {
-            id: generateUuid(),
+            id: m.id || generateUuid(),
+            messageId: m.messageId,
             leadId: item.existingLeadId || '',
             timestamp: m.timestamp || new Date().toISOString(),
             type: 'contact',
@@ -286,6 +299,10 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
             authorId: m.fromMe ? 'whatsapp_mobile' : 'lead',
             authorAvatarUrl: m.fromMe ? 'whatsapp_brand' : undefined,
             status: m.fromMe ? 'sent' : 'delivered',
+            metadata: {
+              messageId: m.messageId,
+              rawPayload: m.rawPayload,
+            },
           };
         });
 
@@ -405,10 +422,10 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--adm-text-title, #FFFFFF)' }}>
-                Triagem Pré-CRM de Histórico do WhatsApp
+                Sincronização de Conversas do WhatsApp
               </h3>
               <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--adm-text-muted, #9E988D)' }}>
-                Selecione quais conversas importar para evitar poluir o CRM com grupos ou contatos pessoais
+                {source.name} • {hasSearched ? 'Etapa 2: Identificação de Leads & Sincronização' : 'Etapa 1: Selecionar o Período de Sincronização'}
               </p>
             </div>
           </div>
@@ -481,7 +498,7 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
                   Período de Histórico:
                 </span>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  {(['7', '15', '30', 'custom'] as const).map(p => (
+                  {(['7', '30', '40', '60', '90', 'custom'] as const).map(p => (
                     <button
                       key={p}
                       type="button"
@@ -497,7 +514,7 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
                         cursor: 'pointer',
                       }}
                     >
-                      {p === 'custom' ? 'Personalizado' : `Últimos ${p} dias`}
+                      {p === 'custom' ? 'Personalizado' : `${p} dias`}
                     </button>
                   ))}
                 </div>
@@ -612,9 +629,10 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
                   <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid var(--adm-border, rgba(255,255,255,0.08))' }}>
                     <th style={{ padding: '10px 12px', width: '40px' }}></th>
                     <th style={{ padding: '10px 12px' }}>Contato (Nome / Telefone)</th>
-                    <th style={{ padding: '10px 12px', width: '110px' }}>Mensagens</th>
+                    <th style={{ padding: '10px 12px', width: '130px' }}>Status no CRM</th>
+                    <th style={{ padding: '10px 12px', width: '100px' }}>Mensagens</th>
                     <th style={{ padding: '10px 12px' }}>Última Mensagem</th>
-                    <th style={{ padding: '10px 12px', width: '180px' }}>Funil de Destino</th>
+                    <th style={{ padding: '10px 12px', width: '170px' }}>Funil de Destino</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -660,10 +678,44 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
                               onBlur={(e) => e.currentTarget.style.border = '1px solid transparent'}
                             />
                             <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', paddingLeft: '4px' }}>
-                              {formatPhone(c.phone)} {c.existingLeadId && <span style={{ color: '#10B981', fontWeight: 800 }}>• Já no CRM</span>}
+                              {formatPhone(c.phone)}
                             </div>
                           </div>
                         </div>
+                      </td>
+
+                      <td style={{ padding: '10px 12px' }}>
+                        {c.isNewLead ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            color: '#10B981',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                          }}>
+                            Novo Lead
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(59, 130, 246, 0.15)',
+                            border: '1px solid rgba(59, 130, 246, 0.35)',
+                            color: '#3B82F6',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                          }}>
+                            Lead Existente
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ padding: '10px 12px' }}>
@@ -705,7 +757,7 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
 
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{
-                          maxWidth: '260px',
+                          maxWidth: '240px',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -721,21 +773,40 @@ export const AdminWhatsAppHistoryTriageModal: React.FC<AdminWhatsAppHistoryTriag
                       </td>
 
                       <td style={{ padding: '10px 12px' }}>
-                        <select
-                          value={c.targetFunnelId}
-                          onChange={(e) => handleFunnelChange(c.phone, e.target.value)}
-                          className="adm-input"
-                          style={{
-                            width: '100%',
-                            height: '28px',
-                            fontSize: '0.70rem',
+                        {c.isNewLead && source?.funnelId ? (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 8px',
                             borderRadius: '6px',
-                          }}
-                        >
-                          {funnels.map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                          ))}
-                        </select>
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--adm-border, rgba(255,255,255,0.1))',
+                            fontSize: '0.70rem',
+                            fontWeight: 700,
+                            color: 'var(--adm-text-title, #FFF)',
+                          }} title="Direcionado obrigatoriamente para o funil dedicado desta origem">
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {funnels.find(f => f.id === source.funnelId)?.name || 'Funil da Origem'}
+                            </span>
+                          </div>
+                        ) : (
+                          <select
+                            value={c.targetFunnelId}
+                            onChange={(e) => handleFunnelChange(c.phone, e.target.value)}
+                            className="adm-input"
+                            style={{
+                              width: '100%',
+                              height: '28px',
+                              fontSize: '0.70rem',
+                              borderRadius: '6px',
+                            }}
+                          >
+                            {funnels.map(f => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                     </tr>
                   ))}

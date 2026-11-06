@@ -11,6 +11,13 @@ export interface UazapiIncomingMessageEvent {
   timestamp: string;
   fromMe?: boolean;
   messageId?: string;
+  quotedMessage?: {
+    id: string;
+    text: string;
+    authorName?: string;
+    mediaType?: string;
+    fromMe?: boolean;
+  };
   rawPayload: any;
 }
 
@@ -35,6 +42,51 @@ export function isLidIdentifier(id?: string): boolean {
   if (digits.length >= 14) return true;
   if (digits.length >= 12 && !digits.startsWith('55')) return true;
   return false;
+}
+
+/**
+ * Extrai dados de mensagem respondida / citada (Quote / Reply) do WhatsApp
+ */
+export function extractQuotedMessage(msg: any): {
+  id: string;
+  text: string;
+  authorName?: string;
+  mediaType?: string;
+  fromMe?: boolean;
+} | undefined {
+  if (!msg) return undefined;
+  const context = msg?.message?.extendedTextMessage?.contextInfo 
+    || msg?.message?.imageMessage?.contextInfo
+    || msg?.message?.videoMessage?.contextInfo
+    || msg?.message?.audioMessage?.contextInfo
+    || msg?.message?.documentMessage?.contextInfo
+    || msg?.contextInfo
+    || msg?.rawPayload?.contextInfo
+    || msg?.quoted;
+
+  if (!context) return undefined;
+
+  const quotedMsgObj = context.quotedMessage || context.message || context;
+  const text = quotedMsgObj?.conversation 
+    || quotedMsgObj?.extendedTextMessage?.text 
+    || quotedMsgObj?.imageMessage?.caption 
+    || quotedMsgObj?.videoMessage?.caption 
+    || context?.conversation
+    || context?.text
+    || '';
+
+  const stanzaId = context?.stanzaId || context?.id || context?.stanza_id || '';
+  if (!stanzaId && !text) return undefined;
+
+  const isFromMe = Boolean(context?.isFromMe || context?.fromMe || context?.participant?.includes('me'));
+  const participantPhone = (context?.participant || '').replace(/@.*$/, '').replace(/\D/g, '');
+
+  return {
+    id: stanzaId,
+    text: typeof text === 'string' ? text : '',
+    authorName: isFromMe ? 'Você' : (participantPhone ? `Contato ${participantPhone.slice(-4)}` : undefined),
+    fromMe: isFromMe,
+  };
 }
 
 /**
@@ -683,6 +735,7 @@ class UazapiSseManager {
           timestamp: timestampIso,
           fromMe: isFromMe,
           messageId: msgId,
+          quotedMessage: extractQuotedMessage(msg),
           rawPayload: msg,
         };
 

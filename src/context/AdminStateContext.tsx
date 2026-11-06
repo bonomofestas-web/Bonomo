@@ -4709,6 +4709,20 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const deleteSource = async (id: string) => {
+    const targetSource = sources.find(s => s.id === id);
+    if (targetSource) {
+      const config = (targetSource.configuration as any) || {};
+      const instanceToken = targetSource.whatsappInstanceId || config.instanceToken || config.token || config.instanceKey;
+      if (instanceToken && (targetSource.type === 'whatsapp_api' || (targetSource as any).type === 'whatsapp')) {
+        try {
+          await uazapiService.deleteInstance(instanceToken);
+          console.log(`[deleteSource] Instância do WhatsApp removida com sucesso na UAZAPI: ${instanceToken}`);
+        } catch (err) {
+          console.warn(`[deleteSource] Falha ao excluir instância do WhatsApp na UAZAPI (${instanceToken}):`, err);
+        }
+      }
+    }
+
     setSources(prev => {
       const updated = prev.filter(s => s.id !== id);
       safeLocalStorageSet(STORAGE_KEY_SOURCES, JSON.stringify(updated));
@@ -6537,6 +6551,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const isAudio = incoming.mediaType === 'audio' || incoming.text?.includes('🎵') || incoming.text?.toLowerCase().includes('voz');
           const newAct: LeadActivity = {
             id: newActId,
+            messageId: incoming.messageId,
+            quotedMessage: incoming.quotedMessage,
             leadId: existingLead.id,
             timestamp: incoming.timestamp || new Date().toISOString(),
             type: 'contact',
@@ -6550,6 +6566,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             authorId: isFromMe ? 'whatsapp_mobile' : 'lead',
             authorAvatarUrl: isFromMe ? 'whatsapp_brand' : undefined,
             status: isFromMe ? 'sent' : 'delivered',
+            metadata: {
+              messageId: incoming.messageId,
+              quotedMessage: incoming.quotedMessage,
+            },
           };
 
           const updatedActivities = mergeAndSortActivities(existingLead.activities || [], [newAct], existingLead.id);

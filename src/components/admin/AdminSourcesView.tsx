@@ -4,7 +4,7 @@ import {
   Copy, Check, Code,
   CheckCircle2, XCircle, Search,
   Target, Zap, Crown, AlertTriangle, QrCode,
-  RefreshCw, X
+  RefreshCw, X, History
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { AdminSourceEditorView } from './AdminSourceEditorView';
@@ -828,7 +828,32 @@ export const AdminSourcesView: React.FC = () => {
                                         </span>
                                       </div>
                                     ) : isConnected ? (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <div 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setHistoryTriageSource(source);
+                                        }}
+                                        title="Clique no número para sincronizar histórico de conversas do WhatsApp"
+                                        style={{ 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          gap: '8px',
+                                          cursor: 'pointer',
+                                          padding: '4px 8px',
+                                          borderRadius: '8px',
+                                          background: 'rgba(16, 185, 129, 0.06)',
+                                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)';
+                                          e.currentTarget.style.borderColor = '#10B981';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = 'rgba(16, 185, 129, 0.06)';
+                                          e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+                                        }}
+                                      >
                                         {avatar ? (
                                           <img 
                                             src={avatar} 
@@ -992,33 +1017,63 @@ export const AdminSourcesView: React.FC = () => {
                                       );
                                     }
 
-                                    // Estado 3: Conectado (Desconectar com ícone X)
+                                    // Estado 3: Conectado (Sincronizar + Desconectar)
                                     return (
-                                      <button
-                                        type="button"
-                                        disabled={disconnectingId === source.id}
-                                        onClick={(e) => handleDirectDisconnect(source, e)}
-                                        title="WhatsApp conectado: Clique para desconectar sessão"
-                                        style={{
-                                          background: 'rgba(239, 68, 68, 0.08)',
-                                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                                          color: '#EF4444',
-                                          cursor: 'pointer',
-                                          padding: '6px 12px',
-                                          borderRadius: '8px',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          fontSize: '0.74rem',
-                                          fontWeight: 700,
-                                          transition: 'all 0.15s ease',
-                                        }}
-                                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.18)'}
-                                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
-                                      >
-                                        <X size={13} color="#EF4444" />
-                                        <span>{disconnectingId === source.id ? 'Desconectando...' : 'Desconectar'}</span>
-                                      </button>
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setHistoryTriageSource(source);
+                                          }}
+                                          title="Sincronizar histórico de conversas do WhatsApp"
+                                          style={{
+                                            background: 'rgba(16, 185, 129, 0.12)',
+                                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                                            color: '#10B981',
+                                            cursor: 'pointer',
+                                            padding: '6px 10px',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.22)'}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)'}
+                                        >
+                                          <History size={13} color="#10B981" />
+                                          <span>Sincronizar</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={disconnectingId === source.id}
+                                          onClick={(e) => handleDirectDisconnect(source, e)}
+                                          title="WhatsApp conectado: Clique para desconectar sessão"
+                                          style={{
+                                            background: 'rgba(239, 68, 68, 0.08)',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            color: '#EF4444',
+                                            cursor: 'pointer',
+                                            padding: '6px 12px',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.18)'}
+                                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'}
+                                        >
+                                          <X size={13} color="#EF4444" />
+                                          <span>{disconnectingId === source.id ? 'Desconectando...' : 'Desconectar'}</span>
+                                        </button>
+                                      </div>
                                     );
                                   })()}
 

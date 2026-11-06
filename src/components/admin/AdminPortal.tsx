@@ -23,7 +23,7 @@ import { AdminTeamView } from './AdminTeamView';
 import { AdminTasksWorkspaceView } from './AdminTasksWorkspaceView';
 import { AdminQuickMessagesView } from './AdminQuickMessagesView';
 import { AdminMqlConfigView } from './AdminMqlConfigView';
-import { AdminFirstAccessProfileView } from './AdminFirstAccessProfileView';
+
 import { AdminUserSettingsView } from './AdminUserSettingsView';
 import { AdminSlaSettingsView } from './AdminSlaSettingsView';
 import { AdminDevFeatureFlagsView } from './AdminDevFeatureFlagsView';
@@ -525,11 +525,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // If not authenticated, show login view
   if (!currentUser) {
     return <AdminLoginView />;
-  }
-
-  // Se o colaborador tem primeiro acesso pendente, exibe a tela de onboarding de perfil em tela cheia obrigatória
-  if (currentUser?.isFirstAccess) {
-    return <AdminFirstAccessProfileView />;
   }
 
   const renderContent = () => {

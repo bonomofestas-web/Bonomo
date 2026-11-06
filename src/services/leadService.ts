@@ -1439,6 +1439,11 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
   for (const act of allActs) {
     const isDuplicate = uniqueActs.some(existing => {
       if (existing.id && act.id && existing.id === act.id) return true;
+      // Identificação por código único da mensagem no WhatsApp (wamid / messageId da API)
+      const existingMsgId = existing.messageId || (existing.metadata as any)?.messageId;
+      const actMsgId = act.messageId || (act.metadata as any)?.messageId;
+      if (existingMsgId && actMsgId && existingMsgId === actMsgId) return true;
+
       const isBothAudio = (existing.mediaType === 'audio' || existing.text?.includes('🎵') || existing.title?.toLowerCase().includes('voz')) &&
                           (act.mediaType === 'audio' || act.text?.includes('🎵') || act.title?.toLowerCase().includes('voz'));
       if (existing.type === act.type && (existing.text === act.text || isBothAudio)) {
@@ -1453,7 +1458,7 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
     }
   }
 
-  // Ordenação cronológica ascendente
+  // Ordenação cronológica estrita respeitando horas, minutos, segundos e milissegundos
   uniqueActs.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
   return uniqueActs;
 }

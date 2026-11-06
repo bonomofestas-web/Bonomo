@@ -609,4 +609,28 @@ p { margin: 0; }
   }
 }
 
+/* ══════════════════════════════════════════════
+   WHATSAPP HIGHLIGHT DE MENSAGEM RESPONDIDA
+══════════════════════════════════════════════ */
+@keyframes f5-msg-blink-highlight {
+  0% {
+    background-color: rgba(37, 211, 102, 0.35);
+  }
+  30% {
+    background-color: rgba(37, 211, 102, 0.6);
+  }
+  60% {
+    background-color: rgba(37, 211, 102, 0.35);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.f5-msg-blink-highlight {
+  animation: f5-msg-blink-highlight 1.6s ease-in-out !important;
+  border-radius: 12px;
+}
+
+
 

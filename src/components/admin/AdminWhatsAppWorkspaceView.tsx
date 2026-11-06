@@ -7,7 +7,8 @@ import {
   Headphones, Pause, Play, CheckCircle2, Edit3, AlertCircle, AlertTriangle, Copy,
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
-  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone, QrCode
+  Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone, QrCode,
+  Reply
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -1161,6 +1162,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     timestamp: number;
   } | null>(null);
   const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
+
+  // Recurso de Responder Mensagem (Quote / Reply)
+  const [replyingToMessage, setReplyingToMessage] = useState<LeadActivity | null>(null);
+  const [, setHighlightedMsgId] = useState<string | null>(null);
+
+  // Limpa mensagem respondida ao alternar entre leads
+  useEffect(() => {
+    setReplyingToMessage(null);
+  }, [selectedLeadId]);
 
   // Escuta anexos do sessionStorage ou evento customizado ao carregar/trocar lead
   useEffect(() => {
@@ -3046,6 +3056,32 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     }
   };
 
+  // Rolagem suave e highlight animado até a mensagem respondida
+  const handleScrollToQuotedMessage = (targetId?: string) => {
+    if (!targetId) return;
+    let targetEl = document.getElementById(`msg-${targetId}`);
+    if (!targetEl) {
+      const matchingAct = (selectedLead?.activities || []).find(
+        a => a.id === targetId || a.messageId === targetId || (a as any).wamid === targetId
+      );
+      if (matchingAct) {
+        targetEl = document.getElementById(`msg-${matchingAct.id}`);
+      }
+    }
+
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMsgId(targetId);
+      targetEl.classList.remove('f5-msg-blink-highlight');
+      void targetEl.offsetWidth; // Força reflow no navegador
+      targetEl.classList.add('f5-msg-blink-highlight');
+      setTimeout(() => {
+        targetEl?.classList.remove('f5-msg-blink-highlight');
+        setHighlightedMsgId(null);
+      }, 1800);
+    }
+  };
+
   // Handle Send Message / Note
   const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
     if (e) e.preventDefault();
@@ -3063,6 +3099,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const textToSend = textToUse.trim();
     const author = currentUser?.name || (isPostSaleFunnel || selectedLead.isClient ? 'Gestor de Sucesso' : 'Equipe Comercial');
     setMessageText('');
+
+    // Prepara payload de citação caso esteja respondendo a uma mensagem
+    const quotePayload = replyingToMessage ? {
+      id: replyingToMessage.id,
+      messageId: replyingToMessage.messageId,
+      sender: replyingToMessage.authorName || (replyingToMessage.type === 'contact' ? selectedLead?.name || 'Lead' : 'Você'),
+      text: replyingToMessage.text || (replyingToMessage.mediaType === 'audio' ? 'Mensagem de voz' : replyingToMessage.mediaType === 'image' ? 'Foto' : replyingToMessage.mediaType === 'video' ? 'Vídeo' : 'Documento'),
+      type: (replyingToMessage.mediaType || 'text') as any,
+      mediaUrl: replyingToMessage.mediaUrl,
+      audioDuration: (replyingToMessage as any).mediaDuration || (replyingToMessage as any).durationText,
+    } : undefined;
+
+    const replyingTargetMsg = replyingToMessage;
+    setReplyingToMessage(null);
 
     let newActivity: LeadActivity;
 
@@ -3091,6 +3141,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       authorId: currentUser?.id,
       authorAvatarUrl: currentUser?.avatarUrl,
       status: 'sending',
+      quotedMessage: quotePayload,
       channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
       channelName: (activePostSaleChannel) ? activePostSaleChannel.name : undefined,
       instanceId: activeSenderSource?.id,
@@ -3132,6 +3183,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           readchat: true,
           track_source: 'f5_system',
           track_id: `msg_${Date.now()}`,
+          replyid: replyingTargetMsg ? (replyingTargetMsg.messageId || replyingTargetMsg.id) : undefined,
         });
 
         // Se a API retornou erro no corpo da resposta
@@ -3139,9 +3191,16 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           throw new Error((sendRes as any)?.message || (sendRes as any)?.error || 'Erro retornado pela API do WhatsApp.');
         }
 
+        const returnedMessageId = (sendRes as any)?.messageId || (sendRes as any)?.key?.id || (sendRes as any)?.id;
+
         // Sucesso no envio: marca status como sent e persiste no Supabase
         if (newActivity) {
-          const sentActivity: LeadActivity = { ...newActivity, status: 'sent', errorMessage: undefined };
+          const sentActivity: LeadActivity = {
+            ...newActivity,
+            status: 'sent',
+            errorMessage: undefined,
+            messageId: returnedMessageId || newActivity.id,
+          };
           const finalActivities = updatedActivities.map(a => a.id === newActivity!.id ? sentActivity : a);
           updateLeadData(selectedLead.id, {
             activities: finalActivities,
@@ -3571,6 +3630,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       setMessageText('');
     }
 
+    // Prepara quote se o usuário estiver respondendo a alguma mensagem
+    const quotePayload = replyingToMessage ? {
+      id: replyingToMessage.id,
+      messageId: replyingToMessage.messageId,
+      sender: replyingToMessage.authorName || (replyingToMessage.type === 'contact' ? selectedLead?.name || 'Lead' : 'Você'),
+      text: replyingToMessage.text || (replyingToMessage.mediaType === 'audio' ? 'Mensagem de voz' : replyingToMessage.mediaType === 'image' ? 'Foto' : replyingToMessage.mediaType === 'video' ? 'Vídeo' : 'Documento'),
+      type: (replyingToMessage.mediaType || 'text') as any,
+      mediaUrl: replyingToMessage.mediaUrl,
+      audioDuration: (replyingToMessage as any).mediaDuration || (replyingToMessage as any).durationText,
+    } : undefined;
+    const replyingTargetMsg = replyingToMessage;
+    setReplyingToMessage(null);
+
     for (let index = 0; index < fileList.length; index++) {
       const file = fileList[index];
       const isVid = file.type.startsWith('video');
@@ -3599,18 +3671,25 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const lastActTime = existingActs.reduce((max, a) => Math.max(max, new Date(a.timestamp || 0).getTime()), 0);
       const finalTimestampIso = new Date(Math.max(Date.now(), lastActTime + 1000 + (index * 500))).toISOString();
 
+      const fallbackText = fileCaption || (
+        fileCategory === 'audio' ? `🎵 ${file.name}` :
+        fileCategory === 'document' ? file.name :
+        file.name
+      );
+
       const newActivity: LeadActivity = {
         id: activityId,
         leadId: selectedLead.id,
         timestamp: finalTimestampIso,
         type: 'contact',
         title: fileCategory === 'image' ? 'Foto enviada' : fileCategory === 'video' ? 'Vídeo enviado' : fileCategory === 'audio' ? 'Áudio enviado' : `Documento: ${file.name}`,
-        text: fileCaption || (fileCategory === 'audio' ? `🎵 ${file.name}` : undefined),
+        text: fallbackText,
         mediaUrl: base64Data,
         mediaType: fileCategory,
         authorName: currentUser?.name || author,
         authorId: currentUser?.id,
         authorAvatarUrl: currentUser?.avatarUrl,
+        quotedMessage: index === 0 ? quotePayload : undefined,
         metadata: {
           ...getAppSenderMetadata(),
           fileName: file.name,
@@ -3631,15 +3710,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
       if (targetPhone && activeSenderToken) {
         try {
-          await uazapiService.sendMedia(activeSenderToken, {
+          const mediaRes = await uazapiService.sendMedia(activeSenderToken, {
             number: targetPhone,
             file: base64Data,
             type: fileCategory === 'audio' ? 'audio' : fileCategory === 'video' ? 'video' : fileCategory === 'image' ? 'image' : 'document',
             fileName: file.name,
-            caption: fileCaption || undefined,
+            caption: fileCaption || (fileCategory === 'document' ? file.name : undefined),
+            replyid: (index === 0 && replyingTargetMsg) ? (replyingTargetMsg.messageId || replyingTargetMsg.id) : undefined,
             ptt: false,
             delay: 0,
           });
+          const mediaMsgId = (mediaRes as any)?.messageId || (mediaRes as any)?.key?.id || (mediaRes as any)?.id;
+          if (mediaMsgId) {
+            newActivity.messageId = mediaMsgId;
+          }
         } catch (err) {
           console.error('Falha no envio de mídia UAZAPI:', err);
         }
@@ -6574,6 +6658,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           <React.Fragment key={act.id}>
                             {renderDateDivider()}
                             <div
+                              id={`msg-${act.id}`}
+                              onMouseEnter={() => setHoveredMsgId(act.id)}
+                              onMouseLeave={() => setHoveredMsgId(null)}
                               style={{
                                 alignSelf: 'flex-start',
                                 maxWidth: '75%',
@@ -6614,19 +6701,23 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>{formattedTime}</span>
                                 </div>
                               ) : (
-                                <div style={{
-                                  background: isDarkMode ? '#202c33' : '#ffffff',
-                                  border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
-                                  borderRadius: isSameAsPrev ? '12px' : '14px 14px 14px 2px',
-                                  padding: '7px 11px',
-                                  color: isDarkMode ? '#e9edef' : '#111b21',
-                                  boxShadow: isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '3px',
-                                  maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
-                                  width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
-                                }}>
+                                <div 
+                                  onDoubleClick={() => setReplyingToMessage(act)}
+                                  title="Duplo clique para responder"
+                                  style={{
+                                    background: isDarkMode ? '#202c33' : '#ffffff',
+                                    border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
+                                    borderRadius: isSameAsPrev ? '12px' : '14px 14px 14px 2px',
+                                    padding: '7px 11px',
+                                    color: isDarkMode ? '#e9edef' : '#111b21',
+                                    boxShadow: isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '3px',
+                                    maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
+                                    width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
+                                  }}
+                                >
                                   {!isSameAsPrev && (
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
                                       <span style={{ fontSize: '0.72rem', fontWeight: 800, color: isDarkMode ? '#53bdeb' : '#128c7e' }}>
@@ -6635,6 +6726,49 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       <span style={{ fontSize: '0.62rem', color: isDarkMode ? '#8696a0' : '#667781' }}>
                                         {formattedTime}
                                       </span>
+                                    </div>
+                                  )}
+
+                                  {/* Citação da Mensagem Respondida (Quote Box no topo do balão) */}
+                                  {act.quotedMessage && (
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleScrollToQuotedMessage(act.quotedMessage?.id || act.quotedMessage?.messageId);
+                                      }}
+                                      title="Clique para ir até a mensagem respondida"
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '5px 8px',
+                                        borderRadius: '6px',
+                                        background: isDarkMode ? 'rgba(0, 0, 0, 0.28)' : 'rgba(0, 0, 0, 0.06)',
+                                        borderLeft: '4px solid #25d366',
+                                        cursor: 'pointer',
+                                        marginBottom: '4px',
+                                        overflow: 'hidden',
+                                        transition: 'background 0.15s ease',
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(0, 0, 0, 0.42)' : 'rgba(0, 0, 0, 0.1)'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(0, 0, 0, 0.28)' : 'rgba(0, 0, 0, 0.06)'; }}
+                                    >
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', flex: 1 }}>
+                                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#25d366', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {act.quotedMessage.sender || 'Mensagem'}
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: isDarkMode ? '#aebac1' : '#54656f', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {act.quotedMessage.type === 'audio' && <Mic size={13} color="#25d366" />}
+                                          {act.quotedMessage.type === 'image' && <Camera size={13} color="#8696a0" />}
+                                          {act.quotedMessage.type === 'video' && <Video size={13} color="#8696a0" />}
+                                          {act.quotedMessage.type === 'document' && <FileText size={13} color="#8696a0" />}
+                                          <span>
+                                            {act.quotedMessage.type === 'audio'
+                                              ? (act.quotedMessage.audioDuration || '0:04')
+                                              : (act.quotedMessage.text || 'Mídia')}
+                                          </span>
+                                        </div>
+                                      </div>
                                     </div>
                                   )}
 
@@ -6914,6 +7048,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   )}
                                 </div>
                               )}
+
+                              {/* Botão de Responder Mensagem no Hover do Balão do Lead */}
+                              {hoveredMsgId === act.id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReplyingToMessage(act);
+                                  }}
+                                  title="Responder esta mensagem"
+                                  style={{
+                                    background: isDarkMode ? '#202c33' : '#ffffff',
+                                    border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #d1d7db',
+                                    boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+                                    borderRadius: '50%',
+                                    width: '28px',
+                                    height: '28px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    color: isDarkMode ? '#8696a0' : '#54656f',
+                                    flexShrink: 0,
+                                    marginBottom: '4px',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = '#25d366';
+                                    e.currentTarget.style.transform = 'scale(1.1)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f';
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                  }}
+                                >
+                                  <Reply size={14} />
+                                </button>
+                              )}
                             </div>
                           </React.Fragment>
                         );
@@ -6961,6 +7133,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <React.Fragment key={act.id}>
                           {renderDateDivider()}
                           <div
+                            id={`msg-${act.id}`}
                             onMouseEnter={() => setHoveredMsgId(act.id)}
                             onMouseLeave={() => setHoveredMsgId(null)}
                             style={{
@@ -7034,6 +7207,44 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 </span>
                               </div>
                             )}
+
+                            {/* Botão de Responder Mensagem no Hover do Balão Enviado */}
+                            {hoveredMsgId === act.id && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setReplyingToMessage(act);
+                                }}
+                                title="Responder esta mensagem"
+                                style={{
+                                  background: isDarkMode ? '#202c33' : '#ffffff',
+                                  border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #d1d7db',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+                                  borderRadius: '50%',
+                                  width: '28px',
+                                  height: '28px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  color: isDarkMode ? '#8696a0' : '#54656f',
+                                  flexShrink: 0,
+                                  transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.color = '#25d366';
+                                  e.currentTarget.style.transform = 'scale(1.1)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f';
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                              >
+                                <Reply size={14} />
+                              </button>
+                            )}
+
                             {/* Conteúdo: Sticker Solto vs Balão Clássico */}
                             {isSticker && act.mediaUrl ? (
                               <div
@@ -7051,26 +7262,30 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 </div>
                               </div>
                             ) : (
-                              <div style={{
-                                background: isFailedMsg
-                                  ? (isDarkMode ? 'rgba(239, 68, 68, 0.22)' : '#fee2e2')
-                                  : (isDarkMode ? '#005c4b' : '#d9fdd3'),
-                                border: isFailedMsg
-                                  ? (isDarkMode ? '1.5px solid #EF4444' : '1.5px solid #ef4444')
-                                  : (isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none'),
-                                borderRadius: isSameAsPrev ? '12px' : '14px 14px 2px 14px',
-                                padding: '7px 11px',
-                                color: isDarkMode ? '#e9edef' : '#111b21',
-                                boxShadow: isFailedMsg
-                                  ? '0 2px 10px rgba(239, 68, 68, 0.3)'
-                                  : (isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)'),
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px',
-                                position: 'relative',
-                                maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
-                                width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
-                              }}>
+                              <div 
+                                onDoubleClick={() => setReplyingToMessage(act)}
+                                title="Duplo clique para responder"
+                                style={{
+                                  background: isFailedMsg
+                                    ? (isDarkMode ? 'rgba(239, 68, 68, 0.22)' : '#fee2e2')
+                                    : (isDarkMode ? '#005c4b' : '#d9fdd3'),
+                                  border: isFailedMsg
+                                    ? (isDarkMode ? '1.5px solid #EF4444' : '1.5px solid #ef4444')
+                                    : (isDarkMode ? '1px solid rgba(255, 255, 255, 0.06)' : 'none'),
+                                  borderRadius: isSameAsPrev ? '12px' : '14px 14px 2px 14px',
+                                  padding: '7px 11px',
+                                  color: isDarkMode ? '#e9edef' : '#111b21',
+                                  boxShadow: isFailedMsg
+                                    ? '0 2px 10px rgba(239, 68, 68, 0.3)'
+                                    : (isDarkMode ? '0 1px 2px rgba(0,0,0,0.3)' : '0 1px 0.5px rgba(11,20,26,.13)'),
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '4px',
+                                  position: 'relative',
+                                  maxWidth: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? '340px' : undefined,
+                                  width: (act.mediaType === 'image' || effectiveMediaType === 'image') && (act.mediaUrl || effectiveMediaUrl) ? 'fit-content' : undefined,
+                                }}
+                              >
                                 {!isSameAsPrev && (
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '2px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -7100,6 +7315,49 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       ) : (
                                         <CheckCircle2 size={11} color="#53bdeb" />
                                       )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Citação da Mensagem Respondida (Quote Box no topo do balão) */}
+                                {act.quotedMessage && (
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleScrollToQuotedMessage(act.quotedMessage?.id || act.quotedMessage?.messageId);
+                                    }}
+                                    title="Clique para ir até a mensagem respondida"
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '5px 8px',
+                                      borderRadius: '6px',
+                                      background: isDarkMode ? 'rgba(0, 0, 0, 0.28)' : 'rgba(0, 0, 0, 0.06)',
+                                      borderLeft: '4px solid #25d366',
+                                      cursor: 'pointer',
+                                      marginBottom: '4px',
+                                      overflow: 'hidden',
+                                      transition: 'background 0.15s ease',
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(0, 0, 0, 0.42)' : 'rgba(0, 0, 0, 0.1)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = isDarkMode ? 'rgba(0, 0, 0, 0.28)' : 'rgba(0, 0, 0, 0.06)'; }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', flex: 1 }}>
+                                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#25d366', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {act.quotedMessage.sender || 'Mensagem'}
+                                      </span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: isDarkMode ? '#aebac1' : '#54656f', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {act.quotedMessage.type === 'audio' && <Mic size={13} color="#25d366" />}
+                                        {act.quotedMessage.type === 'image' && <Camera size={13} color="#8696a0" />}
+                                        {act.quotedMessage.type === 'video' && <Video size={13} color="#8696a0" />}
+                                        {act.quotedMessage.type === 'document' && <FileText size={13} color="#8696a0" />}
+                                        <span>
+                                          {act.quotedMessage.type === 'audio'
+                                            ? (act.quotedMessage.audioDuration || '0:04')
+                                            : (act.quotedMessage.text || 'Mídia')}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -9337,7 +9595,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               type="file"
               style={{ display: 'none' }}
               multiple
-              accept=".pdf,.doc,.docx,.xlsx,.xls,.txt,.csv"
+              accept="*/*"
               onChange={(e) => handleSendUploadedFiles(e, 'document')}
             />
             <input
@@ -11672,13 +11930,123 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           Canal Geral desativado para este funil. Selecione ou crie um setor acima para conversar com o lead.
                         </div>
                       ) : (
+                        <>
+                          {/* Barra de Resposta de Mensagem Acima do Campo de Input (Quote Preview) */}
+                          {replyingToMessage && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 14px 8px 14px',
+                          background: isDarkMode ? '#1e282f' : '#f0f2f5',
+                          borderRadius: '16px 16px 0 0',
+                          border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
+                          borderBottom: isDarkMode ? '1px solid rgba(255,255,255,0.04)' : '1px solid #e2e8f0',
+                          boxShadow: isDarkMode ? 'none' : '0 -1px 2px rgba(11,20,26,0.04)',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          gap: '12px',
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            overflow: 'hidden',
+                            flex: 1,
+                          }}>
+                            {/* Barra vertical verde (idêntica às fotos do usuário) */}
+                            <div style={{
+                              width: '4px',
+                              height: '32px',
+                              borderRadius: '2px',
+                              background: '#25d366',
+                              flexShrink: 0,
+                            }} />
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden', flex: 1 }}>
+                              <span style={{
+                                fontSize: '0.80rem',
+                                fontWeight: 700,
+                                color: '#25d366',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}>
+                                {replyingToMessage.authorName || (replyingToMessage.type === 'contact' ? selectedLead?.name || 'Lead' : 'Você')}
+                              </span>
+
+                              {/* Conteúdo resumido */}
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.78rem',
+                                color: isDarkMode ? '#aebac1' : '#667781',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}>
+                                {replyingToMessage.mediaType === 'audio' || (replyingToMessage.mediaUrl && replyingToMessage.mediaUrl.startsWith('data:audio')) ? (
+                                  <>
+                                    <Mic size={14} color="#25d366" />
+                                    <span>{(replyingToMessage as any).durationText || (replyingToMessage as any).mediaDuration || '0:04'}</span>
+                                  </>
+                                ) : replyingToMessage.mediaType === 'image' ? (
+                                  <>
+                                    <Camera size={14} color="#8696a0" />
+                                    <span>Foto</span>
+                                  </>
+                                ) : replyingToMessage.mediaType === 'video' ? (
+                                  <>
+                                    <Video size={14} color="#8696a0" />
+                                    <span>Vídeo</span>
+                                  </>
+                                ) : replyingToMessage.mediaType === 'document' ? (
+                                  <>
+                                    <FileText size={14} color="#8696a0" />
+                                    <span>{replyingToMessage.text || 'Documento'}</span>
+                                  </>
+                                ) : (
+                                  <span>{replyingToMessage.text || 'Mensagem'}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Botão Cancelar Resposta X */}
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToMessage(null)}
+                            title="Cancelar resposta"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: isDarkMode ? '#8696a0' : '#54656f',
+                              cursor: 'pointer',
+                              padding: '5px',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'color 0.15s ease',
+                              flexShrink: 0,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = isDarkMode ? '#8696a0' : '#54656f')}
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      )}
+
                       <form onSubmit={handleSendMessage} style={{
                         display: 'flex',
                         alignItems: 'center',
                         background: isDarkMode ? '#202c33' : '#ffffff',
-                        borderRadius: (pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) ? '0 0 16px 16px' : '24px',
+                        borderRadius: (Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? '0 0 16px 16px' : '24px',
                         padding: '4px 8px 4px 10px',
                         border: isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db',
+                        borderTop: (Boolean(pendingAttachment && (!pendingAttachment.leadId || pendingAttachment.leadId === selectedLead.id)) || Boolean(replyingToMessage)) ? 'none' : (isDarkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #d1d7db'),
                         boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(11,20,26,0.08)',
                         gap: '8px',
                         width: '100%',
@@ -11749,7 +12117,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                           onStartAudioRecording={startAudioRecording}
                         />
                       </form>
-                      )}
+                    </>
+                  )}
                     </div>
                   )
                 )}
