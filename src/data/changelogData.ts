@@ -15,6 +15,47 @@ export interface ChangelogItem {
 
 export const CHANGELOG_DATA: ChangelogItem[] = [
   {
+    id: 'deploy-2026-11-06-whatsapp-reply-pdf-sync',
+    version: 'v2.7.0',
+    date: '06 de Novembro de 2026',
+    title: 'Citação e Resposta de Mensagens, Preview de PDF, Sincronização por Número e Purga de Instâncias',
+    type: 'major',
+    badge: 'Grande Atualização',
+    summary: 'Lançamento do recurso de resposta com citação (Quote / Reply) no WhatsApp, visualização refinada de documentos PDF com capa e metadados, sincronização de histórico por número com direcionamento obrigatório para o funil da origem, purga automática de instâncias na API e login direto.',
+    features: [
+      {
+        name: 'Resposta com Citação (Quote / Reply) no WhatsApp',
+        description: 'Opção Responder em qualquer mensagem recebida ou enviada (e via duplo clique no balão). Barra suspensa de citação acima do campo de digitação com barra lateral verde, remetente, snippet de áudio/mídia/texto e botão de cancelar. Sincronização oficial via replyid na API do WhatsApp, balão com citação aninhada e rolagem suave com animação destacada piscante ao clicar na resposta.',
+        status: 'new',
+      },
+      {
+        name: 'Preview e Card Elegante de Documentos PDF',
+        description: 'Visualização de documentos PDF estilo WhatsApp oficial com banner de capa superior, badge vermelho de identificação, nome do arquivo completo e contagem de páginas e tamanho. Preservação estrita dos nomes de arquivos e diferenciação entre mídias embedadas e documentos.',
+        status: 'new',
+      },
+      {
+        name: 'Sincronização de Conversas por Número & Funil Dedicado',
+        description: 'Abertura rápida da sincronização de histórico com 1 clique no card do número em Origens. Suporte aos períodos de 7, 30, 40, 60, 90 dias ou Personalizado, com triagem visual (Novo Lead vs Lead Existente) e direcionamento automático e obrigatório para o funil dedicado da origem.',
+        status: 'new',
+      },
+      {
+        name: 'Idempotência e Ordenação Temporal Milimétrica',
+        description: 'Armazenamento do identificador único (messageId / wamid) nas atividades do lead e ordenação estrita por milissegundos, impedindo duplicação de mensagens e corrigindo a ordem de chegada das conversas.',
+        status: 'improved',
+      },
+      {
+        name: 'Exclusão Automática de Instâncias na API do WhatsApp',
+        description: 'Ao excluir uma origem de WhatsApp no F5 System, sua respectiva instância é purgada imediatamente na API do WhatsApp, liberando slots de conexão e evitando instâncias mortas.',
+        status: 'improved',
+      },
+      {
+        name: 'Login Direto e Descontinuação de Tutoriais Obstrutivos',
+        description: 'Remoção da obrigatoriedade de etapas burocráticas de primeiro acesso (preenchimento compulsório de foto e WhatsApp) e descontinuação do tutorial mobile. O acesso agora é imediato via e-mail e senha cadastrados.',
+        status: 'improved',
+      },
+    ],
+  },
+  {
     id: 'deploy-2026-10-30-funnels-split',
     version: 'v2.6.0',
     date: '30 de Outubro de 2026',
