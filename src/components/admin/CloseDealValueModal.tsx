@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck } from 'lucide-react';
+import { X, CheckCircle2, DollarSign, Package, FileText, UserCheck, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import type { Lead } from '../../types/admin';
 
@@ -7,6 +7,7 @@ interface CloseDealValueModalProps {
   isOpen: boolean;
   onClose: () => void;
   lead: Lead | null;
+  targetStageId?: string;
   onConfirmSale: (
     leadId: string, 
     dealValue: number, 
@@ -22,6 +23,17 @@ interface CloseDealValueModalProps {
       eventYear?: number | string;
       updateExistingClient?: boolean;
       existingClientId?: string;
+      targetStageId?: string;
+      birthdayPersonName?: string;
+      birthdayPersonPhone?: string;
+      birthdayPersonBirthdate?: string;
+      payerName?: string;
+      payerPhone?: string;
+      payerEmail?: string;
+      payerCpf?: string;
+      payerAddress?: string;
+      payerNeighborhood?: string;
+      paymentTerms?: string;
     }
   ) => void;
 }
@@ -30,6 +42,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   isOpen,
   onClose,
   lead,
+  targetStageId,
   onConfirmSale,
 }) => {
   const { currentUser, clients, funnels } = useAdminState();
@@ -122,6 +135,19 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
   const [contractSignedFileName, setContractSignedFileName] = useState<string>('');
   const [error, setError] = useState('');
 
+  // Dados do Contratante e da Homenageada para Passagem de Bastão completa
+  const [payerName, setPayerName] = useState('');
+  const [payerPhone, setPayerPhone] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
+  const [payerCpf, setPayerCpf] = useState('');
+  const [payerAddress, setPayerAddress] = useState('');
+  const [payerNeighborhood, setPayerNeighborhood] = useState('');
+  const [birthdayPersonName, setBirthdayPersonName] = useState('');
+  const [birthdayPersonPhone, setBirthdayPersonPhone] = useState('');
+  const [birthdayPersonBirthdate, setBirthdayPersonBirthdate] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [showTransferDetails, setShowTransferDetails] = useState(true);
+
   // Sync state strictly from lead data when modal opens or lead changes
   React.useEffect(() => {
     if (lead && isOpen) {
@@ -145,6 +171,34 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       setContractSignedFileName('');
       setError('');
       setUpdateExistingMode('update');
+
+      const bContact = (lead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
+      const bName = bContact?.name?.trim() || (lead as any)?.birthdayPersonName?.trim() || (lead.primaryContactRole === 'debutante' || lead.primaryContactRole === 'aniversariante' ? lead.name?.trim() : (lead.debutanteName && lead.debutanteName !== 'Indicação Externa' ? lead.debutanteName.trim() : lead.name?.trim())) || '';
+      const bPhone = bContact?.phone?.trim() || (lead as any)?.birthdayPersonPhone?.trim() || (lead.primaryContactRole === 'debutante' ? lead.phone?.trim() : '') || '';
+      const bDate = bContact?.birthday || (lead as any)?.debutanteBirthDate || (lead as any)?.birthday || '';
+      setBirthdayPersonName(bName);
+      setBirthdayPersonPhone(bPhone);
+      setBirthdayPersonBirthdate(bDate);
+
+      const pDecisor = (lead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
+        (lead.primaryContactRole !== 'debutante' ? {
+          name: lead.name,
+          phone: lead.phone,
+          role: lead.primaryContactRole || 'responsavel',
+          email: lead.email,
+          cpf: lead.cpf,
+          address: lead.address,
+          neighborhood: lead.neighborhood,
+        } : (lead.contacts || []).find(c => c.role !== 'debutante')) || (lead.contacts || [])[0];
+
+      setPayerName(pDecisor?.name?.trim() || (lead as any).decisionMakerName?.trim() || (lead as any).payerName?.trim() || (lead.primaryContactRole !== 'debutante' ? lead.name : ''));
+      setPayerPhone(pDecisor?.phone?.trim() || (lead.primaryContactRole !== 'debutante' ? lead.phone?.trim() : '') || '');
+      setPayerEmail(pDecisor?.email?.trim() || lead.email?.trim() || (lead as any).payerEmail?.trim() || '');
+      setPayerCpf(pDecisor?.cpf?.trim() || lead.cpf?.trim() || (lead as any).payerCpf?.trim() || '');
+      setPayerAddress(pDecisor?.address?.trim() || lead.address?.trim() || (lead as any).address?.trim() || '');
+      setPayerNeighborhood((pDecisor as any)?.neighborhood?.trim() || lead.neighborhood?.trim() || (lead as any).neighborhood?.trim() || '');
+
+      setPaymentTerms(lead.paymentMethod || (lead as any).paymentTerms || '');
     }
   }, [lead?.id, isOpen]);
 
@@ -180,6 +234,7 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
     }
 
     const downNum = downPaymentStr ? parseFloat(downPaymentStr.replace(/\./g, '').replace(',', '.')) : 0;
+    const computedTerms = paymentTerms.trim() || `${downNum > 0 ? `Sinal de R$ ${downNum.toLocaleString('pt-BR')} + ` : ''}${installmentsCount}x parcelado`;
 
     onConfirmSale(lead.id, valueNum, packageSold.trim(), closerNotes.trim(), {
       downPayment: isNaN(downNum) ? 0 : downNum,
@@ -191,6 +246,17 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
       eventYear: eventYear || undefined,
       updateExistingClient: Boolean(existingClient ? updateExistingMode === 'update' : true),
       existingClientId: existingClient?.id,
+      targetStageId: targetStageId || undefined,
+      birthdayPersonName: birthdayPersonName.trim() || undefined,
+      birthdayPersonPhone: birthdayPersonPhone.trim() || undefined,
+      birthdayPersonBirthdate: birthdayPersonBirthdate.trim() || undefined,
+      payerName: payerName.trim() || undefined,
+      payerPhone: payerPhone.trim() || undefined,
+      payerEmail: payerEmail.trim() || undefined,
+      payerCpf: payerCpf.trim() || undefined,
+      payerAddress: payerAddress.trim() || undefined,
+      payerNeighborhood: payerNeighborhood.trim() || undefined,
+      paymentTerms: computedTerms,
     });
     onClose();
   };
@@ -568,6 +634,163 @@ export const CloseDealValueModal: React.FC<CloseDealValueModalProps> = ({
                 }}
               />
             </div>
+          </div>
+
+          {/* Dados do Contratante Pagante & Homenageada (Transferência ao Pós-Venda) */}
+          <div style={{
+            background: 'var(--adm-bg-elevated)',
+            border: '1px solid var(--adm-border)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowTransferDetails(!showTransferDetails)}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                background: 'rgba(20, 169, 215, 0.05)',
+                border: 'none',
+                borderBottom: showTransferDetails ? '1px solid var(--adm-border)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={14} color="var(--adm-accent)" />
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-title)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Dados do Contratante & Homenageada (Pós-Venda)
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.68rem', color: 'var(--adm-accent)', fontWeight: 600 }}>
+                  {showTransferDetails ? 'Ocultar campos' : 'Ver / Editar campos'}
+                </span>
+                {showTransferDetails ? <ChevronUp size={14} color="var(--adm-accent)" /> : <ChevronDown size={14} color="var(--adm-accent)" />}
+              </div>
+            </button>
+
+            {showTransferDetails && (
+              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Contratante Pagante */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>Nome do Contratante (Pagante)</label>
+                    <input
+                      type="text"
+                      value={payerName}
+                      onChange={(e) => setPayerName(e.target.value)}
+                      placeholder="Nome completo do responsável"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>WhatsApp / Telefone Pagante</label>
+                    <input
+                      type="text"
+                      value={payerPhone}
+                      onChange={(e) => setPayerPhone(e.target.value)}
+                      placeholder="(21) 99999-9999"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>E-mail do Pagante</label>
+                    <input
+                      type="email"
+                      value={payerEmail}
+                      onChange={(e) => setPayerEmail(e.target.value)}
+                      placeholder="email@exemplo.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>CPF do Pagante</label>
+                    <input
+                      type="text"
+                      value={payerCpf}
+                      onChange={(e) => setPayerCpf(e.target.value)}
+                      placeholder="000.000.000-00"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>Endereço Completo</label>
+                    <input
+                      type="text"
+                      value={payerAddress}
+                      onChange={(e) => setPayerAddress(e.target.value)}
+                      placeholder="Rua, número, complemento"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Bairro</label>
+                    <input
+                      type="text"
+                      value={payerNeighborhood}
+                      onChange={(e) => setPayerNeighborhood(e.target.value)}
+                      placeholder="Bairro"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                {/* Homenageada / Debutante */}
+                <div style={{ borderTop: '1px solid var(--adm-border)', paddingTop: '10px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>Aniversariante / Debutante</label>
+                    <input
+                      type="text"
+                      value={birthdayPersonName}
+                      onChange={(e) => setBirthdayPersonName(e.target.value)}
+                      placeholder="Nome da debutante"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Tel. Debutante</label>
+                    <input
+                      type="text"
+                      value={birthdayPersonPhone}
+                      onChange={(e) => setBirthdayPersonPhone(e.target.value)}
+                      placeholder="(21) 99999-9999"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Data de Nasc. Debutante</label>
+                    <input
+                      type="date"
+                      value={birthdayPersonBirthdate}
+                      onChange={(e) => setBirthdayPersonBirthdate(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                {/* Condições de Pagamento */}
+                <div>
+                  <label style={labelStyle}>Forma & Condições de Pagamento Acordadas</label>
+                  <input
+                    type="text"
+                    value={paymentTerms}
+                    onChange={(e) => setPaymentTerms(e.target.value)}
+                    placeholder="Ex: Sinal R$ 5.000 no Pix + 10x sem juros no boleto"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Upload do Contrato Assinado */}

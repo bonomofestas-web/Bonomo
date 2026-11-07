@@ -276,7 +276,9 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     eventType: row.event_type || row.custom_field_values?.eventType || undefined,
     eventDate: row.event_date || row.party_date,
     eventYear: row.event_year || row.custom_field_values?.eventYear || (row.party_date ? new Date(row.party_date).getFullYear().toString() : undefined),
-    debutanteBirthDate: row.debutante_birth_date,
+    cpf: row.cpf || row.custom_field_values?.cpf || undefined,
+    birthday: row.birthday || row.debutante_birth_date || row.custom_field_values?.birthday || row.custom_field_values?.debutanteBirthDate || undefined,
+    debutanteBirthDate: row.debutante_birth_date || row.birthday || row.custom_field_values?.debutanteBirthDate || row.custom_field_values?.birthday || undefined,
     estimatedGuests: row.estimated_guests !== undefined && row.estimated_guests !== null ? row.estimated_guests : row.custom_field_values?.estimatedGuests,
     desiredPeriod: row.desired_period || row.custom_field_values?.desiredPeriod || undefined,
     urgencyLevel: row.urgency_level || row.custom_field_values?.urgencyLevel || undefined,
@@ -317,8 +319,6 @@ export function formatLeadFromDb(row: any, leadActivities: LeadActivity[] = [], 
     createdBy: row.created_by || undefined,
     createdByName: row.created_by_name || undefined,
     createdByAvatar: row.created_by_avatar || undefined,
-    cpf: row.cpf || undefined,
-    birthday: row.birthday || undefined,
     isArchived: Boolean(row.is_archived ?? row.custom_field_values?.is_archived ?? false),
     archivedAt: row.archived_at || row.custom_field_values?.archived_at || undefined,
     isRemovedFromFunnel: Boolean(row.custom_field_values?.is_removed_from_funnel),
@@ -600,8 +600,24 @@ export const leadService = {
 
       // 1. Tenta por ID
       if (isUuid(lead.id)) {
-        const { data, error } = await supabase.from('leads').update(payload).eq('id', lead.id).select('id');
+        let { data, error } = await supabase.from('leads').update(payload).eq('id', lead.id).select('id');
         if (!error && data && data.length > 0) return true;
+
+        if (error) {
+          console.warn('⚠️ Supabase update error no leadService.upsert, tentando fallback seguro:', error.message);
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.has_credit_card;
+          delete fallbackPayload.profession;
+          delete fallbackPayload.desired_period;
+          delete fallbackPayload.event_year;
+          delete fallbackPayload.down_payment;
+          delete fallbackPayload.installments;
+          delete fallbackPayload.installment_value;
+          delete fallbackPayload.decision_makers;
+          delete fallbackPayload.contacts;
+          const { data: retryData, error: retryErr } = await supabase.from('leads').update(fallbackPayload).eq('id', lead.id).select('id');
+          if (!retryErr && retryData && retryData.length > 0) return true;
+        }
       }
 
       // 2. Tenta por code

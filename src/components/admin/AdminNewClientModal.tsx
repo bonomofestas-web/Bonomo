@@ -44,6 +44,26 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
 
   if (!isOpen) return null;
 
+  const fieldInputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid #d1d5db',
+    backgroundColor: '#ffffff',
+    color: '#0f172a',
+    fontSize: '13px',
+    boxSizing: 'border-box',
+    outline: 'none',
+  };
+
+  const fieldLabelStyle: React.CSSProperties = {
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#1e293b',
+    display: 'block',
+    marginBottom: '4px',
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!birthdayPersonName.trim() || !payerPhone.trim()) {
@@ -142,12 +162,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
         <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Seção 1: Aniversariante */}
           <div>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--adm-accent, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
               1. Dados da Aniversariante (Nome Principal de Atendimento)
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Nome da Aniversariante *
                 </label>
                 <input
@@ -156,35 +176,19 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   value={birthdayPersonName}
                   onChange={(e) => setBirthdayPersonName(e.target.value)}
                   required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Idade
                 </label>
                 <input
                   type="number"
                   value={birthdayPersonAge}
                   onChange={(e) => setBirthdayPersonAge(Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
             </div>
@@ -192,12 +196,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
 
           {/* Seção 2: Decisor / Contratante */}
           <div>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--adm-accent, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
               2. Decisor / Contratante Pagante (Pai, Mãe ou Responsável)
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Nome do Decisor / Responsável *
                 </label>
                 <input
@@ -205,45 +209,29 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="Ex: Carlos Alberto Souza"
                   value={payerName}
                   onChange={(e) => setPayerName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Parentesco
                 </label>
                 <select
                   value={payerRelationship}
                   onChange={(e) => setPayerRelationship(e.target.value as any)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 >
-                  <option value="mother">Mãe</option>
-                  <option value="father">Pai</option>
-                  <option value="guardian">Responsável Legal</option>
-                  <option value="self">Própria Homenageada</option>
-                  <option value="other">Outro</option>
+                  <option value="mother" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Mãe</option>
+                  <option value="father" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Pai</option>
+                  <option value="guardian" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Responsável Legal</option>
+                  <option value="self" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Própria Homenageada</option>
+                  <option value="other" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Outro</option>
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   WhatsApp / Telefone *
                 </label>
                 <input
@@ -252,20 +240,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   value={payerPhone}
                   onChange={(e) => setPayerPhone(maskPhoneInput(e.target.value))}
                   required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   CPF
                 </label>
                 <input
@@ -273,20 +253,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="000.000.000-00"
                   value={payerCpf}
                   onChange={(e) => setPayerCpf(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   E-mail
                 </label>
                 <input
@@ -294,15 +266,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="email@exemplo.com.br"
                   value={payerEmail}
                   onChange={(e) => setPayerEmail(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
             </div>
@@ -310,35 +274,27 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
 
           {/* Seção 3: Dados Contratuais & Evento */}
           <div>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--adm-accent, #B8860B)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--adm-accent, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '10px' }}>
               3. Dados Contratuais & Casa de Festas
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Casa de Festas Contratada *
                 </label>
                 <select
                   value={venueId}
                   onChange={(e) => setVenueId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 >
                   {venues.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
+                    <option key={v.id} value={v.id} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>{v.name}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Data da Festa *
                 </label>
                 <input
@@ -346,20 +302,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)}
                   required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Pacote Contratado
                 </label>
                 <input
@@ -367,60 +315,36 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="Ex: Pacote Imperial Diamante"
                   value={packageSold}
                   onChange={(e) => setPackageSold(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Valor Total do Contrato (R$)
                 </label>
                 <input
                   type="number"
                   value={dealValue}
                   onChange={(e) => setDealValue(e.target.value === '' ? '' : Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Convidados Contratados
                 </label>
                 <input
                   type="number"
                   value={guestCount}
                   onChange={(e) => setGuestCount(Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Horário do Evento
                 </label>
                 <input
@@ -428,20 +352,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="Ex: 20:00 às 02:00"
                   value={eventTime}
                   onChange={(e) => setEventTime(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Condições de Pagamento Negociadas
                 </label>
                 <input
@@ -449,20 +365,12 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   placeholder="Ex: Entrada de R$ 5.000 + 10x de R$ 3.000 no boleto"
                   value={paymentTerms}
                   onChange={(e) => setPaymentTerms(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={fieldInputStyle}
                 />
               </div>
 
               <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                <label style={fieldLabelStyle}>
                   Observações Iniciais do Cliente
                 </label>
                 <textarea
@@ -471,13 +379,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--adm-border, #e5e7eb)',
-                    backgroundColor: 'var(--adm-surface, #f9fafb)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box',
+                    ...fieldInputStyle,
                     resize: 'vertical',
                   }}
                 />

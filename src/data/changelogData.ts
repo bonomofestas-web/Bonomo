@@ -15,6 +15,42 @@ export interface ChangelogItem {
 
 export const CHANGELOG_DATA: ChangelogItem[] = [
   {
+    id: 'deploy-2026-11-06-deal-closed-persistence-subcontacts-fluid',
+    version: 'v2.7.1',
+    date: '06 de Novembro de 2026',
+    title: 'Fixação de Lead em Ganho, Transferência Integral de Dados ao Pós-Venda, Digitação Fluida e Contraste Contratual',
+    type: 'major',
+    badge: 'Grande Atualização',
+    summary: 'Correção crítica na esteira de vendas: garantia de fixação definitiva do lead na etapa de ganho do funil comercial, persistência blindada de valores e dados contratuais (sinal, parcelas, cartão, pagante e debutante) para o pós-venda, digitação ultra-fluida nos contatos vinculados sem latência no banco e ajuste de contraste nos formulários de cadastro.',
+    features: [
+      {
+        name: 'Fixação Definitiva na Etapa de Ganho / Venda Fechada',
+        description: 'Ao arrastar o lead para ganho, o status e a etapa exata de fechamento (targetStageId) são fixados e persistidos no banco de dados, eliminando o retorno indesejado do lead para a etapa anterior e sincronizando a duplicata no pós-venda.',
+        status: 'improved',
+      },
+      {
+        name: 'Transferência Integral de Dados Contratuais & Decisor',
+        description: 'Repasse completo dos dados do contratante pagante (nome, WhatsApp, e-mail, CPF, bairro, endereço), dados da aniversariante/debutante (telefone e data de nascimento) e termos de negociação para o cadastro de cliente pós-venda.',
+        status: 'improved',
+      },
+      {
+        name: 'Gestão Blindada de Sucesso e Valores Financeiros',
+        description: 'Valor base, valor de entrada (sinal), contagem de parcelas, posse de cartão de crédito e termos de pagamento agora possuem dupla camada de persistência (colunas diretas e commercial_history em JSONB), blindando contra perda de dados.',
+        status: 'improved',
+      },
+      {
+        name: 'Digitação Rápida e Modo Rascunho nos Contatos Vinculados',
+        description: 'Edição de subcontatos refatorada para modo rascunho com persistência exclusiva no desfoque (onBlur) ou Enter, eliminando travamentos de interface e chamadas síncronas repetitivas a cada caractere.',
+        status: 'improved',
+      },
+      {
+        name: 'Contraste e Legibilidade no Cadastro Manual de Clientes',
+        description: 'Ajuste definitivo nas cores e contraste dos campos da seção de Dados Contratuais & Casa de Festas no modal de novo cliente, assegurando texto nítido e legível sobre fundo claro.',
+        status: 'improved',
+      },
+    ],
+  },
+  {
     id: 'deploy-2026-11-06-whatsapp-reply-pdf-sync',
     version: 'v2.7.0',
     date: '06 de Novembro de 2026',

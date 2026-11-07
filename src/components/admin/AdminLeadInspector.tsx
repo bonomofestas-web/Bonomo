@@ -100,6 +100,516 @@ const URGENCY_OPTIONS: { key: string; label: string; color: string }[] = [
   { key: 'imediata', label: 'Imediata / Crítica', color: '#EF4444' },
 ];
 
+interface SubContactCardProps {
+  contact: LeadContact;
+  lead: Lead;
+  effectiveReadOnly: boolean;
+  alreadyHasDebutanteOrAniversariante: {
+    hasAny: boolean;
+    mainIsIt: boolean;
+    subContactId?: string;
+    subRole?: string;
+  };
+  selectedRecipientPhone?: string;
+  onSelectRecipientPhone?: (phone: string) => void;
+  onRemove: (contactId: string) => void;
+  onSetPrimaryDecisor: (contact: LeadContact) => void;
+  onUpdateSubContact: (contactId: string, updatedFields: Partial<LeadContact>, extraLeadUpdates?: Partial<Lead>) => void;
+  onDirectWhatsApp: (phone: string) => void;
+  cardStyle: React.CSSProperties;
+  cardRowStyle: React.CSSProperties;
+  cardLabelStyle: React.CSSProperties;
+  cardValueStyle: React.CSSProperties;
+  seamlessInputStyle: React.CSSProperties;
+}
+
+const SubContactCard: React.FC<SubContactCardProps> = ({
+  contact,
+  lead,
+  effectiveReadOnly,
+  alreadyHasDebutanteOrAniversariante,
+  selectedRecipientPhone,
+  onSelectRecipientPhone,
+  onRemove,
+  onSetPrimaryDecisor,
+  onUpdateSubContact,
+  onDirectWhatsApp,
+  cardStyle,
+  cardRowStyle,
+  cardLabelStyle,
+  cardValueStyle,
+  seamlessInputStyle,
+}) => {
+  const isAniversariante = contact.role === 'debutante' || (contact.role as any) === 'aniversariante';
+  const isDebutante = contact.role === 'debutante';
+
+  const [draftName, setDraftName] = useState(contact.name || '');
+  const [draftPhone, setDraftPhone] = useState(contact.phone ? formatPhone(contact.phone) : '');
+  const [draftBirthday, setDraftBirthday] = useState(contact.birthday || lead.birthday || lead.debutanteBirthDate || '');
+  const [draftEventDate, setDraftEventDate] = useState(contact.eventDate || lead.eventDate || lead.partyDate || '');
+  const [draftCpf, setDraftCpf] = useState(contact.cpf || '');
+  const [draftEmail, setDraftEmail] = useState(contact.email || '');
+  const [draftNeighborhood, setDraftNeighborhood] = useState((contact as any).neighborhood || '');
+  const [draftAddress, setDraftAddress] = useState(contact.address || '');
+
+  useEffect(() => {
+    setDraftName(contact.name || '');
+    setDraftPhone(contact.phone ? formatPhone(contact.phone) : '');
+    setDraftBirthday(contact.birthday || lead.birthday || lead.debutanteBirthDate || '');
+    setDraftEventDate(contact.eventDate || lead.eventDate || lead.partyDate || '');
+    setDraftCpf(contact.cpf || '');
+    setDraftEmail(contact.email || '');
+    setDraftNeighborhood((contact as any).neighborhood || '');
+    setDraftAddress(contact.address || '');
+  }, [
+    contact.id,
+    contact.name,
+    contact.phone,
+    contact.birthday,
+    contact.eventDate,
+    contact.cpf,
+    contact.email,
+    (contact as any).neighborhood,
+    contact.address,
+    lead.birthday,
+    lead.debutanteBirthDate,
+    lead.eventDate,
+    lead.partyDate,
+  ]);
+
+  const commitName = () => {
+    const val = draftName.trim();
+    if (val !== (contact.name || '').trim()) {
+      onUpdateSubContact(contact.id, { name: val });
+    }
+  };
+
+  const commitPhone = () => {
+    const cleanDigits = draftPhone.replace(/\D/g, '');
+    const oldCleanDigits = (contact.phone || '').replace(/\D/g, '');
+    if (cleanDigits !== oldCleanDigits) {
+      onUpdateSubContact(contact.id, { phone: cleanDigits });
+    }
+  };
+
+  const commitBirthday = () => {
+    if (draftBirthday !== (contact.birthday || '')) {
+      onUpdateSubContact(contact.id, { birthday: draftBirthday }, { birthday: draftBirthday, debutanteBirthDate: draftBirthday });
+    }
+  };
+
+  const commitEventDate = () => {
+    if (draftEventDate !== (contact.eventDate || '')) {
+      onUpdateSubContact(contact.id, { eventDate: draftEventDate }, { eventDate: draftEventDate, partyDate: draftEventDate });
+    }
+  };
+
+  const commitCpf = () => {
+    const val = draftCpf.trim();
+    if (val !== (contact.cpf || '').trim()) {
+      onUpdateSubContact(contact.id, { cpf: val }, { cpf: val });
+    }
+  };
+
+  const commitEmail = () => {
+    const val = draftEmail.trim();
+    if (val !== (contact.email || '').trim()) {
+      onUpdateSubContact(contact.id, { email: val }, { email: val });
+    }
+  };
+
+  const commitNeighborhood = () => {
+    const val = draftNeighborhood.trim();
+    if (val !== ((contact as any).neighborhood || '').trim()) {
+      onUpdateSubContact(contact.id, { neighborhood: val } as any, { neighborhood: val });
+    }
+  };
+
+  const commitAddress = () => {
+    const val = draftAddress.trim();
+    if (val !== (contact.address || '').trim()) {
+      onUpdateSubContact(contact.id, { address: val }, { address: val });
+    }
+  };
+
+  return (
+    <div style={{
+      ...cardStyle,
+      border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.45)' : 'var(--adm-border)'}`,
+      background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.03)' : 'var(--adm-bg-card)',
+    }}>
+      {/* Header do Contato Vinculado */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.15)' : 'rgba(20, 169, 215, 0.15)',
+            color: contact.isPrimaryDecisionMaker ? '#10B981' : 'var(--adm-accent)',
+            fontSize: '0.74rem',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.35)' : 'rgba(20, 169, 215, 0.3)'}`,
+          }}>
+            {draftName ? draftName.trim().substring(0, 2).toUpperCase() : 'CT'}
+          </div>
+
+          {/* Nome Editável do Contato Vinculado */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              type="text"
+              value={draftName}
+              disabled={effectiveReadOnly}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+              placeholder="Nome do contato..."
+              style={{
+                ...seamlessInputStyle,
+                fontWeight: 800,
+                fontSize: '0.86rem',
+                color: 'var(--adm-text-title)',
+              }}
+              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {isDebutante ? (
+            <span style={{
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              color: '#A855F7',
+              background: 'rgba(168, 85, 247, 0.12)',
+              border: '1px solid rgba(168, 85, 247, 0.35)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              whiteSpace: 'nowrap',
+            }}>
+              Debutante (Não Decisora)
+            </span>
+          ) : contact.isPrimaryDecisionMaker ? (
+            <span style={{
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              color: '#10B981',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap',
+            }}>
+              <Check size={11} /> Decisor
+            </span>
+          ) : !effectiveReadOnly ? (
+            <button
+              type="button"
+              onClick={() => onSetPrimaryDecisor(contact)}
+              style={{
+                background: 'var(--adm-bg-input)',
+                border: '1px solid var(--adm-border)',
+                color: 'var(--adm-text-title)',
+                borderRadius: '6px',
+                padding: '3px 8px',
+                fontSize: '0.66rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
+            >
+              Tornar Decisor
+            </button>
+          ) : null}
+
+          {!effectiveReadOnly && (
+            <button
+              type="button"
+              onClick={() => onRemove(contact.id)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#EF4444',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '4px',
+              }}
+              title="Remover contato"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Relação / Papel do Contato */}
+      <div style={cardRowStyle}>
+        <span style={cardLabelStyle}>Relação</span>
+        <div style={cardValueStyle}>
+          <select
+            value={contact.role}
+            disabled={effectiveReadOnly}
+            onChange={(e) => {
+              const newRole = e.target.value as LeadContactRole;
+              onUpdateSubContact(contact.id, {
+                role: newRole,
+                isPrimaryDecisionMaker: newRole === 'debutante' ? false : contact.isPrimaryDecisionMaker,
+              });
+            }}
+            style={{
+              ...seamlessInputStyle,
+              cursor: !effectiveReadOnly ? 'pointer' : 'default',
+              fontWeight: 700,
+              color: 'var(--adm-accent)',
+              background: 'transparent',
+              padding: '2px 0',
+            }}
+          >
+            <option
+              value="debutante"
+              disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
+            >
+              Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrada' : ''}
+            </option>
+            <option
+              value="aniversariante"
+              disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
+            >
+              Aniversariante {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrado' : ''}
+            </option>
+            <option value="mother">Mãe</option>
+            <option value="father">Pai</option>
+            <option value="responsavel">Responsável Legal</option>
+            <option value="noivo">Noivo(a)</option>
+            <option value="tio">Tio(a)</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Telefone */}
+      <div style={cardRowStyle}>
+        <span style={cardLabelStyle}>Telefone</span>
+        <div style={cardValueStyle}>
+          <input
+            type="text"
+            value={draftPhone}
+            disabled={effectiveReadOnly}
+            placeholder="Sem telefone cadastrado"
+            onChange={(e) => setDraftPhone(maskPhoneInput(e.target.value))}
+            onBlur={commitPhone}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+            style={seamlessInputStyle}
+            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+          />
+          {contact.phone && onSelectRecipientPhone && (
+            <button
+              type="button"
+              onClick={() => onSelectRecipientPhone(contact.phone)}
+              title={selectedRecipientPhone === contact.phone ? "Destinatário ativo no chat" : "Definir este contato como destinatário para envio"}
+              style={{
+                background: selectedRecipientPhone === contact.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
+                border: `1px solid ${selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-border)'}`,
+                color: selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)',
+                borderRadius: '6px',
+                padding: '3px 7px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.64rem',
+                fontWeight: 700,
+                flexShrink: 0,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Send size={10} color={selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)'} />
+              <span>{selectedRecipientPhone === contact.phone ? 'Ativo' : 'Enviar'}</span>
+            </button>
+          )}
+          {contact.phone && (
+            <button
+              type="button"
+              onClick={() => onDirectWhatsApp(contact.phone)}
+              title="Abrir WhatsApp Externo"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#25D366',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              <MessageSquare size={13} fill="#25D366" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Se for Aniversariante / Debutante, exibir Aniversário e Data do Evento */}
+      {isAniversariante && (
+        <>
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>Aniversário</span>
+            <div style={cardValueStyle}>
+              <input
+                type="date"
+                value={draftBirthday}
+                disabled={effectiveReadOnly}
+                onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                onChange={(e) => setDraftBirthday(e.target.value)}
+                onBlur={commitBirthday}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                style={{
+                  ...seamlessInputStyle,
+                  cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                  color: draftBirthday ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                }}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>Data Evento</span>
+            <div style={cardValueStyle}>
+              <input
+                type="date"
+                value={draftEventDate}
+                disabled={effectiveReadOnly}
+                onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
+                onChange={(e) => setDraftEventDate(e.target.value)}
+                onBlur={commitEventDate}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                style={{
+                  ...seamlessInputStyle,
+                  cursor: !effectiveReadOnly ? 'pointer' : 'default',
+                  color: draftEventDate ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                }}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* DADOS CONTRATUAIS DO DECISOR: EXIBIDOS EXCLUSIVAMENTE SE FOR O DECISOR */}
+      {contact.isPrimaryDecisionMaker && (
+        <div style={{
+          marginTop: '6px',
+          padding: '8px 10px',
+          background: 'var(--adm-bg-input)',
+          border: '1px solid var(--adm-border)',
+          borderRadius: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+          fontSize: '0.74rem',
+        }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+            Dados Contratuais do Decisor
+          </div>
+
+          {/* CPF */}
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>CPF *</span>
+            <div style={cardValueStyle}>
+              <input
+                type="text"
+                value={draftCpf}
+                disabled={effectiveReadOnly}
+                onChange={(e) => setDraftCpf(maskCpfInput(e.target.value))}
+                onBlur={commitCpf}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                placeholder="000.000.000-00"
+                style={seamlessInputStyle}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+
+          {/* E-mail */}
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>E-mail *</span>
+            <div style={cardValueStyle}>
+              <input
+                type="email"
+                value={draftEmail}
+                disabled={effectiveReadOnly}
+                onChange={(e) => setDraftEmail(e.target.value)}
+                onBlur={commitEmail}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                placeholder="decisor@email.com"
+                style={seamlessInputStyle}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+
+          {/* Bairro */}
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>Bairro</span>
+            <div style={cardValueStyle}>
+              <input
+                type="text"
+                value={draftNeighborhood}
+                disabled={effectiveReadOnly}
+                onChange={(e) => setDraftNeighborhood(e.target.value)}
+                onBlur={commitNeighborhood}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                placeholder="Bairro..."
+                style={seamlessInputStyle}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+
+          {/* Endereço */}
+          <div style={cardRowStyle}>
+            <span style={cardLabelStyle}>Endereço</span>
+            <div style={cardValueStyle}>
+              <input
+                type="text"
+                value={draftAddress}
+                disabled={effectiveReadOnly}
+                onChange={(e) => setDraftAddress(e.target.value)}
+                onBlur={commitAddress}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                placeholder="Rua, número, complemento..."
+                style={seamlessInputStyle}
+                onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
+                onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   lead,
   onStageChange,
@@ -4537,407 +5047,29 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
               </div>
 
               {/* DEMAIS CONTATOS VINCULADOS: CADA UM EM SEU PRÓPRIO CARD MODULAR */}
-              {(lead.contacts || []).map((contact) => {
-                const isAniversariante = contact.role === 'debutante' || (contact.role as any) === 'aniversariante';
-                const isDebutante = contact.role === 'debutante';
-                return (
-                  <div key={contact.id} style={{
-                    ...cardStyle,
-                    border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.45)' : 'var(--adm-border)'}`,
-                    background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.03)' : 'var(--adm-bg-card)',
-                  }}>
-                    {/* Header do Contato Vinculado */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid var(--adm-border)', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                          background: contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.15)' : 'rgba(20, 169, 215, 0.15)',
-                          color: contact.isPrimaryDecisionMaker ? '#10B981' : 'var(--adm-accent)',
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          border: `1px solid ${contact.isPrimaryDecisionMaker ? 'rgba(16, 185, 129, 0.35)' : 'rgba(20, 169, 215, 0.3)'}`,
-                        }}>
-                          {contact.name ? contact.name.trim().substring(0, 2).toUpperCase() : 'CT'}
-                        </div>
-
-                        {/* Nome Editável do Contato Vinculado */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <input
-                            type="text"
-                            value={contact.name}
-                            disabled={effectiveReadOnly}
-                            onChange={(e) => {
-                              const newName = e.target.value;
-                              const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, name: newName } : c);
-                              handleUpdate({ contacts: updated });
-                            }}
-                            placeholder="Nome do contato..."
-                            style={{
-                              ...seamlessInputStyle,
-                              fontWeight: 800,
-                              fontSize: '0.86rem',
-                              color: 'var(--adm-text-title)',
-                            }}
-                            onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                            onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        {isDebutante ? (
-                          <span style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
-                            color: '#A855F7',
-                            background: 'rgba(168, 85, 247, 0.12)',
-                            border: '1px solid rgba(168, 85, 247, 0.35)',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            Debutante (Não Decisora)
-                          </span>
-                        ) : contact.isPrimaryDecisionMaker ? (
-                          <span style={{
-                            fontSize: '0.65rem',
-                            fontWeight: 800,
-                            color: '#10B981',
-                            background: 'rgba(16, 185, 129, 0.12)',
-                            border: '1px solid rgba(16, 185, 129, 0.35)',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            <Check size={11} /> Decisor
-                          </span>
-                        ) : !effectiveReadOnly ? (
-                          <button
-                            type="button"
-                            onClick={() => handleSetPrimaryDecisor(contact)}
-                            style={{
-                              background: 'var(--adm-bg-input)',
-                              border: '1px solid var(--adm-border)',
-                              color: 'var(--adm-text-title)',
-                              borderRadius: '6px',
-                              padding: '3px 8px',
-                              fontSize: '0.66rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease',
-                              whiteSpace: 'nowrap',
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--adm-accent)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--adm-border)'; }}
-                          >
-                            Tornar Decisor
-                          </button>
-                        ) : null}
-
-                        {!effectiveReadOnly && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSubContact(contact.id)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#EF4444',
-                              cursor: 'pointer',
-                              padding: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: '4px',
-                            }}
-                            title="Remover contato"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Relação / Papel do Contato */}
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>Relação</span>
-                      <div style={cardValueStyle}>
-                        <select
-                          value={contact.role}
-                          disabled={effectiveReadOnly}
-                          onChange={(e) => {
-                            const newRole = e.target.value as LeadContactRole;
-                            const updated = (lead.contacts || []).map(c => {
-                              if (c.id !== contact.id) return c;
-                              return {
-                                ...c,
-                                role: newRole,
-                                isPrimaryDecisionMaker: newRole === 'debutante' ? false : c.isPrimaryDecisionMaker,
-                              };
-                            });
-                            handleUpdate({ contacts: updated });
-                          }}
-                          style={{
-                            ...seamlessInputStyle,
-                            cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                            fontWeight: 700,
-                            color: 'var(--adm-accent)',
-                            background: 'transparent',
-                            padding: '2px 0',
-                          }}
-                        >
-                          <option
-                            value="debutante"
-                            disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
-                          >
-                            Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrada' : ''}
-                          </option>
-                          <option
-                            value="aniversariante"
-                            disabled={alreadyHasDebutanteOrAniversariante.mainIsIt || (Boolean(alreadyHasDebutanteOrAniversariante.subContactId) && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id)}
-                          >
-                            Aniversariante {alreadyHasDebutanteOrAniversariante.mainIsIt || (alreadyHasDebutanteOrAniversariante.subContactId && alreadyHasDebutanteOrAniversariante.subContactId !== contact.id) ? '• Já cadastrado' : ''}
-                          </option>
-                          <option value="mother">Mãe</option>
-                          <option value="father">Pai</option>
-                          <option value="responsavel">Responsável Legal</option>
-                          <option value="noivo">Noivo(a)</option>
-                          <option value="tio">Tio(a)</option>
-                          <option value="outro">Outro</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Telefone */}
-                    <div style={cardRowStyle}>
-                      <span style={cardLabelStyle}>Telefone</span>
-                      <div style={cardValueStyle}>
-                        <input
-                          type="text"
-                          value={contact.phone ? formatPhone(contact.phone) : ''}
-                          disabled={effectiveReadOnly}
-                          placeholder="Sem telefone cadastrado"
-                          onChange={(e) => {
-                            const masked = maskPhoneInput(e.target.value);
-                            const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, phone: masked.replace(/\D/g, '') } : c);
-                            handleUpdate({ contacts: updated });
-                          }}
-                          style={seamlessInputStyle}
-                          onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                          onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                        />
-                        {contact.phone && onSelectRecipientPhone && (
-                          <button
-                            type="button"
-                            onClick={() => onSelectRecipientPhone(contact.phone)}
-                            title={selectedRecipientPhone === contact.phone ? "Destinatário ativo no chat" : "Definir este contato como destinatário para envio"}
-                            style={{
-                              background: selectedRecipientPhone === contact.phone ? 'rgba(16, 185, 129, 0.2)' : 'var(--adm-bg-input)',
-                              border: `1px solid ${selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-border)'}`,
-                              color: selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)',
-                              borderRadius: '6px',
-                              padding: '3px 7px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              flexShrink: 0,
-                              transition: 'all 0.15s ease',
-                            }}
-                          >
-                            <Send size={10} color={selectedRecipientPhone === contact.phone ? '#10B981' : 'var(--adm-text-muted)'} />
-                            <span>{selectedRecipientPhone === contact.phone ? 'Ativo' : 'Enviar'}</span>
-                          </button>
-                        )}
-                        {contact.phone && (
-                          <button
-                            type="button"
-                            onClick={() => handleDirectWhatsApp(contact.phone)}
-                            title="Abrir WhatsApp Externo"
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#25D366',
-                              cursor: 'pointer',
-                              padding: '2px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <MessageSquare size={13} fill="#25D366" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Se for Aniversariante / Debutante, exibir Aniversário e Data do Evento */}
-                    {isAniversariante && (
-                      <>
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>Aniversário</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="date"
-                              value={contact.birthday || lead.birthday || lead.debutanteBirthDate || ''}
-                              disabled={effectiveReadOnly}
-                              onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                              onChange={(e) => {
-                                const newBirth = e.target.value;
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, birthday: newBirth } : c);
-                                handleUpdate({ contacts: updated, birthday: newBirth, debutanteBirthDate: newBirth });
-                              }}
-                              style={{
-                                ...seamlessInputStyle,
-                                cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                                color: (contact.birthday || lead.birthday || lead.debutanteBirthDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                              }}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>Data Evento</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="date"
-                              value={contact.eventDate || lead.eventDate || lead.partyDate || ''}
-                              disabled={effectiveReadOnly}
-                              onClick={(e) => { try { (e.target as any).showPicker?.(); } catch {} }}
-                              onChange={(e) => {
-                                const newDate = e.target.value;
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, eventDate: newDate } : c);
-                                handleUpdate({ contacts: updated, eventDate: newDate, partyDate: newDate });
-                              }}
-                              style={{
-                                ...seamlessInputStyle,
-                                cursor: !effectiveReadOnly ? 'pointer' : 'default',
-                                color: (contact.eventDate || lead.eventDate || lead.partyDate) ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
-                              }}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {/* DADOS CONTRATUAIS DO DECISOR: EXIBIDOS EXCLUSIVAMENTE SE FOR O DECISOR */}
-                    {contact.isPrimaryDecisionMaker && (
-                      <div style={{
-                        marginTop: '6px',
-                        padding: '8px 10px',
-                        background: 'var(--adm-bg-input)',
-                        border: '1px solid var(--adm-border)',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        fontSize: '0.74rem',
-                      }}>
-                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
-                          Dados Contratuais do Decisor
-                        </div>
-
-                        {/* CPF */}
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>CPF *</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="text"
-                              value={contact.cpf || ''}
-                              disabled={effectiveReadOnly}
-                              onChange={(e) => {
-                                const masked = maskCpfInput(e.target.value);
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, cpf: masked } : c);
-                                handleUpdate({ contacts: updated, cpf: masked });
-                              }}
-                              placeholder="000.000.000-00"
-                              style={seamlessInputStyle}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* E-mail */}
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>E-mail *</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="email"
-                              value={contact.email || ''}
-                              disabled={effectiveReadOnly}
-                              onChange={(e) => {
-                                const mail = e.target.value;
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, email: mail } : c);
-                                handleUpdate({ contacts: updated, email: mail });
-                              }}
-                              placeholder="decisor@email.com"
-                              style={seamlessInputStyle}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Bairro */}
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>Bairro</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="text"
-                              value={(contact as any).neighborhood || ''}
-                              disabled={effectiveReadOnly}
-                              onChange={(e) => {
-                                const neigh = e.target.value;
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, neighborhood: neigh } : c);
-                                handleUpdate({ contacts: updated, neighborhood: neigh });
-                              }}
-                              placeholder="Bairro..."
-                              style={seamlessInputStyle}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Endereço */}
-                        <div style={cardRowStyle}>
-                          <span style={cardLabelStyle}>Endereço</span>
-                          <div style={cardValueStyle}>
-                            <input
-                              type="text"
-                              value={contact.address || ''}
-                              disabled={effectiveReadOnly}
-                              onChange={(e) => {
-                                const addr = e.target.value;
-                                const updated = (lead.contacts || []).map(c => c.id === contact.id ? { ...c, address: addr } : c);
-                                handleUpdate({ contacts: updated, address: addr });
-                              }}
-                              placeholder="Rua, número, complemento..."
-                              style={seamlessInputStyle}
-                              onFocus={(e) => { e.target.style.borderBottomColor = 'var(--adm-accent)'; }}
-                              onBlurCapture={(e) => { e.target.style.borderBottomColor = 'transparent'; }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {(lead.contacts || []).map((contact) => (
+                <SubContactCard
+                  key={contact.id}
+                  contact={contact}
+                  lead={lead}
+                  effectiveReadOnly={effectiveReadOnly}
+                  alreadyHasDebutanteOrAniversariante={alreadyHasDebutanteOrAniversariante}
+                  selectedRecipientPhone={selectedRecipientPhone}
+                  onSelectRecipientPhone={onSelectRecipientPhone}
+                  onRemove={handleRemoveSubContact}
+                  onSetPrimaryDecisor={handleSetPrimaryDecisor}
+                  onUpdateSubContact={(contactId, updatedFields, extraLeadUpdates) => {
+                    const updated = (lead.contacts || []).map(c => c.id === contactId ? { ...c, ...updatedFields } : c);
+                    handleUpdate({ contacts: updated, ...(extraLeadUpdates || {}) });
+                  }}
+                  onDirectWhatsApp={handleDirectWhatsApp}
+                  cardStyle={cardStyle}
+                  cardRowStyle={cardRowStyle}
+                  cardLabelStyle={cardLabelStyle}
+                  cardValueStyle={cardValueStyle}
+                  seamlessInputStyle={seamlessInputStyle}
+                />
+              ))}
 
               {/* BOTÃO CIRCULAR (+) CENTRALIZADO FORA DOS RETÂNGULOS */}
               {!isAddingContact && !effectiveReadOnly && (

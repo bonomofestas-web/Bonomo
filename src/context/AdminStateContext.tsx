@@ -468,6 +468,17 @@ export interface AdminContextType {
       eventYear?: number | string;
       updateExistingClient?: boolean;
       existingClientId?: string;
+      targetStageId?: string;
+      birthdayPersonName?: string;
+      birthdayPersonPhone?: string;
+      birthdayPersonBirthdate?: string;
+      payerName?: string;
+      payerPhone?: string;
+      payerEmail?: string;
+      payerCpf?: string;
+      payerAddress?: string;
+      payerNeighborhood?: string;
+      paymentTerms?: string;
     }
   ) => void;
   updateLeadData: (leadId: string, data: Partial<Lead>) => void;
@@ -7807,6 +7818,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       eventYear?: number | string;
       updateExistingClient?: boolean;
       existingClientId?: string;
+      targetStageId?: string;
+      birthdayPersonName?: string;
+      birthdayPersonPhone?: string;
+      birthdayPersonBirthdate?: string;
+      payerName?: string;
+      payerPhone?: string;
+      payerEmail?: string;
+      payerCpf?: string;
+      payerAddress?: string;
+      payerNeighborhood?: string;
+      paymentTerms?: string;
     }
   ) => {
     const author = currentUser?.name || 'Administrador';
@@ -7828,6 +7850,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       authorAvatarUrl: authorAvatar,
     };
 
+    const currentLead = leads.find(l => l.id === leadId);
+    const currentLeadFunnel = funnels.find(f => f.id === currentLead?.funnelId || f.name === currentLead?.funnelId);
+    const wonStageInFunnel = currentLeadFunnel?.stages?.find(s => s.isWon || s.id === 'deal_closed' || s.id === 'contrato_fechado' || s.name?.toLowerCase().includes('ganho') || s.name?.toLowerCase().includes('contrato fechado'));
+    const finalWonStage = extraOptions?.targetStageId || wonStageInFunnel?.id || 'deal_closed';
+    const downPayVal = extraOptions?.downPayment ?? 0;
+    const installCountVal = extraOptions?.installmentsCount ?? 10;
+    const agreedPaymentTerms = extraOptions?.paymentTerms?.trim() || (currentLead as any)?.paymentTerms || `${downPayVal > 0 ? `Entrada R$ ${downPayVal.toLocaleString('pt-BR')} + ` : ''}${installCountVal}x`;
+
     let targetLead: Lead | null = null;
     setLeads(prev => prev.map(lead => {
       if (lead.id !== leadId) return lead;
@@ -7845,10 +7875,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       targetLead = {
         ...lead,
-        stage: 'contract_signed',
+        stage: finalWonStage as CrmStage,
         dealValue,
         packageSold,
         contractDate: cDate,
+        downPayment: extraOptions?.downPayment ?? lead.downPayment,
+        installments: extraOptions?.installmentsCount ?? lead.installments,
+        hasCreditCard: extraOptions?.hasCreditCard ?? lead.hasCreditCard,
+        paymentMethod: extraOptions?.paymentTerms || lead.paymentMethod,
         participants: updatedParticipants,
         activities: [newActivity, ...lead.activities],
         updatedAt: new Date().toISOString().split('T')[0],
@@ -7859,7 +7893,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
 
     // Sincronização e duplicação automática para a esteira de Pós-Venda (Cliente)
-    const currentLead = leads.find(l => l.id === leadId);
     if (currentLead) {
       setClients(prevClients => {
         // Dispositivo de segurança anti-duplicidade em todos os funis de pós-venda
@@ -7888,9 +7921,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // Identificar o(a) Aniversariante real a partir da ficha/contatos
         const birthdayContact = (currentLead.contacts || []).find(c => c.role === 'debutante' || (c.role as any) === 'aniversariante');
-        const birthdayName = birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
-        const birthdayPhone = birthdayContact?.phone?.trim() || (currentLead as any).birthdayPersonPhone?.trim() || '';
-        const birthdayDate = birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
+        const birthdayName = extraOptions?.birthdayPersonName?.trim() || birthdayContact?.name?.trim() || (currentLead as any).birthdayPersonName?.trim() || (currentLead.primaryContactRole === 'debutante' || currentLead.primaryContactRole === 'aniversariante' ? currentLead.name.trim() : (currentLead.debutanteName && currentLead.debutanteName !== 'Indicação Externa' ? currentLead.debutanteName.trim() : currentLead.name.trim()));
+        const birthdayPhone = extraOptions?.birthdayPersonPhone?.trim() || birthdayContact?.phone?.trim() || (currentLead as any).birthdayPersonPhone?.trim() || (currentLead.primaryContactRole === 'debutante' ? currentLead.phone.trim() : '');
+        const birthdayDate = extraOptions?.birthdayPersonBirthdate?.trim() || birthdayContact?.birthday || (currentLead as any).debutanteBirthDate || (currentLead as any).birthday || '';
 
         // Identificar o Decisor Legal do Contrato
         const primaryDecisor = (currentLead.contacts || []).find(c => c.isPrimaryDecisionMaker) || 
@@ -7904,13 +7937,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             neighborhood: currentLead.neighborhood,
           } : (currentLead.contacts || []).find(c => c.role !== 'debutante')) || (currentLead.contacts || [])[0];
 
-        const payer = primaryDecisor?.name?.trim() || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
-        const payerPhone = primaryDecisor?.phone?.trim() || currentLead.phone?.trim() || '';
+        const payer = extraOptions?.payerName?.trim() || primaryDecisor?.name?.trim() || (currentLead as any).decisionMakerName?.trim() || (currentLead as any).payerName?.trim() || `${currentLead.name.trim()} (Responsável)`;
+        const payerPhone = extraOptions?.payerPhone?.trim() || primaryDecisor?.phone?.trim() || currentLead.phone?.trim() || '';
         const payerRel = primaryDecisor?.role || ((currentLead as any).decisionMakerRole as any) || 'responsavel';
-        const payerCpf = primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
-        const payerEmail = primaryDecisor?.email || currentLead.email?.trim() || '';
-        const payerAddress = primaryDecisor?.address || (currentLead as any).address || '';
-        const payerNeighborhood = (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
+        const payerCpf = extraOptions?.payerCpf?.trim() || primaryDecisor?.cpf || (currentLead as any).payerCpf || currentLead.cpf || '';
+        const payerEmail = extraOptions?.payerEmail?.trim() || primaryDecisor?.email || currentLead.email?.trim() || '';
+        const payerAddress = extraOptions?.payerAddress?.trim() || primaryDecisor?.address || (currentLead as any).address || '';
+        const payerNeighborhood = extraOptions?.payerNeighborhood?.trim() || (primaryDecisor as any)?.neighborhood || (currentLead as any).neighborhood || '';
         const leadProfession = (currentLead as any).profession || (primaryDecisor as any)?.profession || '';
 
         const targetVenueId = currentLead.venueId || venues[0]?.id || '';
@@ -8037,7 +8070,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             signalValue: downPay > 0 ? downPay : updated[existingIdx].signalValue,
             contractInstallmentsCount: installCount || updated[existingIdx].contractInstallmentsCount,
             contractInstallmentsRemaining: installRemaining,
-            hasCreditCard: hasCard || updated[existingIdx].hasCreditCard,
+            hasCreditCard: hasCard !== undefined ? hasCard : updated[existingIdx].hasCreditCard,
+            paymentTerms: agreedPaymentTerms || updated[existingIdx].paymentTerms,
             guestCount: gCount || updated[existingIdx].guestCount,
             eventYear: eYear || updated[existingIdx].eventYear,
             profession: leadProfession || updated[existingIdx].profession,
@@ -8137,7 +8171,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             contractDate: cDate,
             contractStatus: 'aguardando_sinal',
             contractSignedAt: extraOptions?.contractSignedFileUrl ? new Date().toISOString() : null,
-            paymentTerms: (currentLead as any).paymentTerms || `${downPay > 0 ? `Entrada R$ ${downPay.toLocaleString('pt-BR')} + ` : ''}${installCount}x`,
+            paymentTerms: agreedPaymentTerms,
             paymentStatus: downPay > 0 ? 'up_to_date' : 'pending',
             funnelId: targetPostSaleFunnelId,
             stage: (targetPostSaleStageId || 'onboarding') as any,
@@ -8177,9 +8211,8 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const gCount = extraOptions?.guestCount || (currentLead as any)?.guestCount || (currentLead as any)?.estimatedGuests || 150;
       const eYear = extraOptions?.eventYear || (currentLead as any)?.eventYear;
 
-      leadService.upsert({
-        id: leadId,
-        stage: 'contract_signed',
+      leadService.update(leadId, {
+        stage: finalWonStage as CrmStage,
         dealValue,
         packageSold,
         contractDate: cDate,
@@ -8188,7 +8221,22 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         hasCreditCard: hasCard,
         estimatedGuests: gCount,
         eventYear: eYear ? String(eYear) : undefined,
-      }).catch(err => console.error('❌ Erro ao fechar venda no Supabase:', err));
+        paymentMethod: agreedPaymentTerms,
+      }).catch(err => {
+        console.error('❌ Erro ao atualizar lead fechado no Supabase:', err);
+        leadService.upsert({
+          id: leadId,
+          stage: finalWonStage as CrmStage,
+          dealValue,
+          packageSold,
+          contractDate: cDate,
+          downPayment: downPay,
+          installments: installCount,
+          hasCreditCard: hasCard,
+          estimatedGuests: gCount,
+          eventYear: eYear ? String(eYear) : undefined,
+        }).catch(e => console.error('❌ Erro no fallback upsert do lead:', e));
+      });
 
       leadService.addActivity(leadId, {
         leadId,

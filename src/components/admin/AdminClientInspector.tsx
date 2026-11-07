@@ -1836,6 +1836,45 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 />
               </div>
             </div>
+
+            {/* Possui Cartão de Crédito? */}
+            <div style={cardRowStyle}>
+              <span style={cardLabelStyle}>Cartão Crédito</span>
+              <div style={{ ...cardValueStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => updateClient(client.id, { hasCreditCard: true })}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    border: `1px solid ${client.hasCreditCard ? '#10B981' : 'var(--adm-border)'}`,
+                    background: client.hasCreditCard ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                    color: client.hasCreditCard ? '#10B981' : 'var(--adm-text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Sim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateClient(client.id, { hasCreditCard: false })}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    border: `1px solid ${client.hasCreditCard === false ? '#64748B' : 'var(--adm-border)'}`,
+                    background: client.hasCreditCard === false ? 'rgba(100, 116, 139, 0.15)' : 'transparent',
+                    color: client.hasCreditCard === false ? 'var(--adm-text-title)' : 'var(--adm-text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Não
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Seção 4: App da Debutante & Convidados */}

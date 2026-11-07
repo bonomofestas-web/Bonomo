@@ -29,64 +29,78 @@ export const clientService = {
         return [];
       }
 
-      return (data || []).map(row => ({
-        id: row.id,
-        masterId: row.master_id,
-        code: row.code,
-        name: row.name,
-        payerName: row.payer_name,
-        payerRelationship: row.payer_relationship,
-        payerCpf: row.payer_cpf,
-        payerPhone: row.payer_phone,
-        payerEmail: row.payer_email,
-        payerAddress: row.payer_address,
-        payerNeighborhood: row.payer_neighborhood,
-        payerCity: row.payer_city,
-        birthdayPersonName: row.birthday_person_name || row.name,
-        birthdayPersonAge: row.birthday_person_age,
-        birthdayPersonBirthdate: row.birthday_person_birthdate,
-        eventType: row.event_type || '15_anos',
-        eventDate: row.event_date,
-        eventTime: row.event_time,
-        guestCount: row.guest_count || 0,
-        venueId: row.venue_id,
-        venueName: row.venue_name,
-        packageSold: row.package_sold,
-        dealValue: Number(row.deal_value || 0),
-        contractDate: row.contract_date,
-        contractStatus: row.contract_status || 'aguardando_sinal',
-        contractSignedAt: row.contract_signed_at,
-        signalPaid: Boolean(row.signal_paid),
-        signalValue: row.signal_value ? Number(row.signal_value) : undefined,
-        contractDownPayment: row.contract_down_payment ? Number(row.contract_down_payment) : (row.signal_value ? Number(row.signal_value) : undefined),
-        contractInstallmentsRemaining: row.contract_installments_remaining ? Number(row.contract_installments_remaining) : undefined,
-        contractInstallmentsCount: row.contract_installments_count ? Number(row.contract_installments_count) : undefined,
-        signalPaidAt: row.signal_paid_at,
-        paymentTerms: row.payment_terms,
-        paymentStatus: row.payment_status,
-        stage: row.stage || 'onboarding',
-        funnelId: row.funnel_id || (row as any).funnelId || (row.commercial_history as any)?.funnelId || undefined,
-        contacts: (row.contacts as any) || [],
-        assignedSuccessManagerId: row.assigned_success_manager_id,
-        assignedSuccessManagerName: row.assigned_success_manager_name,
-        debutanteId: row.debutante_id,
-        debutanteSlug: row.debutante_slug,
-        commercialLeadId: row.commercial_lead_id,
-        commercialLeadCode: row.commercial_lead_code,
-        commercialHistory: row.commercial_history,
-        notes: row.notes || '',
-        documents: (row.documents as ClientDocument[]) || [],
-        activities: (row.activities as ClientActivity[]) || [],
-        upsellSales: (row.upsell_sales as any) || [],
-        baseContractValue: row.base_contract_value ? Number(row.base_contract_value) : Number(row.deal_value || 0),
-        funnelEnteredAt: row.funnel_entered_at || (row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
-        tags: (row.tags as string[]) || [],
-        hasCreditCard: row.has_credit_card !== undefined ? Boolean(row.has_credit_card) : undefined,
-        profession: row.profession || undefined,
-        eventYear: row.event_year || undefined,
-        createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        updatedAt: row.updated_at ? new Date(row.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      }));
+      return (data || []).map(row => {
+        const commHist = row.commercial_history && typeof row.commercial_history === 'object' && !Array.isArray(row.commercial_history) ? row.commercial_history : {};
+        return {
+          id: row.id,
+          masterId: row.master_id,
+          code: row.code,
+          name: row.name,
+          payerName: row.payer_name || commHist.payerName,
+          payerRelationship: row.payer_relationship,
+          payerCpf: row.payer_cpf || commHist.payerCpf,
+          payerPhone: row.payer_phone || commHist.payerPhone,
+          payerEmail: row.payer_email || commHist.payerEmail,
+          payerAddress: row.payer_address || commHist.payerAddress,
+          payerNeighborhood: row.payer_neighborhood || commHist.payerNeighborhood,
+          payerCity: row.payer_city,
+          birthdayPersonName: row.birthday_person_name || commHist.birthdayPersonName || row.name,
+          birthdayPersonAge: row.birthday_person_age,
+          birthdayPersonBirthdate: row.birthday_person_birthdate || commHist.birthdayPersonBirthdate,
+          birthdayPersonPhone: (row as any).birthday_person_phone || commHist.birthdayPersonPhone,
+          eventType: row.event_type || '15_anos',
+          eventDate: row.event_date,
+          eventTime: row.event_time,
+          guestCount: row.guest_count || 0,
+          venueId: row.venue_id,
+          venueName: row.venue_name,
+          packageSold: row.package_sold,
+          dealValue: Number(row.deal_value || 0),
+          contractDate: row.contract_date,
+          contractStatus: row.contract_status || 'aguardando_sinal',
+          contractSignedAt: row.contract_signed_at,
+          signalPaid: Boolean(row.signal_paid ?? commHist.signalPaid),
+          signalValue: row.signal_value ? Number(row.signal_value) : (commHist.signalValue ? Number(commHist.signalValue) : undefined),
+          contractDownPayment: row.contract_down_payment !== undefined && row.contract_down_payment !== null 
+            ? Number(row.contract_down_payment) 
+            : (row.signal_value ? Number(row.signal_value) : (commHist.contractDownPayment ? Number(commHist.contractDownPayment) : (commHist.signalValue ? Number(commHist.signalValue) : undefined))),
+          contractInstallmentsRemaining: row.contract_installments_remaining !== undefined && row.contract_installments_remaining !== null 
+            ? Number(row.contract_installments_remaining) 
+            : (commHist.contractInstallmentsRemaining ? Number(commHist.contractInstallmentsRemaining) : undefined),
+          contractInstallmentsCount: row.contract_installments_count !== undefined && row.contract_installments_count !== null 
+            ? Number(row.contract_installments_count) 
+            : (commHist.contractInstallmentsCount ? Number(commHist.contractInstallmentsCount) : undefined),
+          signalPaidAt: row.signal_paid_at,
+          paymentTerms: row.payment_terms || commHist.paymentTerms,
+          paymentStatus: row.payment_status,
+          stage: row.stage || 'onboarding',
+          funnelId: row.funnel_id || (row as any).funnelId || (row.commercial_history as any)?.funnelId || undefined,
+          contacts: (row.contacts as any) || commHist.contacts || [],
+          assignedSuccessManagerId: row.assigned_success_manager_id,
+          assignedSuccessManagerName: row.assigned_success_manager_name,
+          debutanteId: row.debutante_id,
+          debutanteSlug: row.debutante_slug,
+          commercialLeadId: row.commercial_lead_id,
+          commercialLeadCode: row.commercial_lead_code,
+          commercialHistory: row.commercial_history,
+          notes: row.notes || '',
+          documents: (row.documents as ClientDocument[]) || [],
+          activities: (row.activities as ClientActivity[]) || [],
+          upsellSales: (row.upsell_sales as any) || [],
+          baseContractValue: row.base_contract_value 
+            ? Number(row.base_contract_value) 
+            : (commHist.baseContractValue ? Number(commHist.baseContractValue) : Number(row.deal_value || 0)),
+          funnelEnteredAt: row.funnel_entered_at || (row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+          tags: (row.tags as string[]) || [],
+          hasCreditCard: row.has_credit_card !== undefined && row.has_credit_card !== null 
+            ? Boolean(row.has_credit_card) 
+            : (commHist.hasCreditCard !== undefined ? Boolean(commHist.hasCreditCard) : undefined),
+          profession: row.profession || commHist.profession || undefined,
+          eventYear: row.event_year || commHist.eventYear || undefined,
+          createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          updatedAt: row.updated_at ? new Date(row.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        };
+      });
     } catch (err) {
       console.error('Falha inesperada ao carregar clientes do Supabase:', err);
       return [];
@@ -150,11 +164,33 @@ export const clientService = {
       if (client.commercialHistory !== undefined) payload.commercial_history = client.commercialHistory;
       if (client.funnelId !== undefined) {
         payload.funnel_id = isUuid(client.funnelId) ? client.funnelId : null;
-        payload.commercial_history = {
-          ...((payload.commercial_history as any) || (client.commercialHistory as any) || {}),
-          funnelId: client.funnelId,
-        };
       }
+
+      // Espelho resiliente em commercial_history (JSONB nativo) contra perda por colunas Postgres não migradas
+      payload.commercial_history = {
+        ...((typeof payload.commercial_history === 'object' && !Array.isArray(payload.commercial_history)) ? payload.commercial_history : {}),
+        ...((typeof client.commercialHistory === 'object' && !Array.isArray(client.commercialHistory)) ? client.commercialHistory : {}),
+        funnelId: client.funnelId !== undefined ? client.funnelId : ((payload.commercial_history as any)?.funnelId),
+        hasCreditCard: (client as any).hasCreditCard !== undefined ? (client as any).hasCreditCard : ((payload.commercial_history as any)?.hasCreditCard),
+        contractDownPayment: client.contractDownPayment !== undefined ? client.contractDownPayment : ((payload.commercial_history as any)?.contractDownPayment),
+        signalValue: client.signalValue !== undefined ? client.signalValue : ((payload.commercial_history as any)?.signalValue),
+        signalPaid: client.signalPaid !== undefined ? client.signalPaid : ((payload.commercial_history as any)?.signalPaid),
+        contractInstallmentsCount: client.contractInstallmentsCount !== undefined ? client.contractInstallmentsCount : ((payload.commercial_history as any)?.contractInstallmentsCount),
+        contractInstallmentsRemaining: client.contractInstallmentsRemaining !== undefined ? client.contractInstallmentsRemaining : ((payload.commercial_history as any)?.contractInstallmentsRemaining),
+        baseContractValue: client.baseContractValue !== undefined ? client.baseContractValue : ((payload.commercial_history as any)?.baseContractValue),
+        paymentTerms: client.paymentTerms !== undefined ? client.paymentTerms : ((payload.commercial_history as any)?.paymentTerms),
+        birthdayPersonPhone: (client as any).birthdayPersonPhone !== undefined ? (client as any).birthdayPersonPhone : ((payload.commercial_history as any)?.birthdayPersonPhone),
+        birthdayPersonBirthdate: client.birthdayPersonBirthdate !== undefined ? client.birthdayPersonBirthdate : ((payload.commercial_history as any)?.birthdayPersonBirthdate),
+        birthdayPersonName: client.birthdayPersonName !== undefined ? client.birthdayPersonName : ((payload.commercial_history as any)?.birthdayPersonName),
+        payerName: client.payerName !== undefined ? client.payerName : ((payload.commercial_history as any)?.payerName),
+        payerAddress: client.payerAddress !== undefined ? client.payerAddress : ((payload.commercial_history as any)?.payerAddress),
+        payerNeighborhood: client.payerNeighborhood !== undefined ? client.payerNeighborhood : ((payload.commercial_history as any)?.payerNeighborhood),
+        payerCpf: client.payerCpf !== undefined ? client.payerCpf : ((payload.commercial_history as any)?.payerCpf),
+        payerPhone: client.payerPhone !== undefined ? client.payerPhone : ((payload.commercial_history as any)?.payerPhone),
+        payerEmail: client.payerEmail !== undefined ? client.payerEmail : ((payload.commercial_history as any)?.payerEmail),
+        profession: (client as any).profession !== undefined ? (client as any).profession : ((payload.commercial_history as any)?.profession),
+        eventYear: client.eventYear !== undefined ? client.eventYear : ((payload.commercial_history as any)?.eventYear),
+      };
       if ((client as any).hasCreditCard !== undefined) payload.has_credit_card = (client as any).hasCreditCard;
       if ((client as any).profession !== undefined) payload.profession = (client as any).profession;
       if (client.eventYear !== undefined) payload.event_year = String(client.eventYear);

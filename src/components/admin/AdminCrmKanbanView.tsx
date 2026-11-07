@@ -670,6 +670,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
 
   // Close Deal modal state
   const [dealModalLead, setDealModalLead] = useState<Lead | null>(null);
+  const [dealModalTargetStage, setDealModalTargetStage] = useState<string | null>(null);
   const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState(false);
 
   // Lost Reason modal state
@@ -1441,6 +1442,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       }
 
       setDealModalLead(lead);
+      setDealModalTargetStage(targetStage);
       setIsCloseDealModalOpen(true);
     } else {
       const isTargetLoss = (targetStage as string) === 'lost' || (targetStage as string) === 'recusado' || (targetStage as string) === 'perdido' || (targetStage as string) === 'cancelado';
@@ -1500,9 +1502,27 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       contractSignedFileName?: string;
       guestCount?: number;
       eventYear?: number | string;
+      updateExistingClient?: boolean;
+      existingClientId?: string;
+      targetStageId?: string;
+      birthdayPersonName?: string;
+      birthdayPersonPhone?: string;
+      birthdayPersonBirthdate?: string;
+      payerName?: string;
+      payerPhone?: string;
+      payerEmail?: string;
+      payerCpf?: string;
+      payerAddress?: string;
+      payerNeighborhood?: string;
+      paymentTerms?: string;
     }
   ) => {
-    closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes, extraOptions);
+    closeLeadSaleWithValue(leadId, dealValue, packageSold, undefined, closerNotes, {
+      ...extraOptions,
+      targetStageId: extraOptions?.targetStageId || dealModalTargetStage || undefined,
+    });
+    setDealModalLead(null);
+    setDealModalTargetStage(null);
   };
 
   const handleConfirmLost = (reason: string, details?: string) => {
@@ -5541,8 +5561,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
       {/* Close Deal Modal */}
       <CloseDealValueModal
         isOpen={isCloseDealModalOpen}
-        onClose={() => setIsCloseDealModalOpen(false)}
+        onClose={() => {
+          setIsCloseDealModalOpen(false);
+          setDealModalLead(null);
+          setDealModalTargetStage(null);
+        }}
         lead={dealModalLead}
+        targetStageId={dealModalTargetStage || undefined}
         onConfirmSale={handleConfirmSale}
       />
 
