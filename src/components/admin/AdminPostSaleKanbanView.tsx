@@ -18,6 +18,7 @@ import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminCreatePostSaleFunnelModal } from './AdminCreatePostSaleFunnelModal';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
+import { getDefaultPostSaleFunnelId } from '../../utils/funnelUtils';
 import type { Client, ClientStage, CommercialFunnel } from '../../types/admin';
 
 interface AdminPostSaleKanbanViewProps {
@@ -427,18 +428,24 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     setAddTagClientId(null);
   };
 
-  // Funis de Pós-Venda Identificados no Tenant
+  // Funis de Pós-Venda Identificados no Tenant (deduplicados por ID para segurança)
   const postSaleFunnels = useMemo(() => {
-    return (funnels || []).filter(f => 
-      f.isPostSale || 
-      f.category === 'Pós-Venda' || 
-      f.category === 'pos_venda' ||
-      f.name?.toLowerCase().includes('pós-venda') || 
-      f.name?.toLowerCase().includes('pos venda') ||
-      f.name?.toLowerCase().includes('sucesso do cliente') ||
-      f.name?.toLowerCase().includes('sucesso') ||
-      f.name?.toLowerCase().includes('decor')
-    );
+    const seenIds = new Set<string>();
+    return (funnels || []).filter(f => {
+      if (!f?.id || seenIds.has(f.id)) return false;
+      const isPs = Boolean(
+        f.isPostSale ||
+        f.category === 'Pós-Venda' ||
+        f.category === 'pos_venda' ||
+        f.name?.toLowerCase().includes('pós-venda') ||
+        f.name?.toLowerCase().includes('pos venda') ||
+        f.name?.toLowerCase().includes('sucesso do cliente') ||
+        f.name?.toLowerCase().includes('sucesso') ||
+        f.name?.toLowerCase().includes('decor')
+      );
+      if (isPs) seenIds.add(f.id);
+      return isPs;
+    });
   }, [funnels]);
 
   // Funil Atualmente Selecionado no Kanban (estritamente dentre funis de Pós-Venda)
@@ -482,16 +489,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     }
   };
 
-  // Identificador estável do funil primário de pós-venda (exclui cópias para nunca vazar clientes legados)
+  // Identificador estável do funil primário de pós-venda (exclui cópias e funis secundários para nunca vazar clientes legados)
   const defaultPostSaleId = useMemo(() => {
-    const nonCopy = postSaleFunnels.filter(f => !f.name?.includes('(Cópia)'));
-    return (
-      postSaleFunnels.find(f => f.isPrimary)?.id ||
-      nonCopy.find(f => f.id === 'post_sale_default')?.id ||
-      nonCopy[0]?.id ||
-      postSaleFunnels[0]?.id ||
-      'post_sale_default'
-    );
+    return getDefaultPostSaleFunnelId(postSaleFunnels);
   }, [postSaleFunnels]);
 
   const matchesFunnelStrict = (itemFunnelId: string | undefined, funnel: CommercialFunnel, allowLegacyFallback: boolean) => {
@@ -499,6 +499,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       const normalizedItem = itemFunnelId.trim().toLowerCase();
       if (itemFunnelId === funnel.id) return true;
       if (normalizedItem === (funnel.name || '').trim().toLowerCase()) return true;
+      if (normalizedItem === 'post_sale_default') {
+        return allowLegacyFallback && (funnel.id === 'post_sale_default' || funnel.id === defaultPostSaleId);
+      }
       return false;
     }
     return allowLegacyFallback && funnel.id === defaultPostSaleId;
@@ -899,6 +902,12 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
       if (currentFunnel) {
         if (!matchesFunnelStrict((client as any).funnelId, currentFunnel, true)) {
           return false;
+        }
+        if (!(client as any).funnelId) {
+          const linkedVenueIds = getLinkedVenuesForFunnel(currentFunnel).map(v => v.id);
+          if (linkedVenueIds.length > 0 && client.venueId && !linkedVenueIds.includes(client.venueId)) {
+            return false;
+          }
         }
       }
 
@@ -1564,6 +1573,21 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                   PADRÃO
                                 </span>
                               )}
+                              <span
+                                title={`ID do funil: ${funnel.id}`}
+                                style={{
+                                  fontSize: '0.58rem',
+                                  fontWeight: 700,
+                                  fontFamily: 'monospace',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  background: 'var(--adm-bg-input)',
+                                  color: 'var(--adm-text-muted)',
+                                  border: '1px solid var(--adm-border)',
+                                }}
+                              >
+                                ID: {funnel.id.slice(0, 8)}
+                              </span>
                               {/* Badges de Unidades Vinculadas em Funis Multi-Unidades */}
                               {group.isMultiVenue && linkedVenues.length > 0 && (
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1751,6 +1775,22 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                           }}>
                             <ShieldCheck size={9} />
                             <span>Pós-Venda</span>
+                          </span>
+                          <span
+                            title={`ID do funil: ${funnel.id}`}
+                            style={{
+                              fontSize: '0.58rem',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: 'var(--adm-bg-input)',
+                              color: 'var(--adm-text-muted)',
+                              border: '1px solid var(--adm-border)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            ID: {funnel.id.slice(0, 8)}
                           </span>
                         </div>
                       </div>
@@ -1996,7 +2036,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                 userSelect: 'none',
                 transition: 'all 0.15s ease',
               }}
-              title="Trocar funil de pós-venda"
+              title={`Trocar funil de pós-venda (ID: ${currentFunnel?.id || 'N/A'})`}
             >
               <span style={{ color: currentFunnel?.badgeColor || '#06B6D4', display: 'inline-flex', alignItems: 'center' }}>
                 {renderFunnelOrStageIcon(currentFunnel?.icon || 'shield-check', 13, currentFunnel?.badgeColor || '#06B6D4')}

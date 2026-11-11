@@ -53,6 +53,7 @@ import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/mediaStorage'
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { venueService } from '../services/venueService';
 import { funnelService } from '../services/funnelService';
+import { getDefaultPostSaleFunnelId } from '../utils/funnelUtils';
 import { leadService, isPhoneMatch, mergeAndSortActivities, findMatchingLead, isGenericOrFamilyNickname, formatActivityFromDb, formatLeadFromDb } from '../services/leadService';
 import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
@@ -4049,7 +4050,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       createdAt: new Date().toISOString().split('T')[0],
     };
     setFunnels(prev => {
-      const updated = [newFunnel, ...prev];
+      const updated = prev.some(f => f.id === newFunnel.id) ? prev : [...prev, newFunnel];
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
       return updated;
     });
@@ -5672,13 +5673,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
         const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
 
-        const postSaleFunnelMatch = funnels.find(f => 
-          f.isPostSale || 
-          f.category === 'Pós-Venda' || 
+        const psCandidates = funnels.filter(f =>
+          f.isPostSale ||
+          f.category === 'Pós-Venda' ||
           f.category === 'pos_venda' ||
           f.name?.toLowerCase().includes('pós-venda') ||
           f.name?.toLowerCase().includes('sucesso')
         );
+        const preferredPsId = getDefaultPostSaleFunnelId(psCandidates);
+        const postSaleFunnelMatch = psCandidates.find(f => f.id === preferredPsId) || psCandidates[0];
         const isEntryStageActive = Boolean(postSaleFunnelMatch?.isEntryStageActive);
         const clientInitialStage: ClientStage = isEntryStageActive ? ('new_lead' as any) : 'onboarding';
 
@@ -6731,7 +6734,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             funnels.some(f => f.id === matchedSource?.funnelId && (f.isPostSale || f.category === 'Pós-Venda'));
 
           if (isTargetPostSale) {
-            const postSaleFunnelObj = funnels.find(f => f.isPostSale || f.category === 'Pós-Venda' || f.id === matchedSource?.funnelId);
+            const postSaleFunnelObj =
+              funnels.find(f => f.id === matchedSource?.funnelId) ||
+              funnels.find(f => f.isPostSale || f.category === 'Pós-Venda');
             const isEntryActive = Boolean(postSaleFunnelObj?.isEntryStageActive);
             
             if (!isEntryActive) {

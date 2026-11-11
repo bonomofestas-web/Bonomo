@@ -60,6 +60,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
+import { getDefaultPostSaleFunnelId } from '../../utils/funnelUtils';
 import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
@@ -1858,7 +1859,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           lead.funnelId === currentFunnel.id ||
           lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
           (!lead.funnelId && currentFunnel.isPrimary && !currentFunnel.isPostSale && currentFunnel.category !== 'Pós-Venda') ||
-          ((!lead.funnelId || lead.funnelId === 'post_sale_default') && isPostSaleFunnel && (currentFunnel.id === 'post_sale_default' || currentFunnel.id === (postSaleFunnels.find(f => f.isPrimary)?.id || postSaleFunnels.find(f => !f.name?.includes('(Cópia)'))?.id || postSaleFunnels[0]?.id || 'post_sale_default')));
+          ((!lead.funnelId || lead.funnelId === 'post_sale_default') && isPostSaleFunnel && (currentFunnel.id === 'post_sale_default' || currentFunnel.id === getDefaultPostSaleFunnelId(postSaleFunnels)));
         if (!leadFunnelMatches) {
           return false;
         }
