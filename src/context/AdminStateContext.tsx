@@ -4914,6 +4914,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       contractDate: clientData.contractDate || new Date().toISOString().split('T')[0],
       paymentTerms: clientData.paymentTerms || '',
       paymentStatus: clientData.paymentStatus || 'up_to_date',
+      funnelId: clientData.funnelId,
       stage: clientData.stage || 'onboarding',
       assignedSuccessManagerId: clientData.assignedSuccessManagerId || currentUser?.id,
       assignedSuccessManagerName: clientData.assignedSuccessManagerName || currentUser?.name,

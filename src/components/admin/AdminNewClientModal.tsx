@@ -7,12 +7,14 @@ interface AdminNewClientModalProps {
   isOpen: boolean;
   onClose: () => void;
   onClientCreated?: (clientId: string) => void;
+  defaultFunnelId?: string;
 }
 
 export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
   isOpen,
   onClose,
   onClientCreated,
+  defaultFunnelId,
 }) => {
   const { venues, activeVenueId, addClient } = useAdminState();
 
@@ -90,6 +92,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
       contractDate: new Date().toISOString().split('T')[0],
       paymentTerms: paymentTerms.trim(),
       notes: notes.trim(),
+      funnelId: defaultFunnelId,
       stage: 'onboarding',
     });
 

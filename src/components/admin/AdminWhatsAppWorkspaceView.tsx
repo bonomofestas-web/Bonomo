@@ -60,7 +60,7 @@ import { formatPhone } from '../../utils/phoneFormatter';
 import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
-import { getDefaultPostSaleFunnelId } from '../../utils/funnelUtils';
+import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads } from '../../utils/funnelUtils';
 import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
@@ -1722,23 +1722,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const sourceLeads = useMemo(() => {
     const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
     if (isPostSaleFunnel) {
-      const existingClientIds = new Set<string>();
-      (clients || []).forEach(c => {
-        existingClientIds.add(c.id);
-        if (c.commercialLeadId) existingClientIds.add(c.commercialLeadId);
-      });
-      const postSaleLeads = (rawLeads || []).filter(l => {
-        if (existingClientIds.has(l.id)) return false;
-        // Regra estrita: no modo Pós-Venda é proibido misturar leads comerciais (LEAD-)
-        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
-        const isRealClient = Boolean(
-          l.isClient === true ||
-          l.group === 'Pós-Venda' ||
-          (l.code && l.code.startsWith('CLI-')) ||
-          (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
-        );
-        return isRealClient && !isLeadCode;
-      });
+      const postSaleLeads = filterExtraPostSaleLeads(rawLeads || [], clients || []);
       return [...clientsAsLeads, ...postSaleLeads];
     }
     return rawLeads;
@@ -2025,7 +2009,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [sourceLeads, activeFunnel, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
+  }, [sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
 
   const lastInitialLeadIdRef = useRef<string | undefined>(initialLeadId);
 
