@@ -12,6 +12,7 @@ import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadInspector } from './AdminLeadInspector';
+import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import type { Lead, ClientStage, LeadContact } from '../../types/admin';
 
 interface AdminClientDrawerInspectorProps {
@@ -1879,6 +1880,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 </div>
               </div>
             ))}
+
+            <ClientVenueEventsCard
+              client={client || undefined}
+              fallbackVenueId={lead.venueId}
+              fallbackPartyDate={partyDateStr}
+              fallbackGuestCount={(lead as any)?.guestCount}
+              readOnly={readOnly}
+            />
           </>
         )}
 

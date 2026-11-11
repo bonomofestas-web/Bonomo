@@ -714,6 +714,8 @@ export interface VenueAgendaConfig {
   dateOverrides: AgendaDateOverride[];
   closerDistributionMode?: 'manual' | 'round_robin'; // Modo de divisão de Closers
   closerIds?: string[];         // Ordem/pesos de Closers para rodízio de agendamento
+  closerNextIndex?: number;     // Ponteiro atômico do próximo closer da lista ordenada
+  closerAutoNotify?: boolean;   // Disparo automático de notificação / WhatsApp para o closer selecionado
   updatedAt?: string;
 }
 
@@ -734,10 +736,13 @@ export interface ClientDocument {
 export interface ClientUpsellSale {
   id: string;
   clientId: string;
+  venueId?: string;
   title: string;
   category: 'foto_video' | 'decoracao' | 'atracoes' | 'bar_bebidas' | 'estrutura' | 'alimentacao' | 'outro' | string;
   value: number;
   saleDate: string;
+  saleTime?: string;          // HH:mm da venda
+  soldAt?: string;            // ISO timestamp completo da venda
   paymentMethod?: string;
   paymentType?: 'a_vista' | 'parcelado' | 'sinal';
   installmentsCount?: number;
@@ -983,6 +988,30 @@ export type EventType =
   | 'graduation'
   | 'corporate'
   | 'other';
+
+export type VenueEventStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled';
+
+export interface VenueEvent {
+  id: string;
+  masterId?: string;
+  venueId: string;
+  venueName?: string;
+  clientId?: string | null;
+  clientName?: string;
+  title: string;
+  eventType?: string;
+  eventDate: string;          // YYYY-MM-DD
+  startTime?: string;         // HH:mm
+  endTime?: string;           // HH:mm
+  guestCount?: number;
+  status: VenueEventStatus;
+  blocksVenueDay: boolean;    // Trava automaticamente o dia da unidade na agenda comercial/visitas
+  notes?: string;
+  createdById?: string;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface DebutanteAccount {
   id: string;

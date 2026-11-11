@@ -176,3 +176,53 @@ ADD COLUMN IF NOT EXISTS allow_collaborators_create_tags BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS default_whatsapp_source_id UUID DEFAULT NULL,
 ADD COLUMN IF NOT EXISTS priority_whatsapp_per_venue JSONB DEFAULT '{}'::jsonb;
 
+-- 9. COLUNAS DO SPLIT ORDENADO DE CLOSERS NA TABELA VENUE_AGENDA_CONFIGS
+ALTER TABLE IF EXISTS public.venue_agenda_configs
+ADD COLUMN IF NOT EXISTS closer_distribution_mode TEXT DEFAULT 'round_robin',
+ADD COLUMN IF NOT EXISTS closer_ids JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS closer_next_index INT DEFAULT 0,
+ADD COLUMN IF NOT EXISTS closer_auto_notify BOOLEAN DEFAULT TRUE;
+
+-- 10. TABELA DA AGENDA DE EVENTOS DA UNIDADE (TRAVA DE DIA & VÍNCULO COM CLIENTE)
+CREATE TABLE IF NOT EXISTS public.venue_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    master_id UUID REFERENCES public.collaborators(id) ON DELETE CASCADE,
+    venue_id UUID REFERENCES public.venues(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES public.clients(id) ON DELETE SET NULL,
+    client_name TEXT,
+    title TEXT NOT NULL,
+    event_type TEXT DEFAULT '15 Anos',
+    event_date DATE NOT NULL,
+    start_time TEXT DEFAULT '20:00',
+    end_time TEXT DEFAULT '02:00',
+    guest_count INT DEFAULT 150,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    blocks_venue_day BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT,
+    created_by_id UUID,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE IF EXISTS public.venue_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "venue_events_full_access" ON public.venue_events;
+CREATE POLICY "venue_events_full_access" ON public.venue_events FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+ALTER TABLE IF EXISTS public.venue_events REPLICA IDENTITY FULL;
+
+CREATE INDEX IF NOT EXISTS idx_venue_events_master_venue_date ON public.venue_events(master_id, venue_id, event_date);
+CREATE INDEX IF NOT EXISTS idx_venue_events_client ON public.venue_events(client_id) WHERE client_id IS NOT NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'venue_events'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.venue_events;
+    END IF;
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+

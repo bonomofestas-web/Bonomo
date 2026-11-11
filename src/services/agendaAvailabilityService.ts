@@ -3,7 +3,8 @@ import type {
   VenueAgendaConfig, 
   AgendaRecurringRule, 
   AgendaDaySchedule,
-  CommercialCommitmentType 
+  CommercialCommitmentType,
+  VenueEvent
 } from '../types/admin';
 import type { Appointment } from '../types';
 import { isUuid, generateUuid } from '../utils/uuid';
@@ -143,6 +144,17 @@ export const agendaAvailabilityService = {
         const rawBlocks = (row.visits_rule as any)?.blockRules || 
           (Array.isArray(blackout) ? blackout.filter((item: any) => item && item.startDate && item.endDate) : []);
 
+        const rawCloserMode = row.closer_distribution_mode || (row.visits_rule as any)?.closerDistributionMode || 'round_robin';
+        const rawCloserIds = Array.isArray(row.closer_ids)
+          ? row.closer_ids
+          : (Array.isArray((row.visits_rule as any)?.closerIds) ? (row.visits_rule as any).closerIds : []);
+        const rawCloserNextIdx = typeof row.closer_next_index === 'number'
+          ? row.closer_next_index
+          : (typeof (row.visits_rule as any)?.closerNextIndex === 'number' ? (row.visits_rule as any).closerNextIndex : 0);
+        const rawCloserAutoNotify = row.closer_auto_notify !== undefined
+          ? Boolean(row.closer_auto_notify)
+          : ((row.visits_rule as any)?.closerAutoNotify !== undefined ? Boolean((row.visits_rule as any).closerAutoNotify) : true);
+
         return {
           id: row.id,
           venueId: row.venue_id,
@@ -156,6 +168,10 @@ export const agendaAvailabilityService = {
           },
           blockRules: rawBlocks || [],
           dateOverrides,
+          closerDistributionMode: rawCloserMode,
+          closerIds: rawCloserIds,
+          closerNextIndex: rawCloserNextIdx,
+          closerAutoNotify: rawCloserAutoNotify,
           updatedAt: row.updated_at,
         };
       });
@@ -180,10 +196,14 @@ export const agendaAvailabilityService = {
 
       if (!isSupabaseConfigured) return true;
 
-      // Preserva blockRules embutido dentro de visits_rule e blackout_dates para compatibilidade total
+      // Preserva blockRules e configurações de split de closers embutidos em visits_rule JSONB para retrocompatibilidade
       const enrichedVisitsRule = {
         ...config.visitsRule,
         blockRules: config.blockRules || [],
+        closerDistributionMode: config.closerDistributionMode || 'round_robin',
+        closerIds: config.closerIds || [],
+        closerNextIndex: typeof config.closerNextIndex === 'number' ? config.closerNextIndex : 0,
+        closerAutoNotify: config.closerAutoNotify !== false,
       };
 
       const payload: any = {
@@ -194,6 +214,10 @@ export const agendaAvailabilityService = {
           ...(config.dateOverrides || []),
           ...(config.blockRules || []).map(b => ({ ...b, isBlockRule: true }))
         ],
+        closer_distribution_mode: config.closerDistributionMode || 'round_robin',
+        closer_ids: config.closerIds || [],
+        closer_next_index: typeof config.closerNextIndex === 'number' ? config.closerNextIndex : 0,
+        closer_auto_notify: config.closerAutoNotify !== false,
         updated_at: new Date().toISOString(),
       };
 
@@ -201,10 +225,24 @@ export const agendaAvailabilityService = {
         payload.id = config.id;
       }
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('venue_agenda_configs')
         .upsert(payload, { onConflict: 'venue_id' })
         .select('id');
+
+      if (error && (error.message?.includes('column') || error.code === 'PGRST204' || error.code === '42703')) {
+        const strippedPayload = { ...payload };
+        delete strippedPayload.closer_distribution_mode;
+        delete strippedPayload.closer_ids;
+        delete strippedPayload.closer_next_index;
+        delete strippedPayload.closer_auto_notify;
+        const retry = await supabase
+          .from('venue_agenda_configs')
+          .upsert(strippedPayload, { onConflict: 'venue_id' })
+          .select('id');
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         console.warn('⚠️ Falha ao salvar venue_agenda_configs no Supabase (persistido localmente):', error.message);
@@ -270,7 +308,8 @@ export const agendaAvailabilityService = {
   hasUpcomingAvailableSlots(
     config: VenueAgendaConfig | null | undefined,
     type: CommercialCommitmentType,
-    appointments: Appointment[] = []
+    appointments: Appointment[] = [],
+    venueEvents: VenueEvent[] = []
   ): { available: boolean; reason?: string } {
     if (!config || !this.isCommitmentTypeConfigured(config, type)) {
       return {
@@ -293,7 +332,7 @@ export const agendaAvailabilityService = {
       nextDate.setDate(today.getDate() + i);
       const dateStr = nextDate.toISOString().split('T')[0];
 
-      const avail = this.getAvailableSlots(dateStr, type, config.venueId, appointments, config);
+      const avail = this.getAvailableSlots(dateStr, type, config.venueId, appointments, config, venueEvents);
       if (avail.isDayAvailable && avail.slots.some(s => s.isAvailable)) {
         foundAvailableSlot = true;
         break;
@@ -312,6 +351,7 @@ export const agendaAvailabilityService = {
 
   /**
    * Calcula a disponibilidade de horários com PRECEDÊNCIA:
+   * 0º: VenueEvent (Evento da Unidade com trava do dia ativa)
    * 1º: AgendaDateOverride (bloqueio ou ajuste pontual do dia)
    * 2º: AgendaBlockRule (regra por período de datas que suspende a regra semanal)
    * 3º: AgendaRecurringRule (regra base semanal por dia da semana)
@@ -321,25 +361,57 @@ export const agendaAvailabilityService = {
     arg2: any,
     arg3?: any,
     arg4?: any,
-    arg5?: any
+    arg5?: any,
+    arg6?: any
   ): AvailabilityResult {
     let config: VenueAgendaConfig | null = null;
     let dateStr: string = '';
     let type: CommercialCommitmentType = 'visit';
     let existingAppointments: Appointment[] = [];
+    let targetVenueId: string = '';
+    let venueEvents: VenueEvent[] = [];
 
-    // Checa assinatura: se arg1 for string ('2026-09-18'), é (dateStr, type, venueId, appointments, config)
+    // Checa assinatura: se arg1 for string ('2026-09-18'), é (dateStr, type, venueId, appointments, config, venueEvents)
     if (typeof arg1 === 'string') {
       dateStr = arg1;
       type = (arg2 as CommercialCommitmentType) || 'visit';
+      targetVenueId = typeof arg3 === 'string' ? arg3 : '';
       existingAppointments = Array.isArray(arg4) ? arg4 : [];
       config = (arg5 as VenueAgendaConfig) || null;
+      venueEvents = Array.isArray(arg6) ? arg6 : [];
     } else {
-      // Assinatura: (config, dateStr, type, existingAppointments)
+      // Assinatura: (config, dateStr, type, existingAppointments, venueEvents)
       config = (arg1 as VenueAgendaConfig) || null;
+      targetVenueId = config?.venueId || '';
       dateStr = String(arg2 || '');
       type = (arg3 as CommercialCommitmentType) || 'visit';
       existingAppointments = Array.isArray(arg4) ? arg4 : [];
+      venueEvents = Array.isArray(arg5) ? arg5 : [];
+    }
+
+    if (!targetVenueId && config?.venueId) {
+      targetVenueId = config.venueId;
+    }
+
+    // 0º Precedência: Trava de Dia pela Agenda de Eventos da Unidade (administrada pelo Pós-Venda)
+    if (dateStr && venueEvents.length > 0) {
+      const blockingEvent = venueEvents.find(ev =>
+        ev.status !== 'cancelled' &&
+        ev.blocksVenueDay !== false &&
+        ev.eventDate === dateStr &&
+        (!targetVenueId || targetVenueId === 'all' || ev.venueId === targetVenueId)
+      );
+      if (blockingEvent) {
+        const msg = `Dia travado por Evento na Unidade (${blockingEvent.title})`;
+        return {
+          isBlocked: true,
+          isDayAvailable: false,
+          blockReason: msg,
+          reason: msg,
+          appliedMode: 'override',
+          slots: [],
+        };
+      }
     }
 
     // Se o compromisso (visita ou degustação) não estiver configurado para esta unidade, a opção de agendamento fica indisponível

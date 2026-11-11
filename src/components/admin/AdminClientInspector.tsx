@@ -12,6 +12,8 @@ import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
 import { AdminTaskDetailModal } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
+import { DocumentFileUploadZone } from './DocumentFileUploadZone';
+import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import { isTaskOverdue } from '../../utils/taskColors';
 import type { Client, ClientStage, ClientDocument, LeadContact, AdminTask, TaskStatus, ClientUpsellSale } from '../../types/admin';
 
@@ -111,6 +113,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   onOpenCommercialLead,
 }) => {
   const { 
+    currentUser,
     clients, 
     leads,
     debutantes, 
@@ -165,11 +168,12 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const [upsellCategory, setUpsellCategory] = useState<string>('foto_video');
   const [upsellValue, setUpsellValue] = useState<string>('');
   const [upsellDate, setUpsellDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [upsellTime, setUpsellTime] = useState<string>(() => new Date().toTimeString().slice(0, 5));
   const [upsellPaymentMethod, setUpsellPaymentMethod] = useState<string>('PIX');
   const [upsellPaymentStatus, setUpsellPaymentStatus] = useState<'pago' | 'pendente' | 'parcelado'>('pago');
   const [upsellPaymentType, setUpsellPaymentType] = useState<'a_vista' | 'parcelado' | 'sinal'>('a_vista');
   const [upsellInstallmentsCount, setUpsellInstallmentsCount] = useState<number>(1);
-  const [upsellResponsibleId, setUpsellResponsibleId] = useState<string>('');
+  const [upsellResponsibleId, setUpsellResponsibleId] = useState<string>(() => currentUser?.id || '');
   const [upsellNotes, setUpsellNotes] = useState<string>('');
   const [upsellToDelete, setUpsellToDelete] = useState<ClientUpsellSale | null>(null);
   
@@ -184,6 +188,10 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const [docTitle, setDocTitle] = useState('');
   const [docType, setDocType] = useState<ClientDocument['type']>('contract');
   const [docFileUrl, setDocFileUrl] = useState('');
+  const [docFileSize, setDocFileSize] = useState('');
+  const [docSizeBytes, setDocSizeBytes] = useState<number | undefined>(undefined);
+  const [docFileName, setDocFileName] = useState('');
+  const [isDocUploading, setIsDocUploading] = useState(false);
 
   // Subcontact Form state
   const [isAddingSubContact, setIsAddingSubContact] = useState(false);
@@ -418,15 +426,25 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
 
   const handleAddDocument = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docTitle.trim()) return;
+    if (isDocUploading) return;
+    if (!docTitle.trim() || !docFileUrl.trim() || docFileUrl === '#') {
+      alert('Selecione e faça o upload de um arquivo antes de salvar.');
+      return;
+    }
     addClientDocument(client.id, {
       title: docTitle.trim(),
+      name: docFileName || docTitle.trim(),
       type: docType,
-      fileUrl: docFileUrl.trim() || '#',
-      fileSize: '1.5 MB',
+      fileUrl: docFileUrl.trim(),
+      url: docFileUrl.trim(),
+      fileSize: docFileSize || 'Arquivo Anexado',
+      sizeBytes: docSizeBytes,
     });
     setDocTitle('');
     setDocFileUrl('');
+    setDocFileSize('');
+    setDocSizeBytes(undefined);
+    setDocFileName('');
     setIsDocModalOpen(false);
   };
 
@@ -482,19 +500,24 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
       return;
     }
 
-    const selectedCollab = collaborators.find(c => c.id === upsellResponsibleId);
+    const selectedCollab = collaborators.find(c => c.id === upsellResponsibleId) || currentUser;
+    const finalDate = upsellDate || new Date().toISOString().split('T')[0];
+    const finalTime = upsellTime || new Date().toTimeString().slice(0, 5);
 
     addClientUpsellSale(client.id, {
       title: upsellTitle.trim(),
       category: upsellCategory,
       value: numericVal,
-      saleDate: upsellDate || new Date().toISOString().split('T')[0],
+      venueId: client.venueId,
+      saleDate: finalDate,
+      saleTime: finalTime,
+      soldAt: `${finalDate}T${finalTime}:00`,
       paymentMethod: upsellPaymentMethod,
       paymentStatus: upsellPaymentStatus,
       paymentType: upsellPaymentType,
       installmentsCount: upsellPaymentType === 'parcelado' ? (Number(upsellInstallmentsCount) || 1) : undefined,
-      responsibleId: upsellResponsibleId || undefined,
-      responsibleName: selectedCollab?.name || undefined,
+      responsibleId: selectedCollab?.id || undefined,
+      responsibleName: selectedCollab?.name || 'Equipe Pós-Venda',
       notes: upsellNotes.trim() || undefined,
     });
 
@@ -502,6 +525,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
     setUpsellTitle('');
     setUpsellValue('');
     setUpsellNotes('');
+    setUpsellTime(new Date().toTimeString().slice(0, 5));
     setUpsellCategory('foto_video');
   };
 
@@ -2049,6 +2073,14 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               </div>
             </>
           )}
+
+          {/* Seção 6: Agenda de Eventos da Unidade */}
+          <ClientVenueEventsCard
+            client={client}
+            fallbackVenueId={client.venueId}
+            fallbackPartyDate={client.eventDate || client.partyDate}
+            fallbackGuestCount={client.guestCount}
+          />
         </div>
 
         {/* ── RIGHT COLUMN: Timeline, WhatsApp, Documentos ── */}
@@ -3148,6 +3180,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                                   {sale.saleDate && (
                                     <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)' }}>
                                       • {new Date(sale.saleDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                      {sale.saleTime ? ` às ${sale.saleTime}` : sale.createdAt ? ` às ${new Date(sale.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                                     </span>
                                   )}
                                 </div>
@@ -3272,11 +3305,24 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <FileText size={16} color="var(--adm-accent)" />
-                        <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>{doc.fileSize || '1 MB'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '0.64rem', color: 'var(--adm-text-muted)' }}>{doc.fileSize || 'Documento'}</span>
+                          {(doc.fileUrl || doc.url) && (doc.fileUrl || doc.url) !== '#' && (
+                            <a
+                              href={doc.fileUrl || doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Abrir / Baixar arquivo"
+                              style={{ color: 'var(--adm-accent)', display: 'inline-flex', alignItems: 'center' }}
+                            >
+                              <ExternalLink size={13} />
+                            </a>
+                          )}
+                        </div>
                       </div>
                       <strong style={{ fontSize: '0.78rem', color: 'var(--adm-text-title)' }}>{doc.title}</strong>
                       <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>
-                        {doc.type === 'contract' ? 'Contrato' : doc.type === 'receipt' ? 'Comprovante' : 'Anexo'} • {new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}
+                        {doc.type === 'contract' ? 'Contrato' : doc.type === 'receipt' ? 'Comprovante' : doc.type === 'amendment' ? 'Aditivo' : doc.type === 'id_document' ? 'Doc. Pessoal' : 'Anexo'} • {new Date(doc.uploadedAt).toLocaleDateString('pt-BR')}
                       </span>
                     </div>
                   ))}
@@ -3342,26 +3388,34 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 style={cardSelectStyle}
               >
                 <option value="contract">Contrato</option>
+                <option value="amendment">Aditivo Contratual</option>
                 <option value="receipt">Comprovante de Pagamento</option>
-                <option value="layout">Planta / Layout da Festa</option>
-                <option value="other">Outro</option>
+                <option value="id_document">Documento Pessoal</option>
+                <option value="other">Outro / Layout / Anexo</option>
               </select>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>Link / URL do Arquivo</label>
-              <input
-                type="text"
-                value={docFileUrl}
-                onChange={(e) => setDocFileUrl(e.target.value)}
-                placeholder="https://..."
-                style={{
-                  background: 'var(--adm-bg-input)',
-                  border: '1px solid var(--adm-border)',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  color: 'var(--adm-text-title)',
-                  fontSize: '0.82rem',
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>Upload do Arquivo *</label>
+              <DocumentFileUploadZone
+                fileUrl={docFileUrl}
+                fileSize={docFileSize}
+                fileName={docFileName}
+                onUploadingChange={setIsDocUploading}
+                onUploaded={({ url, fileName, fileSize, sizeBytes }) => {
+                  setDocFileUrl(url);
+                  setDocFileName(fileName);
+                  setDocFileSize(fileSize);
+                  setDocSizeBytes(sizeBytes);
+                  if (!docTitle.trim()) {
+                    setDocTitle(fileName.replace(/\.[^/.]+$/, ''));
+                  }
+                }}
+                onClear={() => {
+                  setDocFileUrl('');
+                  setDocFileName('');
+                  setDocFileSize('');
+                  setDocSizeBytes(undefined);
                 }}
               />
             </div>
@@ -3383,6 +3437,7 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               </button>
               <button
                 type="submit"
+                disabled={isDocUploading || !docFileUrl || !docTitle.trim()}
                 style={{
                   background: 'var(--adm-accent, #B8860B)',
                   border: 'none',
@@ -3391,10 +3446,11 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   padding: '8px 18px',
                   fontSize: '0.80rem',
                   fontWeight: 700,
-                  cursor: 'pointer',
+                  cursor: (isDocUploading || !docFileUrl || !docTitle.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (isDocUploading || !docFileUrl || !docTitle.trim()) ? 0.55 : 1,
                 }}
               >
-                Salvar Anexo
+                {isDocUploading ? 'Enviando...' : 'Salvar Anexo'}
               </button>
             </div>
           </form>
@@ -3610,8 +3666,8 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
               </div>
             </div>
 
-            {/* Data, Tipo de Pagamento & Parcelas */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {/* Data, Horário & Tipo de Pagamento */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.75fr 1.2fr', gap: '10px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
                   Data da Venda *
@@ -3620,6 +3676,26 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                   type="date"
                   value={upsellDate}
                   onChange={(e) => setUpsellDate(e.target.value)}
+                  required
+                  style={{
+                    background: 'var(--adm-bg-input)',
+                    border: '1px solid var(--adm-border)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    color: 'var(--adm-text-title)',
+                    fontSize: '0.80rem',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>
+                  Horário *
+                </label>
+                <input
+                  type="time"
+                  value={upsellTime}
+                  onChange={(e) => setUpsellTime(e.target.value)}
                   required
                   style={{
                     background: 'var(--adm-bg-input)',

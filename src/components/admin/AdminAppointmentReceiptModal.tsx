@@ -18,12 +18,15 @@ export interface AppointmentReceiptData {
   leadName: string;
   leadPhone?: string;
   leadEmail?: string;
+  venueId?: string;
   venueName: string;
   venueAddress?: string;
   venueLogoUrl?: string;
   dateStr: string; // YYYY-MM-DD
   timeStr: string; // HH:mm
   pax: number;
+  closerId?: string;
+  responsibleCollaboratorId?: string;
   closerName: string;
   closerRoleTitle?: string;
   closerPhotoUrl?: string;
@@ -229,43 +232,41 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     };
   }, [eval1, eval2]);
 
-  // Helper robusto para converter URL remota para Data URL base64 contornando bloqueios CORS
+  // Helper robusto para converter URL remota para Data URL base64 contornando cache sem CORS
   const convertRemoteUrlToBase64 = async (url: string): Promise<string> => {
     if (!url) return '';
     if (url.startsWith('data:')) return url;
 
-    // 1. Tenta fetch com mode: 'cors' direto (Cloudflare R2 agora com CORS habilitado)
-    try {
-      const res = await fetch(url, { mode: 'cors', cache: 'force-cache' });
-      if (res.ok) {
-        const blob = await res.blob();
-        return await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve((reader.result as string) || url);
-          reader.onerror = () => resolve(url);
-          reader.readAsDataURL(blob);
-        });
-      }
-    } catch {
-      // Fallback
-    }
+    const blobToDataUrl = (blob: Blob) =>
+      new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
 
-    // 2. Se falhar, tenta via proxy de imagens local do Vite para contornar qualquer CORS de terceiros
+    // 1. Proxy server-side (/api/proxy-image — funciona em Vite Dev e Vercel Prod) para contornar CORS de CDN/cache
     if (url.startsWith('http://') || url.startsWith('https://')) {
       try {
         const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
-        const res = await fetch(proxyUrl);
+        const res = await fetch(proxyUrl, { cache: 'no-store' });
         if (res.ok) {
           const blob = await res.blob();
-          return await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string) || url);
-            reader.onerror = () => resolve(url);
-            reader.readAsDataURL(blob);
-          });
+          const dataUrl = await blobToDataUrl(blob);
+          if (dataUrl.startsWith('data:image')) return dataUrl;
         }
       } catch {}
     }
+
+    // 2. Fallback: fetch CORS direto ignorando cache não-CORS prévio
+    try {
+      const res = await fetch(url, { mode: 'cors', cache: 'reload' });
+      if (res.ok) {
+        const blob = await res.blob();
+        const dataUrl = await blobToDataUrl(blob);
+        if (dataUrl.startsWith('data:image')) return dataUrl;
+      }
+    } catch {}
 
     // 3. Fallback via elemento Image nativo com canvas offscreen
     return new Promise<string>((resolve) => {
@@ -294,17 +295,23 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
 
   useEffect(() => {
     let isMounted = true;
+    setCloserPhotoFailed(false);
+    setVenueLogoFailed(false);
 
     if (effectiveCloserPhoto) {
       convertRemoteUrlToBase64(effectiveCloserPhoto).then(data => {
         if (isMounted && data) setCloserPhotoDataUrl(data);
       });
+    } else {
+      setCloserPhotoDataUrl(null);
     }
 
     if (effectiveVenueLogo) {
       convertRemoteUrlToBase64(effectiveVenueLogo).then(data => {
         if (isMounted && data) setVenueLogoDataUrl(data);
       });
+    } else {
+      setVenueLogoDataUrl(null);
     }
 
     return () => {
@@ -339,16 +346,39 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     return match?.id || '';
   }, [receipt.leadId, receipt.leadPhone, receipt.leadName, leads]);
 
-  // Assegura que todas as imagens estejam em Base64 antes de invocar html2canvas
-  const ensureImagesConverted = async () => {
+  // Assegura que todas as imagens estejam em Base64 e decodificadas antes de capturar via html2canvas
+  const captureReceiptCanvas = async () => {
+    if (!printableCardRef.current) throw new Error('Cartão do comprovante não encontrado');
+
     const [resolvedVenueLogo, resolvedCloserPhoto] = await Promise.all([
       effectiveVenueLogo ? convertRemoteUrlToBase64(effectiveVenueLogo) : Promise.resolve(null),
       effectiveCloserPhoto ? convertRemoteUrlToBase64(effectiveCloserPhoto) : Promise.resolve(null),
     ]);
     if (resolvedVenueLogo) setVenueLogoDataUrl(resolvedVenueLogo);
     if (resolvedCloserPhoto) setCloserPhotoDataUrl(resolvedCloserPhoto);
-    // Aguarda ciclo de renderização
-    await new Promise(r => setTimeout(r, 60));
+
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise(r => setTimeout(r, 80));
+
+    const imgs = Array.from(printableCardRef.current.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map(async (img) => {
+        try {
+          if (typeof (img as any).decode === 'function') {
+            await (img as any).decode();
+          }
+        } catch {}
+      })
+    );
+
+    return html2canvas(printableCardRef.current, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#FFFFFF',
+      logging: false,
+      imageTimeout: 15000,
+    });
   };
 
   // Função para baixar a imagem PNG idêntica ao que está na tela via html2canvas (Resolução Retina 2x)
@@ -356,17 +386,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     if (!printableCardRef.current || isDownloading) return;
     setIsDownloading(true);
     try {
-      await ensureImagesConverted();
-
-      const canvas = await html2canvas(printableCardRef.current, {
-        scale: 2, // 2x para nitidez cristalina
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#FFFFFF',
-        logging: false,
-        imageTimeout: 15000,
-      });
-
+      const canvas = await captureReceiptCanvas();
       const imageURL = canvas.toDataURL('image/png');
       const cleanCode = receipt.code.replace(/[^a-zA-Z0-9_-]/g, '');
       const link = document.createElement('a');
@@ -386,18 +406,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
     if (!printableCardRef.current || isSharing) return;
     setIsSharing(true);
     try {
-      await ensureImagesConverted();
-
-      // 1. Gera a imagem PNG do comprovante idêntica ao que está na tela
-      const canvas = await html2canvas(printableCardRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#FFFFFF',
-        logging: false,
-        imageTimeout: 15000,
-      });
-
+      const canvas = await captureReceiptCanvas();
       const dataUrl = canvas.toDataURL('image/png');
       const cleanCode = receipt.code.replace(/[^a-zA-Z0-9_-]/g, '');
       const fileName = `comprovante_${cleanCode || 'agendamento'}.png`;
@@ -581,6 +590,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                       <img 
                         src={venueLogoDataUrl || effectiveVenueLogo} 
                         alt={receipt.venueName || 'Unidade'} 
+                        crossOrigin={(venueLogoDataUrl || effectiveVenueLogo || '').startsWith('data:') ? undefined : 'anonymous'}
                         onError={() => setVenueLogoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} 
                       />
@@ -707,6 +717,7 @@ export const AdminAppointmentReceiptModal: React.FC<AdminAppointmentReceiptModal
                       <img 
                         src={closerPhotoDataUrl || effectiveCloserPhoto} 
                         alt={receipt.closerName || 'Anfitrião'} 
+                        crossOrigin={(closerPhotoDataUrl || effectiveCloserPhoto || '').startsWith('data:') ? undefined : 'anonymous'}
                         onError={() => setCloserPhotoFailed(true)}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
                       />

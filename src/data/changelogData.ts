@@ -15,6 +15,47 @@ export interface ChangelogItem {
 
 export const CHANGELOG_DATA: ChangelogItem[] = [
   {
+    id: 'deploy-2026-11-11-venue-events-split-upsell-r2-docs',
+    version: 'v2.8.0',
+    date: '11 de Novembro de 2026',
+    title: 'Agenda de Eventos com Trava de Unidade, Split Ordenado com Envio Automático, Métricas de Upsell e Upload Direto de Documentos',
+    type: 'major',
+    badge: 'Grande Atualização',
+    summary: 'Grande atualização estrutural para operação comercial e pós-venda: lançamento da Agenda de Eventos da Unidade com bloqueio automático de visitas, split ordenado de agendamentos com disparo via WhatsApp para closers, métricas de vendas internas por horário e vendedor, upload direto de documentos no R2, foto do closer no comprovante de visita e isolamento completo de funis de pós-venda.',
+    features: [
+      {
+        name: 'Agenda de Eventos da Unidade & Trava Automática de Datas',
+        description: 'Novo módulo administrativo gerenciado pelo Pós-Venda com visualização em modo leitura para o Comercial. Permite criar eventos vinculados ou não a clientes e travar o dia da unidade, bloqueando automaticamente novos agendamentos comerciais naquela data e exibindo os eventos vinculados dentro da ficha do cliente.',
+        status: 'new',
+      },
+      {
+        name: 'Split Ordenado de Agendamentos & Notificação Automática no WhatsApp',
+        description: 'Motor de rodízio de closers remodelado no padrão exato do split de funis: lista ordenada com reordenação, peso por repetição, indicador de próximo da fila e persistência do ponteiro no Supabase, além de notificação automática via WhatsApp para o colaborador atribuído.',
+        status: 'new',
+      },
+      {
+        name: 'Upload Direto de Documentos no Pós-Venda (Cloudflare R2)',
+        description: 'Substituição do cadastro por link manual por upload direto de PDFs e imagens no modal de documentos do cliente (no inspetor completo e no modo WhatsApp), armazenados em segurança no Cloudflare R2.',
+        status: 'replaced',
+      },
+      {
+        name: 'Métricas de Vendas Internas (Upsells) por Horário e Vendedor',
+        description: 'Captura de horário e colaborador responsável em cada venda interna registrada no Pós-Venda, alimentando painéis de ranking por vendedor e distribuição por horário no Dashboard.',
+        status: 'new',
+      },
+      {
+        name: 'Isolamento de Funis de Pós-Venda no Modo Kanban e WhatsApp',
+        description: 'Correção definitiva na duplicação e criação de funis de pós-venda para garantir separação estrita dos clientes por funil e visibilidade consistente entre a visão Kanban e o workspace de WhatsApp.',
+        status: 'improved',
+      },
+      {
+        name: 'Foto do Closer no Comprovante de Visita / Degustação',
+        description: 'Inclusão da rota de proxy de imagem em produção e pré-conversão segura para Base64 antes da exportação, garantindo que a foto de perfil do closer sempre acompanhe o comprovante compartilhado.',
+        status: 'improved',
+      },
+    ],
+  },
+  {
     id: 'deploy-2026-11-06-deal-closed-persistence-subcontacts-fluid',
     version: 'v2.7.1',
     date: '06 de Novembro de 2026',

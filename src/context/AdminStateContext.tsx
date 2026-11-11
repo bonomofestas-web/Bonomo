@@ -35,7 +35,8 @@ import type {
   DeletedLeadRecord,
   LeadContact,
   SystemSlaConfig,
-  QuickMessage
+  QuickMessage,
+  VenueEvent
 } from '../types/admin';
 import type { Source } from '../types/sources';
 import type { 
@@ -57,6 +58,7 @@ import { sourceService } from '../services/sourceService';
 import { debutanteService, taskService } from '../services/debutanteService';
 import { appointmentService } from '../services/appointmentService';
 import { agendaAvailabilityService } from '../services/agendaAvailabilityService';
+import { venueEventService, STORAGE_KEY_VENUE_EVENTS } from '../services/venueEventService';
 import { catalogService } from '../services/catalogService';
 import { collaboratorService, featureFlagService } from '../services/collaboratorService';
 import { journeyTemplateService } from '../services/journeyTemplateService';
@@ -545,6 +547,8 @@ export interface AdminContextType {
   // Motor de Disponibilidade de Agenda & Compromissos Comerciais (Visitas e Degustações)
   venueAgendaConfigs: VenueAgendaConfig[];
   updateVenueAgendaConfig: (config: VenueAgendaConfig) => Promise<boolean>;
+  getNextCloserRoundRobinPreview: (venueId: string) => Collaborator | null;
+  consumeCloserRoundRobinSlot: (venueId: string) => Promise<Collaborator | null>;
   scheduleCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', commitmentData: {
     date: string;
     time: string;
@@ -557,6 +561,12 @@ export interface AdminContextType {
   }) => Promise<boolean>;
   completeCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', feedback?: string) => Promise<boolean>;
   cancelCommercialCommitment: (leadId: string, type: 'visit' | 'tasting', reason?: string, statusOverride?: 'cancelled' | 'no_show') => Promise<boolean>;
+
+  // Agenda de Eventos da Unidade (Trava de Data Compartilhada)
+  venueEvents: VenueEvent[];
+  addVenueEvent: (eventData: Omit<VenueEvent, 'id' | 'masterId' | 'createdAt' | 'updatedAt'>) => Promise<VenueEvent | null>;
+  updateVenueEvent: (eventId: string, updates: Partial<VenueEvent>) => Promise<boolean>;
+  deleteVenueEvent: (eventId: string) => Promise<boolean>;
 
 
   // General & Personal Tasks (Home / CRM)
@@ -835,6 +845,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_APPOINTMENTS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [venueEvents, setVenueEvents] = useState<VenueEvent[]>(() => {
+    const saved = safeLocalStorageGet(STORAGE_KEY_VENUE_EVENTS);
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -1230,6 +1245,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           agendaAvailabilityService.getAllConfigs(), // 12
           appointmentService.getAll(),       // 13
           quickMessageService.getAll(),      // 14
+          venueEventService.getAll(),        // 15
         ]);
 
         const dbVenues = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -1247,8 +1263,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const dbAgendaConfigs = results[12].status === 'fulfilled' ? results[12].value : [];
         const dbAppointments = results[13].status === 'fulfilled' ? results[13].value : [];
         const dbQuickMessages = results[14]?.status === 'fulfilled' ? results[14].value : [];
+        const dbVenueEvents = results[15]?.status === 'fulfilled' ? results[15].value : [];
 
-        const serviceNames = ['venues', 'funnels', 'leads', 'debutantes', 'tasks', 'collaborators', 'benefits', 'vip', 'templates', 'sources', 'mql', 'clients', 'agendaConfigs', 'appointments', 'quickMessages'];
+        const serviceNames = ['venues', 'funnels', 'leads', 'debutantes', 'tasks', 'collaborators', 'benefits', 'vip', 'templates', 'sources', 'mql', 'clients', 'agendaConfigs', 'appointments', 'quickMessages', 'venueEvents'];
         results.forEach((res, idx) => {
           if (res.status === 'rejected') {
             console.warn(`[Supabase Sync] Falha ao carregar ${serviceNames[idx]}:`, res.reason);
@@ -1426,6 +1443,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (Array.isArray(dbAppointments)) {
             setAppointments(dbAppointments);
             safeLocalStorageSet(STORAGE_KEY_APPOINTMENTS, JSON.stringify(dbAppointments));
+          }
+
+          if (Array.isArray(dbVenueEvents)) {
+            setVenueEvents(dbVenueEvents);
+            safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(dbVenueEvents));
           }
 
           if (Array.isArray(dbQuickMessages) && dbQuickMessages.length > 0) {
@@ -1764,6 +1786,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (isMounted) {
             setVenueAgendaConfigs(updatedConfigs);
             safeLocalStorageSet(STORAGE_KEY_AGENDA_CONFIGS, JSON.stringify(updatedConfigs));
+          }
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'venue_events' }, async () => {
+        // Eventos da unidade (travas de dia compartilhadas entre Pós-Venda e Comercial)
+        triggerDebouncedSync(async () => {
+          const updatedEvents = await venueEventService.getAll();
+          if (isMounted) {
+            setVenueEvents(updatedEvents);
+            safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(updatedEvents));
           }
         });
       })
@@ -2946,6 +2978,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return (a as any).masterId === scopedMasterId;
     });
   }, [appointments, scopedVenues, scopedMasterId, leads, activeVenueId, currentUser]);
+
+  // Agenda de Eventos da Unidade (Vazamento zero: isolamento estrito por master_id e unidades vinculadas)
+  const scopedVenueEvents = useMemo(() => {
+    if (!currentUser || !scopedMasterId) return [];
+    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    return venueEvents.filter(ev => {
+      if (ev.masterId && ev.masterId !== scopedMasterId) return false;
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
+        if (!masterVenueIds.has(activeVenueId)) return false;
+        return ev.venueId === activeVenueId;
+      }
+      if (ev.venueId) return masterVenueIds.has(ev.venueId);
+      return ev.masterId === scopedMasterId;
+    });
+  }, [venueEvents, scopedVenues, scopedMasterId, activeVenueId, currentUser]);
 
   // ── Developer Exclusive Methods ─────────────────────────────────────────────
   const addMasterAccount = (name: string, email: string): string => {
@@ -4342,7 +4389,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     setFunnels(prev => {
-      const updated = [clonedFunnel, ...prev];
+      const updated = [...prev, clonedFunnel];
       safeLocalStorageSet(STORAGE_KEY_FUNNELS, JSON.stringify(updated));
       return updated;
     });
@@ -5110,11 +5157,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setClients(prev => {
       const updated = prev.map(c => {
         if (c.id === clientId) {
+          const now = new Date();
+          const resolvedDate = sale.saleDate || now.toISOString().split('T')[0];
+          const resolvedTime = sale.saleTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          const resolvedSoldAt = sale.soldAt || `${resolvedDate}T${resolvedTime}:00`;
+          const resolvedSellerId = sale.responsibleId || currentUser?.id;
+          const resolvedSellerName = sale.responsibleName || currentUser?.name || 'Equipe de Sucesso';
+
           const newUpsell: import('../types/admin').ClientUpsellSale = {
             ...sale,
             id: generateUuid(),
             clientId,
-            createdAt: new Date().toISOString(),
+            venueId: sale.venueId || c.venueId,
+            saleDate: resolvedDate,
+            saleTime: resolvedTime,
+            soldAt: resolvedSoldAt,
+            responsibleId: resolvedSellerId,
+            responsibleName: resolvedSellerName,
+            createdAt: now.toISOString(),
           };
           const baseContract = c.baseContractValue !== undefined ? c.baseContractValue : (c.dealValue || 0);
           const currentUpsells = c.upsellSales || [];
@@ -5126,9 +5186,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const newActivity: ClientActivity = {
             id: generateUuid(),
             type: 'upsell_added',
-            description: `Venda adicional (Upsell) registrada: "${sale.title}" no valor de ${formattedVal}.`,
-            createdAt: new Date().toISOString(),
-            createdBy: currentUser?.name || 'Equipe de Sucesso',
+            description: `Venda adicional (Upsell) registrada às ${resolvedTime} por ${resolvedSellerName}: "${sale.title}" no valor de ${formattedVal}.`,
+            createdAt: now.toISOString(),
+            createdBy: resolvedSellerName,
           };
 
           const mod: Client = {
@@ -9348,6 +9408,179 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  // Resolve a fila ordenada de closers elegíveis do split da unidade
+  const resolveCloserSplitQueue = (venueId: string): { config?: VenueAgendaConfig; eligibleQueue: Collaborator[] } => {
+    const config = venueAgendaConfigs.find(c => c.venueId === venueId);
+    if (!config || config.closerDistributionMode !== 'round_robin') {
+      return { config, eligibleQueue: [] };
+    }
+    const configuredIds = config.closerIds || [];
+    if (configuredIds.length === 0) return { config, eligibleQueue: [] };
+
+    const eligibleQueue = configuredIds
+      .map(id => scopedCollaborators.find(c => c.id === id && c.active !== false))
+      .filter((c): c is Collaborator => Boolean(c));
+
+    return { config, eligibleQueue };
+  };
+
+  // Prévia sem alterar o ponteiro (exibição do próximo closer da lista ordenada)
+  const getNextCloserRoundRobinPreview = (venueId: string): Collaborator | null => {
+    const { config, eligibleQueue } = resolveCloserSplitQueue(venueId);
+    if (!config || eligibleQueue.length === 0) return null;
+    const idx = typeof config.closerNextIndex === 'number' ? config.closerNextIndex : 0;
+    return eligibleQueue[idx % eligibleQueue.length] || null;
+  };
+
+  // Consome a vez da lista ordenada e avança o ponteiro atomicamente no banco
+  const consumeCloserRoundRobinSlot = async (venueId: string): Promise<Collaborator | null> => {
+    const { config, eligibleQueue } = resolveCloserSplitQueue(venueId);
+    if (!config || eligibleQueue.length === 0) return null;
+    const currentIdx = typeof config.closerNextIndex === 'number' ? config.closerNextIndex : 0;
+    const assigned = eligibleQueue[currentIdx % eligibleQueue.length] || null;
+    const nextIdx = (currentIdx + 1) % eligibleQueue.length;
+
+    const updatedConfig: VenueAgendaConfig = {
+      ...config,
+      closerNextIndex: nextIdx,
+      updatedAt: new Date().toISOString(),
+    };
+    await updateVenueAgendaConfig(updatedConfig);
+    return assigned;
+  };
+
+  // Agenda de Eventos da Unidade (Pós-Venda administra, Comercial visualiza; trava data da casa)
+  const addVenueEvent = async (
+    eventData: Omit<VenueEvent, 'id' | 'masterId' | 'createdAt' | 'updatedAt'>
+  ): Promise<VenueEvent | null> => {
+    if (!currentUser || !scopedMasterId) return null;
+    const targetVenue = scopedVenues.find(v => v.id === eventData.venueId);
+    if (!targetVenue) {
+      console.warn('[VenueEvents] Bloqueado: unidade fora do escopo do Master atual.');
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const linkedClient = eventData.clientId ? scopedClients.find(c => c.id === eventData.clientId) : undefined;
+    const newEvent: VenueEvent = {
+      ...eventData,
+      id: generateUuid(),
+      masterId: targetVenue.masterId || scopedMasterId,
+      clientName: eventData.clientName || linkedClient?.name || undefined,
+      createdById: eventData.createdById || currentUser.id,
+      createdByName: eventData.createdByName || currentUser.name,
+      blocksVenueDay: eventData.blocksVenueDay !== false,
+      status: eventData.status || 'scheduled',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setVenueEvents(prev => {
+      const next = [newEvent, ...prev];
+      safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(next));
+      return next;
+    });
+
+    if (linkedClient) {
+      const formattedDate = newEvent.eventDate.split('-').reverse().join('/');
+      setClients(prev => {
+        const updated = prev.map(c => {
+          if (c.id !== linkedClient.id) return c;
+          const act: ClientActivity = {
+            id: generateUuid(),
+            type: 'note',
+            description: `Evento "${newEvent.title}" registrado na Agenda da Unidade (${targetVenue.name}) para ${formattedDate}${newEvent.blocksVenueDay ? ' [Dia Travado]' : ''}.`,
+            createdAt: now,
+            createdBy: currentUser.name,
+          };
+          const mod: Client = {
+            ...c,
+            activities: [act, ...c.activities],
+            updatedAt: now.split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        });
+        safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    await venueEventService.upsert(newEvent);
+    return newEvent;
+  };
+
+  const updateVenueEvent = async (eventId: string, updates: Partial<VenueEvent>): Promise<boolean> => {
+    if (!currentUser || !scopedMasterId) return false;
+    const existing = scopedVenueEvents.find(ev => ev.id === eventId);
+    if (!existing) return false;
+
+    const nextVenueId = updates.venueId || existing.venueId;
+    const targetVenue = scopedVenues.find(v => v.id === nextVenueId);
+    if (!targetVenue) return false;
+
+    const now = new Date().toISOString();
+    const nextClientId = updates.clientId !== undefined ? updates.clientId : existing.clientId;
+    const linkedClient = nextClientId ? scopedClients.find(c => c.id === nextClientId) : undefined;
+    const updatedEvent: VenueEvent = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      masterId: existing.masterId,
+      venueId: nextVenueId,
+      clientId: nextClientId || undefined,
+      clientName: nextClientId ? (updates.clientName || linkedClient?.name || existing.clientName) : undefined,
+      updatedAt: now,
+    };
+
+    setVenueEvents(prev => {
+      const next = prev.map(ev => (ev.id === eventId ? updatedEvent : ev));
+      safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(next));
+      return next;
+    });
+
+    if (linkedClient && existing.clientId !== linkedClient.id) {
+      const formattedDate = updatedEvent.eventDate.split('-').reverse().join('/');
+      setClients(prev => {
+        const updated = prev.map(c => {
+          if (c.id !== linkedClient.id) return c;
+          const act: ClientActivity = {
+            id: generateUuid(),
+            type: 'note',
+            description: `Evento "${updatedEvent.title}" vinculado ao cliente na Agenda da Unidade (${targetVenue.name}) para ${formattedDate}.`,
+            createdAt: now,
+            createdBy: currentUser.name,
+          };
+          const mod: Client = {
+            ...c,
+            activities: [act, ...c.activities],
+            updatedAt: now.split('T')[0],
+          };
+          clientService.upsert(mod);
+          return mod;
+        });
+        safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    return venueEventService.upsert(updatedEvent);
+  };
+
+  const deleteVenueEvent = async (eventId: string): Promise<boolean> => {
+    if (!currentUser || !scopedMasterId) return false;
+    const existing = scopedVenueEvents.find(ev => ev.id === eventId);
+    if (!existing) return false;
+
+    setVenueEvents(prev => {
+      const next = prev.filter(ev => ev.id !== eventId);
+      safeLocalStorageSet(STORAGE_KEY_VENUE_EVENTS, JSON.stringify(next));
+      return next;
+    });
+
+    return venueEventService.remove(eventId);
+  };
+
   const scheduleCommercialCommitment = async (
     leadId: string, 
     type: 'visit' | 'tasting', 
@@ -9506,6 +9739,42 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       await leadService.update(leadId, updatePayload as any);
       leadService.addActivity(leadId, scheduleActivity).catch(err => console.error('Erro ao salvar nota de agendamento:', err));
+
+      // Envio Automático para o Colaborador Selecionado (quando habilitado no Split da Unidade)
+      const targetVId = commitmentData.venueId || targetLead.venueId || '';
+      const venueAgendaCfg = venueAgendaConfigs.find(c => c.venueId === targetVId);
+      const shouldAutoNotify = venueAgendaCfg ? venueAgendaCfg.closerAutoNotify !== false : true;
+      if (shouldAutoNotify && commitmentData.responsibleCollaboratorId) {
+        const assignedCloser = scopedCollaborators.find(c => c.id === commitmentData.responsibleCollaboratorId);
+        const closerPhone = assignedCloser?.phone?.replace(/\D/g, '');
+        if (assignedCloser && closerPhone && closerPhone.length >= 10) {
+          const activeWsSource =
+            scopedSources.find(s => s.type === 'whatsapp_api' && s.status === 'active' && s.venueId === targetVId && ((s.configuration as any)?.uazapiToken || s.whatsappInstanceId)) ||
+            scopedSources.find(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.uazapiToken || s.whatsappInstanceId));
+          const token = (activeWsSource?.configuration as any)?.uazapiToken || activeWsSource?.whatsappInstanceId;
+          if (token) {
+            const targetVName = venues.find(v => v.id === targetVId)?.name || 'Unidade';
+            const notifyMsg = [
+              `*F5 System - Novo Agendamento Atribuído*`,
+              `Olá, ${assignedCloser.name}! Você foi designado(a) para atender:`,
+              ``,
+              `*Tipo:* ${typeLabelCap}`,
+              `*Cliente:* ${targetLead.name}`,
+              `*Telefone:* ${targetLead.phone || 'Não informado'}`,
+              `*Unidade:* ${targetVName}`,
+              `*Data/Horário:* ${dateFormatted} às ${commitmentData.time}`,
+              `*Acompanhantes:* ${commitmentData.pax || 2} pessoa(s)`,
+              commitmentData.notes ? `*Observações:* ${commitmentData.notes}` : '',
+            ].filter(Boolean).join('\n');
+
+            uazapiService.sendText(token, {
+              number: closerPhone.startsWith('55') ? closerPhone : `55${closerPhone}`,
+              text: notifyMsg,
+            }).catch(err => console.warn('[AutoNotify Closer] Falha ao notificar closer via WhatsApp:', err));
+          }
+        }
+      }
+
       return true;
     } catch (err) {
       console.error('Falha ao persistir compromisso comercial no lead:', err);
@@ -10243,9 +10512,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       refreshAppointments,
       venueAgendaConfigs,
       updateVenueAgendaConfig,
+      getNextCloserRoundRobinPreview,
+      consumeCloserRoundRobinSlot,
       scheduleCommercialCommitment,
       completeCommercialCommitment,
       cancelCommercialCommitment,
+      venueEvents: scopedVenueEvents,
+      addVenueEvent,
+      updateVenueEvent,
+      deleteVenueEvent,
       getDebutanteBySlug,
       getVenueById,
       getCollaboratorById,

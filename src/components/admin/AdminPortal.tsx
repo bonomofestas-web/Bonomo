@@ -9,6 +9,7 @@ import { AdminVenuesView } from './AdminVenuesView';
 import { AdminDebutantesView } from './AdminDebutantesView';
 import { AdminCrmKanbanView } from './AdminCrmKanbanView';
 import { AdminAppointmentsView } from './AdminAppointmentsView';
+import { AdminVenueEventsView } from './AdminVenueEventsView';
 import { AdminCollaboratorsView } from './AdminCollaboratorsView';
 import { AdminJourneysConfigView } from './AdminJourneysConfigView';
 import { AdminBenefitsCatalogView } from './AdminBenefitsCatalogView';
@@ -738,6 +739,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         return <AdminJourneysConfigView onBack={() => handleSelectTab('debutantes')} />;
       case 'appointments':
         return <AdminAppointmentsView />;
+      case 'venue-events':
+        return <AdminVenueEventsView />;
       case 'settings':
         return <AdminUserSettingsView onBack={() => handleSelectTab('home')} />;
       case 'dev-features':
@@ -926,6 +929,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               else if (activeTab === 'vip-journey') { category = 'Pós-Venda'; title = 'Jornada VIP'; }
               else if (activeTab === 'post-sale-visits-tastings') { category = 'Comercial'; title = 'Agendamentos'; }
               else if (activeTab === 'post-sale-appointments') { category = 'Pós-Venda'; title = 'Compromissos'; }
+              else if (activeTab === 'venue-events') { category = currentUser?.role === 'pos_venda' ? 'Pós-Venda' : 'Comercial'; title = 'Agenda de Eventos'; }
               else if (activeTab === 'master-dashboard') { category = 'Gerência'; title = 'Dashboard Gerência'; }
               else if (activeTab === 'collaborators') { category = 'Gerência'; title = 'Colaboradores'; }
               else if (activeTab === 'venues') { category = 'Gerência'; title = 'Casas de Festa'; }

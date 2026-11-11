@@ -49,6 +49,7 @@ import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { DocumentFileUploadZone } from './DocumentFileUploadZone';
 import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
 import {
   AdminBulkMoveFunnelModal,
@@ -1119,6 +1120,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [upsellCategory, setUpsellCategory] = useState<string>('foto_video');
   const [upsellValue, setUpsellValue] = useState<string>('');
   const [upsellDate, setUpsellDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [upsellTime, setUpsellTime] = useState<string>(() => new Date().toTimeString().slice(0, 5));
+  const [upsellResponsibleId, setUpsellResponsibleId] = useState<string>(() => currentUser?.id || '');
   const [upsellPaymentStatus, setUpsellPaymentStatus] = useState<'pago' | 'pendente' | 'parcelado'>('pago');
   const [upsellPaymentMethod, setUpsellPaymentMethod] = useState<string>('PIX');
   const [upsellNotes, setUpsellNotes] = useState('');
@@ -1128,6 +1131,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const [docType, setDocType] = useState<ClientDocument['type']>('contract');
   const [docFileUrl, setDocFileUrl] = useState('');
   const [docFileSize, setDocFileSize] = useState('');
+  const [docFileName, setDocFileName] = useState('');
+  const [docSizeBytes, setDocSizeBytes] = useState<number | undefined>(undefined);
+  const [isDocUploading, setIsDocUploading] = useState(false);
 
   // WhatsApp / Note Text
   const [messageText, setMessageText] = useState('');
@@ -3531,13 +3537,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (numVal <= 0) return;
 
     const clientId = currentClient?.id || selectedLead.id;
+    const finalDate = upsellDate || new Date().toISOString().split('T')[0];
+    const finalTime = upsellTime || new Date().toTimeString().slice(0, 5);
+    const sellerCollab = collaborators.find(c => c.id === upsellResponsibleId) || currentUser;
 
     if (editingUpsell) {
       updateClientUpsellSale(clientId, editingUpsell.id, {
         title: upsellTitle.trim(),
         category: upsellCategory,
         value: numVal,
-        saleDate: upsellDate,
+        saleDate: finalDate,
+        saleTime: finalTime,
+        soldAt: `${finalDate}T${finalTime}:00`,
+        responsibleId: sellerCollab?.id,
+        responsibleName: sellerCollab?.name || editingUpsell.responsibleName || 'Administrador',
         paymentStatus: upsellPaymentStatus,
         paymentMethod: upsellPaymentMethod,
         notes: upsellNotes.trim() || undefined,
@@ -3547,11 +3560,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         title: upsellTitle.trim(),
         category: upsellCategory,
         value: numVal,
-        saleDate: upsellDate,
+        venueId: currentClient?.venueId || selectedLead?.venueId,
+        saleDate: finalDate,
+        saleTime: finalTime,
+        soldAt: `${finalDate}T${finalTime}:00`,
         paymentStatus: upsellPaymentStatus,
         paymentMethod: upsellPaymentMethod,
-        responsibleId: currentUser?.id,
-        responsibleName: currentUser?.name || 'Administrador',
+        responsibleId: sellerCollab?.id,
+        responsibleName: sellerCollab?.name || 'Administrador',
         notes: upsellNotes.trim() || undefined,
       });
     }
@@ -3561,6 +3577,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setUpsellTitle('');
     setUpsellValue('');
     setUpsellNotes('');
+    setUpsellTime(new Date().toTimeString().slice(0, 5));
   };
 
   const handleDeleteUpsell = (saleId: string) => {
@@ -3573,23 +3590,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const handleSaveDoc = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isDocUploading) return;
     if (!docTitle.trim() || !docFileUrl.trim()) return;
     const clientId = currentClient?.id || selectedLead?.id;
     if (!clientId) return;
 
     addClientDocument(clientId, {
       title: docTitle.trim(),
-      name: docTitle.trim(),
+      name: docFileName || docTitle.trim(),
       type: docType,
       fileUrl: docFileUrl.trim(),
       url: docFileUrl.trim(),
-      fileSize: docFileSize || 'PDF / Documento',
+      fileSize: docFileSize || 'Arquivo Anexado',
+      sizeBytes: docSizeBytes,
     });
 
     setIsDocModalOpen(false);
     setDocTitle('');
     setDocFileUrl('');
     setDocFileSize('');
+    setDocFileName('');
+    setDocSizeBytes(undefined);
   };
 
   const handleDeleteDoc = (docId: string) => {
@@ -9296,7 +9317,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   </div>
 
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '0.70rem', color: 'var(--adm-text-muted)', flexWrap: 'wrap' }}>
-                                    <span>Data: {sale.saleDate ? new Date(sale.saleDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</span>
+                                    <span>
+                                      Data: {sale.saleDate ? new Date(sale.saleDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                                      {sale.saleTime ? ` às ${sale.saleTime}` : sale.createdAt ? ` às ${new Date(sale.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                    </span>
+                                    {sale.responsibleName && <span>Vendido por: <strong style={{ color: 'var(--adm-text-title)' }}>{sale.responsibleName}</strong></span>}
                                     {sale.paymentMethod && <span>Forma: {sale.paymentMethod}</span>}
                                     {sale.notes && <span>Obs: {sale.notes}</span>}
                                   </div>
@@ -9330,6 +9355,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       setUpsellCategory(sale.category);
                                       setUpsellValue(String(sale.value));
                                       setUpsellDate(sale.saleDate);
+                                      setUpsellTime(sale.saleTime || (sale.createdAt ? new Date(sale.createdAt).toTimeString().slice(0, 5) : '12:00'));
+                                      setUpsellResponsibleId(sale.responsibleId || currentUser?.id || '');
                                       setUpsellPaymentStatus(sale.paymentStatus || 'pago');
                                       setUpsellPaymentMethod(sale.paymentMethod || 'PIX');
                                       setUpsellNotes(sale.notes || '');
@@ -12967,7 +12994,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
                     Data do Fechamento / Venda:
@@ -12981,6 +13008,35 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem' }}
                   />
                 </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
+                    Horário da Venda *:
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={upsellTime}
+                    onChange={(e) => setUpsellTime(e.target.value)}
+                    className="adm-input"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
+                  Vendido por (Colaborador) *:
+                </label>
+                <select
+                  value={upsellResponsibleId}
+                  onChange={(e) => setUpsellResponsibleId(e.target.value)}
+                  className="adm-input"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem' }}
+                >
+                  {collaborators.filter(c => c.active !== false).map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -13145,30 +13201,28 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
-                  Link / URL do Arquivo:
+                  Upload do Arquivo *:
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="https://... ou caminho do arquivo"
-                  value={docFileUrl}
-                  onChange={(e) => setDocFileUrl(e.target.value)}
-                  className="adm-input"
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-title)', marginBottom: '5px' }}>
-                  Tamanho Estimado (Opcional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: 1.4 MB, 520 KB..."
-                  value={docFileSize}
-                  onChange={(e) => setDocFileSize(e.target.value)}
-                  className="adm-input"
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem' }}
+                <DocumentFileUploadZone
+                  fileUrl={docFileUrl}
+                  fileSize={docFileSize}
+                  fileName={docFileName}
+                  onUploadingChange={setIsDocUploading}
+                  onUploaded={({ url, fileName, fileSize, sizeBytes }) => {
+                    setDocFileUrl(url);
+                    setDocFileName(fileName);
+                    setDocFileSize(fileSize);
+                    setDocSizeBytes(sizeBytes);
+                    if (!docTitle.trim()) {
+                      setDocTitle(fileName.replace(/\.[^/.]+$/, ''));
+                    }
+                  }}
+                  onClear={() => {
+                    setDocFileUrl('');
+                    setDocFileName('');
+                    setDocFileSize('');
+                    setDocSizeBytes(undefined);
+                  }}
                 />
               </div>
 
@@ -13200,6 +13254,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 </button>
                 <button
                   type="submit"
+                  disabled={isDocUploading || !docFileUrl || !docTitle.trim()}
                   style={{
                     padding: '8px 20px',
                     borderRadius: '8px',
@@ -13208,11 +13263,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     color: '#FFF',
                     fontSize: '0.76rem',
                     fontWeight: 700,
-                    cursor: 'pointer',
+                    cursor: (isDocUploading || !docFileUrl || !docTitle.trim()) ? 'not-allowed' : 'pointer',
+                    opacity: (isDocUploading || !docFileUrl || !docTitle.trim()) ? 0.55 : 1,
                     boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
                   }}
                 >
-                  Anexar Documento
+                  {isDocUploading ? 'Enviando...' : 'Anexar Documento'}
                 </button>
               </div>
             </form>

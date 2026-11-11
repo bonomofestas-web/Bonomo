@@ -26,6 +26,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     venues, 
     debutantes, 
     leads, 
+    clients,
     collaborators, 
     currentUser, 
     activeVenueId,
@@ -447,6 +448,97 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     second: closerRankings[1] || null,
     third: closerRankings[2] || null,
   };
+
+  // Métricas de Vendas Internas de Pós-Venda (Upsells) por Vendedor e Horário
+  const postSaleUpsellMetrics = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    const selectedVenues = filterState.venueIds && filterState.venueIds.length > 0
+      ? filterState.venueIds
+      : (filterState.venueId !== 'all' && filterState.venueId !== 'multi' ? [filterState.venueId] : (activeVenueId ? [activeVenueId] : []));
+
+    const selectedCollabs = filterState.collaboratorIds && filterState.collaboratorIds.length > 0
+      ? filterState.collaboratorIds
+      : (filterState.collaboratorId !== 'all' && filterState.collaboratorId !== 'multi' ? [filterState.collaboratorId] : []);
+
+    const filteredSales: Array<import('../../types/admin').ClientUpsellSale & { clientName?: string; effectiveVenueId?: string }> = [];
+
+    (clients || []).forEach(c => {
+      const cVenue = c.venueId || '';
+      if (isHouseAdmin && currentUser?.venueIds?.[0] && cVenue !== currentUser.venueIds[0]) return;
+      if (selectedVenues.length > 0 && !selectedVenues.includes(cVenue)) return;
+
+      (c.upsellSales || []).forEach(sale => {
+        const sVenue = sale.venueId || cVenue;
+        if (selectedVenues.length > 0 && !selectedVenues.includes(sVenue)) return;
+        if (selectedCollabs.length > 0 && (!sale.responsibleId || !selectedCollabs.includes(sale.responsibleId))) return;
+
+        const dateStr = (sale.saleDate || sale.soldAt || sale.createdAt || '').split('T')[0];
+        const saleDateObj = dateStr ? new Date(dateStr + 'T12:00:00') : new Date();
+        const diffDays = Math.ceil((today.getTime() - saleDateObj.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (filterState.period === 'today' && dateStr !== todayStr) return;
+        if (filterState.period === 'yesterday' && dateStr !== yesterdayStr) return;
+        if (filterState.period === '7d' && (diffDays < 0 || diffDays > 7)) return;
+        if (filterState.period === '30d' && (diffDays < 0 || diffDays > 30)) return;
+        if (filterState.period === 'this_month' && (saleDateObj.getMonth() !== today.getMonth() || saleDateObj.getFullYear() !== today.getFullYear())) return;
+        if (filterState.period === '6m' && (diffDays < 0 || diffDays > 180)) return;
+        if (filterState.period === 'custom' && filterState.customStartDate && filterState.customEndDate) {
+          if (dateStr < filterState.customStartDate || dateStr > filterState.customEndDate) return;
+        }
+
+        filteredSales.push({ ...sale, clientName: c.birthdayPersonName || c.name, effectiveVenueId: sVenue });
+      });
+    });
+
+    const totalRevenueUpsell = filteredSales.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    const sellerMap = new Map<string, { id: string; name: string; avatarUrl?: string; count: number; revenue: number }>();
+    const timeBuckets = {
+      manha: { label: 'Manhã (06h-12h)', count: 0, revenue: 0 },
+      tarde: { label: 'Tarde (12h-18h)', count: 0, revenue: 0 },
+      noite: { label: 'Noite (18h-00h)', count: 0, revenue: 0 },
+      madrugada: { label: 'Madrugada (00h-06h)', count: 0, revenue: 0 },
+    };
+
+    filteredSales.forEach(sale => {
+      const sellerId = sale.responsibleId || sale.responsibleName || 'desconhecido';
+      const collab = collaborators.find(col => col.id === sale.responsibleId);
+      const sellerName = collab?.name || sale.responsibleName || 'Equipe Pós-Venda';
+      const prev = sellerMap.get(sellerId) || { id: sellerId, name: sellerName, avatarUrl: collab?.avatarUrl, count: 0, revenue: 0 };
+      prev.count += 1;
+      prev.revenue += Number(sale.value) || 0;
+      sellerMap.set(sellerId, prev);
+
+      const rawTime = sale.saleTime || (sale.soldAt ? sale.soldAt.split('T')[1]?.slice(0, 5) : undefined) || (sale.createdAt ? new Date(sale.createdAt).toTimeString().slice(0, 5) : '12:00');
+      const hour = parseInt(rawTime.split(':')[0] || '12', 10);
+      const bucket = hour >= 6 && hour < 12 ? timeBuckets.manha
+        : hour >= 12 && hour < 18 ? timeBuckets.tarde
+        : hour >= 18 ? timeBuckets.noite
+        : timeBuckets.madrugada;
+      bucket.count += 1;
+      bucket.revenue += Number(sale.value) || 0;
+    });
+
+    const sellerRanking = Array.from(sellerMap.values()).sort((a, b) => b.revenue - a.revenue || b.count - a.count).slice(0, 5);
+    const recentSales = [...filteredSales].sort((a, b) => {
+      const tA = new Date(a.soldAt || `${a.saleDate}T${a.saleTime || '12:00'}:00`).getTime();
+      const tB = new Date(b.soldAt || `${b.saleDate}T${b.saleTime || '12:00'}:00`).getTime();
+      return tB - tA;
+    }).slice(0, 5);
+
+    return {
+      totalCount: filteredSales.length,
+      totalRevenue: totalRevenueUpsell,
+      avgTicket: filteredSales.length > 0 ? Math.round(totalRevenueUpsell / filteredSales.length) : 0,
+      sellerRanking,
+      timeDistribution: [timeBuckets.manha, timeBuckets.tarde, timeBuckets.noite, timeBuckets.madrugada],
+      recentSales,
+    };
+  }, [clients, collaborators, filterState, activeVenueId, isHouseAdmin, currentUser]);
 
   const renderTrendPill = (delta: number) => {
     if (delta > 0) {
@@ -1311,6 +1403,97 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <div style={{ width: '100%', height: '36px', background: 'linear-gradient(180deg, rgba(205, 127, 50, 0.3) 0%, rgba(205, 127, 50, 0.08) 100%)', borderTop: '2px solid #CD7F32', borderRadius: '10px 10px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: '#CD7F32', fontSize: '0.95rem', marginTop: '6px' }}>3</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Vendas Internas Pós-Venda (Upsells) — Métrica por Vendedor e Horário ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px', marginTop: '20px' }}>
+        <div className="adm-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.0rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Award size={18} color="#8B5CF6" />
+                <span>Vendas Internas Pós-Venda (Ranking por Vendedor)</span>
+              </h3>
+              <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+                {postSaleUpsellMetrics.totalCount} venda(s) no período • Ticket médio: R$ {postSaleUpsellMetrics.avgTicket.toLocaleString('pt-BR')}
+              </span>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#10B981' }}>
+                R$ {postSaleUpsellMetrics.totalRevenue.toLocaleString('pt-BR')}
+              </div>
+              <span style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', fontWeight: 700 }}>RECEITA UPSSELS</span>
+            </div>
+          </div>
+
+          {postSaleUpsellMetrics.sellerRanking.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--adm-text-muted)', background: 'var(--adm-bg-input)', borderRadius: '10px' }}>
+              Nenhuma venda adicional de pós-venda registrada no período selecionado.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {postSaleUpsellMetrics.sellerRanking.map((seller, idx) => (
+                <div key={seller.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '10px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: idx === 0 ? '#8B5CF6' : 'rgba(139, 92, 246, 0.15)', color: idx === 0 ? '#FFF' : '#8B5CF6', fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {idx + 1}º
+                    </span>
+                    <img
+                      src={(seller.avatarUrl && !seller.avatarUrl.includes('unsplash.com')) ? seller.avatarUrl : createMonogramAvatar(seller.name)}
+                      alt={seller.name}
+                      style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: '0.80rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>{seller.name}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)' }}>{seller.count} {seller.count === 1 ? 'venda' : 'vendas'}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#10B981' }}>
+                    R$ {seller.revenue.toLocaleString('pt-BR')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="adm-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.0rem', fontWeight: 800, color: 'var(--adm-text-title)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={18} color="#06B6D4" />
+              <span>Distribuição por Horário das Vendas (Pós-Venda)</span>
+            </h3>
+            <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>
+              Análise de turnos e registros recentes com horário exato de fechamento
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {postSaleUpsellMetrics.timeDistribution.map((bucket) => (
+              <div key={bucket.label} style={{ padding: '10px 12px', borderRadius: '10px', background: 'var(--adm-bg-input)', border: '1px solid var(--adm-border)' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>{bucket.label}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '4px' }}>
+                  <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>{bucket.count} vendas</span>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#06B6D4' }}>R$ {bucket.revenue.toLocaleString('pt-BR')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {postSaleUpsellMetrics.recentSales.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase' }}>Últimos Registros</span>
+              {postSaleUpsellMetrics.recentSales.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--adm-text-body)', padding: '4px 0', borderBottom: '1px dashed var(--adm-border)' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>
+                    <strong>{s.saleTime || '—'}</strong> • {s.title} ({s.responsibleName || 'Equipe'})
+                  </span>
+                  <strong style={{ color: '#10B981' }}>R$ {Number(s.value || 0).toLocaleString('pt-BR')}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

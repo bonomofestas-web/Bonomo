@@ -218,6 +218,38 @@ export const POST_SALE_ENTRY_COLUMN: StageColumn = {
   borderColor: 'rgba(239, 68, 68, 0.3)',
 };
 
+// Matcher resiliente entre cliente e coluna do Kanban (impede que clientes em etapas distintas desapareçam do quadro)
+const getClientMatchedColumnId = (
+  client: Client,
+  cols: Array<{ id: string; title: string; isWon?: boolean; isLoss?: boolean }>
+): string => {
+  if (!cols || cols.length === 0) return '';
+  const rawStage = String((client as { stage?: string }).stage || '').toLowerCase().trim();
+
+  // 1. Correspondência direta pelo ID da coluna
+  const direct = cols.find(c => String(c.id).toLowerCase().trim() === rawStage);
+  if (direct) return direct.id;
+
+  // 2. Correspondência semântica (entrada, ganho/realizada, perda/cancelada)
+  if (!rawStage || rawStage === 'new_lead' || rawStage === 'entry' || rawStage === 'onboarding' || rawStage.includes('entrada') || rawStage.includes('onboarding')) {
+    const entryCol = cols.find(c => c.id === 'new_lead' || c.id === 'entry' || c.id === 'onboarding' || c.title.toLowerCase().includes('entrada') || c.title.toLowerCase().includes('onboarding'));
+    if (entryCol) return entryCol.id;
+  }
+
+  if (rawStage === 'completed' || rawStage === 'deal_closed' || rawStage === 'contract_signed' || rawStage.includes('realizad') || rawStage.includes('ganho')) {
+    const wonCol = cols.find(c => c.isWon || c.id === 'completed' || c.title.toLowerCase().includes('realizad'));
+    if (wonCol) return wonCol.id;
+  }
+
+  if (rawStage === 'lost' || rawStage === 'cancelado' || rawStage === 'cancelled' || rawStage.includes('cancelad')) {
+    const lossCol = cols.find(c => c.isLoss || c.id === 'lost' || c.title.toLowerCase().includes('cancelad'));
+    if (lossCol) return lossCol.id;
+  }
+
+  // 3. Fallback seguro para a primeira coluna ativa quando o cliente pertence ao funil mas veio de outra nomenclatura de etapa
+  return cols[0].id;
+};
+
 export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = ({
   initialFunnelId = null,
   onSelectFunnel,
@@ -431,8 +463,30 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     if (e) e.stopPropagation();
     const newId = duplicateFunnel(funnelId);
     if (newId) {
-      setSelectedFunnelId(newId);
+      handleSelectFunnel(newId);
     }
+  };
+
+  // Identificador estável do funil primário de pós-venda (exclui cópias para nunca vazar clientes legados)
+  const defaultPostSaleId = useMemo(() => {
+    const nonCopy = postSaleFunnels.filter(f => !f.name?.includes('(Cópia)'));
+    return (
+      postSaleFunnels.find(f => f.isPrimary)?.id ||
+      nonCopy.find(f => f.id === 'post_sale_default')?.id ||
+      nonCopy[0]?.id ||
+      postSaleFunnels[0]?.id ||
+      'post_sale_default'
+    );
+  }, [postSaleFunnels]);
+
+  const matchesFunnelStrict = (itemFunnelId: string | undefined, funnel: CommercialFunnel, allowLegacyFallback: boolean) => {
+    if (itemFunnelId && itemFunnelId.trim()) {
+      const normalizedItem = itemFunnelId.trim().toLowerCase();
+      if (itemFunnelId === funnel.id) return true;
+      if (normalizedItem === (funnel.name || '').trim().toLowerCase()) return true;
+      return false;
+    }
+    return allowLegacyFallback && funnel.id === defaultPostSaleId;
   };
 
   const renderFunnelVisual = (funnel: CommercialFunnel, iconSize = 16, boxSize = 34) => {
@@ -537,18 +591,28 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const linkedVenueIds = linked.map(v => v.id);
 
     const existingClientIds = new Set(clients.map(c => c.id));
-    const extraClientsFromLeads = (leads || []).filter(l => 
-      (l.isClient || l.group === 'Pós-Venda' || l.funnelId === funnel.id) && 
-      !existingClientIds.has(l.id) &&
-      (l.funnelId === funnel.id || (linkedVenueIds.length > 0 && l.venueId && linkedVenueIds.includes(l.venueId)))
-    );
+    const extraClientsFromLeads = (leads || []).filter(l => {
+      if (existingClientIds.has(l.id)) return false;
+      if ((l as any).isRemovedFromFunnel) return false;
+      const explicitlyInFunnel = Boolean(
+        l.funnelId && (
+          l.funnelId === funnel.id ||
+          l.funnelId.trim().toLowerCase() === (funnel.name || '').trim().toLowerCase()
+        )
+      );
+      if (explicitlyInFunnel) return true;
+      const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')));
+      if (!isRealClient || (l.code && l.code.startsWith('LEAD-'))) return false;
+      if (!l.funnelId && funnel.id === defaultPostSaleId) {
+        return linkedVenueIds.length === 0 || (l.venueId ? linkedVenueIds.includes(l.venueId) : true);
+      }
+      return false;
+    });
 
     const combined = [...clients, ...extraClientsFromLeads];
     const funnelClients = combined.filter(c => {
-      if (c.funnelId && c.funnelId !== funnel.id) return false;
-      if (c.funnelId === funnel.id) return true;
-      if (linkedVenueIds.length === 0) return true;
-      return c.venueId && linkedVenueIds.includes(c.venueId);
+      if ((c as any).isRemovedFromFunnel) return false;
+      return matchesFunnelStrict((c as any).funnelId, funnel, true);
     });
 
     const activeCount = funnelClients.filter(c => c.stage !== 'completed' && c.stage !== 'lost' && c.stage !== 'archived').length;
@@ -631,7 +695,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
     const isEntryActive = Boolean(currentFunnel?.isEntryStageActive || currentFunnel?.enableInboxStage);
 
-    let rawCols: { id: ClientStage; title: string; color: string; bgColor: string; borderColor: string }[] = [];
+    let rawCols: { id: ClientStage; title: string; color: string; bgColor: string; borderColor: string; isWon?: boolean; isLoss?: boolean }[] = [];
 
     if (currentFunnel?.stages && currentFunnel.stages.length > 0) {
       rawCols = currentFunnel.stages.map(st => ({
@@ -640,11 +704,15 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         color: st.color || '#3B82F6',
         bgColor: `${st.color || '#3B82F6'}14`,
         borderColor: `${st.color || '#3B82F6'}4D`,
+        isWon: Boolean(st.isWon),
+        isLoss: Boolean(st.isLoss),
       }));
     } else {
       rawCols = STAGE_COLUMNS.map(col => ({
         ...col,
         title: formatTitle(col.id, col.title),
+        isWon: col.id === 'completed',
+        isLoss: col.id === 'lost',
       }));
     }
 
@@ -719,20 +787,26 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
   // Clientes unificados (combina tabela clients com leads marcados como pós-venda para evitar dados órfãos)
   const allClients = useMemo<Client[]>(() => {
     const existingClientIds = new Set(clients.map(c => c.id));
-    const defaultPostSaleId = postSaleFunnels.find(f => f.isPrimary)?.id || postSaleFunnels[0]?.id || 'post_sale_default';
 
     const extraClientsFromLeads: Client[] = (leads || [])
       .filter(l => {
         if (existingClientIds.has(l.id)) return false;
-        // Áudio 1: REGRA SUPREMA - LEADS NÃO PODEM APARECER EM PÓS-VENDA
-        // Contatos com código LEAD- ou que não sejam clientes são terminantemente proibidos no Pós-Venda.
+        if ((l as any).isRemovedFromFunnel) return false;
+
+        // Se o registro possui funnelId explícito pertencente ao funil atual (ou a qualquer funil pós-venda),
+        // ele deve ser exibido no Kanban igual ao Modo WhatsApp
+        if (l.funnelId && currentFunnel) {
+          return matchesFunnelStrict(l.funnelId, currentFunnel, false);
+        }
+        if (l.funnelId) {
+          return postSaleFunnels.some(pf => matchesFunnelStrict(l.funnelId, pf, false));
+        }
+
+        // Sem funnelId explícito: aceita apenas clientes legados de pós-venda (jamais leads comerciais LEAD-)
         const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')) || (l as any).won || (l as any).status === 'won');
         const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
         if (!isRealClient || isLeadCode) return false;
 
-        if (l.funnelId) {
-          return currentFunnel ? l.funnelId === currentFunnel.id : true;
-        }
         if (currentFunnel && currentFunnel.id !== defaultPostSaleId) {
           return false;
         }
@@ -751,29 +825,26 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         funnelId: l.funnelId || defaultPostSaleId,
         assignedSuccessManagerId: l.sdrId || l.closerId,
         assignedSuccessManagerName: l.assignedTo || l.sdrName || l.closerName,
+        partyDate: l.partyDate || l.eventDate,
+        eventDate: l.eventDate || l.partyDate,
+        tags: l.tags || [],
+        contacts: l.contacts || [],
         createdAt: l.createdAt || new Date().toISOString(),
         updatedAt: l.updatedAt || new Date().toISOString(),
       } as Client));
 
     return [...clients, ...extraClientsFromLeads];
-  }, [clients, leads, currentFunnel, postSaleFunnels]);
+  }, [clients, leads, currentFunnel, postSaleFunnels, defaultPostSaleId]);
 
   // Filtragem completa e ordenação dos clientes
   const filteredClients = useMemo(() => {
     let list = allClients.filter(client => {
+      if ((client as any).isRemovedFromFunnel) return false;
+
       // 0. Funil Vinculado e Unidades (Isolamento Estrito de Funis de Pós-Venda)
       if (currentFunnel) {
-        const cFunnelId = (client as any).funnelId;
-        const defaultPostSaleId = postSaleFunnels.find(f => f.isPrimary)?.id || postSaleFunnels[0]?.id || 'post_sale_default';
-        if (cFunnelId) {
-          if (cFunnelId !== currentFunnel.id) {
-            return false;
-          }
-        } else {
-          // Clientes antigos sem funnelId explícito: só aparecem no funil padrão de pós-venda, NUNCA em outros funis como Decor
-          if (currentFunnel.id !== defaultPostSaleId) {
-            return false;
-          }
+        if (!matchesFunnelStrict((client as any).funnelId, currentFunnel, true)) {
+          return false;
         }
       }
 
@@ -2513,7 +2584,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
             className="custom-scrollbar"
           >
             {activeStageColumns.map(column => {
-              const stageClients = filteredClients.filter(c => c.stage === column.id);
+              const stageClients = filteredClients.filter(c => getClientMatchedColumnId(c, activeStageColumns) === column.id);
               const stageValue = stageClients.reduce((acc, c) => acc + (c.dealValue || 0), 0);
 
               const colKey = getPostSaleColKey(column.id);

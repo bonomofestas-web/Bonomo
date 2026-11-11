@@ -35,11 +35,14 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     venues, 
     collaborators, 
     currentUser, 
-    venueAgendaConfigs, 
+    venueAgendaConfigs,
+    venueEvents, 
     appointments, 
     refreshAppointments,
     addTask,
-    scheduleCommercialCommitment 
+    scheduleCommercialCommitment,
+    getNextCloserRoundRobinPreview,
+    consumeCloserRoundRobinSlot
   } = useAdminState();
 
   const [isCheckingRealtime, setIsCheckingRealtime] = useState<boolean>(false);
@@ -142,34 +145,37 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
   const isCloserFixed = Boolean(existingFixedCloserId);
 
-  // Split Automático de Closers por Unidade (caso não seja fixo)
+  // Split Automático de Closers por Unidade usando Lista de Ordem Atômica (caso não seja fixo)
   const autoSplitCloserId = useMemo(() => {
     if (isCloserFixed) return existingFixedCloserId;
     if (venueConfig?.closerDistributionMode === 'round_robin') {
-      const configuredIds = venueConfig.closerIds && venueConfig.closerIds.length > 0
-        ? venueConfig.closerIds
-        : commercialCollaborators.filter(c => c.role === 'closer' || (c as any).roleTitle?.toLowerCase().includes('closer')).map(c => c.id);
-      
-      if (configuredIds.length > 0) {
-        const venueAppointmentsCount = appointments.filter(a => a.venueId === targetVenueId).length;
-        const nextIndex = venueAppointmentsCount % configuredIds.length;
-        return configuredIds[nextIndex] || configuredIds[0];
+      const nextPreview = getNextCloserRoundRobinPreview(targetVenueId);
+      if (nextPreview?.id) return nextPreview.id;
+
+      const fallbackClosers = commercialCollaborators.filter(c => c.role === 'closer' || (c as any).roleTitle?.toLowerCase().includes('closer'));
+      if (fallbackClosers.length > 0) {
+        const idx = typeof venueConfig.closerNextIndex === 'number' ? venueConfig.closerNextIndex : 0;
+        return fallbackClosers[idx % fallbackClosers.length]?.id || fallbackClosers[0].id;
       }
     }
     return null;
-  }, [isCloserFixed, existingFixedCloserId, venueConfig, commercialCollaborators, appointments, targetVenueId]);
+  }, [isCloserFixed, existingFixedCloserId, venueConfig, commercialCollaborators, targetVenueId, getNextCloserRoundRobinPreview]);
 
   const [responsibleId, setResponsibleId] = useState<string>(() => {
-    return existingFixedCloserId || autoSplitCloserId || currentUser?.id || '';
+    if (existingFixedCloserId) return existingFixedCloserId;
+    if (venueConfig?.closerDistributionMode === 'round_robin') {
+      return autoSplitCloserId || currentUser?.id || '';
+    }
+    return '';
   });
 
   useEffect(() => {
     if (isCloserFixed && existingFixedCloserId) {
       setResponsibleId(existingFixedCloserId);
-    } else if (autoSplitCloserId && !responsibleId) {
+    } else if (venueConfig?.closerDistributionMode === 'round_robin' && autoSplitCloserId && !responsibleId) {
       setResponsibleId(autoSplitCloserId);
     }
-  }, [isCloserFixed, existingFixedCloserId, autoSplitCloserId]);
+  }, [isCloserFixed, existingFixedCloserId, autoSplitCloserId, venueConfig?.closerDistributionMode]);
 
   const [sdrId, setSdrId] = useState<string>(() => {
     return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
@@ -327,7 +333,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           type,
           targetVenueId,
           appointments,
-          venueConfig
+          venueConfig,
+          venueEvents
         );
         // Audio 2: No dia de hoje, desconsidera horários que já passaram em relação à hora atual local
         const validSlots = dateStr === todayStr
@@ -355,7 +362,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       firstDayIndex,
       days,
     };
-  }, [calendarMonth, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig]);
+  }, [calendarMonth, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig, venueEvents]);
 
   // Slots do dia selecionado
   const selectedDayAvailability = useMemo(() => {
@@ -365,7 +372,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       type,
       targetVenueId,
       appointments,
-      venueConfig
+      venueConfig,
+      venueEvents
     );
     // Audio 2: Bloquear e ocultar horários no próprio dia de hoje que já passaram em relação à hora atual local
     if (selectedDate === todayStr) {
@@ -377,7 +385,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       };
     }
     return avail;
-  }, [selectedDate, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig]);
+  }, [selectedDate, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig, venueEvents]);
 
   // Submissão do agendamento com validação atômica em tempo real (Anti-Race Condition)
   const handleConfirmSchedule = async () => {
@@ -456,7 +464,16 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const randomCode = Math.floor(10000 + Math.random() * 90000);
       const receiptCode = `#${prefix}-${randomCode}`;
 
-      const assignedUser = collaborators.find(c => c.id === responsibleId);
+      // Avança atomicamente o ponteiro da Lista de Ordem se o agendamento seguiu o Split Automático
+      let finalCloserId = responsibleId;
+      if (!isCloserFixed && venueConfig?.closerDistributionMode === 'round_robin' && (!responsibleId || responsibleId === autoSplitCloserId)) {
+        const consumed = await consumeCloserRoundRobinSlot(targetVenueId);
+        if (consumed?.id) {
+          finalCloserId = consumed.id;
+        }
+      }
+
+      const assignedUser = collaborators.find(c => c.id === finalCloserId);
       const sdrUser = collaborators.find(c => c.id === sdrId);
 
       // Notificações limpas (sem lembretes gerados no passado)
@@ -469,7 +486,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           date: selectedDate,
           time: selectedTime,
           pax,
-          responsibleCollaboratorId: responsibleId || undefined,
+          responsibleCollaboratorId: finalCloserId || undefined,
           responsibleName: assignedUser?.name,
           notes: notes || undefined,
           venueId: targetVenueId,
@@ -490,7 +507,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         dueDate: selectedDate,
         dueTime: selectedTime,
         venueId: targetVenueId,
-        assignedToIds: responsibleId ? [responsibleId] : (currentUser?.id ? [currentUser.id] : []),
+        assignedToIds: finalCloserId ? [finalCloserId] : (currentUser?.id ? [currentUser.id] : []),
         databaseId: 'db_visits_tastings',
         leadId: currentLead.id,
         leadName: currentLead.name,
@@ -512,7 +529,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           receiptCode,
           venueName: targetVenue?.name,
           venueAddress: targetVenue?.address,
-          closerId: responsibleId,
+          closerId: finalCloserId,
           closerName: assignedUser?.name,
           sdrId,
           sdrName: sdrUser?.name,
@@ -557,8 +574,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       await refreshAppointments();
 
       // Monta o comprovante oficial para exibição imediata
-      const closerObj = collaborators.find(c => c.id === responsibleId) ||
-        collaborators.find(c => Boolean(responsibleId) && (c.name || '').trim().toLowerCase() === (responsibleId || '').trim().toLowerCase()) ||
+      const closerObj = collaborators.find(c => c.id === finalCloserId) ||
+        collaborators.find(c => Boolean(finalCloserId) && (c.name || '').trim().toLowerCase() === (finalCloserId || '').trim().toLowerCase()) ||
         currentUser;
       const closerRoleTitle = (closerObj as any)?.roleTitle || (closerObj as any)?.customJobTitle || closerObj?.role || 'Anfitrião';
 
@@ -570,15 +587,18 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         leadName: currentLead.name,
         leadPhone: currentLead.phone,
         leadEmail: currentLead.email,
+        venueId: targetVenue?.id || targetVenueId,
         venueName: targetVenue?.name || 'Unidade F5 System',
         venueAddress: targetVenue?.address || '',
         venueLogoUrl: targetVenue?.logoUrl || (targetVenue as any)?.logo_url,
         dateStr: selectedDate,
         timeStr: selectedTime,
         pax,
+        closerId: closerObj?.id || finalCloserId,
+        responsibleCollaboratorId: closerObj?.id || finalCloserId,
         closerName: closerObj?.name || currentUser?.name || 'Equipe',
         closerRoleTitle,
-        closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl,
+        closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl || (closerObj as any)?.avatar_url,
         createdByName: currentUser?.name || 'Administrador',
         createdAtStr: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
         notes,
@@ -1458,9 +1478,25 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                         border: '1px solid rgba(16, 185, 129, 0.3)',
                       }}>
                         <Sparkles size={10} />
-                        <span>Split Automático Ativo</span>
+                        <span>Split Automático (Lista de Ordem)</span>
                       </span>
-                    ) : null}
+                    ) : (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        color: '#2563EB',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                      }}>
+                        <User size={10} />
+                        <span>Atribuição Manual</span>
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
                     {isCloserFixed 
@@ -1516,6 +1552,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                             {isLeadCloser && (
                               <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: `${themeColor}20`, color: themeColor }}>
                                 Lead
+                              </span>
+                            )}
+                            {!isCloserFixed && autoSplitCloserId === c.id && (
+                              <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(124, 58, 237, 0.14)', color: '#7C3AED' }}>
+                                Próximo da Ordem
                               </span>
                             )}
                           </div>

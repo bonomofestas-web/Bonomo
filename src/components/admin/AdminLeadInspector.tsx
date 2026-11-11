@@ -650,6 +650,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     reassignLeadFunnel,
     closeLeadSaleWithValue,
     venueAgendaConfigs,
+    venueEvents,
     appointments,
     systemSlaConfig,
   } = useAdminState();
@@ -722,10 +723,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     if (!commitment) return;
     const venue = venues.find(v => v.id === (commitment.venueId || lead.venueId)) ||
       venues.find(v => (v.name || '').trim().toLowerCase() === (lead.venueName || '').trim().toLowerCase());
+    const targetCloserId = commitment.responsibleCollaboratorId || (commitment as any).responsibleId || lead.closerId;
     const closerObj = collaborators.find(c => 
-      c.id === (commitment.responsibleCollaboratorId || lead.closerId) ||
+      (targetCloserId && c.id === targetCloserId) ||
       (Boolean(commitment.responsibleName) && (c.name || '').trim().toLowerCase() === (commitment.responsibleName || '').trim().toLowerCase())
-    ) || (currentUser && (currentUser.id === commitment.responsibleCollaboratorId || (currentUser.name || '').trim().toLowerCase() === (commitment.responsibleName || '').trim().toLowerCase()) ? currentUser : undefined);
+    ) || (currentUser && ((targetCloserId && currentUser.id === targetCloserId) || (currentUser.name || '').trim().toLowerCase() === (commitment.responsibleName || '').trim().toLowerCase()) ? currentUser : undefined);
     const closerRole = (closerObj as any)?.roleTitle || (closerObj as any)?.customJobTitle || closerObj?.role || 'Anfitrião';
 
     setActiveReceiptModal({
@@ -736,15 +738,18 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
       leadName: lead.name,
       leadPhone: lead.phone,
       leadEmail: lead.email,
+      venueId: venue?.id || commitment.venueId || lead.venueId,
       venueName: venue?.name || 'Casa de Festas',
       venueAddress: venue?.address || '',
       venueLogoUrl: venue?.logoUrl || (venue as any)?.logo_url,
       dateStr: commitment.date || '',
       timeStr: commitment.time || '',
       pax: commitment.pax || 2,
+      closerId: closerObj?.id || targetCloserId,
+      responsibleCollaboratorId: closerObj?.id || targetCloserId,
       closerName: commitment.responsibleName || closerObj?.name || 'Equipe',
       closerRoleTitle: closerRole,
-      closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl,
+      closerPhotoUrl: (closerObj as any)?.photoUrl || closerObj?.avatarUrl || (closerObj as any)?.avatar_url,
       createdByName: currentUser?.name || 'Administrador',
       createdAtStr: commitment.createdAt ? new Date(commitment.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : undefined,
       notes: commitment.notes,
@@ -774,7 +779,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
       leadVenueConfig,
       reqType,
-      appointments
+      appointments,
+      venueEvents
     );
 
     if (!availabilityCheck.available) {
@@ -788,7 +794,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
     // Se houver horários, abre a tela do modal normalmente
     setScheduleCommitmentType(reqType);
-  }, [leadVenueConfig, appointments]);
+  }, [leadVenueConfig, appointments, venueEvents]);
 
   const [completingCommitmentType, setCompletingCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [completionFeedback, setCompletionFeedback] = useState<string>('');

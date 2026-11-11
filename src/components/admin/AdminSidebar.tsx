@@ -6,7 +6,7 @@ import {
   ChevronDown, Globe,
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
-  Eye, RotateCcw, Gift, Calendar, GripVertical, UserCheck, Clock, Zap
+  Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
@@ -29,6 +29,7 @@ export type AdminTabType =
   | 'vip-journey'
   | 'post-sale-appointments'
   | 'post-sale-visits-tastings'
+  | 'venue-events'
   | 'team'
   | 'sources'
   | 'mql'
@@ -289,14 +290,16 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
     { id: 'crm', label: 'Funil Comercial', icon: <Target size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'] },
     { id: 'leads', label: 'Leads', icon: <Users size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer'], alertBadge: unindexedLeadsCount > 0 },
     { id: 'post-sale-visits-tastings', label: 'Agendamentos', icon: <Calendar size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'venue-events', label: 'Agenda de Eventos', icon: <CalendarCheck2 size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];
 
-  // 3. Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos
+  // 3. Pós-Venda: Funis de Pós-Venda, Clientes, App Aniversariantes, Compromissos, Agenda de Eventos
   const postSaleItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[] }[] = [
     { id: 'post-sale-crm', label: 'Funis de Pós-Venda', icon: <Target size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'post-sale-clients', label: 'Clientes', icon: <UserCheck size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'debutantes', label: 'App Aniversariantes', icon: <Gift size={15} />, roles: ['master', 'admin', 'pos_venda'] },
     { id: 'post-sale-appointments', label: 'Compromissos', icon: <CheckSquare size={15} />, roles: ['master', 'admin', 'pos_venda'] },
+    { id: 'venue-events', label: 'Agenda de Eventos', icon: <CalendarCheck2 size={15} />, roles: ['master', 'admin', 'pos_venda'] },
   ];
 
   // 4. Gerência: Qualificação ICP, Origens, Metas, Dashboard Gerência, Colaboradores, Casas de Festa
@@ -617,7 +620,7 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
 
     if (sector === 'comercial') {
       accentColor = '#14A9D7';
-      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'post-sale-visits-tastings'].includes(activeTab);
+      isSectorActive = !isPinnedCommercialActive && ['dashboard', 'crm', 'leads', 'post-sale-visits-tastings', 'venue-events'].includes(activeTab);
       // Ícone dinâmico do Comercial
       switch (activeTab) {
         case 'dashboard':
@@ -632,13 +635,16 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
         case 'post-sale-visits-tastings':
           icon = <Calendar size={18} />;
           break;
+        case 'venue-events':
+          icon = <CalendarCheck2 size={18} />;
+          break;
         default:
           icon = <DollarSign size={18} />;
           break;
       }
     } else if (sector === 'pos_venda') {
       accentColor = '#06B6D4';
-      isSectorActive = !isPinnedPostSaleActive && ['post-sale-crm', 'post-sale-clients', 'debutantes', 'post-sale-appointments'].includes(activeTab);
+      isSectorActive = !isPinnedPostSaleActive && ['post-sale-crm', 'post-sale-clients', 'debutantes', 'post-sale-appointments', 'venue-events'].includes(activeTab);
       // Ícone dinâmico do Pós-Venda
       switch (activeTab) {
         case 'post-sale-crm':
@@ -652,6 +658,9 @@ const WhatsAppBrandIcon: React.FC<{ size?: number; color?: string }> = ({ size =
           break;
         case 'post-sale-appointments':
           icon = <CheckSquare size={18} />;
+          break;
+        case 'venue-events':
+          icon = <CalendarCheck2 size={18} />;
           break;
         default:
           icon = <Briefcase size={18} />;

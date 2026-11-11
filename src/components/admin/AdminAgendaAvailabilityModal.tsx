@@ -3,9 +3,9 @@ import {
   X, Calendar, Trash2, ShieldAlert, Sparkles,
   Check, Copy, ChevronLeft, ChevronRight,
   Plus, Building2, UtensilsCrossed,
-  Repeat, CalendarRange, ArrowRight, ArrowLeft,
+  Repeat, CalendarRange, ArrowRight, ArrowLeft, ArrowUp, ArrowDown,
   Edit3, CheckCircle2, AlertCircle, MapPin, RotateCcw,
-  Users, UserCheck
+  Users, UserCheck, Send, Search
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { generateUuid } from '../../utils/uuid';
@@ -158,6 +158,10 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   // Distribuição de Closers (Split)
   const [closerDistributionMode, setCloserDistributionMode] = useState<'manual' | 'round_robin'>(() => existingConfig.closerDistributionMode || 'round_robin');
   const [closerIds, setCloserIds] = useState<string[]>(() => existingConfig.closerIds || []);
+  const [closerNextIndex, setCloserNextIndex] = useState<number>(() => existingConfig.closerNextIndex ?? 0);
+  const [closerAutoNotify, setCloserAutoNotify] = useState<boolean>(() => existingConfig.closerAutoNotify !== false);
+  const [isAddCloserDropdownOpen, setIsAddCloserDropdownOpen] = useState(false);
+  const [closerDropdownSearch, setCloserDropdownSearch] = useState('');
 
   // Closers elegíveis vinculados à casa ou comerciais
   const availableClosers = useMemo(() => {
@@ -242,6 +246,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     setDateOverrides(fresh.dateOverrides || []);
     setCloserDistributionMode(fresh.closerDistributionMode || 'round_robin');
     setCloserIds(fresh.closerIds || []);
+    setCloserNextIndex(fresh.closerNextIndex ?? 0);
+    setCloserAutoNotify(fresh.closerAutoNotify !== false);
   }, [selectedVenueId, venueAgendaConfigs]);
 
   // Blocos por Período
@@ -649,25 +655,6 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     });
   };
 
-  // Áudio 1: Aumento e diminuição ponderada de closers na fila do split (listagem repetida/pesos)
-  const handleIncrementCloser = (closerId: string) => {
-    setCloserIds(prev => {
-      let currentList = prev.length === 0 ? availableClosers.map(c => c.id) : [...prev];
-      return [...currentList, closerId];
-    });
-  };
-
-  const handleDecrementCloser = (closerId: string) => {
-    setCloserIds(prev => {
-      let currentList = prev.length === 0 ? availableClosers.map(c => c.id) : [...prev];
-      const index = currentList.indexOf(closerId);
-      if (index >= 0) {
-        currentList.splice(index, 1);
-      }
-      return currentList;
-    });
-  };
-
   // Configura todas as datas restantes que ainda estão brancas (pendentes) com o padrão
   const handleConfigureAllRemaining = () => {
     setBlockDaysConfig(prev => {
@@ -951,6 +938,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       dateOverrides,
       closerDistributionMode,
       closerIds,
+      closerNextIndex,
+      closerAutoNotify,
       updatedAt: new Date().toISOString(),
     };
 
@@ -985,6 +974,8 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
       dateOverrides,
       closerDistributionMode,
       closerIds,
+      closerNextIndex,
+      closerAutoNotify,
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -4143,242 +4134,330 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               </div>
             </div>
 
-            {/* Lista de Closers para o Split Automático */}
+            {/* Controle de Envio Automático para o Colaborador Selecionado */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              padding: '12px 16px',
+              borderRadius: '10px',
+              background: closerAutoNotify ? 'rgba(16, 185, 129, 0.06)' : '#F8FAFC',
+              border: `1px solid ${closerAutoNotify ? 'rgba(16, 185, 129, 0.35)' : '#E2E8F0'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Send size={16} color={closerAutoNotify ? '#10B981' : '#64748B'} />
+                <div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                    Envio Automático ao Colaborador Selecionado
+                  </div>
+                  <div style={{ fontSize: '0.73rem', color: '#64748B' }}>
+                    Dispara automaticamente um resumo do agendamento via WhatsApp para o telefone do colaborador atribuído.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCloserAutoNotify(prev => !prev)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  background: closerAutoNotify ? '#10B981' : '#CBD5E1',
+                  color: '#FFFFFF',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {closerAutoNotify ? 'Ativado' : 'Desativado'}
+              </button>
+            </div>
+
+            {/* Gerenciamento da Lista de Ordem (Paridade Exata com o Split do Funil) */}
             {closerDistributionMode === 'round_robin' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                      Closers Participantes do Split
+                      Ordem da Fila de Entrega ({closerIds.length} {closerIds.length === 1 ? 'posição' : 'posições'})
                     </span>
-                    <span style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      background: 'rgba(139, 92, 246, 0.12)',
-                      color: '#7C3AED',
-                      padding: '2px 8px',
-                      borderRadius: '10px',
-                    }}>
-                      {(closerIds.length > 0 ? closerIds.length : availableClosers.length)} ativo(s)
-                    </span>
+                    {closerIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setCloserNextIndex(0)}
+                        title="Voltar o ponteiro para a posição #1"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: '#FFFFFF',
+                          border: '1px solid #CBD5E1',
+                          color: '#475569',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          fontSize: '0.70rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <RotateCcw size={11} />
+                        <span>Reiniciar Ordem</span>
+                      </button>
+                    )}
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setCloserIds(availableClosers.map(c => c.id))}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#7C3AED',
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        padding: '4px 8px',
-                      }}
-                    >
-                      Selecionar Todos
-                    </button>
-                    <span style={{ color: '#CBD5E1' }}>•</span>
-                    <button
-                      type="button"
-                      onClick={() => setCloserIds([])}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#64748B',
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        padding: '4px 8px',
-                      }}
-                    >
-                      Limpar
-                    </button>
+                  {/* Botão + Adicionar Colaborador com dropdown pesquisável igual ao Funil */}
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddCloserDropdownOpen(prev => !prev);
+                          setCloserDropdownSearch('');
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          background: '#7C3AED',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Plus size={14} />
+                        <span>Adicionar Colaborador</span>
+                      </button>
+                      {closerIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { setCloserIds([]); setCloserNextIndex(0); }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#EF4444',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                          }}
+                        >
+                          Limpar Lista
+                        </button>
+                      )}
+                    </div>
+
+                    {isAddCloserDropdownOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        right: 0,
+                        width: '290px',
+                        background: '#FFFFFF',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '10px',
+                        boxShadow: '0 12px 30px rgba(15,23,42,0.18)',
+                        zIndex: 50,
+                        padding: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}>
+                        <div style={{ position: 'relative' }}>
+                          <Search size={13} color="#94A3B8" style={{ position: 'absolute', left: '8px', top: '9px' }} />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={closerDropdownSearch}
+                            onChange={(e) => setCloserDropdownSearch(e.target.value)}
+                            placeholder="Buscar colaborador..."
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px 6px 26px',
+                              borderRadius: '6px',
+                              border: '1px solid #E2E8F0',
+                              fontSize: '0.76rem',
+                              color: '#0F172A',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          {availableClosers
+                            .filter(c => !closerDropdownSearch.trim() || c.name.toLowerCase().includes(closerDropdownSearch.toLowerCase()))
+                            .map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setCloserIds(prev => [...prev, c.id]);
+                                  setIsAddCloserDropdownOpen(false);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '6px 8px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', background: '#EDE9FE', color: '#7C3AED', fontSize: '0.68rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                    {c.avatarUrl ? <img src={c.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : c.name.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{(c as any).roleTitle || c.role}</div>
+                                  </div>
+                                </div>
+                                <Plus size={14} color="#7C3AED" />
+                              </button>
+                            ))}
+                          {availableClosers.length === 0 && (
+                            <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.74rem', color: '#64748B' }}>
+                              Nenhum colaborador elegível encontrado nesta unidade.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                  gap: '10px',
-                }}>
-                  {availableClosers.length === 0 ? (
-                    <div style={{ gridColumn: '1 / -1', padding: '20px', textAlign: 'center', color: '#64748B', fontSize: '0.82rem', background: '#F8FAFC', borderRadius: '10px' }}>
-                      Nenhum colaborador com função de Closer ou Comercial encontrado para esta unidade.
+                {/* Lista Ordenada Numerada (#1, #2, #3...) Idêntica ao Split do Funil */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '280px', overflowY: 'auto' }}>
+                  {closerIds.length === 0 ? (
+                    <div style={{ padding: '18px', textAlign: 'center', color: '#64748B', fontSize: '0.78rem', background: '#FFFFFF', borderRadius: '8px', border: '1px dashed #CBD5E1' }}>
+                      Nenhum colaborador na lista de ordem. Clique em <strong>"+ Adicionar Colaborador"</strong> para montar a sequência do rodízio (ou clique abaixo para preencher com todos da unidade).
+                      <div style={{ marginTop: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setCloserIds(availableClosers.map(c => c.id))}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(124, 58, 237, 0.1)',
+                            border: '1px solid rgba(124, 58, 237, 0.3)',
+                            color: '#7C3AED',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Preencher com Todos ({availableClosers.length})
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    availableClosers.map(closer => {
-                      const count = closerIds.filter(id => id === closer.id).length;
-                      const effectiveCount = closerIds.length === 0 ? 1 : count;
-                      const isSelected = effectiveCount > 0;
+                    closerIds.map((collabId, idx) => {
+                      const collab = collaborators.find(c => c.id === collabId);
+                      const isNextInLine = (closerNextIndex % closerIds.length) === idx;
                       return (
                         <div
-                          key={closer.id}
-                          onClick={() => {
-                            if (isSelected) {
-                              setCloserIds(prev => {
-                                const current = prev.length === 0 ? availableClosers.map(c => c.id) : prev;
-                                return current.filter(id => id !== closer.id);
-                              });
-                            } else {
-                              handleIncrementCloser(closer.id);
-                            }
-                          }}
+                          key={`${collabId}-${idx}`}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 14px',
-                            borderRadius: '10px',
-                            border: `1.5px solid ${isSelected ? '#7C3AED' : '#E2E8F0'}`,
-                            background: isSelected ? 'rgba(139, 92, 246, 0.04)' : '#FFFFFF',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            background: isNextInLine ? 'rgba(124, 58, 237, 0.07)' : '#FFFFFF',
+                            border: `1px solid ${isNextInLine ? '#7C3AED' : '#E2E8F0'}`,
                           }}
                         >
-                          <div style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '50%',
-                            overflow: 'hidden',
-                            background: '#F1F5F9',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            fontWeight: 800,
-                            fontSize: '0.80rem',
-                            color: '#475569',
-                          }}>
-                            {closer.avatarUrl ? (
-                              <img src={closer.avatarUrl} alt={closer.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              closer.name.substring(0, 2).toUpperCase()
-                            )}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {closer.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 900, color: isNextInLine ? '#7C3AED' : '#10B981', minWidth: '24px' }}>
+                              #{idx + 1}
+                            </span>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.72rem', color: '#475569', flexShrink: 0 }}>
+                              {collab?.avatarUrl ? <img src={collab.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (collab?.name || 'C').slice(0, 2).toUpperCase()}
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                              {(closer as any).roleTitle || (closer.role === 'closer' ? 'Closer Comercial' : closer.role)}
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {collab?.name || 'Colaborador'}
+                                </span>
+                                {isNextInLine && (
+                                  <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 6px', borderRadius: '999px', background: '#7C3AED', color: '#FFFFFF' }}>
+                                    PRÓXIMO
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                {(collab as any)?.roleTitle || collab?.role || 'Comercial'}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Controles de Peso / Repetição de Clientes por Ciclo (Áudio 1) */}
-                          <div 
-                            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-                            onClick={e => e.stopPropagation()}
-                          >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            {idx > 0 && (
+                              <button
+                                type="button"
+                                title="Subir posição na ordem"
+                                onClick={() => {
+                                  const updated = [...closerIds];
+                                  [updated[idx - 1], updated[idx]] = [updated[idx], updated[idx - 1]];
+                                  setCloserIds(updated);
+                                }}
+                                style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                              >
+                                <ArrowUp size={12} />
+                              </button>
+                            )}
+                            {idx < closerIds.length - 1 && (
+                              <button
+                                type="button"
+                                title="Descer posição na ordem"
+                                onClick={() => {
+                                  const updated = [...closerIds];
+                                  [updated[idx + 1], updated[idx]] = [updated[idx], updated[idx + 1]];
+                                  setCloserIds(updated);
+                                }}
+                                style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', color: '#475569', cursor: 'pointer', padding: '4px', display: 'flex' }}
+                              >
+                                <ArrowDown size={12} />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleDecrementCloser(closer.id)}
-                              disabled={effectiveCount <= 0}
-                              style={{
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                background: '#F8FAFC',
-                                color: '#475569',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: effectiveCount <= 0 ? 'not-allowed' : 'pointer',
-                                fontWeight: 800,
-                                fontSize: '0.85rem',
-                                opacity: effectiveCount <= 0 ? 0.4 : 1,
+                              title="Repetir colaborador na sequência (peso)"
+                              onClick={() => {
+                                const updated = [...closerIds];
+                                updated.splice(idx + 1, 0, collabId);
+                                setCloserIds(updated);
                               }}
-                              title="Reduzir proporção de clientes"
+                              style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', color: '#3B82F6', cursor: 'pointer', padding: '4px', display: 'flex' }}
                             >
-                              -
+                              <Copy size={12} />
                             </button>
-                            <span style={{
-                              minWidth: '24px',
-                              textAlign: 'center',
-                              fontSize: '0.82rem',
-                              fontWeight: 900,
-                              color: isSelected ? '#7C3AED' : '#94A3B8',
-                            }}>
-                              {effectiveCount}x
-                            </span>
                             <button
                               type="button"
-                              onClick={() => handleIncrementCloser(closer.id)}
-                              style={{
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '6px',
-                                border: '1px solid #DDD6FE',
-                                background: '#EDE9FE',
-                                color: '#7C3AED',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                fontWeight: 800,
-                                fontSize: '0.85rem',
-                              }}
-                              title="Aumentar proporção de clientes"
+                              title="Remover da lista"
+                              onClick={() => setCloserIds(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', color: '#EF4444', cursor: 'pointer', padding: '4px', display: 'flex' }}
                             >
-                              +
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         </div>
                       );
                     })
                   )}
-                </div>
-
-                {/* Prévia Visual da Fila do Split (Áudio 1) */}
-                <div style={{
-                  padding: '12px 16px',
-                  borderRadius: '10px',
-                  background: 'rgba(124, 58, 237, 0.05)',
-                  border: '1px solid rgba(124, 58, 237, 0.2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 800, color: '#7C3AED' }}>
-                    <Sparkles size={15} />
-                    <span>Fila Ponderada do Split Automático (Ordem por Ciclo):</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                    {availableClosers
-                      .filter(c => (closerIds.length === 0 ? 1 : closerIds.filter(id => id === c.id).length) > 0)
-                      .map((c) => {
-                        const count = closerIds.length === 0 ? 1 : closerIds.filter(id => id === c.id).length;
-                        return (
-                          <span key={c.id} style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '4px 10px',
-                            borderRadius: '6px',
-                            background: '#FFFFFF',
-                            border: '1px solid #DDD6FE',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                            color: '#5B21B6',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                          }}>
-                            <span>{c.name}</span>
-                            <span style={{
-                              background: '#7C3AED',
-                              color: '#FFFFFF',
-                              borderRadius: '10px',
-                              padding: '1px 6px',
-                              fontSize: '0.68rem',
-                              fontWeight: 800,
-                            }}>
-                              {count} {count === 1 ? 'cliente' : 'clientes'}
-                            </span>
-                          </span>
-                        );
-                      })}
-                  </div>
                 </div>
               </div>
             )}

@@ -262,6 +262,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
     funnels,
     tasks,
     venueAgendaConfigs,
+    venueEvents,
     appointments,
     addFunnel,
     duplicateFunnel,
@@ -1464,7 +1465,8 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
         const availabilityCheck = agendaAvailabilityService.hasUpcomingAvailableSlots(
           leadVenueConfig,
           scheduleType,
-          appointments
+          appointments,
+          venueEvents
         );
 
         if (!availabilityCheck.available) {
