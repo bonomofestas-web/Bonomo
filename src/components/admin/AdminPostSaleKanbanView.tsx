@@ -284,9 +284,24 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   useEffect(() => {
     if (initialFunnelId !== undefined) {
-      setSelectedFunnelId(initialFunnelId);
+      if (initialFunnelId && funnels.length > 0) {
+        const isPs = funnels.some(f =>
+          f.id === initialFunnelId && (
+            f.isPostSale ||
+            f.category === 'Pós-Venda' ||
+            f.category === 'pos_venda' ||
+            f.name?.toLowerCase().includes('pós-venda') ||
+            f.name?.toLowerCase().includes('pos venda') ||
+            f.name?.toLowerCase().includes('sucesso') ||
+            f.name?.toLowerCase().includes('decor')
+          )
+        );
+        setSelectedFunnelId(isPs ? initialFunnelId : null);
+      } else {
+        setSelectedFunnelId(initialFunnelId);
+      }
     }
-  }, [initialFunnelId]);
+  }, [initialFunnelId, funnels]);
 
   const handleSelectFunnel = (id: string | null) => {
     setSelectedFunnelId(id);
@@ -426,14 +441,14 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     );
   }, [funnels]);
 
-  // Funil Atualmente Selecionado no Kanban
+  // Funil Atualmente Selecionado no Kanban (estritamente dentre funis de Pós-Venda)
   const currentFunnel = useMemo(() => {
     if (selectedFunnelId) {
-      const matched = (funnels || []).find(f => f.id === selectedFunnelId);
+      const matched = postSaleFunnels.find(f => f.id === selectedFunnelId);
       if (matched) return matched;
     }
     return null;
-  }, [funnels, selectedFunnelId]);
+  }, [postSaleFunnels, selectedFunnelId]);
 
   // Recupera unidades vinculadas manualmente a este funil de pós-venda (vínculo estrito, sem inferência automática)
   const getLinkedVenuesForFunnel = (targetFunnel: CommercialFunnel) => {
@@ -594,6 +609,17 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const extraClientsFromLeads = (leads || []).filter(l => {
       if (existingClientIds.has(l.id)) return false;
       if ((l as any).isRemovedFromFunnel) return false;
+
+      // REGRA SUPREMA: Leads comerciais (código LEAD- ou sem vínculo de cliente) NUNCA entram no Pós-Venda
+      const isRealClient = Boolean(
+        l.isClient === true ||
+        l.group === 'Pós-Venda' ||
+        (l.code && l.code.startsWith('CLI-')) ||
+        (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+      );
+      const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
+      if (!isRealClient || isLeadCode) return false;
+
       const explicitlyInFunnel = Boolean(
         l.funnelId && (
           l.funnelId === funnel.id ||
@@ -601,8 +627,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         )
       );
       if (explicitlyInFunnel) return true;
-      const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')));
-      if (!isRealClient || (l.code && l.code.startsWith('LEAD-'))) return false;
       if (!l.funnelId && funnel.id === defaultPostSaleId) {
         return linkedVenueIds.length === 0 || (l.venueId ? linkedVenueIds.includes(l.venueId) : true);
       }
@@ -683,10 +707,10 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     }
   };
 
-  // Colunas Ativas (dinâmicas conforme configuração do funil)
+  // Colunas Ativas (dinâmicas conforme as etapas reais configuradas no funil)
   const activeStageColumns = useMemo(() => {
     const customNames = currentFunnel?.postSaleCustomStageNames;
-    const formatTitle = (id: string, defaultTitle: string) => {
+    const formatFallbackTitle = (id: string, defaultTitle: string) => {
       if (id === 'completed' && customNames?.won) return customNames.won.toUpperCase();
       if (id === 'lost' && customNames?.lost) return customNames.lost.toUpperCase();
       if ((id === 'entry' || id === 'new_lead') && customNames?.entry) return customNames.entry.toUpperCase();
@@ -694,49 +718,61 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     };
 
     const isEntryActive = Boolean(currentFunnel?.isEntryStageActive || currentFunnel?.enableInboxStage);
+    const hasConfiguredStages = Boolean(currentFunnel?.stages && currentFunnel.stages.length > 0);
 
     let rawCols: { id: ClientStage; title: string; color: string; bgColor: string; borderColor: string; isWon?: boolean; isLoss?: boolean }[] = [];
 
-    if (currentFunnel?.stages && currentFunnel.stages.length > 0) {
-      rawCols = currentFunnel.stages.map(st => ({
-        id: st.id as any,
-        title: formatTitle(st.id, st.name),
-        color: st.color || '#3B82F6',
-        bgColor: `${st.color || '#3B82F6'}14`,
-        borderColor: `${st.color || '#3B82F6'}4D`,
-        isWon: Boolean(st.isWon),
-        isLoss: Boolean(st.isLoss),
-      }));
+    if (hasConfiguredStages && currentFunnel?.stages) {
+      rawCols = [...currentFunnel.stages]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(st => ({
+          id: st.id as any,
+          title: (st.name || st.id).trim(),
+          color: st.color || '#3B82F6',
+          bgColor: `${st.color || '#3B82F6'}14`,
+          borderColor: `${st.color || '#3B82F6'}4D`,
+          isWon: Boolean(st.isWon),
+          isLoss: Boolean(st.isLoss),
+        }));
     } else {
       rawCols = STAGE_COLUMNS.map(col => ({
         ...col,
-        title: formatTitle(col.id, col.title),
+        title: formatFallbackTitle(col.id, col.title),
         isWon: col.id === 'completed',
         isLoss: col.id === 'lost',
       }));
     }
 
     if (!isEntryActive) {
-      // Se Caixa de Entrada estiver DESATIVADA: remove qualquer etapa new_lead ou com nome de entrada
-      rawCols = rawCols.filter(c => c.id !== ('new_lead' as any) && c.id !== ('entry' as any) && !c.title.toLowerCase().includes('entrada'));
+      // Remove apenas a etapa de caixa de entrada do sistema quando desativada (preservando etapas personalizadas do funil)
+      rawCols = rawCols.filter((c, idx) => {
+        if (c.id === ('new_lead' as any) || c.id === ('entry' as any)) return false;
+        const normalizedTitle = c.title.toLowerCase().trim();
+        if (idx === 0 && !c.isWon && !c.isLoss && (normalizedTitle === 'entrada do cliente' || normalizedTitle === 'novo lead' || normalizedTitle === 'entrada')) {
+          return false;
+        }
+        return true;
+      });
     } else {
-      // Se Caixa de Entrada estiver ATIVADA: garante exatamente uma etapa de entrada no topo
-      const existingEntryIndex = rawCols.findIndex(c => c.id === ('new_lead' as any) || c.id === ('entry' as any) || c.title.toLowerCase().includes('entrada'));
+      const existingEntryIndex = rawCols.findIndex(c => c.id === ('new_lead' as any) || c.id === ('entry' as any));
       if (existingEntryIndex >= 0) {
         const entryCol = rawCols[existingEntryIndex];
-        // Remove quaisquer outras duplicatas
         const otherCols = rawCols.filter((_, idx) => idx !== existingEntryIndex && rawCols[idx].id !== ('new_lead' as any) && rawCols[idx].id !== ('entry' as any));
-        rawCols = [{ ...entryCol, id: 'new_lead' as any, title: formatTitle('new_lead', entryCol.title || 'ENTRADA DO CLIENTE') }, ...otherCols];
+        rawCols = [{ ...entryCol, id: 'new_lead' as any, title: entryCol.title || 'ENTRADA DO CLIENTE' }, ...otherCols];
       } else {
         const entryCol = {
           id: 'new_lead' as ClientStage,
-          title: formatTitle('new_lead', 'ENTRADA DO CLIENTE'),
+          title: formatFallbackTitle('new_lead', 'ENTRADA DO CLIENTE'),
           color: '#EF4444',
           bgColor: '#EF444414',
           borderColor: '#EF44444D',
         };
         rawCols = [entryCol, ...rawCols];
       }
+    }
+
+    if (currentFunnel?.isWonStageEnabled === false) {
+      rawCols = rawCols.filter(c => !c.isWon && c.id !== 'completed');
     }
 
     return rawCols;
@@ -793,7 +829,17 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         if (existingClientIds.has(l.id)) return false;
         if ((l as any).isRemovedFromFunnel) return false;
 
-        // Se o registro possui funnelId explícito pertencente ao funil atual (ou a qualquer funil pós-venda),
+        // REGRA SUPREMA: Leads comerciais (código LEAD- ou sem vínculo de cliente) NUNCA aparecem no Pós-Venda
+        const isRealClient = Boolean(
+          l.isClient === true ||
+          l.group === 'Pós-Venda' ||
+          (l.code && l.code.startsWith('CLI-')) ||
+          (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+        );
+        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
+        if (!isRealClient || isLeadCode) return false;
+
+        // Se o cliente possui funnelId explícito pertencente ao funil atual (ou a qualquer funil pós-venda),
         // ele deve ser exibido no Kanban igual ao Modo WhatsApp
         if (l.funnelId && currentFunnel) {
           return matchesFunnelStrict(l.funnelId, currentFunnel, false);
@@ -801,11 +847,6 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         if (l.funnelId) {
           return postSaleFunnels.some(pf => matchesFunnelStrict(l.funnelId, pf, false));
         }
-
-        // Sem funnelId explícito: aceita apenas clientes legados de pós-venda (jamais leads comerciais LEAD-)
-        const isRealClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (l.code && l.code.startsWith('CLI-')) || (l as any).won || (l as any).status === 'won');
-        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
-        if (!isRealClient || isLeadCode) return false;
 
         if (currentFunnel && currentFunnel.id !== defaultPostSaleId) {
           return false;
@@ -3910,7 +3951,8 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
               </thead>
               <tbody>
                 {filteredClients.map(client => {
-                  const stageCol = STAGE_COLUMNS.find(c => c.id === client.stage) || STAGE_COLUMNS[0];
+                  const matchedColId = getClientMatchedColumnId(client, activeStageColumns);
+                  const stageCol = activeStageColumns.find(c => c.id === matchedColId) || activeStageColumns[0] || STAGE_COLUMNS[0];
 
                   return (
                     <tr

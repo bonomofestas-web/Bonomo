@@ -16,7 +16,8 @@ import type {
   AgendaBlockRule,
   AgendaBlockDayConfig,
   AgendaDateOverride,
-  CommercialCommitmentType
+  CommercialCommitmentType,
+  Collaborator
 } from '../../types/admin';
 import { 
   DEFAULT_VISITS_RULE, 
@@ -163,16 +164,36 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
   const [isAddCloserDropdownOpen, setIsAddCloserDropdownOpen] = useState(false);
   const [closerDropdownSearch, setCloserDropdownSearch] = useState('');
 
-  // Closers elegíveis vinculados à casa ou comerciais
+  // Helper para exibir exclusivamente o Cargo configurado do colaborador (nunca nível de acesso como "admin")
+  const getCollaboratorJobTitle = (c?: Collaborator | null): string => {
+    if (!c) return '';
+    return ((c.customJobTitle || (c as any).roleTitle || '') as string).trim();
+  };
+
+  // Colaboradores elegíveis vinculados à unidade: Admins/Masters + quem possui acesso ao CRM / Comercial (SDR e Closer)
   const availableClosers = useMemo(() => {
     return (collaborators || []).filter(c => {
       if (c.active === false) return false;
-      if (c.venueIds && c.venueIds.length > 0 && selectedVenueId !== 'all') {
-        if (!c.venueIds.includes(selectedVenueId)) return false;
+      const cVenues = (c.venueIds && c.venueIds.length > 0)
+        ? c.venueIds
+        : (c.venueId && c.venueId !== 'all' ? [c.venueId] : []);
+      if (cVenues.length > 0 && selectedVenueId !== 'all') {
+        if (!cVenues.includes(selectedVenueId)) return false;
       }
       const roleStr = (c.role || '').toLowerCase();
-      const titleStr = ((c as any).roleTitle || '').toLowerCase();
-      return roleStr.includes('closer') || roleStr.includes('commercial') || roleStr.includes('admin') || roleStr.includes('master') || titleStr.includes('closer');
+      return Boolean(
+        c.sectors?.includes('comercial') ||
+        (c as any).primarySector === 'comercial' ||
+        c.department === 'comercial' ||
+        roleStr === 'crm' ||
+        roleStr === 'sdr' ||
+        roleStr.includes('closer') ||
+        roleStr.includes('comercial') ||
+        roleStr.includes('commercial') ||
+        roleStr.includes('admin') ||
+        roleStr.includes('master') ||
+        (c as any).isDev
+      );
     });
   }, [collaborators, selectedVenueId]);
 
@@ -4321,7 +4342,9 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   </div>
                                   <div style={{ minWidth: 0 }}>
                                     <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{(c as any).roleTitle || c.role}</div>
+                                    {getCollaboratorJobTitle(c) && (
+                                      <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{getCollaboratorJobTitle(c)}</div>
+                                    )}
                                   </div>
                                 </div>
                                 <Plus size={14} color="#7C3AED" />
@@ -4398,9 +4421,11 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
                                   </span>
                                 )}
                               </div>
-                              <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                {(collab as any)?.roleTitle || collab?.role || 'Comercial'}
-                              </span>
+                              {getCollaboratorJobTitle(collab) && (
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                  {getCollaboratorJobTitle(collab)}
+                                </span>
+                              )}
                             </div>
                           </div>
 

@@ -1680,7 +1680,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         baseContractValue: c.baseContractValue,
         partyDate: c.partyDate || c.eventDate || '',
         eventDate: c.eventDate || c.partyDate || '',
-        funnelId: c.funnelId || activeFunnelId || 'post_sale_default',
+        funnelId: c.funnelId || 'post_sale_default',
         assignedTo: c.assignedSuccessManagerName || c.assignedTo || '',
         sdrId: c.assignedSuccessManagerId || c.assignedToId || '',
         sdrName: c.assignedSuccessManagerName || c.assignedTo || '',
@@ -1722,10 +1722,18 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
     if (isPostSaleFunnel) {
       const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
-      const postSaleLeads = (rawLeads || []).filter(l =>
-        (l.isClient || l.group === 'Pós-Venda' || (activeFunnel && l.funnelId === activeFunnel.id)) &&
-        !existingClientIds.has(l.id)
-      );
+      const postSaleLeads = (rawLeads || []).filter(l => {
+        if (existingClientIds.has(l.id)) return false;
+        // Regra estrita: no modo Pós-Venda é proibido misturar leads comerciais (LEAD-)
+        const isLeadCode = Boolean(l.code && l.code.startsWith('LEAD-'));
+        const isRealClient = Boolean(
+          l.isClient === true ||
+          l.group === 'Pós-Venda' ||
+          (l.code && l.code.startsWith('CLI-')) ||
+          (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente'))
+        );
+        return isRealClient && !isLeadCode;
+      });
       return [...clientsAsLeads, ...postSaleLeads];
     }
     return rawLeads;
@@ -5645,11 +5653,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             const stgKey = (lead.stage as string) || '';
                             const matchedFunnel = funnels.find(f => f.id === lead.funnelId);
                             const customStage = matchedFunnel?.stages?.find(s => s.id === stgKey);
-                            const stgCfg = POST_SALE_STAGE_CONFIG[stgKey] || (customStage ? {
+                            const stgCfg = (customStage ? {
                               label: customStage.name,
                               color: customStage.color || '#3B82F6',
                               bg: `${customStage.color || '#3B82F6'}15`,
-                            } : null);
+                            } : null) || POST_SALE_STAGE_CONFIG[stgKey];
 
                             return (
                               <>

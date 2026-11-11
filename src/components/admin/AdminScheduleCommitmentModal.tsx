@@ -195,16 +195,8 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   const [followUpNotes, setFollowUpNotes] = useState<string>('');
 
   const getCollabJobTitle = (c: any) => {
-    if (c.customJobTitle) return c.customJobTitle;
-    if (c.roleTitle) return c.roleTitle;
-    if (c.jobTitle) return c.jobTitle;
-    if (c.cargo) return c.cargo;
-    if (c.role === 'closer') return 'Closer';
-    if (c.role === 'sdr') return 'SDR';
-    if (c.role === 'crm') return 'Consultor Comercial';
-    if (c.role === 'admin') return 'Gerente Comercial';
-    if (c.role === 'master') return 'Diretoria';
-    return 'Equipe Comercial';
+    if (!c) return '';
+    return ((c.customJobTitle || c.roleTitle || c.jobTitle || c.cargo || '') as string).trim();
   };
 
   // Sincroniza Closer e SDR automaticamente a partir do Lead
@@ -577,7 +569,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       const closerObj = collaborators.find(c => c.id === finalCloserId) ||
         collaborators.find(c => Boolean(finalCloserId) && (c.name || '').trim().toLowerCase() === (finalCloserId || '').trim().toLowerCase()) ||
         currentUser;
-      const closerRoleTitle = (closerObj as any)?.roleTitle || (closerObj as any)?.customJobTitle || closerObj?.role || 'Anfitrião';
+      const closerRoleTitle = getCollabJobTitle(closerObj);
 
       setCompletedReceipt({
         id: receiptCode,
@@ -1560,9 +1552,11 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: themeColor }}>
-                            ({roleTitle})
-                          </div>
+                          {roleTitle && (
+                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: themeColor }}>
+                              ({roleTitle})
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1791,10 +1785,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                           }}
                         >
                           {collaborators.map(c => {
-                            const isSdr = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
+                            const jobTitle = getCollabJobTitle(c);
                             return (
                               <option key={c.id} value={c.id}>
-                                {c.name} {isSdr ? '(SDR)' : `(${(c as any)?.roleTitle || c.role || 'Equipe'})`}
+                                {c.name}{jobTitle ? ` (${jobTitle})` : ''}
                               </option>
                             );
                           })}

@@ -156,9 +156,38 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
     return 'Funil Comercial';
   }, [commercialLead, funnels]);
 
-  const currentStage = (client?.stage || lead.stage || 'onboarding') as ClientStage;
-  const currentStageConfig = POST_SALE_STAGES.find(s => s.id === currentStage) || POST_SALE_STAGES[0];
-  const currentStageIndex = POST_SALE_STAGES.findIndex(s => s.id === currentStage);
+  const activePostSaleStages = useMemo(() => {
+    const targetFunnelId = client?.funnelId || lead.funnelId;
+    const matchedFunnel = targetFunnelId ? funnels.find(f => f.id === targetFunnelId) : undefined;
+    if (matchedFunnel?.stages && matchedFunnel.stages.length > 0) {
+      const isEntryActive = Boolean(matchedFunnel.isEntryStageActive || matchedFunnel.enableInboxStage);
+      let list = [...matchedFunnel.stages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      if (!isEntryActive) {
+        list = list.filter((st, idx) => {
+          if (st.id === 'new_lead' || st.id === 'entry') return false;
+          const n = (st.name || '').toLowerCase().trim();
+          if (idx === 0 && !st.isWon && !st.isLoss && (n === 'entrada do cliente' || n === 'novo lead' || n === 'entrada')) return false;
+          return true;
+        });
+      }
+      if (matchedFunnel.isWonStageEnabled === false) {
+        list = list.filter(st => !st.isWon && st.id !== 'completed');
+      }
+      return list.map(st => ({
+        id: st.id as ClientStage,
+        label: st.name,
+        color: st.color || '#3B82F6',
+        bg: `${st.color || '#3B82F6'}1F`,
+        border: `${st.color || '#3B82F6'}66`,
+        icon: st.icon || 'layers',
+      }));
+    }
+    return POST_SALE_STAGES;
+  }, [client?.funnelId, lead.funnelId, funnels]);
+
+  const currentStage = (client?.stage || lead.stage || activePostSaleStages[0]?.id || 'onboarding') as ClientStage;
+  const currentStageConfig = activePostSaleStages.find(s => s.id === currentStage) || activePostSaleStages[0] || POST_SALE_STAGES[0];
+  const currentStageIndex = Math.max(0, activePostSaleStages.findIndex(s => s.id === currentStage));
 
   const isFunnelPostSale = useCallback((f: any) => Boolean(
     f?.isPostSale ||
@@ -573,9 +602,9 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             )}
           </div>
 
-          {/* Barra de Progresso Colorida dos 6 Estágios */}
+          {/* Barra de Progresso Colorida das Etapas Reais do Funil */}
           <div style={{ display: 'flex', gap: '3px', marginTop: '5px' }}>
-            {POST_SALE_STAGES.map((stg, idx) => {
+            {activePostSaleStages.map((stg, idx) => {
               const isFilled = idx <= currentStageIndex;
               return (
                 <div
@@ -618,7 +647,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
               flexDirection: 'column',
               gap: '2px',
             }}>
-              {POST_SALE_STAGES.map(stg => {
+              {activePostSaleStages.map(stg => {
                 const isSelected = currentStage === stg.id;
                 return (
                   <div

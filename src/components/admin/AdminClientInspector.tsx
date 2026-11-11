@@ -234,7 +234,41 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   if (!client) return null;
 
   const linkedDebutante = client.debutanteId ? debutantes.find(d => d.id === client.debutanteId) : null;
-  const stageInfo = STAGE_CONFIG[client.stage as ClientStage] || STAGE_CONFIG.onboarding;
+
+  const clientFunnelStages = useMemo(() => {
+    const matchedFunnel = client.funnelId ? funnels.find(f => f.id === client.funnelId) : undefined;
+    if (matchedFunnel?.stages && matchedFunnel.stages.length > 0) {
+      const isEntryActive = Boolean(matchedFunnel.isEntryStageActive || matchedFunnel.enableInboxStage);
+      let list = [...matchedFunnel.stages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      if (!isEntryActive) {
+        list = list.filter((st, idx) => {
+          if (st.id === 'new_lead' || st.id === 'entry') return false;
+          const n = (st.name || '').toLowerCase().trim();
+          if (idx === 0 && !st.isWon && !st.isLoss && (n === 'entrada do cliente' || n === 'novo lead' || n === 'entrada')) return false;
+          return true;
+        });
+      }
+      if (matchedFunnel.isWonStageEnabled === false) {
+        list = list.filter(st => !st.isWon && st.id !== 'completed');
+      }
+      return list.map(st => ({
+        id: st.id as ClientStage,
+        label: st.name,
+        color: st.color || '#3B82F6',
+        bg: `${st.color || '#3B82F6'}1F`,
+        border: `${st.color || '#3B82F6'}66`,
+      }));
+    }
+    return STAGES_ORDER.map(stg => ({
+      id: stg,
+      label: STAGE_CONFIG[stg].label,
+      color: STAGE_CONFIG[stg].color,
+      bg: STAGE_CONFIG[stg].bg,
+      border: STAGE_CONFIG[stg].border,
+    }));
+  }, [client.funnelId, funnels]);
+
+  const stageInfo = clientFunnelStages.find(s => s.id === client.stage) || STAGE_CONFIG[client.stage as ClientStage] || clientFunnelStages[0] || STAGE_CONFIG.onboarding;
 
   // Lista de destinatários com prioridade para o Decisor
   const clientRecipients = useMemo(() => {
@@ -787,14 +821,13 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
                 zIndex: 100,
                 minWidth: '220px',
               }}>
-                {STAGES_ORDER.map(stg => {
-                  const cfg = STAGE_CONFIG[stg];
-                  const isSelected = client.stage === stg;
+                {clientFunnelStages.map(cfg => {
+                  const isSelected = client.stage === cfg.id;
                   return (
                     <div
-                      key={stg}
+                      key={cfg.id}
                       onClick={() => {
-                        updateClientStage(client.id, stg);
+                        updateClientStage(client.id, cfg.id);
                         setIsStageDropdownOpen(false);
                       }}
                       style={{
