@@ -48,7 +48,7 @@ export const clientService = {
           birthdayPersonAge: row.birthday_person_age,
           birthdayPersonBirthdate: row.birthday_person_birthdate || commHist.birthdayPersonBirthdate,
           birthdayPersonPhone: (row as any).birthday_person_phone || commHist.birthdayPersonPhone,
-          eventType: row.event_type || '15_anos',
+          eventType: row.event_type || '',
           eventDate: row.event_date,
           eventTime: row.event_time,
           guestCount: row.guest_count || 0,

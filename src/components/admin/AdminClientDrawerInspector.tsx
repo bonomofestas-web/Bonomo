@@ -1193,7 +1193,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 <div style={cardValueStyle}>
                   <select
                     disabled={readOnly}
-                    value={client?.eventType || (lead as any).eventType || '15_anos'}
+                    value={client?.eventType || (lead as any).eventType || ''}
                     onChange={(e) => {
                       const newType = e.target.value;
                       if (client) {
@@ -1211,6 +1211,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       padding: '2px 6px',
                     }}
                   >
+                    <option value="">Sem marcação</option>
                     <option value="15_anos">15 Anos (Debutante)</option>
                     <option value="casamento">Casamento</option>
                     <option value="infantil">Aniversário Infantil</option>

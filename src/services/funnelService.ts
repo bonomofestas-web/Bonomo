@@ -67,6 +67,12 @@ export const funnelService = {
         postSaleCustomStageNames: row.post_sale_custom_stage_names || row.duplicate_rule_config?._postSaleCustomStageNames || undefined,
         distributionMode: row.distribution_mode || 'manual',
         assignedSdrIds: Array.isArray(row.assigned_sdr_ids) ? row.assigned_sdr_ids : [],
+        teamMemberIds: Array.isArray(row.team_member_ids)
+          ? row.team_member_ids
+          : (Array.isArray(row.duplicate_rule_config?._teamMemberIds) ? row.duplicate_rule_config._teamMemberIds : []),
+        closerIds: Array.isArray(row.closer_ids)
+          ? row.closer_ids
+          : (Array.isArray(row.duplicate_rule_config?._closerIds) ? row.duplicate_rule_config._closerIds : []),
         roundRobinNextIndex: row.round_robin_next_index || 0,
         pinnedAt: row.pinned_at || undefined,
         order: row.order !== undefined ? Number(row.order) : 0,
@@ -120,6 +126,8 @@ export const funnelService = {
         ...(funnel.enableInboxStage !== undefined ? { _enableInboxStage: funnel.enableInboxStage, _isEntryStageActive: funnel.enableInboxStage } : {}),
         ...(funnel.isEntryStageActive !== undefined ? { _enableInboxStage: funnel.isEntryStageActive, _isEntryStageActive: funnel.isEntryStageActive } : {}),
         ...(funnel.hiddenFieldKeys !== undefined ? { _hiddenFieldKeys: funnel.hiddenFieldKeys } : {}),
+        ...(funnel.teamMemberIds !== undefined ? { _teamMemberIds: funnel.teamMemberIds } : {}),
+        ...(funnel.closerIds !== undefined ? { _closerIds: funnel.closerIds } : {}),
       };
 
       if (funnel.hiddenFieldKeys !== undefined) payload.hidden_field_keys = funnel.hiddenFieldKeys;
@@ -153,6 +161,8 @@ export const funnelService = {
       if (funnel.distributionMode !== undefined) payload.distribution_mode = funnel.distributionMode;
       if (funnel.masterId !== undefined) payload.master_id = funnel.masterId;
       if (funnel.assignedSdrIds !== undefined) payload.assigned_sdr_ids = funnel.assignedSdrIds;
+      if (funnel.teamMemberIds !== undefined) payload.team_member_ids = funnel.teamMemberIds;
+      if (funnel.closerIds !== undefined) payload.closer_ids = funnel.closerIds;
       if (funnel.roundRobinNextIndex !== undefined) payload.round_robin_next_index = funnel.roundRobinNextIndex;
       if (funnel.pinnedAt !== undefined) payload.pinned_at = funnel.pinnedAt || null;
       if (funnel.order !== undefined) payload.order = funnel.order;
@@ -171,6 +181,12 @@ export const funnelService = {
       }
       if (Array.isArray(payload.assigned_sdr_ids)) {
         payload.assigned_sdr_ids = payload.assigned_sdr_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+      }
+      if (Array.isArray(payload.team_member_ids)) {
+        payload.team_member_ids = payload.team_member_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+      }
+      if (Array.isArray(payload.closer_ids)) {
+        payload.closer_ids = payload.closer_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
       }
       if (Array.isArray(payload.allowed_collaborator_ids)) {
         payload.allowed_collaborator_ids = payload.allowed_collaborator_ids.filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));

@@ -153,18 +153,10 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     });
   }, [collaborators, activeFunnel]);
 
-  // Helper para exibir o cargo executivo / customizado do colaborador (nunca "admin")
+  // Helper para exibir exclusivamente o Cargo configurado do colaborador (nunca "admin" ou nível de acesso)
   const getCollabRoleTitle = (c: any) => {
-    if (!c) return 'Comercial';
-    return (
-      c.customJobTitle ||
-      c.roleTitle ||
-      (c.role === 'closer' ? 'Closer de Vendas' :
-       c.role === 'sdr' ? 'SDR Pré-Vendas' :
-       c.department === 'comercial' ? 'Consultor Comercial' :
-       c.role === 'master' ? 'Diretoria' :
-       c.role === 'admin' ? 'Gerência' : 'Equipe Comercial')
-    );
+    if (!c) return '';
+    return ((c.customJobTitle || c.roleTitle || '') as string).trim();
   };
 
   // Equipe comercial elegível para Acesso à Etapa:
@@ -226,6 +218,9 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [isWonStageEnabled, setIsWonStageEnabled] = useState(true);
   const [distributionMode, setDistributionMode] = useState<'manual' | 'round_robin'>('manual');
   const [assignedSdrIds, setAssignedSdrIds] = useState<string[]>([]);
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([]);
+  const [funnelCloserIds, setFunnelCloserIds] = useState<string[]>([]);
+  const [teamMemberSearch, setTeamMemberSearch] = useState('');
   const [venueDistributionConfig, setVenueDistributionConfig] = useState<Record<string, {
     distributionMode?: 'manual' | 'round_robin' | 'inherit';
     assignedSdrIds?: string[];
@@ -356,6 +351,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
     setIsWonStageEnabled(activeFunnel.isWonStageEnabled !== false);
     setDistributionMode(activeFunnel.distributionMode || 'manual');
     setAssignedSdrIds(activeFunnel.assignedSdrIds || []);
+    setTeamMemberIds(activeFunnel.teamMemberIds || (activeFunnel as any)?.duplicateRuleConfig?._teamMemberIds || []);
+    setFunnelCloserIds(activeFunnel.closerIds || (activeFunnel as any)?.duplicateRuleConfig?._closerIds || []);
     setDetectDuplicates(activeFunnel.detectDuplicates !== false);
     setDuplicateRuleConfig(activeFunnel.duplicateRuleConfig || {
       matchPhone: true,
@@ -515,6 +512,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
         isWonStageEnabled,
         distributionMode,
         assignedSdrIds,
+        teamMemberIds,
+        closerIds: funnelCloserIds,
         venueDistributionConfig,
         detectDuplicates,
         duplicateRuleConfig: {
@@ -524,6 +523,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
           _enableInboxStage: isEntryStageActive,
           _isEntryStageActive: isEntryStageActive,
           _postSaleCustomStageNames: customStageNames || (activeFunnel as any).postSaleCustomStageNames,
+          _teamMemberIds: teamMemberIds,
+          _closerIds: funnelCloserIds,
           ['_hiddenFieldKeys' as any]: hiddenFieldKeys,
         },
         enabledWhatsAppSourceIds,
@@ -2254,6 +2255,120 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                   </div>
                 );
               })()}
+            </div>
+
+            {/* 6. EQUIPE ATUANTE NESTE FUNIL (SDRs & Closers Autorizados) */}
+            <div style={{
+              borderTop: '1px solid var(--adm-border)',
+              paddingTop: '14px',
+              marginTop: '6px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    Equipe Atuante neste Funil
+                  </div>
+                  <div style={{ fontSize: '0.66rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
+                    Define exatamente quem atua nas vendas deste funil (filtra seletores de SDR e Closer nos cards). Se vazio, usa toda a equipe comercial da unidade.
+                  </div>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Buscar colaborador por nome..."
+                value={teamMemberSearch}
+                onChange={(e) => setTeamMemberSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  borderRadius: '7px',
+                  background: 'var(--adm-bg-input)',
+                  border: '1px solid var(--adm-border)',
+                  color: 'var(--adm-text-title)',
+                  fontSize: '0.72rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {funnelCollaborators
+                  .filter(c => !(c as any).isDev && c.role !== 'financeiro' && c.department !== 'financeiro')
+                  .filter(c => !teamMemberSearch.trim() || c.name.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+                  .map(c => {
+                    const isSdr = teamMemberIds.includes(c.id);
+                    const isCloser = funnelCloserIds.includes(c.id);
+                    const jobTitle = getCollabRoleTitle(c);
+                    return (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          padding: '6px 8px',
+                          borderRadius: '8px',
+                          background: (isSdr || isCloser) ? 'rgba(59, 130, 246, 0.08)' : 'var(--adm-bg-input)',
+                          border: `1px solid ${(isSdr || isCloser) ? 'rgba(59, 130, 246, 0.35)' : 'var(--adm-border)'}`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, flex: 1 }}>
+                          <SafeAvatar name={c.name} src={c.avatarUrl} size={22} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {c.name}
+                            </div>
+                            {jobTitle && (
+                              <div style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
+                                {jobTitle}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => setTeamMemberIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                            style={{
+                              padding: '3px 7px',
+                              borderRadius: '5px',
+                              border: `1px solid ${isSdr ? '#3B82F6' : 'var(--adm-border)'}`,
+                              background: isSdr ? '#3B82F6' : 'transparent',
+                              color: isSdr ? '#FFFFFF' : 'var(--adm-text-muted)',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            SDR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFunnelCloserIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                            style={{
+                              padding: '3px 7px',
+                              borderRadius: '5px',
+                              border: `1px solid ${isCloser ? '#8B5CF6' : 'var(--adm-border)'}`,
+                              background: isCloser ? '#8B5CF6' : 'transparent',
+                              color: isCloser ? '#FFFFFF' : 'var(--adm-text-muted)',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Closer
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
         </div>
 

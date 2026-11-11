@@ -81,7 +81,7 @@ export const AdminNewClientModal: React.FC<AdminNewClientModalProps> = ({
       payerPhone: payerPhone.trim(),
       payerEmail: payerEmail.trim(),
       venueId,
-      eventType: '15_anos',
+      eventType: '',
       eventDate,
       eventTime,
       guestCount: Number(guestCount) || 150,

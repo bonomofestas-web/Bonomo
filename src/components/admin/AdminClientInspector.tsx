@@ -422,11 +422,11 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   const clientTasks = useMemo(() => {
     if (!client) return [];
     return tasks.filter(t => 
-      t.debutanteId === client.id ||
-      t.debutanteId === client.debutanteId ||
-      t.customProperties?.clientId === client.id ||
-      t.customProperties?.debutanteId === client.debutanteId ||
-      (client.commercialLeadId && (t.leadId === client.commercialLeadId || t.customProperties?.leadId === client.commercialLeadId))
+      (client.id && t.debutanteId === client.id) ||
+      Boolean(client.debutanteId && t.debutanteId === client.debutanteId) ||
+      Boolean(client.id && t.customProperties?.clientId === client.id) ||
+      Boolean(client.debutanteId && t.customProperties?.debutanteId === client.debutanteId) ||
+      Boolean(client.commercialLeadId && (t.leadId === client.commercialLeadId || t.customProperties?.leadId === client.commercialLeadId))
     );
   }, [tasks, client.id, client.debutanteId, client.commercialLeadId]);
 

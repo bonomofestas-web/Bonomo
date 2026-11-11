@@ -3,7 +3,7 @@ import {
   X, Check, ChevronLeft, ChevronRight,
   Search, Building2, AlertCircle,
   UtensilsCrossed, User, Sparkles, Clock,
-  ArrowRight, ArrowLeft, MapPin,
+  ArrowRight, ArrowLeft,
   RotateCw, Loader2, AlertTriangle, Lock
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -32,6 +32,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 }) => {
   const { 
     leads,
+    funnels,
     venues, 
     collaborators, 
     currentUser, 
@@ -52,13 +53,15 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   // Tipo ativo: Visita Comercial ou Degustação Gastronômica
   const [type, setType] = useState<CommercialCommitmentType>(initialType);
 
-  // Fluxo em 3 Etapas (Estilo Typeform):
-  // Etapa 1: Quem é o Lead/Cliente? (Até selecionar, o símbolo da casa NÃO aparece)
-  // Etapa 2: Acompanhantes (PAX) e Dados da Casa Vinculada
-  // Etapa 3: Calendário, Horários e Responsável (Cargo entre parênteses)
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(() => {
-    return initialLead ? 2 : 1;
-  });
+  type WizardStepKey = 'lead_select' | 'datetime' | 'pax_closer' | 'confirmations';
+  const wizardSteps: WizardStepKey[] = useMemo(() => {
+    return initialLead
+      ? ['datetime', 'pax_closer', 'confirmations']
+      : ['lead_select', 'datetime', 'pax_closer', 'confirmations'];
+  }, [initialLead]);
+
+  const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
+  const activeStepKey: WizardStepKey = wizardSteps[Math.min(currentStepIdx, wizardSteps.length - 1)] || 'datetime';
 
   // Seleção de Lead (se não veio via props)
   const [selectedLeadId, setSelectedLeadId] = useState<string>(initialLead?.id || '');
@@ -119,21 +122,62 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return currentLead?.estimatedGuests ? Math.min(currentLead.estimatedGuests, 4) : (type === 'tasting' ? 4 : 2);
   });
 
-  // Filtro estrito: Apenas colaboradores com acesso ao Comercial (sem pós-venda exclusivo)
+  // Filtro estrito: apenas colaboradores com acesso ao Comercial/CRM da unidade (exclui Dev e Financeiro)
   const commercialCollaborators = useMemo(() => {
     return collaborators.filter(c => {
-      if (c.role === 'master' || (c as any).isDev) return true;
+      if (c.active === false) return false;
+      if ((c as any).isDev) return false;
+      if (c.role === 'financeiro' || c.department === 'financeiro') return false;
+      const cVenues = (c.venueIds && c.venueIds.length > 0)
+        ? c.venueIds
+        : (c.venueId && c.venueId !== 'all' ? [c.venueId] : []);
+      if (targetVenueId && targetVenueId !== 'all' && cVenues.length > 0 && !cVenues.includes(targetVenueId)) {
+        return false;
+      }
+      if (c.role === 'master' || c.role === 'admin') return true;
       const sectors = (c as any).sectors as string[] | undefined;
       if (Array.isArray(sectors) && sectors.length > 0) {
-        return sectors.includes('comercial') || sectors.includes('gerencia');
+        return sectors.includes('comercial');
       }
       if (c.role === 'pos_venda' || (c as any).group === 'Pós-Venda') return false;
-      if (c.role === 'crm' || c.role === 'sdr' || c.role === 'closer' || c.role === 'admin' || (c as any).role === 'gerente') {
-        return true;
-      }
-      return true;
+      return ['crm', 'sdr', 'closer', 'comercial', 'commercial', 'gerente'].includes((c.role || '').toLowerCase());
     });
-  }, [collaborators]);
+  }, [collaborators, targetVenueId]);
+
+  const leadFunnel = useMemo(() => {
+    if (!currentLead?.funnelId) return undefined;
+    return funnels.find(f => f.id === currentLead.funnelId || f.name === currentLead.funnelId);
+  }, [funnels, currentLead?.funnelId]);
+
+  // SDRs elegíveis (prioriza Equipe Atuante configurada no funil)
+  const eligibleSdrs = useMemo(() => {
+    const teamIds = leadFunnel?.teamMemberIds || (leadFunnel as any)?.duplicateRuleConfig?._teamMemberIds || [];
+    if (Array.isArray(teamIds) && teamIds.length > 0) {
+      const configured = commercialCollaborators.filter(c => teamIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    return commercialCollaborators;
+  }, [commercialCollaborators, leadFunnel]);
+
+  // Closers elegíveis para seleção manual (prioriza lista configurada da agenda da unidade e do funil)
+  const eligibleManualClosers = useMemo(() => {
+    const agendaCloserIds = venueConfig?.closerIds || [];
+    if (agendaCloserIds.length > 0) {
+      const uniqueIds = Array.from(new Set(agendaCloserIds));
+      const configured = commercialCollaborators.filter(c => uniqueIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    const fCloserIds = leadFunnel?.closerIds || (leadFunnel as any)?.duplicateRuleConfig?._closerIds || [];
+    if (Array.isArray(fCloserIds) && fCloserIds.length > 0) {
+      const configured = commercialCollaborators.filter(c => fCloserIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    return commercialCollaborators;
+  }, [commercialCollaborators, venueConfig?.closerIds, leadFunnel]);
+
+  const isAutoSplitConfigured = Boolean(
+    venueConfig?.closerDistributionMode === 'round_robin' && (venueConfig?.closerIds?.length || 0) > 0
+  );
 
   // ── REGRA DO CLOSER FIXO & SPLIT AUTOMÁTICO ──
   const existingFixedCloserId = useMemo(() => {
@@ -151,20 +195,14 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     if (venueConfig?.closerDistributionMode === 'round_robin') {
       const nextPreview = getNextCloserRoundRobinPreview(targetVenueId);
       if (nextPreview?.id) return nextPreview.id;
-
-      const fallbackClosers = commercialCollaborators.filter(c => c.role === 'closer' || (c as any).roleTitle?.toLowerCase().includes('closer'));
-      if (fallbackClosers.length > 0) {
-        const idx = typeof venueConfig.closerNextIndex === 'number' ? venueConfig.closerNextIndex : 0;
-        return fallbackClosers[idx % fallbackClosers.length]?.id || fallbackClosers[0].id;
-      }
     }
     return null;
-  }, [isCloserFixed, existingFixedCloserId, venueConfig, commercialCollaborators, targetVenueId, getNextCloserRoundRobinPreview]);
+  }, [isCloserFixed, existingFixedCloserId, venueConfig?.closerDistributionMode, targetVenueId, getNextCloserRoundRobinPreview]);
 
   const [responsibleId, setResponsibleId] = useState<string>(() => {
     if (existingFixedCloserId) return existingFixedCloserId;
-    if (venueConfig?.closerDistributionMode === 'round_robin') {
-      return autoSplitCloserId || currentUser?.id || '';
+    if (isAutoSplitConfigured) {
+      return autoSplitCloserId || '';
     }
     return '';
   });
@@ -172,26 +210,25 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
   useEffect(() => {
     if (isCloserFixed && existingFixedCloserId) {
       setResponsibleId(existingFixedCloserId);
-    } else if (venueConfig?.closerDistributionMode === 'round_robin' && autoSplitCloserId && !responsibleId) {
+    } else if (isAutoSplitConfigured && autoSplitCloserId) {
       setResponsibleId(autoSplitCloserId);
     }
-  }, [isCloserFixed, existingFixedCloserId, autoSplitCloserId, venueConfig?.closerDistributionMode]);
+  }, [isCloserFixed, existingFixedCloserId, isAutoSplitConfigured, autoSplitCloserId]);
 
   const [sdrId, setSdrId] = useState<string>(() => {
-    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
+    if (initialLead) {
+      return initialLead.sdrId || currentUser?.id || '';
+    }
+    return currentUser?.id || '';
   });
-  const [reminder1, setReminder1] = useState<string>('24h');
-  const [reminder2, setReminder2] = useState<string>('2h');
-  const [notes, setNotes] = useState<string>('');
 
-  // ── ESTADOS DE CONFIGURAÇÃO DE FOLLOW-UP COMERCIAL ──
-  const [createFollowUpTask, setCreateFollowUpTask] = useState<boolean>(true);
-  const [followUpTiming, setFollowUpTiming] = useState<'1d' | '2d' | 'same_day' | 'custom'>('1d');
-  const [customFollowUpDate, setCustomFollowUpDate] = useState<string>('');
-  const [followUpTime, setFollowUpTime] = useState<string>('10:00');
-  const [followUpResponsibleId, setFollowUpResponsibleId] = useState<string>(() => {
-    return currentLead?.sdrId || (collaborators.find(c => (c as any).roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr')?.id) || currentUser?.id || '';
-  });
+  // Confirmação 1 (em dias antes) & Confirmação 2 (em horas antes)
+  const [enableConfirm1, setEnableConfirm1] = useState<boolean>(true);
+  const [confirm1Days, setConfirm1Days] = useState<number>(1);
+  const [confirm1Time, setConfirm1Time] = useState<string>('10:00');
+  const [enableConfirm2, setEnableConfirm2] = useState<boolean>(true);
+  const [confirm2Hours, setConfirm2Hours] = useState<number>(2);
+  const [notes, setNotes] = useState<string>('');
   const [followUpNotes, setFollowUpNotes] = useState<string>('');
 
   const getCollabJobTitle = (c: any) => {
@@ -199,64 +236,87 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return ((c.customJobTitle || c.roleTitle || c.jobTitle || c.cargo || '') as string).trim();
   };
 
-  // Sincroniza Closer e SDR automaticamente a partir do Lead
+  // Sincroniza Closer e SDR automaticamente a partir do Lead ou usuário atual
   useEffect(() => {
     if (currentLead?.closerId) {
       setResponsibleId(currentLead.closerId);
     }
     if (currentLead?.sdrId) {
       setSdrId(currentLead.sdrId);
-      setFollowUpResponsibleId(currentLead.sdrId);
+    } else if (currentUser?.id && !sdrId) {
+      setSdrId(currentUser.id);
     }
-  }, [currentLead?.closerId, currentLead?.sdrId]);
+  }, [currentLead?.id, currentLead?.closerId, currentLead?.sdrId, currentUser?.id]);
 
-  // Se o SDR mudar e o responsável pelo follow-up ainda não foi alterado manualmente, sincroniza
-  useEffect(() => {
-    if (sdrId) {
-      setFollowUpResponsibleId(sdrId);
+  // Cálculo de viabilidade para Confirmação 1 (em dias) e Confirmação 2 (em horas)
+  const notificationViability = useMemo(() => {
+    const now = new Date();
+    const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nowTimeLocal = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    let calendarDaysUntil = 0;
+    if (selectedDate) {
+      const [sy, sm, sd] = selectedDate.split('-').map(Number);
+      const [ty, tm, td] = todayLocal.split('-').map(Number);
+      const targetMs = new Date(sy, sm - 1, sd).getTime();
+      const todayMs = new Date(ty, tm - 1, td).getTime();
+      calendarDaysUntil = Math.round((targetMs - todayMs) / 86400000);
     }
-  }, [sdrId]);
 
-  const isReminderOptionRetroactive = useCallback((hoursBefore: number) => {
-    if (!selectedDate || !selectedTime || hoursBefore === 0) return false;
-    const aptTime = new Date(`${selectedDate}T${selectedTime}:00`).getTime();
-    if (isNaN(aptTime)) return false;
-    return aptTime - (hoursBefore * 3600 * 1000) < Date.now();
-  }, [selectedDate, selectedTime]);
+    // Se for hoje (calendarDaysUntil <= 0), Confirmação 1 em dias é impossível
+    let maxViableDays = 0;
+    if (calendarDaysUntil > 0) {
+      maxViableDays = confirm1Time > nowTimeLocal ? calendarDaysUntil : Math.max(0, calendarDaysUntil - 1);
+    }
 
-  // Audio 2: Notificações automáticas não podem ser geradas no passado
-  useEffect(() => {
-    if (reminder1 && reminder1 !== 'none') {
-      const h = parseInt(reminder1);
-      if (!isNaN(h) && isReminderOptionRetroactive(h)) {
-        setReminder1('none');
+    let maxViableHours = 0;
+    if (selectedDate && selectedTime) {
+      const aptMs = new Date(`${selectedDate}T${selectedTime}:00`).getTime();
+      if (!Number.isNaN(aptMs)) {
+        const diffMs = aptMs - Date.now();
+        maxViableHours = Math.max(0, Math.floor(diffMs / 3600000));
       }
     }
-    if (reminder2 && reminder2 !== 'none') {
-      const h = parseInt(reminder2);
-      if (!isNaN(h) && isReminderOptionRetroactive(h)) {
-        setReminder2('none');
-      }
-    }
-  }, [selectedDate, selectedTime, reminder1, reminder2, isReminderOptionRetroactive]);
 
-  // Helper para calcular a data efetiva da tarefa de follow-up
-  const calculateFollowUpDate = useCallback(() => {
+    return {
+      calendarDaysUntil,
+      maxViableDays,
+      maxViableHours,
+      canUseConfirm1: calendarDaysUntil > 0 && maxViableDays >= 1,
+      canUseConfirm2: maxViableHours >= 1,
+    };
+  }, [selectedDate, selectedTime, confirm1Time]);
+
+  useEffect(() => {
+    if (!notificationViability.canUseConfirm1) {
+      setEnableConfirm1(false);
+    } else if (confirm1Days > notificationViability.maxViableDays) {
+      setConfirm1Days(Math.max(1, notificationViability.maxViableDays));
+    }
+    if (!notificationViability.canUseConfirm2) {
+      setEnableConfirm2(false);
+    } else if (confirm2Hours > notificationViability.maxViableHours) {
+      setConfirm2Hours(Math.max(1, notificationViability.maxViableHours));
+    }
+  }, [notificationViability, confirm1Days, confirm2Hours]);
+
+  const computeConfirm1DateStr = useCallback((daysBefore: number) => {
     if (!selectedDate) return new Date().toISOString().split('T')[0];
-    if (followUpTiming === 'custom' && customFollowUpDate) {
-      return customFollowUpDate;
-    }
     const [y, m, d] = selectedDate.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    if (followUpTiming === '1d') {
-      dateObj.setDate(dateObj.getDate() - 1);
-    } else if (followUpTiming === '2d') {
-      dateObj.setDate(dateObj.getDate() - 2);
-    }
-    const today = new Date().toISOString().split('T')[0];
-    const target = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-    return target < today ? today : target;
-  }, [selectedDate, followUpTiming, customFollowUpDate]);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - daysBefore);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  }, [selectedDate]);
+
+  const computeConfirm2DateTime = useCallback((hoursBefore: number) => {
+    const baseMs = selectedDate && selectedTime
+      ? new Date(`${selectedDate}T${selectedTime}:00`).getTime()
+      : Date.now();
+    const dt = new Date(baseMs - hoursBefore * 3600000);
+    const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+    return { date, time };
+  }, [selectedDate, selectedTime]);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -379,11 +439,37 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     return avail;
   }, [selectedDate, todayStr, currentTimeStr, type, targetVenueId, appointments, venueConfig, venueEvents]);
 
+  // Limite máximo de PAX respeitando a regra configurada na agenda para o horário escolhido
+  const selectedSlotPaxLimit = useMemo(() => {
+    if (selectedDayAvailability.isFreeMode) {
+      return { isLimited: false, maxAllowedPax: 50, totalSlotMaxPax: undefined as number | undefined };
+    }
+    const matchingSlot = selectedTime
+      ? selectedDayAvailability.slots.find(s => s.time === selectedTime)
+      : selectedDayAvailability.slots[0];
+    const configuredMax = matchingSlot?.maxPax ?? (type === 'tasting' ? venueConfig?.tastingsRule?.maxPaxPerSlot : venueConfig?.visitsRule?.maxPaxPerSlot);
+    if (configuredMax !== undefined && configuredMax !== null && configuredMax > 0) {
+      const remaining = matchingSlot?.remainingPax !== undefined ? matchingSlot.remainingPax : configuredMax;
+      return {
+        isLimited: true,
+        maxAllowedPax: Math.max(1, remaining),
+        totalSlotMaxPax: configuredMax,
+      };
+    }
+    return { isLimited: false, maxAllowedPax: 50, totalSlotMaxPax: undefined as number | undefined };
+  }, [selectedDayAvailability, selectedTime, type, venueConfig]);
+
+  useEffect(() => {
+    if (selectedSlotPaxLimit.isLimited && pax > selectedSlotPaxLimit.maxAllowedPax) {
+      setPax(selectedSlotPaxLimit.maxAllowedPax);
+    }
+  }, [selectedSlotPaxLimit.isLimited, selectedSlotPaxLimit.maxAllowedPax, pax]);
+
   // Submissão do agendamento com validação atômica em tempo real (Anti-Race Condition)
   const handleConfirmSchedule = async () => {
     if (!currentLead) {
       setErrorMessage('Selecione o lead ou cliente para continuar.');
-      setCurrentStep(1);
+      setCurrentStepIdx(0);
       return;
     }
     if (!selectedDate) {
@@ -392,6 +478,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
     }
     if (!selectedTime) {
       setErrorMessage('Selecione um horário disponível.');
+      return;
+    }
+    if (selectedSlotPaxLimit.isLimited && pax > selectedSlotPaxLimit.maxAllowedPax) {
+      setErrorMessage(`Este horário suporta no máximo ${selectedSlotPaxLimit.maxAllowedPax} pessoa(s) disponível(is).`);
       return;
     }
 
@@ -458,7 +548,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
       // Avança atomicamente o ponteiro da Lista de Ordem se o agendamento seguiu o Split Automático
       let finalCloserId = responsibleId;
-      if (!isCloserFixed && venueConfig?.closerDistributionMode === 'round_robin' && (!responsibleId || responsibleId === autoSplitCloserId)) {
+      if (!isCloserFixed && isAutoSplitConfigured && (!responsibleId || responsibleId === autoSplitCloserId)) {
         const consumed = await consumeCloserRoundRobinSlot(targetVenueId);
         if (consumed?.id) {
           finalCloserId = consumed.id;
@@ -466,11 +556,12 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
       }
 
       const assignedUser = collaborators.find(c => c.id === finalCloserId);
-      const sdrUser = collaborators.find(c => c.id === sdrId);
+      const effectiveSdrId = sdrId || currentUser?.id || '';
+      const sdrUser = collaborators.find(c => c.id === effectiveSdrId) || currentUser;
 
-      // Notificações limpas (sem lembretes gerados no passado)
-      const cleanReminder1 = reminder1 && reminder1 !== 'none' && !isReminderOptionRetroactive(parseInt(reminder1)) ? reminder1 : undefined;
-      const cleanReminder2 = reminder2 && reminder2 !== 'none' && !isReminderOptionRetroactive(parseInt(reminder2)) ? reminder2 : undefined;
+      // Notificações viáveis (Confirmação 1 em dias, Confirmação 2 em horas)
+      const cleanReminder1 = enableConfirm1 && notificationViability.canUseConfirm1 ? `${confirm1Days}d` : undefined;
+      const cleanReminder2 = enableConfirm2 && notificationViability.canUseConfirm2 ? `${confirm2Hours}h` : undefined;
 
       // Agenda no Lead / Supabase (atualiza Closer e SDR no lead automaticamente)
       if (scheduleCommercialCommitment) {
@@ -482,7 +573,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           responsibleName: assignedUser?.name,
           notes: notes || undefined,
           venueId: targetVenueId,
-          sdrId: sdrId || undefined,
+          sdrId: effectiveSdrId || undefined,
           sdrName: sdrUser?.name || undefined,
           reminder1: cleanReminder1,
           reminder2: cleanReminder2,
@@ -523,35 +614,67 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           venueAddress: targetVenue?.address,
           closerId: finalCloserId,
           closerName: assignedUser?.name,
-          sdrId,
+          sdrId: effectiveSdrId,
           sdrName: sdrUser?.name,
         },
       });
 
-      // Se configurado, cria a tarefa de Follow-up prévio na esteira vinculada ao SDR
-      if (createFollowUpTask) {
-        const targetFollowUpDate = calculateFollowUpDate();
-        const followUpAssignee = collaborators.find(c => c.id === followUpResponsibleId) || sdrUser || currentUser;
-        const followUpTitle = `Follow-up: Confirmar ${type === 'visit' ? 'Visita Comercial' : 'Degustação'} • ${currentLead.name}`;
+      const sdrAssigneeIds = effectiveSdrId ? [effectiveSdrId] : [currentUser?.id || 'admin'];
 
+      // Tarefa de Confirmação 1 (baseada em DIAS antes)
+      if (cleanReminder1) {
+        const c1Date = computeConfirm1DateStr(confirm1Days);
         await addTask({
-          title: followUpTitle,
-          description: `Follow-up prévio de alinhamento e confirmação de presença com a família de ${currentLead.name}.\nCompromisso marcado para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer da Recepção: ${assignedUser?.name || 'Equipe'}\nSDR Responsável: ${followUpAssignee?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Entrar em contato para confirmar a presença dos convidados e alinhar detalhes preliminares da reunião.'}`,
-          dueDate: targetFollowUpDate,
-          dueTime: followUpTime,
+          title: `Confirmação 1 (${confirm1Days}d antes): ${type === 'visit' ? 'Visita' : 'Degustação'} • ${currentLead.name}`,
+          description: `Primeira confirmação (${confirm1Days} dia(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Confirmar presença e lembrar endereço da unidade.'}`,
+          dueDate: c1Date,
+          dueTime: confirm1Time,
           venueId: targetVenueId,
-          assignedToIds: followUpResponsibleId ? [followUpResponsibleId] : (sdrId ? [sdrId] : [currentUser?.id || 'admin']),
+          assignedToIds: sdrAssigneeIds,
           databaseId: 'db_follow_ups',
           leadId: currentLead.id,
           leadName: currentLead.name,
           createdById: currentUser?.id || 'admin',
           createdByName: currentUser?.name || 'Administrador',
           type: 'call',
-          customType: 'Follow-up',
+          customType: 'Confirmação 1',
           status: 'todo',
           priority: 'high',
           customProperties: {
             isFollowUp: true,
+            confirmationStep: 1,
+            commitmentType: type,
+            commitmentDate: selectedDate,
+            commitmentTime: selectedTime,
+            closerName: assignedUser?.name,
+            sdrName: sdrUser?.name,
+            leadPhone: currentLead.phone,
+          },
+        });
+      }
+
+      // Tarefa de Confirmação 2 (baseada em HORAS antes)
+      if (cleanReminder2) {
+        const c2 = computeConfirm2DateTime(confirm2Hours);
+        await addTask({
+          title: `Confirmação 2 (${confirm2Hours}h antes): ${type === 'visit' ? 'Visita' : 'Degustação'} • ${currentLead.name}`,
+          description: `Reforço final (${confirm2Hours} hora(s) antes) com ${currentLead.name} para ${selectedDate.split('-').reverse().join('/')} às ${selectedTime} (${targetVenue?.name || 'Unidade'}).\nAnfitrião/Closer: ${assignedUser?.name || 'Equipe'}\nOrientações: ${followUpNotes || 'Enviar mensagem de confirmação e localização.'}`,
+          dueDate: c2.date,
+          dueTime: c2.time,
+          venueId: targetVenueId,
+          assignedToIds: sdrAssigneeIds,
+          databaseId: 'db_follow_ups',
+          leadId: currentLead.id,
+          leadName: currentLead.name,
+          createdById: currentUser?.id || 'admin',
+          createdByName: currentUser?.name || 'Administrador',
+          type: 'call',
+          customType: 'Confirmação 2',
+          status: 'todo',
+          priority: 'high',
+          customProperties: {
+            isFollowUp: true,
+            confirmationStep: 2,
             commitmentType: type,
             commitmentDate: selectedDate,
             commitmentTime: selectedTime,
@@ -653,7 +776,7 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         overflow: 'hidden',
         border: '1px solid rgba(226,232,240,0.8)',
       }}>
-        {/* Barra de Progresso no Topo com 3 Etapas */}
+        {/* Barra de Progresso no Topo Dinâmica */}
         <div style={{
           padding: '16px 24px',
           background: 'var(--adm-bg-surface, #F8FAFC)',
@@ -664,12 +787,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
         }}>
           <div>
             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Etapa {currentStep} de 3 • Novo Agendamento
+              Etapa {currentStepIdx + 1} de {wizardSteps.length} • Novo Agendamento
             </span>
             <h2 style={{ margin: '2px 0 0', fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
-              {currentStep === 1 && 'Quem é o Lead ou Cliente?'}
-              {currentStep === 2 && 'Número de Acompanhantes e Unidade'}
-              {currentStep === 3 && 'Escolha da Data, Horário e Anfitrião'}
+              {activeStepKey === 'lead_select' && 'Quem é o Lead ou Cliente?'}
+              {activeStepKey === 'datetime' && 'Escolha a Data e o Horário'}
+              {activeStepKey === 'pax_closer' && (isCloserFixed || isAutoSplitConfigured ? 'Número de Pessoas (PAX)' : 'Número de Pessoas e Closer Responsável')}
+              {activeStepKey === 'confirmations' && 'Tarefas de Confirmação e Notificação'}
             </h2>
           </div>
 
@@ -691,9 +815,16 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
 
         {/* Indicador Visual dos Passos */}
         <div style={{ display: 'flex', height: '4px', background: '#E2E8F0' }}>
-          <div style={{ flex: 1, background: currentStep >= 1 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
-          <div style={{ flex: 1, background: currentStep >= 2 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
-          <div style={{ flex: 1, background: currentStep >= 3 ? themeColor : 'transparent', transition: 'all 0.2s ease' }} />
+          {wizardSteps.map((stepKey, idx) => (
+            <div
+              key={stepKey}
+              style={{
+                flex: 1,
+                background: currentStepIdx >= idx ? themeColor : 'transparent',
+                transition: 'all 0.2s ease',
+              }}
+            />
+          ))}
         </div>
 
         {/* Tipo de Agendamento (Visita vs Degustação) */}
@@ -790,10 +921,9 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           )}
 
           {/* ═════════════════════════════════════════════════════════════════
-              ETAPA 1: SELEÇÃO DO LEAD / CLIENTE
-              (Símbolo da casa de festa NÃO aparece até selecionar o lead!)
+              ETAPA: SELEÇÃO DO LEAD / CLIENTE (quando aberto fora do card do lead)
               ═════════════════════════════════════════════════════════════════ */}
-          {currentStep === 1 && (
+          {activeStepKey === 'lead_select' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {isPostSaleUser && (
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -1001,126 +1131,10 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           )}
 
           {/* ═════════════════════════════════════════════════════════════════
-              ETAPA 2: ACOMPANHANTES (PAX) E DADOS DA CASA VINCULADA
+              ETAPA: ESCOLHA DA DATA E HORÁRIO (PASSO 1)
               ═════════════════════════════════════════════════════════════════ */}
-          {currentStep === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Card da Casa de Festas Detectada */}
-              <div style={{
-                padding: '16px 20px',
-                borderRadius: '14px',
-                background: '#FFFFFF',
-                border: '1px solid #E2E8F0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '14px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-              }}>
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '10px',
-                  background: '#000000',
-                  padding: '5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-                }}>
-                  {targetVenue?.logoUrl ? (
-                    <img src={targetVenue.logoUrl} alt={targetVenue.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <Building2 size={24} color="#D4AF37" />
-                  )}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.70rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase' }}>
-                    Unidade Detectada do Lead
-                  </div>
-                  <h4 style={{ margin: '2px 0 0', fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
-                    {targetVenue?.name || 'Unidade não identificada'}
-                  </h4>
-                  {targetVenue?.address && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                      <MapPin size={12} />
-                      <span>{targetVenue.address}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Seletor de PAX / Acompanhantes */}
-              <div style={{
-                padding: '20px',
-                borderRadius: '14px',
-                background: 'var(--adm-bg-surface, #F8FAFC)',
-                border: '1px solid #E2E8F0',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-              }}>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                  Quantas pessoas participarão (PAX / Acompanhantes)?
-                </label>
-                <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748B' }}>
-                  Defina o número de pessoas para preparo da recepção e limites da sessão de {type === 'visit' ? 'visita' : 'degustação'}.
-                </p>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
-                  {[1, 2, 3, 4, 5, 6].map(num => (
-                    <button
-                      key={num}
-                      type="button"
-                      onClick={() => setPax(num)}
-                      style={{
-                        width: '46px',
-                        height: '46px',
-                        borderRadius: '10px',
-                        border: '1px solid',
-                        borderColor: pax === num ? themeColor : '#CBD5E1',
-                        background: pax === num ? themeColor : '#FFFFFF',
-                        color: pax === num ? '#FFFFFF' : '#0F172A',
-                        fontSize: '0.95rem',
-                        fontWeight: 900,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {num}
-                    </button>
-                  ))}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px' }}>
-                    <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 700 }}>Outro:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={pax}
-                      onChange={e => setPax(Number(e.target.value) || 1)}
-                      style={{
-                        width: '70px',
-                        padding: '8px',
-                        borderRadius: '8px',
-                        border: '1px solid #CBD5E1',
-                        fontSize: '0.85rem',
-                        fontWeight: 800,
-                        textAlign: 'center',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ═════════════════════════════════════════════════════════════════
-              ETAPA 3: CALENDÁRIO, HORÁRIOS E RESPONSÁVEL (CARGO ENTRE PARÊNTESES)
-              ═════════════════════════════════════════════════════════════════ */}
-          {currentStep === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {activeStepKey === 'datetime' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               {!isCurrentTypeConfigured ? (
                 <div style={{
                   padding: '36px 24px',
@@ -1148,6 +1162,43 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 </div>
               ) : (
                 <>
+                  {/* Resumo compacto da unidade */}
+                  <div style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                  }}>
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      background: '#0F172A',
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}>
+                      {targetVenue?.logoUrl ? (
+                        <img src={targetVenue.logoUrl} alt={targetVenue.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <Building2 size={18} color="#D4AF37" />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase' }}>
+                        Unidade do Agendamento
+                      </div>
+                      <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {targetVenue?.name || 'Unidade não identificada'} {currentLead?.name ? `• ${currentLead.name}` : ''}
+                      </div>
+                    </div>
+                  </div>
                   {/* Calendário e Seleção de Horários */}
                   <div style={{
                     borderRadius: '14px',
@@ -1432,388 +1483,380 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                   </div>
                 </div>
               </div>
+                </>
+              )}
+            </div>
+          )}
 
-              {/* Responsável / Anfitrião / Closer da Recepção */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
-                      ANFITRIÃO / CLOSER DA RECEPÇÃO *
-                    </label>
-                    {isCloserFixed ? (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        fontSize: '0.64rem',
-                        fontWeight: 800,
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(59, 130, 246, 0.12)',
-                        color: '#2563EB',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                      }}>
-                        <Lock size={10} />
-                        <span>Closer Vinculado (Fixo)</span>
-                      </span>
-                    ) : autoSplitCloserId ? (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        fontSize: '0.64rem',
-                        fontWeight: 800,
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(16, 185, 129, 0.12)',
-                        color: '#059669',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                      }}>
-                        <Sparkles size={10} />
-                        <span>Split Automático (Lista de Ordem)</span>
-                      </span>
-                    ) : (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        fontSize: '0.64rem',
-                        fontWeight: 800,
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: 'rgba(59, 130, 246, 0.12)',
-                        color: '#2563EB',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                      }}>
-                        <User size={10} />
-                        <span>Atribuição Manual</span>
-                      </span>
-                    )}
-                  </div>
-                  <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
-                    {isCloserFixed 
-                      ? 'Closer mantido fixo pelo histórico prévio do lead'
-                      : 'Define automaticamente o Closer deste lead ao agendar'}
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-                  {commercialCollaborators.map(c => {
-                    const isSelected = responsibleId === c.id;
-                    const isLeadCloser = currentLead?.closerId === c.id;
-                    const roleTitle = getCollabJobTitle(c);
-                    return (
-                      <div
-                        key={c.id}
-                        onClick={() => setResponsibleId(c.id)}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '10px',
-                          border: '1.5px solid',
-                          borderColor: isSelected ? themeColor : '#CBD5E1',
-                          background: isSelected ? `${themeColor}0D` : '#FFFFFF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          cursor: 'pointer',
-                          boxShadow: isSelected ? `0 2px 8px ${themeColor}22` : 'none',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <div style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          background: '#E2E8F0',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          {(c as any).photoUrl || c.avatarUrl ? (
-                            <img src={(c as any).photoUrl || c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <User size={18} color="#64748B" />
-                          )}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {c.name}
-                            </span>
-                            {isLeadCloser && (
-                              <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: `${themeColor}20`, color: themeColor }}>
-                                Lead
-                              </span>
-                            )}
-                            {!isCloserFixed && autoSplitCloserId === c.id && (
-                              <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px', background: 'rgba(124, 58, 237, 0.14)', color: '#7C3AED' }}>
-                                Próximo da Ordem
-                              </span>
-                            )}
-                          </div>
-                          {roleTitle && (
-                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: themeColor }}>
-                              ({roleTitle})
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* SDR Vinculado */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
-                    SDR RESPONSÁVEL DO ATENDIMENTO
-                  </label>
-                  <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
-                    Pré-vincula o SDR do lead (clique para trocar se necessário)
-                  </span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
-                  {commercialCollaborators.map(c => {
-                    const isSelected = sdrId === c.id;
-                    const isLeadSdr = currentLead?.sdrId === c.id;
-                    const isSdrRole = (c as any)?.roleTitle?.toLowerCase().includes('sdr') || c.role === 'sdr';
-                    return (
-                      <div
-                        key={c.id}
-                        onClick={() => setSdrId(c.id)}
-                        style={{
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          border: '1.5px solid',
-                          borderColor: isSelected ? '#3B82F6' : '#E2E8F0',
-                          background: isSelected ? 'rgba(59, 130, 246, 0.08)' : '#FFFFFF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <div style={{
-                          width: '30px',
-                          height: '30px',
-                          borderRadius: '50%',
-                          background: '#E2E8F0',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}>
-                          {(c as any).photoUrl || c.avatarUrl ? (
-                            <img src={(c as any).photoUrl || c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <User size={15} color="#64748B" />
-                          )}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {c.name}
-                            </span>
-                            {isLeadSdr && (
-                              <span style={{ fontSize: '0.60rem', fontWeight: 800, padding: '1px 4px', borderRadius: '4px', background: 'rgba(59,130,246,0.18)', color: '#2563EB' }}>
-                                Lead
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: isSdrRole ? '#3B82F6' : '#64748B' }}>
-                            {`(${getCollabJobTitle(c)})`}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── SEÇÃO: CONFIGURAÇÃO DE FOLLOW-UP COMERCIAL (ESTEIRA DE ATENDIMENTO) ── */}
+          {/* ═════════════════════════════════════════════════════════════════
+              ETAPA: NÚMERO DE PESSOAS (PAX) + ANFITRIÃO (APENAS QUANDO MANUAL)
+              ═════════════════════════════════════════════════════════════════ */}
+          {activeStepKey === 'pax_closer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* Resumo da Data & Horário Selecionados */}
               <div style={{
-                padding: '16px 18px',
+                padding: '12px 16px',
                 borderRadius: '12px',
-                background: createFollowUpTask ? 'rgba(59, 130, 246, 0.04)' : '#F8FAFC',
-                border: `1.5px solid ${createFollowUpTask ? 'rgba(59, 130, 246, 0.35)' : '#E2E8F0'}`,
+                background: `${themeColor}0D`,
+                border: `1px solid ${themeColor}33`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeColor, textTransform: 'uppercase' }}>
+                    Data & Horário Definidos
+                  </div>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0F172A' }}>
+                    {selectedDate ? selectedDate.split('-').reverse().join('/') : '--/--/----'} às {selectedTime || '--:--'} • {targetVenue?.name || 'Unidade'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStepIdx(wizardSteps.indexOf('datetime'))}
+                  style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: '7px',
+                    padding: '5px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Alterar Data
+                </button>
+              </div>
+
+              {/* Seletor de PAX / Acompanhantes (respeitando limite configurado da agenda) */}
+              <div style={{
+                padding: '20px',
+                borderRadius: '14px',
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
-                transition: 'all 0.15s ease',
+                gap: '12px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '8px',
-                      background: createFollowUpTask ? 'rgba(59, 130, 246, 0.12)' : '#E2E8F0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: createFollowUpTask ? '#2563EB' : '#64748B',
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <label style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                    Quantas pessoas participarão (PAX / Acompanhantes)?
+                  </label>
+                  {selectedSlotPaxLimit.isLimited ? (
+                    <span style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      padding: '3px 9px',
+                      borderRadius: '999px',
+                      background: 'rgba(217, 119, 6, 0.12)',
+                      color: '#B45309',
+                      border: '1px solid rgba(217, 119, 6, 0.3)',
                     }}>
-                      <Clock size={17} />
+                      Limite disponível neste horário: até {selectedSlotPaxLimit.maxAllowedPax} pessoa(s)
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      padding: '3px 9px',
+                      borderRadius: '999px',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      color: '#059669',
+                    }}>
+                      Capacidade Livre
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '4px' }}>
+                  {[1, 2, 3, 4, 5, 6].map(num => {
+                    const overLimit = selectedSlotPaxLimit.isLimited && num > selectedSlotPaxLimit.maxAllowedPax;
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        disabled={overLimit}
+                        onClick={() => setPax(num)}
+                        style={{
+                          width: '46px',
+                          height: '46px',
+                          borderRadius: '10px',
+                          border: '1px solid',
+                          borderColor: pax === num ? themeColor : '#CBD5E1',
+                          background: overLimit ? '#F1F5F9' : (pax === num ? themeColor : '#FFFFFF'),
+                          color: overLimit ? '#94A3B8' : (pax === num ? '#FFFFFF' : '#0F172A'),
+                          fontSize: '0.95rem',
+                          fontWeight: 900,
+                          cursor: overLimit ? 'not-allowed' : 'pointer',
+                          opacity: overLimit ? 0.5 : 1,
+                        }}
+                      >
+                        {num}
+                      </button>
+                    );
+                  })}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                    <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 700 }}>Outro:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedSlotPaxLimit.isLimited ? selectedSlotPaxLimit.maxAllowedPax : 50}
+                      value={pax}
+                      onChange={e => {
+                        const val = Math.max(1, Number(e.target.value) || 1);
+                        const clamped = selectedSlotPaxLimit.isLimited ? Math.min(val, selectedSlotPaxLimit.maxAllowedPax) : val;
+                        setPax(clamped);
+                      }}
+                      style={{
+                        width: '74px',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.86rem',
+                        fontWeight: 800,
+                        textAlign: 'center',
+                        color: '#0F172A',
+                        background: '#FFFFFF',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Closer / Anfitrião: Automático (sem seletor) vs Manual (somente habilitados) */}
+              {(isCloserFixed || isAutoSplitConfigured) ? (
+                <div style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  background: isCloserFixed ? 'rgba(59, 130, 246, 0.06)' : 'rgba(16, 185, 129, 0.07)',
+                  border: `1px solid ${isCloserFixed ? 'rgba(59, 130, 246, 0.30)' : 'rgba(16, 185, 129, 0.35)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
+                  {isCloserFixed ? <Lock size={18} color="#2563EB" /> : <Sparkles size={18} color="#059669" />}
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                      {isCloserFixed
+                        ? `Closer Vinculado ao Lead: ${collaborators.find(c => c.id === existingFixedCloserId)?.name || 'Anfitrião'}`
+                        : 'Anfitrião definido automaticamente pelo Split da Unidade'}
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
-                        Tarefa Follow-up Confirmação 01
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                        Gera tarefa de confirmação na esteira do SDR responsável
-                      </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                      {isCloserFixed
+                        ? 'O lead já possui anfitrião fixo em seu histórico.'
+                        : `Próximo closer na fila configurada: ${collaborators.find(c => c.id === autoSplitCloserId)?.name || 'Será atribuído ao confirmar'}.`}
                     </div>
                   </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', margin: 0 }}>
+                      SELECIONE O ANFITRIÃO / CLOSER RESPONSÁVEL *
+                    </label>
+                    <span style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                      Listando apenas os closers configurados para esta unidade/funil
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                    {eligibleManualClosers.map(c => {
+                      const isSelected = responsibleId === c.id;
+                      const roleTitle = getCollabJobTitle(c);
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setResponsibleId(c.id)}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            border: '1.5px solid',
+                            borderColor: isSelected ? themeColor : '#CBD5E1',
+                            background: isSelected ? `${themeColor}0D` : '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            cursor: 'pointer',
+                            boxShadow: isSelected ? `0 2px 8px ${themeColor}22` : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            background: '#E2E8F0',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}>
+                            {(c as any).photoUrl || c.avatarUrl ? (
+                              <img src={(c as any).photoUrl || c.avatarUrl} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <User size={16} color="#64748B" />
+                            )}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {c.name}
+                            </div>
+                            {roleTitle && (
+                              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: themeColor }}>
+                                {roleTitle}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
+          {/* ═════════════════════════════════════════════════════════════════
+              ETAPA: TAREFAS DE NOTIFICAÇÃO (CONFIRMAÇÃO 1 EM DIAS & CONFIRMAÇÃO 2 EM HORAS)
+              ═════════════════════════════════════════════════════════════════ */}
+          {activeStepKey === 'confirmations' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* SDR Responsável (Pré-preenchido automaticamente quando dentro do Lead) */}
+              <div style={{
+                padding: '14px 16px',
+                borderRadius: '12px',
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A' }}>
+                    SDR Responsável pelas Notificações
+                  </div>
+                  <div style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                    {initialLead
+                      ? 'Definido automaticamente para o SDR do lead / atendimento atual (altere se necessário).'
+                      : 'Selecione o SDR que executará as tarefas de confirmação.'}
+                  </div>
+                </div>
+                <select
+                  value={sdrId}
+                  onChange={e => setSdrId(e.target.value)}
+                  style={{
+                    minWidth: '220px',
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #CBD5E1',
+                    background: '#FFFFFF',
+                    color: '#0F172A',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {eligibleSdrs.map(c => {
+                    const jobTitle = getCollabJobTitle(c);
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.name}{jobTitle ? ` • ${jobTitle}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Confirmação 1 (Baseada em DIAS antes) */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: enableConfirm1 && notificationViability.canUseConfirm1 ? 'rgba(59, 130, 246, 0.05)' : '#F8FAFC',
+                border: `1.5px solid ${enableConfirm1 && notificationViability.canUseConfirm1 ? 'rgba(59, 130, 246, 0.35)' : '#E2E8F0'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                      Confirmação 1 (Antecedência em Dias)
+                    </div>
+                    <div style={{ fontSize: '0.71rem', color: notificationViability.canUseConfirm1 ? '#64748B' : '#DC2626' }}>
+                      {notificationViability.canUseConfirm1
+                        ? `Máximo viável para a data selecionada: até ${notificationViability.maxViableDays} dia(s) antes.`
+                        : 'Indisponível para agendamentos marcados para o dia de hoje.'}
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setCreateFollowUpTask(!createFollowUpTask)}
+                    disabled={!notificationViability.canUseConfirm1}
+                    onClick={() => setEnableConfirm1(prev => !prev)}
                     style={{
                       padding: '5px 12px',
                       borderRadius: '8px',
                       border: '1px solid',
-                      borderColor: createFollowUpTask ? '#3B82F6' : '#CBD5E1',
-                      background: createFollowUpTask ? '#3B82F6' : '#FFFFFF',
-                      color: createFollowUpTask ? '#FFFFFF' : '#64748B',
+                      borderColor: enableConfirm1 && notificationViability.canUseConfirm1 ? '#3B82F6' : '#CBD5E1',
+                      background: enableConfirm1 && notificationViability.canUseConfirm1 ? '#3B82F6' : '#FFFFFF',
+                      color: enableConfirm1 && notificationViability.canUseConfirm1 ? '#FFFFFF' : '#64748B',
                       fontSize: '0.74rem',
                       fontWeight: 800,
-                      cursor: 'pointer',
+                      cursor: notificationViability.canUseConfirm1 ? 'pointer' : 'not-allowed',
+                      opacity: notificationViability.canUseConfirm1 ? 1 : 0.5,
                     }}
                   >
-                    {createFollowUpTask ? 'Ativo' : 'Desativado'}
+                    {enableConfirm1 && notificationViability.canUseConfirm1 ? 'Ativa' : 'Desativada'}
                   </button>
                 </div>
 
-                {createFollowUpTask && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '10px', borderTop: '1px dashed #CBD5E1' }}>
-                    {/* Timing do Follow-up */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-                        QUANDO REALIZAR O FOLLOW-UP / CONTATO?
-                      </label>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {[
-                          { id: '1d', label: '1 dia antes da visita' },
-                          { id: '2d', label: '2 dias antes' },
-                          { id: 'same_day', label: 'No dia da visita (manhã)' },
-                          { id: 'custom', label: 'Data personalizada' },
-                        ].map(opt => (
+                {enableConfirm1 && notificationViability.canUseConfirm1 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', paddingTop: '8px', borderTop: '1px dashed #CBD5E1' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {[1, 2, 3, 5, 7].map(d => {
+                        const disabledDay = d > notificationViability.maxViableDays;
+                        const isSel = confirm1Days === d;
+                        return (
                           <button
-                            key={opt.id}
+                            key={d}
                             type="button"
-                            onClick={() => setFollowUpTiming(opt.id as any)}
+                            disabled={disabledDay}
+                            onClick={() => setConfirm1Days(d)}
                             style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
+                              padding: '6px 11px',
+                              borderRadius: '7px',
                               border: '1px solid',
-                              borderColor: followUpTiming === opt.id ? '#3B82F6' : '#CBD5E1',
-                              background: followUpTiming === opt.id ? 'rgba(59, 130, 246, 0.12)' : '#FFFFFF',
-                              color: followUpTiming === opt.id ? '#1D4ED8' : '#334155',
+                              borderColor: isSel ? '#3B82F6' : '#CBD5E1',
+                              background: disabledDay ? '#F1F5F9' : (isSel ? 'rgba(59, 130, 246, 0.14)' : '#FFFFFF'),
+                              color: disabledDay ? '#94A3B8' : (isSel ? '#1D4ED8' : '#334155'),
                               fontSize: '0.74rem',
-                              fontWeight: followUpTiming === opt.id ? 800 : 600,
-                              cursor: 'pointer',
+                              fontWeight: isSel ? 800 : 600,
+                              cursor: disabledDay ? 'not-allowed' : 'pointer',
+                              opacity: disabledDay ? 0.5 : 1,
                             }}
                           >
-                            {opt.label}
+                            {d} {d === 1 ? 'dia antes' : 'dias antes'}
                           </button>
-                        ))}
-                      </div>
-
-                      {followUpTiming === 'custom' && (
-                        <div style={{ marginTop: '8px' }}>
-                          <input
-                            type="date"
-                            value={customFollowUpDate}
-                            onChange={e => setCustomFollowUpDate(e.target.value)}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #CBD5E1',
-                              fontSize: '0.78rem',
-                              fontWeight: 700,
-                              color: '#0F172A',
-                            }}
-                          />
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      {/* Horário */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                          HORÁRIO DO FOLLOW-UP
-                        </label>
-                        <input
-                          type="time"
-                          value={followUpTime}
-                          onChange={e => setFollowUpTime(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #CBD5E1',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            color: '#0F172A',
-                            background: '#FFFFFF',
-                          }}
-                        />
-                      </div>
-
-                      {/* Responsável pelo Follow-up (Pré-vinculado ao SDR com opção de troca) */}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                          RESPONSÁVEL PELO FOLLOW-UP (SDR)
-                        </label>
-                        <select
-                          value={followUpResponsibleId}
-                          onChange={e => setFollowUpResponsibleId(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #CBD5E1',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            color: '#0F172A',
-                            background: '#FFFFFF',
-                          }}
-                        >
-                          {collaborators.map(c => {
-                            const jobTitle = getCollabJobTitle(c);
-                            return (
-                              <option key={c.id} value={c.id}>
-                                {c.name}{jobTitle ? ` (${jobTitle})` : ''}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Instruções */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                        ORIENTAÇÕES PARA A TAREFA (OPCIONAL)
-                      </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>Horário:</span>
                       <input
-                        type="text"
-                        value={followUpNotes}
-                        onChange={e => setFollowUpNotes(e.target.value)}
-                        placeholder={`Ex: Ligar para confirmar presença da família de ${currentLead?.name || 'cliente'}...`}
+                        type="time"
+                        value={confirm1Time}
+                        onChange={e => setConfirm1Time(e.target.value)}
                         style={{
-                          width: '100%',
-                          padding: '6px 10px',
+                          padding: '5px 8px',
                           borderRadius: '6px',
                           border: '1px solid #CBD5E1',
                           fontSize: '0.76rem',
+                          fontWeight: 700,
                           color: '#0F172A',
-                          boxSizing: 'border-box',
+                          background: '#FFFFFF',
                         }}
                       />
                     </div>
@@ -1821,124 +1864,125 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
                 )}
               </div>
 
-              {/* Lembretes / Notificações Automáticas */}
+              {/* Confirmação 2 (Baseada em HORAS antes) */}
               <div style={{
-                padding: '14px 16px',
-                borderRadius: '10px',
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
+                padding: '16px',
+                borderRadius: '12px',
+                background: enableConfirm2 && notificationViability.canUseConfirm2 ? 'rgba(16, 185, 129, 0.05)' : '#F8FAFC',
+                border: `1.5px solid ${enableConfirm2 && notificationViability.canUseConfirm2 ? 'rgba(16, 185, 129, 0.35)' : '#E2E8F0'}`,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '12px',
+                gap: '10px',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={16} color={themeColor} />
-                  <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A' }}>
-                    NOTIFICAÇÕES E LEMBRETES AUTOMÁTICOS
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                      Confirmação 2 (Antecedência em Horas)
+                    </div>
+                    <div style={{ fontSize: '0.71rem', color: notificationViability.canUseConfirm2 ? '#64748B' : '#DC2626' }}>
+                      {notificationViability.canUseConfirm2
+                        ? `Máximo viável até o horário marcado (${selectedTime}): até ${notificationViability.maxViableHours} hora(s) antes.`
+                        : 'Horário muito próximo: não há janela mínima de horas disponíveis para esta tarefa.'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!notificationViability.canUseConfirm2}
+                    onClick={() => setEnableConfirm2(prev => !prev)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: enableConfirm2 && notificationViability.canUseConfirm2 ? '#10B981' : '#CBD5E1',
+                      background: enableConfirm2 && notificationViability.canUseConfirm2 ? '#10B981' : '#FFFFFF',
+                      color: enableConfirm2 && notificationViability.canUseConfirm2 ? '#FFFFFF' : '#64748B',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: notificationViability.canUseConfirm2 ? 'pointer' : 'not-allowed',
+                      opacity: notificationViability.canUseConfirm2 ? 1 : 0.5,
+                    }}
+                  >
+                    {enableConfirm2 && notificationViability.canUseConfirm2 ? 'Ativa' : 'Desativada'}
+                  </button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  {/* Notificação 1 */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                      NOTIFICAÇÃO 1 (ANTECEDÊNCIA)
-                    </label>
-                    <select
-                      value={reminder1}
-                      onChange={e => setReminder1(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '7px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #CBD5E1',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: '#FFFFFF',
-                        color: '#0F172A',
-                      }}
-                    >
-                      <option value="none">Não notificar</option>
-                      <option value="1h" disabled={isReminderOptionRetroactive(1)}>
-                        1 hora antes {isReminderOptionRetroactive(1) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="2h" disabled={isReminderOptionRetroactive(2)}>
-                        2 horas antes {isReminderOptionRetroactive(2) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="4h" disabled={isReminderOptionRetroactive(4)}>
-                        4 horas antes {isReminderOptionRetroactive(4) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="12h" disabled={isReminderOptionRetroactive(12)}>
-                        12 horas antes {isReminderOptionRetroactive(12) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="24h" disabled={isReminderOptionRetroactive(24)}>
-                        24 horas antes (1 dia antes) {isReminderOptionRetroactive(24) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                    </select>
+                {enableConfirm2 && notificationViability.canUseConfirm2 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingTop: '8px', borderTop: '1px dashed #CBD5E1' }}>
+                    {[1, 2, 3, 4, 5, 6, 12].map(h => {
+                      const disabledHour = h > notificationViability.maxViableHours;
+                      const isSel = confirm2Hours === h;
+                      return (
+                        <button
+                          key={h}
+                          type="button"
+                          disabled={disabledHour}
+                          onClick={() => setConfirm2Hours(h)}
+                          style={{
+                            padding: '6px 11px',
+                            borderRadius: '7px',
+                            border: '1px solid',
+                            borderColor: isSel ? '#10B981' : '#CBD5E1',
+                            background: disabledHour ? '#F1F5F9' : (isSel ? 'rgba(16, 185, 129, 0.14)' : '#FFFFFF'),
+                            color: disabledHour ? '#94A3B8' : (isSel ? '#047857' : '#334155'),
+                            fontSize: '0.74rem',
+                            fontWeight: isSel ? 800 : 600,
+                            cursor: disabledHour ? 'not-allowed' : 'pointer',
+                            opacity: disabledHour ? 0.5 : 1,
+                          }}
+                        >
+                          {h} {h === 1 ? 'hora antes' : 'horas antes'}
+                        </button>
+                      );
+                    })}
                   </div>
+                )}
+              </div>
 
-                  {/* Notificação 2 */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.70rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                      NOTIFICAÇÃO 2 (REFORÇO)
-                    </label>
-                    <select
-                      value={reminder2}
-                      onChange={e => setReminder2(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '7px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #CBD5E1',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        background: '#FFFFFF',
-                        color: '#0F172A',
-                      }}
-                    >
-                      <option value="none">Não notificar</option>
-                      <option value="1h" disabled={isReminderOptionRetroactive(1)}>
-                        1 hora antes {isReminderOptionRetroactive(1) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="2h" disabled={isReminderOptionRetroactive(2)}>
-                        2 horas antes {isReminderOptionRetroactive(2) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="4h" disabled={isReminderOptionRetroactive(4)}>
-                        4 horas antes {isReminderOptionRetroactive(4) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="12h" disabled={isReminderOptionRetroactive(12)}>
-                        12 horas antes {isReminderOptionRetroactive(12) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                      <option value="24h" disabled={isReminderOptionRetroactive(24)}>
-                        24 horas antes (1 dia antes) {isReminderOptionRetroactive(24) ? '(Horário já ultrapassado)' : ''}
-                      </option>
-                    </select>
-                  </div>
+              {/* Instruções / Observações */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
+                    ORIENTAÇÕES PARA CONFIRMAÇÕES (OPCIONAL)
+                  </label>
+                  <input
+                    type="text"
+                    value={followUpNotes}
+                    onChange={e => setFollowUpNotes(e.target.value)}
+                    placeholder="Ex: Enviar vídeo do espaço e localização..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.78rem',
+                      color: '#0F172A',
+                      background: '#FFFFFF',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
+                    OBSERVAÇÕES DO AGENDAMENTO (OPCIONAL)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Preferência por jardim, interesse no pacote..."
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.78rem',
+                      color: '#0F172A',
+                      background: '#FFFFFF',
+                      boxSizing: 'border-box',
+                    }}
+                  />
                 </div>
               </div>
-
-              {/* Observações */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#64748B', marginBottom: '4px' }}>
-                  OBSERVAÇÕES DO AGENDAMENTO (OPCIONAL)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Ex: Noivos com preferência por mesa próxima ao jardim, debutante com interesse no pacote de pista..."
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.80rem',
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-                </>
-              )}
             </div>
           )}
         </div>
@@ -1952,10 +1996,13 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          {currentStep > 1 ? (
+          {currentStepIdx > 0 ? (
             <button
               type="button"
-              onClick={() => setCurrentStep((currentStep - 1) as any)}
+              onClick={() => {
+                setErrorMessage('');
+                setCurrentStepIdx(prev => Math.max(0, prev - 1));
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1992,24 +2039,39 @@ export const AdminScheduleCommitmentModal: React.FC<AdminScheduleCommitmentModal
             </button>
           )}
 
-          {currentStep < 3 ? (
+          {currentStepIdx < wizardSteps.length - 1 ? (
             <button
               type="button"
-              disabled={(currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)}
-              onClick={() => setCurrentStep((currentStep + 1) as any)}
+              disabled={
+                (activeStepKey === 'lead_select' && !currentLead) ||
+                (activeStepKey === 'datetime' && (!isCurrentTypeConfigured || !selectedDate || !selectedTime)) ||
+                (activeStepKey === 'pax_closer' && !isCloserFixed && !isAutoSplitConfigured && !responsibleId)
+              }
+              onClick={() => {
+                setErrorMessage('');
+                setCurrentStepIdx(prev => Math.min(wizardSteps.length - 1, prev + 1));
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 22px',
                 borderRadius: '8px',
-                background: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? '#CBD5E1' : themeColor,
+                background: (
+                  (activeStepKey === 'lead_select' && !currentLead) ||
+                  (activeStepKey === 'datetime' && (!isCurrentTypeConfigured || !selectedDate || !selectedTime)) ||
+                  (activeStepKey === 'pax_closer' && !isCloserFixed && !isAutoSplitConfigured && !responsibleId)
+                ) ? '#CBD5E1' : themeColor,
                 color: '#FFFFFF',
                 border: 'none',
                 fontSize: '0.84rem',
                 fontWeight: 800,
-                cursor: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? 'not-allowed' : 'pointer',
-                boxShadow: ((currentStep === 1 && !currentLead) || (currentStep === 2 && !isCurrentTypeConfigured)) ? 'none' : `0 4px 14px ${themeColor}33`,
+                cursor: (
+                  (activeStepKey === 'lead_select' && !currentLead) ||
+                  (activeStepKey === 'datetime' && (!isCurrentTypeConfigured || !selectedDate || !selectedTime)) ||
+                  (activeStepKey === 'pax_closer' && !isCloserFixed && !isAutoSplitConfigured && !responsibleId)
+                ) ? 'not-allowed' : 'pointer',
+                boxShadow: `0 4px 14px ${themeColor}33`,
               }}
             >
               <span>Avançar</span>

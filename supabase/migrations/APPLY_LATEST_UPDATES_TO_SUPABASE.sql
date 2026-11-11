@@ -131,6 +131,25 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- 11. EQUIPE ATUANTE DO FUNIL (SDRs e Closers vinculados ao funil) + FUNNEL_ID EM CLIENTS
+ALTER TABLE IF EXISTS public.commercial_funnels
+ADD COLUMN IF NOT EXISTS team_member_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS closer_ids UUID[] DEFAULT '{}';
+
+ALTER TABLE IF EXISTS public.clients
+ADD COLUMN IF NOT EXISTS funnel_id UUID DEFAULT NULL;
+
+-- 12. LIMPEZA DE EVENT_TYPE AUTOMÁTICO ('15_anos') EM CLIENTES E LEADS DE ENTRADA
+UPDATE public.clients
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15');
+
+UPDATE public.leads
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15')
+  AND (stage IN ('new_lead', 'entry', 'onboarding') OR stage IS NULL OR stage = '');
+
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'whatsapp_webhook_logs') THEN
@@ -139,6 +158,25 @@ BEGIN
   END IF;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- 11. EQUIPE ATUANTE DO FUNIL (SDRs e Closers vinculados ao funil) + FUNNEL_ID EM CLIENTS
+ALTER TABLE IF EXISTS public.commercial_funnels
+ADD COLUMN IF NOT EXISTS team_member_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS closer_ids UUID[] DEFAULT '{}';
+
+ALTER TABLE IF EXISTS public.clients
+ADD COLUMN IF NOT EXISTS funnel_id UUID DEFAULT NULL;
+
+-- 12. LIMPEZA DE EVENT_TYPE AUTOMÁTICO ('15_anos') EM CLIENTES E LEADS DE ENTRADA
+UPDATE public.clients
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15');
+
+UPDATE public.leads
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15')
+  AND (stage IN ('new_lead', 'entry', 'onboarding') OR stage IS NULL OR stage = '');
+
 
 CREATE INDEX IF NOT EXISTS idx_leads_debutante_filter ON public.leads(debutante_id) WHERE debutante_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_debutante_slug_filter ON public.leads(debutante_slug) WHERE debutante_slug IS NOT NULL;
@@ -225,4 +263,23 @@ BEGIN
   END IF;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- 11. EQUIPE ATUANTE DO FUNIL (SDRs e Closers vinculados ao funil) + FUNNEL_ID EM CLIENTS
+ALTER TABLE IF EXISTS public.commercial_funnels
+ADD COLUMN IF NOT EXISTS team_member_ids UUID[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS closer_ids UUID[] DEFAULT '{}';
+
+ALTER TABLE IF EXISTS public.clients
+ADD COLUMN IF NOT EXISTS funnel_id UUID DEFAULT NULL;
+
+-- 12. LIMPEZA DE EVENT_TYPE AUTOMÁTICO ('15_anos') EM CLIENTES E LEADS DE ENTRADA
+UPDATE public.clients
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15');
+
+UPDATE public.leads
+SET event_type = NULL
+WHERE event_type IN ('15_anos', '15 Anos', '15_Anos', 'debutante_15')
+  AND (stage IN ('new_lead', 'entry', 'onboarding') OR stage IS NULL OR stage = '');
+
 

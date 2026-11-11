@@ -1016,7 +1016,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
   const commercialCollaborators = useMemo(() => {
     return collaborators.filter(c => {
       if (!c.active) return false;
-      if (c.role === 'master') return true;
+      if ((c as any).isDev) return false;
+      if (c.role === 'financeiro' || c.department === 'financeiro') return false;
+      if (c.role === 'master' || c.role === 'admin') return true;
       if (c.sectors && c.sectors.length > 0) {
         return c.sectors.includes('comercial');
       }
@@ -1024,8 +1026,29 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
     });
   }, [collaborators]);
 
-  const sdrList = commercialCollaborators;
-  const closerList = commercialCollaborators;
+  const sdrList = useMemo(() => {
+    const teamIds = leadFunnel?.teamMemberIds || (leadFunnel as any)?.duplicateRuleConfig?._teamMemberIds || [];
+    if (Array.isArray(teamIds) && teamIds.length > 0) {
+      const configured = commercialCollaborators.filter(c => teamIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    return commercialCollaborators;
+  }, [commercialCollaborators, leadFunnel]);
+
+  const closerList = useMemo(() => {
+    const fCloserIds = leadFunnel?.closerIds || (leadFunnel as any)?.duplicateRuleConfig?._closerIds || [];
+    if (Array.isArray(fCloserIds) && fCloserIds.length > 0) {
+      const configured = commercialCollaborators.filter(c => fCloserIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    const leadAgendaCfg = venueAgendaConfigs.find(vc => vc.venueId === lead.venueId);
+    const vCloserIds = leadAgendaCfg?.closerIds || [];
+    if (vCloserIds.length > 0) {
+      const configured = commercialCollaborators.filter(c => vCloserIds.includes(c.id));
+      if (configured.length > 0) return configured;
+    }
+    return commercialCollaborators;
+  }, [commercialCollaborators, leadFunnel, venueAgendaConfigs, lead.venueId]);
 
   const isReferralLead = useMemo(() => {
     const hasReferralFlag = lead.source === 'indicacao' || Boolean((lead as any).referralCode);

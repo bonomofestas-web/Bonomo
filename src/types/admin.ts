@@ -927,6 +927,8 @@ export interface CommercialFunnel {
   allowCollaboratorsCreateTags?: boolean; // Se colaboradores podem criar novas tags no lead ou apenas selecionar predefinidas
   distributionMode?: 'manual' | 'round_robin'; // Modo de distribuição dos novos leads (manual ou roleta)
   assignedSdrIds?: string[]; // IDs dos SDRs que participam da distribuição automática deste funil
+  teamMemberIds?: string[]; // Colaboradores que atuam assiduamente neste funil (SDRs e Closers visíveis no funil)
+  closerIds?: string[]; // Closers habilitados para receber agendamentos/fechamentos neste funil
   roundRobinNextIndex?: number; // Índice do próximo SDR na roleta
   defaultWhatsAppSourceId?: string; // ID da origem WhatsApp padrão legada
   priorityWhatsappPerVenue?: Record<string, string>; // Mapeamento: venueId -> sourceId de WhatsApp prioritário por unidade

@@ -170,10 +170,12 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
     return ((c.customJobTitle || (c as any).roleTitle || '') as string).trim();
   };
 
-  // Colaboradores elegíveis vinculados à unidade: Admins/Masters + quem possui acesso ao CRM / Comercial (SDR e Closer)
+  // Colaboradores elegíveis vinculados à unidade: exclui Dev e Financeiro; mantém CRM / SDR / Closer / Comercial / Admin / Master
   const availableClosers = useMemo(() => {
     return (collaborators || []).filter(c => {
       if (c.active === false) return false;
+      if ((c as any).isDev) return false;
+      if (c.role === 'financeiro' || c.department === 'financeiro') return false;
       const cVenues = (c.venueIds && c.venueIds.length > 0)
         ? c.venueIds
         : (c.venueId && c.venueId !== 'all' ? [c.venueId] : []);
@@ -191,8 +193,7 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
         roleStr.includes('comercial') ||
         roleStr.includes('commercial') ||
         roleStr.includes('admin') ||
-        roleStr.includes('master') ||
-        (c as any).isDev
+        roleStr.includes('master')
       );
     });
   }, [collaborators, selectedVenueId]);
@@ -4196,15 +4197,17 @@ export const AdminAgendaAvailabilityModal: React.FC<AdminAgendaAvailabilityModal
               </button>
             </div>
 
-            {/* Gerenciamento da Lista de Ordem (Paridade Exata com o Split do Funil) */}
-            {closerDistributionMode === 'round_robin' && (
+            {/* Gerenciamento da Lista de Closers Habilitados / Ordem de Entrega */}
+            {(closerDistributionMode === 'round_robin' || closerDistributionMode === 'manual') && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                      Ordem da Fila de Entrega ({closerIds.length} {closerIds.length === 1 ? 'posição' : 'posições'})
+                      {closerDistributionMode === 'round_robin'
+                        ? `Ordem da Fila de Entrega (${closerIds.length} ${closerIds.length === 1 ? 'posição' : 'posições'})`
+                        : `Closers Habilitados para Seleção Manual (${closerIds.length} selecionado(s))`}
                     </span>
-                    {closerIds.length > 0 && (
+                    {closerDistributionMode === 'round_robin' && closerIds.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setCloserNextIndex(0)}

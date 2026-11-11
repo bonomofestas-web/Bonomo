@@ -1721,7 +1721,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   const sourceLeads = useMemo(() => {
     const rawLeads = leads; // Usa estritamente leads (scopedLeads isolado por tenant)
     if (isPostSaleFunnel) {
-      const existingClientIds = new Set(clientsAsLeads.map(c => c.id));
+      const existingClientIds = new Set<string>();
+      (clients || []).forEach(c => {
+        existingClientIds.add(c.id);
+        if (c.commercialLeadId) existingClientIds.add(c.commercialLeadId);
+      });
       const postSaleLeads = (rawLeads || []).filter(l => {
         if (existingClientIds.has(l.id)) return false;
         // Regra estrita: no modo Pós-Venda é proibido misturar leads comerciais (LEAD-)
@@ -1854,7 +1858,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           lead.funnelId === currentFunnel.id ||
           lead.funnelId?.toLowerCase().trim() === currentFunnel.name.toLowerCase().trim() ||
           (!lead.funnelId && currentFunnel.isPrimary && !currentFunnel.isPostSale && currentFunnel.category !== 'Pós-Venda') ||
-          (!lead.funnelId && isPostSaleFunnel && (currentFunnel.id === 'post_sale_default' || currentFunnel.isPrimary));
+          ((!lead.funnelId || lead.funnelId === 'post_sale_default') && isPostSaleFunnel && (currentFunnel.id === 'post_sale_default' || currentFunnel.id === (postSaleFunnels.find(f => f.isPrimary)?.id || postSaleFunnels.find(f => !f.name?.includes('(Cópia)'))?.id || postSaleFunnels[0]?.id || 'post_sale_default')));
         if (!leadFunnelMatches) {
           return false;
         }

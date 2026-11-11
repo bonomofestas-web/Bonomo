@@ -605,7 +605,11 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
     const linked = getLinkedVenuesForFunnel(funnel);
     const linkedVenueIds = linked.map(v => v.id);
 
-    const existingClientIds = new Set(clients.map(c => c.id));
+    const existingClientIds = new Set<string>();
+    clients.forEach(c => {
+      existingClientIds.add(c.id);
+      if (c.commercialLeadId) existingClientIds.add(c.commercialLeadId);
+    });
     const extraClientsFromLeads = (leads || []).filter(l => {
       if (existingClientIds.has(l.id)) return false;
       if ((l as any).isRemovedFromFunnel) return false;
@@ -822,7 +826,13 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
 
   // Clientes unificados (combina tabela clients com leads marcados como pós-venda para evitar dados órfãos)
   const allClients = useMemo<Client[]>(() => {
-    const existingClientIds = new Set(clients.map(c => c.id));
+    const existingClientIds = new Set<string>();
+    clients.forEach(c => {
+      existingClientIds.add(c.id);
+      if (c.commercialLeadId) existingClientIds.add(c.commercialLeadId);
+    });
+
+    const linkedVenueIds = currentFunnel ? getLinkedVenuesForFunnel(currentFunnel).map(v => v.id) : [];
 
     const extraClientsFromLeads: Client[] = (leads || [])
       .filter(l => {
@@ -849,6 +859,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
         }
 
         if (currentFunnel && currentFunnel.id !== defaultPostSaleId) {
+          return false;
+        }
+        if (currentFunnel && linkedVenueIds.length > 0 && l.venueId && !linkedVenueIds.includes(l.venueId)) {
           return false;
         }
         return true;
@@ -2021,7 +2034,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       key={f.id}
                       type="button"
                       onClick={() => {
-                        setSelectedFunnelId(f.id);
+                        handleSelectFunnel(f.id);
                         setIsFunnelSwitcherOpen(false);
                       }}
                       style={{
@@ -2886,14 +2899,22 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                       const isMenuOpen = activeClientMenuId === client.id;
                       const isRevenueHovered = hoveredRevenueClientId === client.id;
 
-                      // Tarefas do cliente
-                      const clientTasks = (tasks || []).filter(t => t.customProperties?.clientId === client.id || t.debutanteId === client.id || t.debutanteId === client.debutanteId);
+                      // Tarefas do cliente (exige IDs válidos para nunca equiparar undefined === undefined)
+                      const clientTasks = (tasks || []).filter(t =>
+                        Boolean(client.id && t.customProperties?.clientId === client.id) ||
+                        Boolean(client.id && t.debutanteId === client.id) ||
+                        Boolean(client.debutanteId && t.debutanteId === client.debutanteId) ||
+                        Boolean(client.commercialLeadId && (t.leadId === client.commercialLeadId || t.customProperties?.leadId === client.commercialLeadId))
+                      );
                       const pendingTasks = clientTasks.filter(t => t.status !== 'completed');
                       const todayStr = new Date().toISOString().split('T')[0];
                       const overdueTasks = pendingTasks.filter(t => t.dueDate && t.dueDate < todayStr).length;
 
-                      // Compromissos / Agendamentos do cliente
-                      const clientApps = (appointments || []).filter(a => a.debutanteId === client.id || a.debutanteId === client.debutanteId);
+                      // Compromissos / Agendamentos do cliente (exige IDs válidos)
+                      const clientApps = (appointments || []).filter(a =>
+                        Boolean(client.id && a.debutanteId === client.id) ||
+                        Boolean(client.debutanteId && a.debutanteId === client.debutanteId)
+                      );
                       const pendingApps = clientApps.filter(a => a.status === 'confirmed' || a.status === 'scheduled');
 
                       return (
@@ -3405,17 +3426,19 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                               });
                             }
 
-                            // B) Tipo de Evento (CAPSLOCK)
-                            const rawType = (client.eventType || '15 ANOS').replace(/_/g, ' ').toUpperCase();
-                            chips.push({
-                              id: 'event_type',
-                              label: rawType,
-                              icon: <Sparkles size={9} style={{ flexShrink: 0 }} />,
-                              bg: 'rgba(212, 175, 55, 0.10)',
-                              color: '#B45309',
-                              border: 'rgba(212, 175, 55, 0.25)',
-                              title: `TIPO DE EVENTO: ${rawType}`,
-                            });
+                            // B) Tipo de Evento (apenas quando preenchido explicitamente)
+                            if (client.eventType && client.eventType.trim()) {
+                              const rawType = client.eventType.replace(/_/g, ' ').toUpperCase();
+                              chips.push({
+                                id: 'event_type',
+                                label: rawType,
+                                icon: <Sparkles size={9} style={{ flexShrink: 0 }} />,
+                                bg: 'rgba(212, 175, 55, 0.10)',
+                                color: '#B45309',
+                                border: 'rgba(212, 175, 55, 0.25)',
+                                title: `TIPO DE EVENTO: ${rawType}`,
+                              });
+                            }
 
                             // C) App de Convidados (CAPSLOCK)
                             if (client.debutanteId || client.debutanteSlug) {
