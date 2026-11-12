@@ -3786,15 +3786,61 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                 </div>
               </div>
 
+              {/* Resolução Automática no Funil */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: '#FFFFFF' }}>
+                      Resolução Automática no Funil
+                    </label>
+                    <p style={{ margin: 0, fontSize: '0.68rem', color: '#9E988D' }}>
+                      Quando ativado, o funil responde de forma automática aplicando a ação configurada abaixo.
+                    </p>
+                  </div>
+                  <label style={{ position: 'relative', display: 'inline-block', width: '38px', height: '20px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(duplicateRuleConfig.autoResolve)}
+                      onChange={(e) => setDuplicateRuleConfig({ ...duplicateRuleConfig, autoResolve: e.target.checked })}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        backgroundColor: duplicateRuleConfig.autoResolve ? '#3B82F6' : 'rgba(255, 255, 255, 0.15)',
+                        borderRadius: '20px',
+                        transition: '0.2s ease',
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          left: duplicateRuleConfig.autoResolve ? '20px' : '3px',
+                          top: '3px',
+                          width: '14px',
+                          height: '14px',
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: '50%',
+                          transition: '0.2s ease',
+                        }}
+                      />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#FFFFFF', marginBottom: '8px' }}>
-                  Ação ao Detectar Lead Duplicado:
+                  Ação Padrão para Leads Duplicados:
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { id: 'keep_recent', title: 'Manter o mais recente e atualizar dados', desc: 'Move o lead para o topo e atualiza os dados com a nova entrada.' },
-                    { id: 'keep_both', title: 'Manter ambos os leads no funil', desc: 'Cria o novo lead mantendo o histórico do lead anterior intacto.' },
-                    { id: 'keep_oldest_update', title: 'Manter o lead mais antigo e mesclar histórico', desc: 'Não cria novo card, mas adiciona as novas notas ao lead existente.' },
+                    { id: 'merge_keep_oldest', title: 'Mesclar e manter o mais antigo (Recomendado)', desc: 'Unifica mensagens, tarefas e notas. Prevalecem os dados do antigo e campos vazios são completados pelo novo.' },
+                    { id: 'merge_keep_recent', title: 'Mesclar e manter o mais novo', desc: 'Unifica mensagens, tarefas e notas. Prevalecem os dados do novo e campos vazios são completados pelo antigo.' },
+                    { id: 'keep_oldest', title: 'Manter mais antigo (Descartar novo)', desc: 'Mantém apenas o card mais antigo no funil e descarta o novo sem mesclar.' },
+                    { id: 'keep_recent', title: 'Manter o mais novo (Descartar antigo)', desc: 'Mantém apenas o card mais recente no funil e descarta o antigo sem mesclar.' },
+                    { id: 'manual', title: 'Manual (Apenas sinalizar com etiqueta)', desc: 'Não executa ações automáticas. Apenas sinaliza a etiqueta de duplicado para decisão manual ao clicar.' },
                   ].map(opt => (
                     <div
                       key={opt.id}

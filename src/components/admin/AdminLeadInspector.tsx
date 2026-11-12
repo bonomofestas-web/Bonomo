@@ -24,6 +24,7 @@ import type { AppointmentReceiptData } from './AdminAppointmentReceiptModal';
 import { CloseDealValueModal } from './CloseDealValueModal';
 import { AdminLeadMissingFieldsModal } from './AdminLeadMissingFieldsModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
+import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { canChangeLeadVenue } from '../../utils/accessPermissions';
 import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -718,6 +719,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   const [scheduleCommitmentType, setScheduleCommitmentType] = useState<CommercialCommitmentType | null>(null);
   const [activeReceiptModal, setActiveReceiptModal] = useState<AppointmentReceiptData | null>(null);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
 
   const handleOpenReceipt = useCallback((type: 'visit' | 'tasting') => {
     const commitment = type === 'visit' ? lead.visitCommitment : lead.tastingCommitment;
@@ -2091,7 +2093,8 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
               return (
                 <div
-                  title={isTargetClient ? 'Cliente cadastrado em múltiplos funis de pós-venda' : 'Lead com mesmo telefone cadastrado em múltiplos funis comerciais'}
+                  onClick={() => setIsDuplicateModalOpen(true)}
+                  title="Clique para resolver duplicidade (Manter ou Mesclar)"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -2103,7 +2106,11 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                     background: 'rgba(245, 158, 11, 0.15)',
                     border: '1px solid rgba(245, 158, 11, 0.40)',
                     color: '#F59E0B',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
                 >
                   <Copy size={11} strokeWidth={2.5} />
                   <span>{isTargetClient ? 'Cliente Duplicado' : 'Lead Duplicado'}</span>
@@ -7725,6 +7732,13 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
           onClose={() => setActiveReceiptModal(null)}
         />
       )}
+
+      {/* Modal de Resolução de Lead Duplicado */}
+      <AdminDuplicateLeadModal
+        isOpen={isDuplicateModalOpen}
+        onClose={() => setIsDuplicateModalOpen(false)}
+        lead={lead}
+      />
 
     </div>
   );

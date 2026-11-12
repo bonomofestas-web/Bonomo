@@ -444,11 +444,19 @@ export const ICP_SITUATION_CONFIG: Record<MqlOptionSituation, { label: string; p
   bad: { label: 'Ruim', points: 0, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.35)', icon: '🔴' },
 };
 
+export type DuplicateResolutionAction =
+  | 'keep_oldest'
+  | 'keep_newest'
+  | 'merge_keep_oldest'
+  | 'merge_keep_newest'
+  | 'delete_current';
+
 export interface FunnelDuplicateRuleConfig {
   matchPhone: boolean;
   matchEmail: boolean;
   matchName: boolean;
-  action: 'keep_recent' | 'keep_both' | 'keep_oldest_update';
+  action: 'keep_recent' | 'keep_both' | 'keep_oldest_update' | 'keep_oldest' | 'keep_newest' | 'merge_keep_oldest' | 'merge_keep_newest' | 'merge_keep_recent' | 'manual';
+  autoResolve?: boolean;
 }
 
 export interface MqlOption {

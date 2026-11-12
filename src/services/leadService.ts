@@ -1371,6 +1371,32 @@ export const leadService = {
       master.closerId = secondaryLead.closerId;
       master.closerName = secondaryLead.closerName;
     }
+    if (!master.venueId && secondaryLead.venueId) {
+      master.venueId = secondaryLead.venueId;
+      master.venueName = secondaryLead.venueName;
+    }
+    if (!master.eventType && secondaryLead.eventType) master.eventType = secondaryLead.eventType;
+    if (!(master as any).payerName && (secondaryLead as any).payerName) (master as any).payerName = (secondaryLead as any).payerName;
+    if (!(master as any).payerPhone && (secondaryLead as any).payerPhone) (master as any).payerPhone = (secondaryLead as any).payerPhone;
+    if (!(master as any).birthdayPersonName && (secondaryLead as any).birthdayPersonName) (master as any).birthdayPersonName = (secondaryLead as any).birthdayPersonName;
+    if (!(master as any).birthdayPersonAge && (secondaryLead as any).birthdayPersonAge) (master as any).birthdayPersonAge = (secondaryLead as any).birthdayPersonAge;
+    if (!master.debutanteName && secondaryLead.debutanteName) master.debutanteName = secondaryLead.debutanteName;
+    if (!master.dealValue && secondaryLead.dealValue) master.dealValue = secondaryLead.dealValue;
+    if (!master.packageSold && secondaryLead.packageSold) master.packageSold = secondaryLead.packageSold;
+    if (!master.profession && secondaryLead.profession) master.profession = secondaryLead.profession;
+    if (!master.address && secondaryLead.address) master.address = secondaryLead.address;
+    if (!master.neighborhood && secondaryLead.neighborhood) master.neighborhood = secondaryLead.neighborhood;
+    if (!(master as any).city && (secondaryLead as any).city) (master as any).city = (secondaryLead as any).city;
+    if (!master.mqlScore && secondaryLead.mqlScore) {
+      master.mqlScore = secondaryLead.mqlScore;
+      master.mqlLevel = secondaryLead.mqlLevel;
+      master.mqlAnswers = secondaryLead.mqlAnswers;
+    }
+    if (secondaryLead.tags && secondaryLead.tags.length > 0) {
+      const tagSet = new Set(master.tags || []);
+      secondaryLead.tags.forEach(t => tagSet.add(t));
+      master.tags = Array.from(tagSet);
+    }
     if (secondaryLead.notes && secondaryLead.notes !== master.notes) {
       master.notes = master.notes ? `${master.notes}\n---\n${secondaryLead.notes}` : secondaryLead.notes;
     }

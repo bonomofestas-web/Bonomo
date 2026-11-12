@@ -38,7 +38,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { uazapiService } from '../../services/uazapiService';
 import { uazapiSseService } from '../../services/uazapiSseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { leadService, mergeAndSortActivities } from '../../services/leadService';
+import { leadService, mergeAndSortActivities, isPhoneMatch } from '../../services/leadService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { renderWhatsAppFormattedText } from '../../utils/whatsappFormatter';
 import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
@@ -49,6 +49,7 @@ import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
 import { AdminTaskCompletionModal } from './AdminTaskCompletionModal';
 import { AdminConfirmModal } from './AdminConfirmModal';
+import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { DocumentFileUploadZone } from './DocumentFileUploadZone';
 import { TASK_PRIORITY_OPTIONS, getTaskPriorityConfig, isTaskOverdue } from '../../utils/taskColors';
 import {
@@ -1066,6 +1067,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     } catch { }
     return 'waiting_time';
   });
+
+  const [duplicateModalLead, setDuplicateModalLead] = useState<Lead | null>(null);
 
   const handleUpdateSortBy = (val: string) => {
     setLocalSortBy(val);
@@ -6129,6 +6132,45 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         <h3 style={{ fontSize: '0.96rem', fontWeight: 700, color: 'var(--adm-text-title)', margin: 0 }}>
                           {headerDisplayName}
                         </h3>
+                        {(() => {
+                          if (!selectedLead.phone) return null;
+                          const cleanP = selectedLead.phone.replace(/\D/g, '');
+                          if (cleanP.length < 8) return null;
+                          const isTargetClient = Boolean(selectedLead.isClient || selectedLead.group === 'Pós-Venda');
+                          const hasDup = (sourceLeads || []).some(l => {
+                            if (l.id === selectedLead.id) return false;
+                            const isLClient = Boolean(l.isClient || l.group === 'Pós-Venda');
+                            if (isTargetClient !== isLClient) return false;
+                            return isPhoneMatch(l.phone, selectedLead.phone);
+                          });
+                          if (!hasDup) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setDuplicateModalLead(selectedLead)}
+                              title="Clique para resolver duplicidade (Manter ou Mesclar)"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 7px',
+                                borderRadius: '6px',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                background: 'rgba(245, 158, 11, 0.15)',
+                                border: '1px solid rgba(245, 158, 11, 0.40)',
+                                color: '#F59E0B',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.15)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+                            >
+                              <Copy size={10} strokeWidth={2.5} />
+                              <span>{isTargetClient ? 'Cliente Duplicado' : 'Lead Duplicado'}</span>
+                            </button>
+                          );
+                        })()}
                         {!hasRealLeadName && selectedLead.code && (
                           <span style={{
                             fontSize: '0.66rem',
@@ -13548,6 +13590,13 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
           onToggleHideGeneralChannel={handleToggleHideGeneralChannel}
         />
       )}
+
+      {/* ── MODAL: RESOLUÇÃO DE LEAD DUPLICADO ── */}
+      <AdminDuplicateLeadModal
+        isOpen={Boolean(duplicateModalLead)}
+        onClose={() => setDuplicateModalLead(null)}
+        lead={duplicateModalLead}
+      />
 
     </div>
   );

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
+import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { 
   AdminMoveFunnelModal, 
   AdminQuickTaskModal, 
@@ -733,6 +734,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [targetPostSaleStageId, setTargetPostSaleStageId] = useState('');
   const [transferHistoryAndMessages, setTransferHistoryAndMessages] = useState(false);
   const [bulkTransferProgress, setBulkTransferProgress] = useState<{ current: number; total: number } | null>(null);
+  const [duplicateModalLead, setDuplicateModalLead] = useState<Lead | null>(null);
 
   const handleBulkMoveToClient = async () => {
     if (!targetPostSaleFunnelId || selectedLeadIds.length === 0) return;
@@ -4324,7 +4326,11 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                                       bg: 'rgba(245, 158, 11, 0.12)',
                                       color: '#D97706',
                                       border: 'rgba(245, 158, 11, 0.35)',
-                                      title: isTargetClient ? 'Cliente cadastrado em múltiplos funis de pós-venda' : 'Lead com mesmo telefone cadastrado em múltiplos funis comerciais',
+                                      title: 'Clique para resolver duplicidade (Manter ou Mesclar)',
+                                      onClick: (e: any) => {
+                                        if (e?.stopPropagation) e.stopPropagation();
+                                        setDuplicateModalLead(lead);
+                                      },
                                     });
                                   }
                                 }
@@ -6162,6 +6168,13 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Resolução de Lead Duplicado */}
+      <AdminDuplicateLeadModal
+        isOpen={Boolean(duplicateModalLead)}
+        onClose={() => setDuplicateModalLead(null)}
+        lead={duplicateModalLead}
+      />
     </div>
   );
 };

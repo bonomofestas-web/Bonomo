@@ -33,6 +33,7 @@ import type {
   VenueAgendaConfig,
   CommercialCommitment,
   DeletedLeadRecord,
+  DuplicateResolutionAction,
   LeadContact,
   SystemSlaConfig,
   QuickMessage,
@@ -445,6 +446,7 @@ export interface AdminContextType {
   unarchiveLead: (leadId: string, funnelId?: string, stageId?: string) => Promise<boolean>;
   deletedLeadsHistory: DeletedLeadRecord[];
   mergeLeads: (primaryLeadId: string, secondaryLeadId: string) => Promise<boolean>;
+  resolveDuplicateLeads: (action: DuplicateResolutionAction, currentLeadId: string, duplicateLeadId: string) => Promise<boolean>;
   consolidateAllDuplicateLeads: () => Promise<{ mergedCount: number }>;
   syncWhatsAppHistoryGap: (options?: {
     sourceId?: string;
@@ -6290,6 +6292,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
       || candidateLeads[0];
 
+    // Auto-resolução automática de duplicados se configurado no Funil
+    const targetFunnel = funnels.find(f => f.id === (incomingFunnelId || existing?.funnelId));
+    if (candidateLeads.length > 1 && targetFunnel?.duplicateRuleConfig?.autoResolve) {
+      const autoAction = targetFunnel.duplicateRuleConfig.action;
+      const sortedByAge = [...candidateLeads].sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+      const oldest = sortedByAge[0];
+      const newest = sortedByAge[sortedByAge.length - 1];
+
+      if (autoAction === 'merge_keep_oldest' || autoAction === 'keep_oldest_update') {
+        for (let i = 1; i < sortedByAge.length; i++) {
+          mergeLeads(oldest.id, sortedByAge[i].id).catch(() => {});
+        }
+        existing = oldest;
+      } else if (autoAction === 'merge_keep_newest' || autoAction === 'merge_keep_recent' || autoAction === 'keep_recent') {
+        for (let i = 0; i < sortedByAge.length - 1; i++) {
+          mergeLeads(newest.id, sortedByAge[i].id).catch(() => {});
+        }
+        existing = newest;
+      } else if (autoAction === 'keep_oldest') {
+        for (let i = 1; i < sortedByAge.length; i++) {
+          deleteLead(sortedByAge[i].id, 'Auto-resolução de duplicado: mantido o mais antigo');
+        }
+        existing = oldest;
+      } else if (autoAction === 'keep_newest') {
+        for (let i = 0; i < sortedByAge.length - 1; i++) {
+          deleteLead(sortedByAge[i].id, 'Auto-resolução de duplicado: mantido o mais novo');
+        }
+        existing = newest;
+      }
+    }
+
     if (existing) {
       console.info(`[createLeadFromWhatsApp] Contato existente (${existing.id} - ${existing.name}), correspondência vinculada ao card existente.`);
       if (data.firstMessage || data.mediaUrl) {
@@ -8038,6 +8071,51 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.error('[mergeLeads] Erro ao unificar leads:', err);
       return false;
     }
+  };
+
+  const resolveDuplicateLeads = async (
+    action: DuplicateResolutionAction,
+    currentLeadId: string,
+    duplicateLeadId: string
+  ): Promise<boolean> => {
+    const currentLeads = leadsRef.current;
+    const currentLead = currentLeads.find(l => l.id === currentLeadId);
+    const otherLead = currentLeads.find(l => l.id === duplicateLeadId);
+    if (!currentLead || !otherLead) {
+      console.warn('[resolveDuplicateLeads] Um dos leads não foi encontrado.', { currentLeadId, duplicateLeadId });
+      return false;
+    }
+
+    const currentCreatedTime = new Date(currentLead.createdAt || 0).getTime();
+    const otherCreatedTime = new Date(otherLead.createdAt || 0).getTime();
+    const isCurrentOlder = currentCreatedTime <= otherCreatedTime;
+    const olderLead = isCurrentOlder ? currentLead : otherLead;
+    const newerLead = isCurrentOlder ? otherLead : currentLead;
+
+    if (action === 'keep_oldest') {
+      deleteLead(newerLead.id, 'Duplicidade resolvida: mantido o lead mais antigo');
+      return true;
+    }
+
+    if (action === 'keep_newest') {
+      deleteLead(olderLead.id, 'Duplicidade resolvida: mantido o lead mais novo');
+      return true;
+    }
+
+    if (action === 'delete_current') {
+      deleteLead(currentLead.id, 'Duplicidade resolvida: exclusão do card atual');
+      return true;
+    }
+
+    if (action === 'merge_keep_oldest') {
+      return await mergeLeads(olderLead.id, newerLead.id);
+    }
+
+    if (action === 'merge_keep_newest') {
+      return await mergeLeads(newerLead.id, olderLead.id);
+    }
+
+    return false;
   };
 
   const closeLeadSaleWithValue = (
@@ -10686,6 +10764,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       unarchiveLead,
       deletedLeadsHistory: scopedDeletedLeadsHistory,
       mergeLeads,
+      resolveDuplicateLeads,
       consolidateAllDuplicateLeads,
       syncWhatsAppHistoryGap,
       closeLeadSale,
