@@ -61,7 +61,7 @@ import { generateUuid } from '../../utils/uuid';
 import { getLeadPendingWaitingTime, getLeadWaitTimeSla } from '../../utils/leadSorting';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { getDefaultPostSaleFunnelId, filterExtraPostSaleLeads } from '../../utils/funnelUtils';
-import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig } from '../../types/admin';
+import type { Lead, LeadActivity, CrmStage, ClientStage, AdminTask, TaskStatus, ClientUpsellSale, ClientDocument, PostSaleChannelConfig, LeadEventType } from '../../types/admin';
 
 export const formatWhatsAppDateDivider = (timestamp?: string | number | Date): string => {
   if (!timestamp) return '';
@@ -1639,7 +1639,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     if (!isPostSaleFunnel) return [];
     return (clients || []).map(c => {
       const pName = c.birthdayPersonName || c.name || 'Cliente';
-      const cPayer = c.payerName || pName;
+      const cPayer = c.payerName || '';
+      const formattedDisplayName = (cPayer && pName && cPayer.toLowerCase().trim() !== pName.toLowerCase().trim())
+        ? `${cPayer.trim()} • ${pName.trim()}`
+        : (cPayer.trim() || pName.trim() || 'Cliente');
       const cPhone = c.payerPhone || '';
       const cNotes = Array.isArray(c.notes) ? c.notes : [];
 
@@ -1668,7 +1671,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         debutanteId: c.debutanteId || c.id,
         debutanteName: pName,
         debutanteSlug: c.debutanteSlug || c.id.slice(0, 8),
-        name: pName,
+        name: formattedDisplayName,
+        eventType: (c.eventType as LeadEventType) || undefined,
         phone: cPhone,
         email: c.payerEmail || '',
         age: c.birthdayPersonAge || 15,
@@ -5161,12 +5165,27 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
               const pendingWaitMs = getLeadPendingWaitingTime(lead, collabIds);
               const sla = getLeadWaitTimeSla(pendingWaitMs, systemSlaConfig);
 
-              const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
-              const displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
+              const isCardPostSale = Boolean(
+                lead.isClient ||
+                lead.group === 'Pós-Venda' ||
+                (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.isPostSale) ||
+                (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.category === 'Pós-Venda') ||
+                isPostSaleFunnel
+              );
 
-              const isIndication = lead.source === 'indicacao' || Boolean(lead.debutanteName && lead.debutanteName !== 'Indicação Externa' && lead.debutanteName !== 'WhatsApp Direto');
-              const rawOrigin = lead.subSource || lead.sourceName || (lead.source === 'whatsapp' ? 'WhatsApp' : lead.source === 'instagram' ? 'Instagram' : lead.source === 'parceria' ? 'Parceria' : lead.source === 'evento_externo' ? 'Evento Externo' : lead.source);
-              const originLabel = isIndication ? 'Indicação' : (rawOrigin === 'Direto' ? null : rawOrigin);
+              const hasRealName = Boolean(lead.name && lead.name.trim() !== '' && !lead.name.startsWith('LEAD-') && lead.name !== lead.code);
+              let displayName = hasRealName ? lead.name : (lead.code || 'Lead sem nome');
+              if (isCardPostSale) {
+                const payerPart = ((lead as any).payerName || '').trim();
+                const hostPart = ((lead as any).birthdayPersonName || ((lead.debutanteName && lead.debutanteName !== 'WhatsApp Direto' && lead.debutanteName !== 'Indicação Externa') ? lead.debutanteName : ''))?.trim();
+                if (payerPart && hostPart && payerPart.toLowerCase() !== hostPart.toLowerCase()) {
+                  displayName = `${payerPart} • ${hostPart}`;
+                } else if (payerPart) {
+                  displayName = payerPart;
+                } else if (hostPart) {
+                  displayName = hostPart;
+                }
+              }
 
               const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : (lead.assignedTo ? collaborators.find(c => c.name === lead.assignedTo) : undefined);
               const closerCollab = lead.closerId ? collaborators.find(c => c.id === lead.closerId) : undefined;
@@ -5637,11 +5656,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                             (lead.funnelId && funnels.find(f => f.id === lead.funnelId)?.category === 'Pós-Venda') ||
                             isPostSaleFunnel
                           );
+                          const leadFunnel = funnels.find(f => f.id === lead.funnelId);
 
                           if (isLeadPostSale) {
                             const stgKey = (lead.stage as string) || '';
-                            const matchedFunnel = funnels.find(f => f.id === lead.funnelId);
-                            const customStage = matchedFunnel?.stages?.find(s => s.id === stgKey);
+                            const customStage = leadFunnel?.stages?.find(s => s.id === stgKey);
                             const stgCfg = (customStage ? {
                               label: customStage.name,
                               color: customStage.color || '#3B82F6',
@@ -5650,6 +5669,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
                             return (
                               <>
+                                {/* Nome do Funil de Pós-Venda */}
+                                {leadFunnel?.name && (
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(99, 102, 241, 0.12)',
+                                    color: '#6366F1',
+                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {leadFunnel.name}
+                                  </span>
+                                )}
+
                                 {/* Stage Badge for Post-Sale (NUNCA exibe 'new_lead' ou 'entry') */}
                                 {stgKey && stgKey !== 'new_lead' && stgKey !== 'entry' && stgCfg ? (
                                   <span style={{
@@ -5666,57 +5701,133 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   </span>
                                 ) : null}
 
-                            {/* Party Date Badge with Countdown */}
-                            {(lead.partyDate || lead.eventDate) && (() => {
-                              const pStr = (lead.partyDate || lead.eventDate) as string;
-                              const pTime = new Date(pStr + 'T12:00:00').getTime();
-                              const diff = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));
-                              return (
-                                <span style={{
-                                  fontSize: '0.58rem',
-                                  fontWeight: 700,
-                                  color: '#F59E0B',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '2px',
-                                  whiteSpace: 'nowrap',
-                                }}>
-                                  <Calendar size={10} color="#F59E0B" />
-                                  {new Date(pStr + 'T12:00:00').toLocaleDateString('pt-BR')} {diff >= 0 ? `(${diff}d)` : ''}
-                                </span>
-                              );
-                            })()}
-
-                            {/* Deal Value */}
-                            {lead.dealValue ? (
-                              <span style={{
-                                fontSize: '0.62rem',
-                                fontWeight: 800,
-                                color: '#10B981',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.dealValue)}
-                              </span>
-                            ) : null}
-                          </>
-                        );
-                      } else {
-                            return (
-                              <>
-                                {originLabel && (
+                                {/* Tipo de Evento (se definido) */}
+                                {lead.eventType && (
                                   <span style={{
-                                    fontSize: '0.60rem',
+                                    fontSize: '0.58rem',
                                     fontWeight: 700,
                                     padding: '1px 5px',
                                     borderRadius: '4px',
-                                    background: isIndication ? 'rgba(212, 175, 55, 0.15)' : 'rgba(16, 185, 129, 0.1)',
-                                    color: isIndication ? '#D4AF37' : '#10B981',
-                                    border: `1px solid ${isIndication ? 'rgba(212, 175, 55, 0.35)' : 'rgba(16, 185, 129, 0.25)'}`,
+                                    background: 'rgba(236, 72, 153, 0.12)',
+                                    color: '#EC4899',
+                                    border: '1px solid rgba(236, 72, 153, 0.25)',
                                     whiteSpace: 'nowrap',
                                   }}>
-                                    {originLabel}
+                                    {lead.eventType}
                                   </span>
                                 )}
+
+                                {/* Party Date Badge with Countdown */}
+                                {(lead.partyDate || lead.eventDate) && (() => {
+                                  const pStr = (lead.partyDate || lead.eventDate) as string;
+                                  const pTime = new Date(pStr + 'T12:00:00').getTime();
+                                  const diff = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));
+                                  return (
+                                    <span style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 700,
+                                      color: '#F59E0B',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '2px',
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      <Calendar size={10} color="#F59E0B" />
+                                      {new Date(pStr + 'T12:00:00').toLocaleDateString('pt-BR')} {diff >= 0 ? `(${diff}d)` : ''}
+                                    </span>
+                                  );
+                                })()}
+
+                                {/* Deal Value */}
+                                {lead.dealValue ? (
+                                  <span style={{
+                                    fontSize: '0.62rem',
+                                    fontWeight: 800,
+                                    color: '#10B981',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.dealValue)}
+                                  </span>
+                                ) : null}
+                              </>
+                            );
+                          } else {
+                            const customStage = leadFunnel?.stages?.find(s => s.id === lead.stage);
+                            const stageLabel = customStage?.name || (lead.stage === 'new_lead' ? 'Novo Lead' : lead.stage);
+                            const stageColor = customStage?.color || '#3B82F6';
+
+                            return (
+                              <>
+                                {/* Nome do Funil Comercial */}
+                                {leadFunnel?.name && (
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(99, 102, 241, 0.12)',
+                                    color: '#6366F1',
+                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {leadFunnel.name}
+                                  </span>
+                                )}
+
+                                {/* Etapa do Funil Comercial */}
+                                {stageLabel && (
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 800,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: `${stageColor}15`,
+                                    color: stageColor,
+                                    border: `1px solid ${stageColor}40`,
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {stageLabel}
+                                  </span>
+                                )}
+
+                                {/* Tipo de Evento (se definido) */}
+                                {lead.eventType && (
+                                  <span style={{
+                                    fontSize: '0.58rem',
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(236, 72, 153, 0.12)',
+                                    color: '#EC4899',
+                                    border: '1px solid rgba(236, 72, 153, 0.25)',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {lead.eventType}
+                                  </span>
+                                )}
+
+                                {/* Party Date Badge with Countdown */}
+                                {(lead.partyDate || lead.eventDate) && (() => {
+                                  const pStr = (lead.partyDate || lead.eventDate) as string;
+                                  const pTime = new Date(pStr + 'T12:00:00').getTime();
+                                  const diff = Math.ceil((pTime - Date.now()) / (1000 * 60 * 60 * 24));
+                                  return (
+                                    <span style={{
+                                      fontSize: '0.58rem',
+                                      fontWeight: 700,
+                                      color: '#F59E0B',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '2px',
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      <Calendar size={10} color="#F59E0B" />
+                                      {new Date(pStr + 'T12:00:00').toLocaleDateString('pt-BR')} {diff >= 0 ? `(${diff}d)` : ''}
+                                    </span>
+                                  );
+                                })()}
+
+                                {/* ICP Badge (se configurado) */}
                                 {hasIcpConfigured(lead) && (() => {
                                   const hasAns = Boolean(lead.mqlAnswers && Object.keys(lead.mqlAnswers).some(k => Boolean(lead.mqlAnswers![k])));
                                   const isUndef = !hasAns && (lead.mqlScore === undefined || lead.mqlScore === 0);

@@ -57,7 +57,7 @@ export const taskService = {
         description: row.description,
         content: row.content || '',
         dueDate: row.due_date,
-        dueTime: row.due_time || '14:00',
+        dueTime: row.due_time || undefined,
         status: row.status || 'todo',
         customStatusId: row.custom_status_id || 'st_todo',
         priority: row.priority || 'medium',

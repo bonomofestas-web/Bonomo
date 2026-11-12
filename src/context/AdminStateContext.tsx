@@ -4769,6 +4769,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     await sourceService.upsert(newSource);
+
+    // Regra F5: Ao vincular uma origem a um funil de Pós-Venda, ativa automaticamente a etapa de Entrada do Cliente
+    if (resolvedFunnelId) {
+      const targetF = funnels.find(f => f.id === resolvedFunnelId);
+      const isPostSale = targetF?.isPostSale || targetF?.category === 'Pós-Venda' || targetF?.category === 'pos_venda';
+      if (isPostSale && targetF && targetF.isEntryStageActive === false) {
+        updateFunnel(targetF.id, { isEntryStageActive: true });
+      }
+    }
+
     return id;
   };
 
@@ -4782,6 +4792,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const target = sources.find(s => s.id === id);
     if (target) {
       await sourceService.upsert({ ...target, ...data, id });
+    }
+
+    // Regra F5: Ao vincular/alterar origem para um funil de Pós-Venda, ativa automaticamente a entrada
+    const effectiveFunnelId = data.funnelId || target?.funnelId;
+    if (effectiveFunnelId) {
+      const targetF = funnels.find(f => f.id === effectiveFunnelId);
+      const isPostSale = targetF?.isPostSale || targetF?.category === 'Pós-Venda' || targetF?.category === 'pos_venda';
+      if (isPostSale && targetF && targetF.isEntryStageActive === false) {
+        updateFunnel(targetF.id, { isEntryStageActive: true });
+      }
     }
   };
 
@@ -4898,15 +4918,19 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const addClient = (clientData: Partial<Client>): string => {
     const id = clientData.id || generateUuid();
     const code = clientData.code || generateClientCode();
-    const birthdayPersonName = clientData.birthdayPersonName?.trim() || clientData.name?.trim() || 'Nova Aniversariante';
+    const payerName = clientData.payerName?.trim() || '';
+    const birthdayPersonName = clientData.birthdayPersonName?.trim() || clientData.name?.trim() || '';
+    const formattedClientName = (payerName && birthdayPersonName && payerName.toLowerCase() !== birthdayPersonName.toLowerCase())
+      ? `${payerName} • ${birthdayPersonName}`
+      : (birthdayPersonName || payerName || 'Novo Cliente');
     const targetVenueId = clientData.venueId || activeVenueId || venues[0]?.id || '';
     const venueObj = venues.find(v => v.id === targetVenueId);
 
     const newClient: Client = {
       id,
       code,
-      name: birthdayPersonName,
-      payerName: clientData.payerName?.trim() || 'Responsável',
+      name: formattedClientName,
+      payerName: payerName || (birthdayPersonName ? `${birthdayPersonName} (Responsável)` : 'Responsável'),
       payerRelationship: clientData.payerRelationship || 'mother',
       payerCpf: clientData.payerCpf || '',
       payerPhone: clientData.payerPhone || '',
@@ -4914,16 +4938,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       payerAddress: clientData.payerAddress || '',
       payerNeighborhood: clientData.payerNeighborhood || '',
       payerCity: clientData.payerCity || '',
-      birthdayPersonName,
-      birthdayPersonAge: clientData.birthdayPersonAge || 15,
+      birthdayPersonName: birthdayPersonName || payerName,
+      birthdayPersonAge: Number(clientData.birthdayPersonAge) || 0,
       birthdayPersonBirthdate: clientData.birthdayPersonBirthdate || '',
       eventType: clientData.eventType || '',
-      eventDate: clientData.eventDate || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
-      eventTime: clientData.eventTime || '20:00 às 02:00',
-      guestCount: clientData.guestCount || 150,
+      eventDate: clientData.eventDate || '',
+      eventTime: clientData.eventTime || '',
+      guestCount: Number(clientData.guestCount) || 0,
       venueId: targetVenueId,
-      venueName: venueObj?.name || 'Bonomo Festas',
-      packageSold: clientData.packageSold || 'Pacote Completo',
+      venueName: venueObj?.name || 'Unidade Principal',
+      packageSold: clientData.packageSold || '',
       dealValue: clientData.dealValue || 0,
       contractDate: clientData.contractDate || new Date().toISOString().split('T')[0],
       paymentTerms: clientData.paymentTerms || '',
@@ -6174,14 +6198,31 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const isPostSaleTarget = data.initialFunnelId === 'post_sale_default' ||
       funnels.some(f => f.id === data.initialFunnelId && (f.isPostSale || f.category === 'Pós-Venda'));
 
-    // Trava Suprema de Duplicidade (Áudio 1): Se o lead já existir no sistema, reutiliza-o sem duplicar
-    const existing = leadsRef.current.find(l => {
+    // Procura a Origem do WhatsApp (pelo ID específico ou da casa de festa)
+    const waSource = (data.sourceId ? sources.find(s => s.id === data.sourceId) : null)
+      || sources.find(s => s.venueId === data.venueId && s.type === 'whatsapp_api' && s.status === 'active')
+      || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
+
+    const incomingVenueId = data.venueId || waSource?.venueId;
+    const incomingFunnelId = data.initialFunnelId || waSource?.funnelId;
+
+    // Regra F5 Multi-Unidades de Deduplicação WhatsApp:
+    // 1. Mensagens para a mesma unidade sempre se vinculam ao mesmo lead existente (sem duplicar).
+    // 2. Se o lead entrar em contato com outra unidade:
+    //    - Se for o MESMO funil compartilhado entre as casas: vincula ao card existente.
+    //    - Se for uma unidade diferente E funis diferentes: cria um novo lead específico para aquela casa/funil.
+    const candidateLeads = leadsRef.current.filter(l => {
       const isClient = Boolean(l.isClient || l.group === 'Pós-Venda' || (Array.isArray(l.tags) && l.tags.some(t => t.toLowerCase() === 'cliente')));
       if (isPostSaleTarget ? !isClient : isClient) return false;
       if ((l as any).isDeleted) return false;
       const lp = (l.phone || '').replace(/\D/g, '');
       return lp && cleanPhoneDigits && (lp === cleanPhoneDigits || (cleanPhoneDigits.length >= 8 && lp.endsWith(cleanPhoneDigits.slice(-8))));
     });
+
+    let existing = candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId);
+    if (!existing && incomingFunnelId) {
+      existing = candidateLeads.find(l => l.funnelId === incomingFunnelId);
+    }
 
     if (existing) {
       console.info(`[createLeadFromWhatsApp] Contato existente (${existing.id} - ${existing.name}), correspondência vinculada ao card existente.`);
@@ -6218,11 +6259,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     const newLeadId = generateUuid();
-    
-    // Procura a Origem do WhatsApp (pelo ID específico ou da casa de festa)
-    const waSource = (data.sourceId ? sources.find(s => s.id === data.sourceId) : null)
-      || sources.find(s => s.venueId === data.venueId && s.type === 'whatsapp_api' && s.status === 'active')
-      || sources.find(s => s.type === 'whatsapp_api' && s.status === 'active');
     
     let matchedSubSource: string | undefined = undefined;
     let targetFunnelId = data.initialFunnelId || waSource?.funnelId || (funnels.find(f => f.venueId === data.venueId && !f.isPostSale)?.id) || funnels.find(f => !f.isPostSale)?.id || 'comercial';
@@ -6363,7 +6399,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       masterId: resolvedMasterId,
       code: isTargetPostSale ? `CLI-${leadCode.replace('LEAD-', '')}` : leadCode,
       debutanteId: '',
-      debutanteName: 'WhatsApp Direto',
+      debutanteName: '',
       debutanteSlug: '',
       venueId: targetVenueId,
       funnelId: validFunnelId,
@@ -6388,6 +6424,18 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       participants: initialParticipants,
       tasks: [],
       activities,
+      temperature: undefined,
+      eventType: undefined,
+      primaryContactRole: 'indefinido' as any,
+      contacts: [
+        {
+          id: generateUuid(),
+          name: cleanName,
+          phone: data.phone,
+          role: 'indefinido' as any,
+          isPrimaryDecisionMaker: true,
+        }
+      ],
       unreadCount: data.fromMe ? 0 : 1,
       lastInteractionAt: new Date().toISOString(),
       lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',

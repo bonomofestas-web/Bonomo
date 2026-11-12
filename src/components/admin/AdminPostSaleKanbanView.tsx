@@ -3182,7 +3182,9 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                     textOverflow: 'ellipsis',
                                     lineHeight: 1.15,
                                   }}>
-                                    {client.birthdayPersonName || client.name}
+                                    {client.payerName && client.birthdayPersonName && client.payerName.toLowerCase().trim() !== client.birthdayPersonName.toLowerCase().trim()
+                                      ? `${client.payerName.trim()} • ${client.birthdayPersonName.trim()}`
+                                      : (client.birthdayPersonName || client.payerName || client.name)}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0 }}>
@@ -3195,7 +3197,7 @@ export const AdminPostSaleKanbanView: React.FC<AdminPostSaleKanbanViewProps> = (
                                     textOverflow: 'ellipsis',
                                     lineHeight: 1.1,
                                   }}>
-                                    {client.payerName ? `Decisor: ${client.payerName}` : client.payerPhone ? formatPhone(client.payerPhone) : client.code}
+                                    {client.payerPhone ? formatPhone(client.payerPhone) : (client.payerName && !client.birthdayPersonName ? client.code : client.payerName ? `Decisor: ${client.payerName}` : client.code)}
                                   </span>
                                 </div>
                               </div>

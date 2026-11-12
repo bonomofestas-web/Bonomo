@@ -76,6 +76,7 @@ const STAGE_CONFIGS: Record<CrmStage, { label: string; color: string; bg: string
 };
 
 const CONTACT_ROLE_LABELS: Record<string, string> = {
+  indefinido: 'Indefinido',
   aniversariante: 'Aniversariante',
   debutante: 'Debutante / Aniversariante',
   mae: 'Mãe',
@@ -4745,7 +4746,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   <span style={cardLabelStyle}>Relação</span>
                   <div style={cardValueStyle}>
                     <select
-                      value={lead.primaryContactRole || 'debutante'}
+                      value={lead.primaryContactRole || 'indefinido'}
                       disabled={effectiveReadOnly}
                       onChange={(e) => handleUpdate({ primaryContactRole: e.target.value as LeadContactRole })}
                       style={{
@@ -4757,6 +4758,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                         padding: '2px 0',
                       }}
                     >
+                      <option value="indefinido">Indefinido</option>
                       <option value="debutante" disabled={Boolean(alreadyHasDebutanteOrAniversariante.subContactId)}>
                         Debutante (15 Anos) {alreadyHasDebutanteOrAniversariante.subContactId ? '• Já cadastrada nos contatos' : ''}
                       </option>
@@ -4824,7 +4826,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                 </div>
 
                 {/* Campos de Aniversário & Data Evento: Exibidos APENAS se o papel for Aniversariante/Debutante */}
-                {(lead.primaryContactRole === 'debutante' || lead.primaryContactRole === 'aniversariante' || !lead.primaryContactRole) && (
+                {(lead.primaryContactRole === 'debutante' || lead.primaryContactRole === 'aniversariante') && (
                   <>
                     <div style={{ ...cardRowStyle, ...getMissingHighlightStyle('debutanteBirthDate') }}>
                       <span style={cardLabelStyle}>

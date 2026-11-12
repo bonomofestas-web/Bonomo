@@ -5,7 +5,7 @@ import {
   Calendar, Tag, Sliders, Check,
   ArrowLeft, Edit2, CheckSquare, Type, Hash, ListFilter,
   Eye, EyeOff, Thermometer, CreditCard,
-  Users, ArrowUp, ArrowDown, ClipboardCheck, Search, UserCheck, Loader2
+  Users, ArrowUp, ArrowDown, ClipboardCheck, Search, UserCheck, Loader2, GitMerge
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { ICP_SITUATION_CONFIG } from '../../types/admin';
@@ -1661,6 +1661,52 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                     Nenhuma origem conectada diretamente a este funil nesta unidade.
                                   </div>
                                 )}
+
+                                {isPostSale && (() => {
+                                  const connectedCommercialFunnels = funnels.filter(f => {
+                                    if (f.isPostSale || f.category === 'Pós-Venda' || f.category === 'pos_venda') return false;
+                                    const hasTrigger = (f.stages || []).some(stg =>
+                                      (stg.triggers || []).some((t: any) =>
+                                        (t.type === 'create_post_sale_client' || t.type === 'move_to_funnel') && t.targetFunnelId === activeFunnel.id
+                                      )
+                                    );
+                                    if (!hasTrigger) return false;
+                                    return f.venueId === venue.id || f.venueId === 'all' || (Array.isArray(f.sharedVenueIds) && f.sharedVenueIds.includes(venue.id));
+                                  });
+
+                                  if (connectedCommercialFunnels.length === 0) return null;
+
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '6px' }}>
+                                      <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#6366F1', textTransform: 'uppercase' }}>
+                                        Funis Comerciais Conectados (Gatilho) ({connectedCommercialFunnels.length})
+                                      </span>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {connectedCommercialFunnels.map(cf => (
+                                          <span
+                                            key={cf.id}
+                                            title="Funil comercial com gatilho de ganho direcionado para este pós-venda. Não atua como origem WhatsApp e não força ativação da entrada."
+                                            style={{
+                                              fontSize: '0.62rem',
+                                              fontWeight: 700,
+                                              padding: '2px 6px',
+                                              borderRadius: '4px',
+                                              background: 'rgba(99, 102, 241, 0.1)',
+                                              border: '1px solid rgba(99, 102, 241, 0.3)',
+                                              color: '#6366F1',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '4px',
+                                            }}
+                                          >
+                                            <GitMerge size={10} color="#6366F1" />
+                                            <span>{cf.name} (Gatilho)</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
 
                           {/* WhatsApp da Unidade */}
