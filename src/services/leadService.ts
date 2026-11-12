@@ -1478,14 +1478,17 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
       // Identificação por código único da mensagem no WhatsApp (wamid / messageId da API)
       const existingMsgId = existing.messageId || (existing.metadata as any)?.messageId;
       const actMsgId = act.messageId || (act.metadata as any)?.messageId;
-      if (existingMsgId && actMsgId && existingMsgId === actMsgId) return true;
+      if (existingMsgId && actMsgId) {
+        return existingMsgId === actMsgId;
+      }
 
       const isBothAudio = (existing.mediaType === 'audio' || existing.text?.includes('🎵') || existing.title?.toLowerCase().includes('voz')) &&
                           (act.mediaType === 'audio' || act.text?.includes('🎵') || act.title?.toLowerCase().includes('voz'));
       if (existing.type === act.type && (existing.text === act.text || isBothAudio)) {
         const t1 = new Date(existing.timestamp || 0).getTime();
         const t2 = new Date(act.timestamp || 0).getTime();
-        if (Math.abs(t1 - t2) < 90000) return true;
+        // Apenas deduplica se for eco quase instantâneo (menos de 3.5s) para conciliar envio otimista e retorno do webhook
+        if (Math.abs(t1 - t2) < 3500) return true;
       }
       return false;
     });

@@ -68,3 +68,4 @@ BEGIN
         AND (name IS NOT NULL AND TRIM(name) <> '');
 
 END $$;
+

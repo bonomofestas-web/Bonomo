@@ -933,7 +933,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   // Local draft states to prevent typing lag and save on blur
   const [draftName, setDraftName] = useState(lead.name || '');
-  const [draftPhone, setDraftPhone] = useState(lead.phone || '');
+  const [draftPhone, setDraftPhone] = useState(lead.phone ? maskPhoneInput(lead.phone) : '');
   const [draftEmail, setDraftEmail] = useState(lead.email || '');
   const [draftNeighborhood, setDraftNeighborhood] = useState(lead.neighborhood || '');
   const [draftAddress, setDraftAddress] = useState(lead.address || '');
@@ -983,7 +983,7 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   React.useEffect(() => {
     setDraftName(lead.name || '');
-    setDraftPhone(lead.phone || '');
+    setDraftPhone(lead.phone ? maskPhoneInput(lead.phone) : '');
     setDraftEmail(lead.email || '');
     setDraftNeighborhood(lead.neighborhood || '');
     setDraftAddress(lead.address || '');
@@ -4787,8 +4787,10 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                       disabled={effectiveReadOnly}
                       onChange={(e) => setDraftPhone(maskPhoneInput(e.target.value))}
                       onBlur={() => {
-                        if (draftPhone !== lead.phone) {
-                          handleUpdate({ phone: draftPhone });
+                        const cleanDraft = draftPhone.replace(/\D/g, '');
+                        const cleanLead = (lead.phone || '').replace(/\D/g, '');
+                        if (cleanDraft !== cleanLead) {
+                          handleUpdate({ phone: cleanDraft });
                         }
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}

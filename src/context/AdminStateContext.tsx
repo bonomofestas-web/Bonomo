@@ -71,7 +71,7 @@ import { uazapiService } from '../services/uazapiService';
 import { whatsappMediaService } from '../services/whatsappMediaService';
 import { uazapiSseService, isLidIdentifier } from '../services/uazapiSseService';
 import { createMonogramAvatar } from '../utils/avatarUtils';
-import { generateLeadCode, generateClientCode } from '../utils/leadUtils';
+import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 
@@ -437,8 +437,8 @@ export interface AdminContextType {
   removeLeadFromFunnel: (leadId: string, reason: string) => Promise<boolean>;
   restoreLeadToFunnel: (leadId: string) => Promise<boolean>;
   deleteMultipleLeads: (leadIds: string[], reason?: string) => Promise<void>;
-  moveLeadToClient: (leadId: string, targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
-  moveMultipleLeadsToClient: (leadIds: string[], targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
+  moveLeadToClient: (leadId: string, targetFunnelId: string, targetStageId?: string, transferHistoryAndMessages?: boolean) => Promise<boolean>;
+  moveMultipleLeadsToClient: (leadIds: string[], targetFunnelId: string, targetStageId?: string, transferHistoryAndMessages?: boolean, onProgress?: (current: number, total: number) => void) => Promise<boolean>;
   moveClientToLead: (clientId: string, targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
   moveMultipleClientsToLead: (clientIds: string[], targetFunnelId: string, targetStageId?: string) => Promise<boolean>;
   archiveLead: (leadId: string, reason?: string) => Promise<boolean>;
@@ -710,6 +710,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Refs para acesso ao vivo dentro de callbacks SSE sem re-registrar listeners
   const leadsRef = React.useRef<Lead[]>([]);
+  const clientsRef = React.useRef<Client[]>([]);
   const sourcesRef = React.useRef<Source[]>([]);
   const venuesRef = React.useRef<Venue[]>([]);
 
@@ -1827,10 +1828,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const formatted = formatActivityFromDb(newRow);
                 const isMatchingAct = (a: LeadActivity) => {
                   if (a.id === formatted.id) return true;
+                  const aMsgId = a.messageId || (a.metadata as any)?.messageId;
+                  const fMsgId = formatted.messageId || (formatted.metadata as any)?.messageId;
+                  if (aMsgId && fMsgId) return aMsgId === fMsgId;
                   const actBothAudio = (formatted.mediaType === 'audio' || formatted.text?.includes('🎵')) &&
                                        (a.mediaType === 'audio' || a.text?.includes('🎵'));
                   if ((a.text === formatted.text || actBothAudio) &&
-                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 60000) {
+                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 3500) {
                     return true;
                   }
                   return false;
@@ -1883,6 +1887,52 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
             leadsRef.current = updated;
             return updated;
+          });
+
+          // Sincroniza também no estado de clientes se o targetLeadId for um cliente do pós-venda
+          setClients(prevClients => {
+            let clientFound = false;
+            const updatedClients = prevClients.map(c => {
+              if (c.id !== targetLeadId) return c;
+              clientFound = true;
+              const currentActs = (c as any).activities || [];
+
+              if (eventType === 'INSERT' && newRow) {
+                const formatted = formatActivityFromDb(newRow);
+                const isMatchingAct = (a: LeadActivity) => {
+                  if (a.id === formatted.id) return true;
+                  const aMsgId = a.messageId || (a.metadata as any)?.messageId;
+                  const fMsgId = formatted.messageId || (formatted.metadata as any)?.messageId;
+                  if (aMsgId && fMsgId) return aMsgId === fMsgId;
+                  if (a.type === formatted.type && a.text === formatted.text &&
+                      Math.abs(new Date(a.timestamp).getTime() - new Date(formatted.timestamp).getTime()) < 3500) {
+                    return true;
+                  }
+                  return false;
+                };
+
+                const exists = currentActs.some(isMatchingAct);
+                const acts = exists
+                  ? currentActs.map((a: any) => isMatchingAct(a) ? { ...formatted, mediaUrl: formatted.mediaUrl || a.mediaUrl } : a)
+                  : [...currentActs, formatted];
+                return {
+                  ...c,
+                  activities: acts.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+                };
+              } else if (eventType === 'UPDATE' && newRow) {
+                const formatted = formatActivityFromDb(newRow);
+                const acts = currentActs.map((a: any) => a.id === formatted.id ? formatted : a);
+                return { ...c, activities: acts };
+              } else if (eventType === 'DELETE' && oldRow?.id) {
+                const acts = currentActs.filter((a: any) => a.id !== oldRow.id);
+                return { ...c, activities: acts };
+              }
+              return c;
+            });
+            if (clientFound) {
+              clientsRef.current = updatedClients;
+            }
+            return clientFound ? updatedClients : prevClients;
           });
         }
       })
@@ -4660,9 +4710,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isDestPostSale) {
       const targetVenueId = destFunnel.venueId !== 'all' ? destFunnel.venueId : targetLead.venueId;
       const targetVenue = venues.find(v => v.id === targetVenueId);
+      const clientCode = (targetLead.code && targetLead.code.startsWith('CLI-')) ? targetLead.code : generateClientCode();
+      const handoverAct = buildHandoverActivity(targetLead, clientCode, oldFunnelName, destFunnel.name, currentUser?.name, currentUser?.id);
       const postSaleClient: Client = {
         id: targetLead.id,
-        code: (targetLead.code && targetLead.code.startsWith('CLI-')) ? targetLead.code : generateClientCode(),
+        code: clientCode,
         name: targetLead.name,
         payerName: (targetLead as any).payerName || targetLead.name,
         payerPhone: targetLead.phone,
@@ -4678,7 +4730,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         venueName: targetVenue?.name || targetLead.venueName || '',
         commercialLeadId: targetLead.id,
         contractStatus: 'contrato_assinado',
-        activities: [],
+        activities: [handoverAct],
         createdAt: targetLead.createdAt || now,
         updatedAt: today,
       };
@@ -4692,6 +4744,9 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return [postSaleClient, ...prev];
       });
       clientService.upsert(postSaleClient).catch(err => console.error('Erro ao sincronizar cliente pós-venda:', err));
+      if (isSupabaseConfigured) {
+        leadService.addActivity(postSaleClient.id, handoverAct).catch(() => {});
+      }
     }
 
     if (isSupabaseConfigured) {
@@ -5570,9 +5625,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             const payerPhone = primaryDecisor?.phone || targetLead.phone.trim();
             const payerRel = primaryDecisor?.role || ((targetLead as any).decisionMakerRole as any) || 'mother';
 
+            const clientCode = generateClientCode();
+            const sourceFunnelName = funnels.find(f => f.id === targetLead.funnelId)?.name || 'Comercial';
+            const handoverAct = buildHandoverActivity(targetLead, clientCode, sourceFunnelName, 'Pós-Venda', author, authorId);
+
             const newClient: Client = {
               id: newCliId,
-              code: generateClientCode(),
+              code: clientCode,
               name: birthdayName,
               birthdayPersonName: birthdayName,
               commercialLeadId: leadId,
@@ -5609,12 +5668,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 closerReport: (targetLead as any).closerReport || '',
               },
               notes: targetLead.notes || '',
-              activities: [],
+              activities: [handoverAct],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString().split('T')[0],
             };
             safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify([newClient, ...prevClients]));
             clientService.upsert(newClient).catch(() => {});
+            if (isSupabaseConfigured) {
+              leadService.addActivity(newCliId, handoverAct).catch(() => {});
+            }
             return [newClient, ...prevClients];
           } else {
             const existingClient = prevClients[existingIdx];
@@ -6216,13 +6278,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (isPostSaleTarget ? !isClient : isClient) return false;
       if ((l as any).isDeleted) return false;
       const lp = (l.phone || '').replace(/\D/g, '');
-      return lp && cleanPhoneDigits && (lp === cleanPhoneDigits || (cleanPhoneDigits.length >= 8 && lp.endsWith(cleanPhoneDigits.slice(-8))));
+      if (!lp || !cleanPhoneDigits) return false;
+      if (lp === cleanPhoneDigits) return true;
+      if (isPhoneMatch(lp, cleanPhoneDigits)) return true;
+      if (lp.startsWith(cleanPhoneDigits) || cleanPhoneDigits.startsWith(lp)) return true;
+      if (cleanPhoneDigits.length >= 8 && lp.endsWith(cleanPhoneDigits.slice(-8))) return true;
+      return false;
     });
 
-    let existing = candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId);
-    if (!existing && incomingFunnelId) {
-      existing = candidateLeads.find(l => l.funnelId === incomingFunnelId);
-    }
+    let existing = candidateLeads.find(l => incomingVenueId && l.venueId === incomingVenueId)
+      || candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
+      || candidateLeads[0];
 
     if (existing) {
       console.info(`[createLeadFromWhatsApp] Contato existente (${existing.id} - ${existing.name}), correspondência vinculada ao card existente.`);
@@ -6249,6 +6315,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           lastMessageDirection: data.fromMe ? 'outgoing' : 'incoming',
           unreadCount: data.fromMe ? existing.unreadCount : (existing.unreadCount || 0) + 1,
         };
+        // Auto-cura de telefone se o anterior estava incompleto/truncado
+        if (cleanPhoneDigits.length >= 12 && (!existing.phone || existing.phone.replace(/\D/g, '').length < cleanPhoneDigits.length)) {
+          updates.phone = cleanPhoneDigits;
+        }
         updateLeadData(existing.id, updates);
         if (isSupabaseConfigured) {
           leadService.addActivity(existing.id, newAct).catch(() => {});
@@ -6475,6 +6545,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [leads]);
 
   useEffect(() => {
+    clientsRef.current = clients;
+  }, [clients]);
+
+  useEffect(() => {
     venuesRef.current = venues;
   }, [venues]);
 
@@ -6519,9 +6593,21 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [sources, scopedVenues, scopedMasterId, currentUser]);
 
+  const processedMessageIdsRef = React.useRef<Set<string>>(new Set());
+
   // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
   useEffect(() => {
     const unsubscribe = uazapiSseService.onMessage(async (incoming) => {
+      // Deduplicação estrita de ID de mensagem (evita mensagens triplicadas por múltiplos canais/reconexões)
+      if (incoming.messageId) {
+        if (processedMessageIdsRef.current.has(incoming.messageId)) return;
+        processedMessageIdsRef.current.add(incoming.messageId);
+        if (processedMessageIdsRef.current.size > 1000) {
+          const [first] = processedMessageIdsRef.current;
+          processedMessageIdsRef.current.delete(first);
+        }
+      }
+
       const isFromMe = incoming.fromMe === true;
 
       // 1. Resolve o número real de WhatsApp, nome de contato e avatar antes de qualquer processamento
@@ -7624,7 +7710,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  const moveLeadToClient = async (leadId: string, targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
+  const moveLeadToClient = async (
+    leadId: string,
+    targetFunnelId: string,
+    targetStageId?: string,
+    transferHistoryAndMessages = false
+  ): Promise<boolean> => {
     const lead = scopedLeads.find(l => l.id === leadId) || leadsRef.current.find(l => l.id === leadId);
     if (!lead) {
       console.warn(`[moveLeadToClient] Lead não encontrado: ${leadId}`);
@@ -7644,6 +7735,13 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const payerName = (lead as any).payerName || primaryContact?.name || lead.name;
     const payerPhone = (lead as any).payerPhone || primaryContact?.phone || lead.phone;
     const birthdayName = (lead as any).birthdayPersonName || lead.debutanteName || lead.name;
+
+    const sourceFunnelName = funnels.find(f => f.id === lead.funnelId)?.name || 'Comercial';
+    const handoverAct = buildHandoverActivity(lead, newCode, sourceFunnelName, targetFunnel?.name, currentUser?.name, currentUser?.id);
+
+    const clientActivities: any[] = transferHistoryAndMessages
+      ? [handoverAct, ...(lead.activities || [])]
+      : [handoverAct];
 
     const newClient: Client = {
       id: newClientId,
@@ -7682,13 +7780,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       profession: lead.profession || '',
       contacts: lead.contacts || [],
       documents: (lead as any).documents || [],
-      activities: (lead.activities || []).map(a => ({
-        id: a.id,
-        type: (a.type === 'status_change' ? 'status_change' : 'note') as any,
-        description: a.text || a.title || 'Atividade migrada',
-        createdAt: a.timestamp,
-        createdBy: a.authorName || 'Sistema',
-      })),
+      activities: clientActivities,
       funnelId: targetFunnelId,
       stage: resolvedStageId,
       createdAt: lead.createdAt || new Date().toISOString(),
@@ -7711,7 +7803,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isSupabaseConfigured) {
       try {
         await clientService.upsert(newClient);
-        await supabase.from('lead_activities').update({ lead_id: newClientId }).eq('lead_id', lead.id);
+        if (transferHistoryAndMessages) {
+          await supabase.from('lead_activities').update({ lead_id: newClientId }).eq('lead_id', lead.id);
+        }
+        await leadService.addActivity(newClientId, handoverAct).catch(() => {});
         await supabase.from('admin_tasks').update({ client_id: newClientId, lead_id: null }).eq('lead_id', lead.id);
         await supabase.from('leads').delete().eq('id', lead.id);
       } catch (err) {
@@ -7722,9 +7817,23 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return true;
   };
 
-  const moveMultipleLeadsToClient = async (leadIds: string[], targetFunnelId: string, targetStageId?: string): Promise<boolean> => {
-    for (const id of leadIds) {
-      await moveLeadToClient(id, targetFunnelId, targetStageId);
+  const moveMultipleLeadsToClient = async (
+    leadIds: string[],
+    targetFunnelId: string,
+    targetStageId?: string,
+    transferHistoryAndMessages = false,
+    onProgress?: (current: number, total: number) => void
+  ): Promise<boolean> => {
+    const total = leadIds.length;
+    for (let i = 0; i < total; i++) {
+      const id = leadIds[i];
+      await moveLeadToClient(id, targetFunnelId, targetStageId, transferHistoryAndMessages);
+      if (onProgress) {
+        onProgress(i + 1, total);
+      }
+      if (i < total - 1) {
+        await new Promise(res => setTimeout(res, 100));
+      }
     }
     return true;
   };
@@ -8884,6 +8993,37 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return updated;
     });
 
+    setClients(prev => {
+      let clientFound = false;
+      const updated = prev.map(client => {
+        if (client.id !== leadId) return client;
+        clientFound = true;
+        let currentActivities = (client as any).activities || [];
+        if (data.activities) {
+          const incomingIds = new Set(data.activities.map(a => a.id));
+          const twoMinutesAgo = Date.now() - 120000;
+          const preservedRecent = currentActivities.filter((a: any) => {
+            if (incomingIds.has(a.id)) return false;
+            const actTime = new Date(a.timestamp || 0).getTime();
+            return actTime >= twoMinutesAgo;
+          });
+          currentActivities = preservedRecent.length > 0
+            ? [...data.activities, ...preservedRecent].sort((a: any, b: any) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime())
+            : data.activities;
+        }
+        return {
+          ...client,
+          ...data,
+          activities: currentActivities,
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      });
+      if (clientFound) {
+        clientsRef.current = updated;
+      }
+      return clientFound ? updated : prev;
+    });
+
     if (isSupabaseConfigured) {
       const mergedPayload: Partial<Lead> = {
         ...data,
@@ -8933,6 +9073,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
       leadsRef.current = updated;
       return updated;
+    });
+
+    setClients(prev => {
+      let clientFound = false;
+      const updated = prev.map(client => {
+        if (client.id !== leadId) return client;
+        clientFound = true;
+        const currentActivities = (client as any).activities || [];
+        const updatedActs = currentActivities.map((a: any) => a.id === activityId ? { ...a, ...updates } : a);
+        return {
+          ...client,
+          activities: updatedActs,
+        };
+      });
+      if (clientFound) {
+        clientsRef.current = updated;
+      }
+      return clientFound ? updated : prev;
     });
 
     if (isSupabaseConfigured) {

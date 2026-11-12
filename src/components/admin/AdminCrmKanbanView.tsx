@@ -12,7 +12,7 @@ import {
   User, SunMedium, Snowflake, Tag as TagIcon,
   MoreVertical, CheckSquare, Trash2, GitBranch, Archive,
   Store, Link2, Check, Zap, Sliders, Flag, Utensils, Clock, UserX,
-  ArrowRightLeft
+  ArrowRightLeft, RefreshCw, CheckCircle2
 } from 'lucide-react';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminFunnelSettingsView } from './AdminFunnelSettingsView';
@@ -731,20 +731,38 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
   const [isMoveToClientModalOpen, setIsMoveToClientModalOpen] = useState(false);
   const [targetPostSaleFunnelId, setTargetPostSaleFunnelId] = useState('');
   const [targetPostSaleStageId, setTargetPostSaleStageId] = useState('');
-  const [isMovingToClient, setIsMovingToClient] = useState(false);
+  const [transferHistoryAndMessages, setTransferHistoryAndMessages] = useState(false);
+  const [bulkTransferProgress, setBulkTransferProgress] = useState<{ current: number; total: number } | null>(null);
 
   const handleBulkMoveToClient = async () => {
     if (!targetPostSaleFunnelId || selectedLeadIds.length === 0) return;
-    setIsMovingToClient(true);
+    const leadsToMove = [...selectedLeadIds];
+    const postSaleFunnelId = targetPostSaleFunnelId;
+    const postSaleStageId = targetPostSaleStageId || undefined;
+    const transferHistory = transferHistoryAndMessages;
+
+    // Fecha o modal e limpa seleção imediatamente para dar fluidez
+    setIsMoveToClientModalOpen(false);
+    setSelectedLeadIds([]);
+    setIsMultiSelectMode(false);
+    setBulkTransferProgress({ current: 0, total: leadsToMove.length });
+
     try {
-      await moveMultipleLeadsToClient(selectedLeadIds, targetPostSaleFunnelId, targetPostSaleStageId || undefined);
-      setSelectedLeadIds([]);
-      setIsMultiSelectMode(false);
-      setIsMoveToClientModalOpen(false);
+      await moveMultipleLeadsToClient(
+        leadsToMove,
+        postSaleFunnelId,
+        postSaleStageId,
+        transferHistory,
+        (current, total) => {
+          setBulkTransferProgress({ current, total });
+        }
+      );
     } catch (err) {
       console.error('Erro ao mover leads para cliente:', err);
     } finally {
-      setIsMovingToClient(false);
+      setTimeout(() => {
+        setBulkTransferProgress(null);
+      }, 2500);
     }
   };
 
@@ -6005,6 +6023,40 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 </select>
               </div>
 
+              {/* Opção de Transferência de Mensagens e Histórico */}
+              <div style={{
+                background: 'rgba(6, 182, 212, 0.08)',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: 'var(--adm-text-title, #FFFFFF)',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={transferHistoryAndMessages}
+                    onChange={(e) => setTransferHistoryAndMessages(e.target.checked)}
+                    style={{ accentColor: '#06B6D4', width: '15px', height: '15px', cursor: 'pointer' }}
+                  />
+                  <span>Transferir mensagens do WhatsApp e histórico comercial</span>
+                </label>
+                <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--adm-text-muted, #9E988D)', lineHeight: '1.4' }}>
+                  {transferHistoryAndMessages
+                    ? 'As conversas anteriores e o histórico do lead serão vinculados ao novo código do cliente no pós-venda.'
+                    : 'Padrão recomendado: O cliente inicia o pós-venda com histórico limpo e a Passagem de Bastão oficial como primeira mensagem no WhatsApp.'}
+                </p>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
                 <button
                   type="button"
@@ -6024,7 +6076,7 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!targetPostSaleFunnelId || isMovingToClient}
+                  disabled={!targetPostSaleFunnelId || Boolean(bulkTransferProgress)}
                   onClick={handleBulkMoveToClient}
                   style={{
                     padding: '8px 16px',
@@ -6034,13 +6086,78 @@ export const AdminCrmKanbanView: React.FC<AdminCrmKanbanViewProps> = ({
                     color: '#ffffff',
                     fontSize: '0.78rem',
                     fontWeight: 700,
-                    cursor: (!targetPostSaleFunnelId || isMovingToClient) ? 'not-allowed' : 'pointer',
-                    opacity: (!targetPostSaleFunnelId || isMovingToClient) ? 0.6 : 1,
+                    cursor: (!targetPostSaleFunnelId || Boolean(bulkTransferProgress)) ? 'not-allowed' : 'pointer',
+                    opacity: (!targetPostSaleFunnelId || Boolean(bulkTransferProgress)) ? 0.6 : 1,
                   }}
                 >
-                  {isMovingToClient ? 'Transferindo...' : 'Confirmar Migração'}
+                  {bulkTransferProgress ? 'Transferindo...' : 'Confirmar Migração'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner Flutuante de Migração em Segundo Plano */}
+      {bulkTransferProgress && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9999,
+            background: 'var(--adm-bg-surface, #1E293B)',
+            border: '1.5px solid #06B6D4',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            minWidth: '280px',
+            maxWidth: '360px',
+          }}
+        >
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: 'rgba(6, 182, 212, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#06B6D4',
+            flexShrink: 0,
+          }}>
+            {bulkTransferProgress.current >= bulkTransferProgress.total ? (
+              <CheckCircle2 size={18} />
+            ) : (
+              <RefreshCw size={18} className="animate-spin" />
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--adm-text-title, #FFFFFF)' }}>
+              {bulkTransferProgress.current >= bulkTransferProgress.total
+                ? 'Migração Concluída!'
+                : 'Migrando para o Pós-Venda...'}
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted, #9E988D)', marginTop: '2px' }}>
+              {bulkTransferProgress.current} de {bulkTransferProgress.total} leads transferidos
+            </div>
+            <div style={{
+              width: '100%',
+              height: '4px',
+              borderRadius: '999px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              overflow: 'hidden',
+              marginTop: '6px',
+            }}>
+              <div style={{
+                height: '100%',
+                background: '#06B6D4',
+                width: `${Math.round((bulkTransferProgress.current / (bulkTransferProgress.total || 1)) * 100)}%`,
+                transition: 'width 0.2s ease',
+              }} />
             </div>
           </div>
         </div>

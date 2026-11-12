@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { 
-  ChevronDown, Check, ChevronLeft, Heart, 
+  ChevronDown, Check, Heart, 
   Users, Sparkles, ExternalLink, 
   FileText, Copy, Plus, Trash2, Tag,
   Shield, MessageSquare,
@@ -78,7 +78,6 @@ const POST_SALE_STAGES: { id: ClientStage; label: string; color: string; bg: str
 export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProps> = ({
   lead,
   onStageChange,
-  onToggleCollapse,
   onOpenDebutanteApp,
   readOnly = false,
 }) => {
@@ -478,27 +477,6 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
           }}>
             <Shield size={10} /> {currentStage === 'completed' ? 'Festa Realizada' : 'Cliente Ativo'}
           </span>
-
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              title="Recolher Ficha"
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--adm-border)',
-                borderRadius: '6px',
-                color: 'var(--adm-text-muted)',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                display: 'flex',
-                alignItems: 'center',
-                fontSize: '0.70rem',
-              }}
-            >
-              <ChevronLeft size={13} />
-            </button>
-          )}
         </div>
 
         {/* Nome do Cliente / Debutante (Editável Inline) */}

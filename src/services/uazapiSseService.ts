@@ -540,13 +540,13 @@ class UazapiSseManager {
       for (const msg of messagesList) {
         if (!msg) continue;
 
-        // Deduplicação por ID de mensagem
-        const msgId = msg.id || msg.key?.id;
+        // Deduplicação estrita por ID de mensagem (cobre todos os formatos do UAZAPI/Baileys/WhatsApp)
+        const msgId = msg.messageId || msg.id || msg.key?.id || payload?.messageId || payload?.id || (msg as any)?.keyId;
         if (msgId) {
           if (this.processedMessageIds.has(msgId)) continue;
           this.processedMessageIds.add(msgId);
-          // Limita cache a 500 mensagens
-          if (this.processedMessageIds.size > 500) {
+          // Limita cache a 1000 mensagens
+          if (this.processedMessageIds.size > 1000) {
             const [first] = this.processedMessageIds;
             this.processedMessageIds.delete(first);
           }

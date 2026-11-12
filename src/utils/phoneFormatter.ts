@@ -79,8 +79,45 @@ export const formatPhone = (phone?: string | null): string => {
 };
 
 export const maskPhoneInput = (value: string): string => {
-  const numbers = value.replace(/\D/g, '').slice(0, 11);
-  
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // 1. Número com DDI 55 (Brasil) com 12 ou 13 dígitos (+55 XX 9XXXX-XXXX ou +55 XX XXXX-XXXX)
+  if (digits.startsWith('55') && digits.length >= 12) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4, 13); // até 9 dígitos locais
+    if (rest.length > 5) {
+      return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length > 4 && digits.length === 12) {
+      return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+    if (rest.length > 0) {
+      return `+55 (${ddd}) ${rest}`;
+    }
+    return `+55 (${ddd}`;
+  }
+
+  // 2. Se o usuário estiver digitando com "+55" explicitamente
+  if (value.trim().startsWith('+55') && digits.startsWith('55')) {
+    const rawAfter55 = digits.slice(2, 13);
+    if (rawAfter55.length <= 2) {
+      return rawAfter55.length > 0 ? `+55 (${rawAfter55}` : '+55 (';
+    }
+    const ddd = rawAfter55.slice(0, 2);
+    const rest = rawAfter55.slice(2);
+    if (rest.length > 5) {
+      return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length > 4 && rawAfter55.length === 10) {
+      return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+    return `+55 (${ddd}) ${rest}`;
+  }
+
+  // 3. Número nacional (DDD + número): até 11 dígitos
+  const numbers = digits.slice(0, 11);
   if (numbers.length === 0) return '';
   if (numbers.length <= 2) return `(${numbers}`;
   if (numbers.length <= 6) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;

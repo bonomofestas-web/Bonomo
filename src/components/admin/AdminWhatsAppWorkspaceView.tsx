@@ -8,7 +8,7 @@ import {
   History, RefreshCw, MoreVertical, CheckCheck, DollarSign, TrendingUp, Folder,
   ExternalLink, ShieldCheck, Sparkles, ShoppingBag, Video, Download, Loader2, Camera,
   Target, Lock, RotateCcw, XCircle, Flame, ArrowUpDown, UserCheck, Smartphone, QrCode,
-  Reply
+  Reply, ArrowRightLeft
 } from 'lucide-react';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
@@ -1038,6 +1038,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   const handleCloseActiveChat = () => {
     isChatClosedByUserRef.current = true;
+    lastInitialLeadIdRef.current = undefined;
     setSelectedLeadId(null);
     setSearchTerm('');
     try {
@@ -1051,7 +1052,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         window.history.replaceState({}, '', url.toString());
       }
     } catch {}
-    // NÃO chamamos onClose() aqui: fechar a conversa ativa apenas desseleciona o lead e exibe o painel de conversas do WhatsApp
+    if (isEmbeddedInFunnel && onClose) {
+      onClose();
+    }
   };
 
   // Ordenação Local com Persistência
@@ -1646,8 +1649,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       const cPhone = c.payerPhone || '';
       const cNotes = Array.isArray(c.notes) ? c.notes : [];
 
-      const matchingLead = leads.find(l => l.id === c.id || (cPhone && l.phone && l.phone.replace(/\D/g, '') === cPhone.replace(/\D/g, '')));
-      const leadActivities = matchingLead?.activities || [];
+      // INIBIÇÃO ESTRITA: Conversas e históricos comerciais NUNCA são importados para o cliente de pós-venda.
+      // O cliente preserva apenas suas próprias atividades pós-venda e a Passagem de Bastão.
+      const clientDirectActivities: LeadActivity[] = (c as any).activities || [];
       const noteActivities = cNotes.map((n: any) => ({
         id: n.id || `note_${Date.now()}_${Math.random()}`,
         leadId: c.id,
@@ -1657,7 +1661,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         timestamp: n.createdAt || new Date().toISOString(),
         authorName: n.authorName || 'Gestor de Sucesso',
       }));
-      const mergedActivities = [...leadActivities];
+      const mergedActivities = [...clientDirectActivities];
       for (const nAct of noteActivities) {
         if (!mergedActivities.some(a => a.id === nAct.id)) {
           mergedActivities.push(nAct);
@@ -2019,8 +2023,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Sincronização inteligente de seleção: preserva a escolha manual do usuário e do lead recém-criado
   useEffect(() => {
-    // Se o usuário fechou intencionalmente a conversa e não há seleção ativa, respeita o fechamento (exceto se estiver embutido no funil)
-    if (!isEmbeddedInFunnel && isChatClosedByUserRef.current && !selectedLeadId) {
+    // Se o usuário fechou intencionalmente a conversa e não há seleção ativa, respeita o fechamento
+    if (isChatClosedByUserRef.current && !selectedLeadId) {
       return;
     }
 
@@ -2708,17 +2712,55 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     const leadVenueId = selectedLead.venueId;
     const funnelPriorities = (activeFunnel as any)?.priorityWhatsappPerVenue as Record<string, string> | undefined;
 
-    // 1. Prioridade configurada no Funil para a Casa de Festa deste Lead
+    // 1. Regra Oficial F5 System: Se nós já enviamos mensagem para este lead anteriormente,
+    // prioriza a instância que disparou a ÚLTIMA mensagem enviada por nós (desde que esteja online)
+    const outgoingActivities = (selectedLead.activities || [])
+      .filter(a => {
+        const isFromMe = (a.type === 'contact' && a.authorId !== 'lead') || a.status === 'sent' || (a.metadata as any)?.direction === 'outgoing';
+        const instId = a.instanceId || (a.metadata as any)?.instanceId || (a.metadata as any)?.sourceId;
+        return isFromMe && instId;
+      })
+      .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+
+    const lastOutboundInstanceId = outgoingActivities[0]?.instanceId ||
+      (outgoingActivities[0]?.metadata as any)?.instanceId ||
+      (outgoingActivities[0]?.metadata as any)?.sourceId;
+
+    if (lastOutboundInstanceId) {
+      const foundLastSender = venueSenderSources.find(s => s.id === lastOutboundInstanceId);
+      if (foundLastSender && isSourceOnline(foundLastSender)) {
+        setSelectedSenderSourceId(lastOutboundInstanceId);
+        return;
+      }
+    }
+
+    // 2. Número Principal / Prioritário configurado no Funil para a Casa de Festa deste Lead
     if (leadVenueId && funnelPriorities?.[leadVenueId]) {
       const targetId = funnelPriorities[leadVenueId];
       const targetSource = venueSenderSources.find(s => s.id === targetId);
-      if (targetSource) {
+      if (targetSource && isSourceOnline(targetSource)) {
+        setSelectedSenderSourceId(targetId);
+        return;
+      } else if (targetSource) {
         setSelectedSenderSourceId(targetId);
         return;
       }
     }
 
-    // 2. Número pelo qual o Lead veio (sourceId do lead, se for WhatsApp da mesma Casa de Festa e estiver online)
+    // 3. WhatsApp Padrão do Funil (Número Principal Global do Funil)
+    const funnelDefaultId = (activeFunnel as any)?.defaultWhatsAppSourceId || (activeFunnel as any)?.defaultWhatsappSourceId;
+    if (funnelDefaultId) {
+      const foundDef = venueSenderSources.find(s => s.id === funnelDefaultId);
+      if (foundDef && isSourceOnline(foundDef)) {
+        setSelectedSenderSourceId(funnelDefaultId);
+        return;
+      } else if (foundDef) {
+        setSelectedSenderSourceId(funnelDefaultId);
+        return;
+      }
+    }
+
+    // 4. Número pelo qual o Lead veio (sourceId do lead, se for WhatsApp e estiver online)
     if (selectedLead.sourceId) {
       const foundSource = venueSenderSources.find(s => s.id === selectedLead.sourceId);
       if (foundSource && isSourceOnline(foundSource)) {
@@ -2727,24 +2769,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
     }
 
-    // 3. WhatsApp Padrão do Funil (se online)
-    const funnelDefaultId = (activeFunnel as any)?.defaultWhatsAppSourceId || (activeFunnel as any)?.defaultWhatsappSourceId;
-    if (funnelDefaultId) {
-      const foundDef = venueSenderSources.find(s => s.id === funnelDefaultId);
-      if (foundDef && isSourceOnline(foundDef)) {
-        setSelectedSenderSourceId(funnelDefaultId);
-        return;
-      }
-    }
-
-    // 4. Primeiro WhatsApp conectado ONLINE disponível para a Casa de Festa deste Lead
+    // 5. Primeiro WhatsApp conectado ONLINE disponível para a Casa de Festa deste Lead
     const firstOnline = venueSenderSources.find(s => isSourceOnline(s));
     if (firstOnline) {
       setSelectedSenderSourceId(firstOnline.id);
       return;
     }
 
-    // 5. Fallback geral
+    // 6. Fallback geral
     if (venueSenderSources.length > 0) {
       setSelectedSenderSourceId(venueSenderSources[0].id);
     } else {
@@ -3200,7 +3232,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
         const returnedMessageId = (sendRes as any)?.messageId || (sendRes as any)?.key?.id || (sendRes as any)?.id;
 
-        // Sucesso no envio: marca status como sent e persiste no Supabase
+        // Sucesso no envio: marca status como sent e atualiza atômicamente sem sobrescrever mensagens subsequentes
         if (newActivity) {
           const sentActivity: LeadActivity = {
             ...newActivity,
@@ -3208,10 +3240,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             errorMessage: undefined,
             messageId: returnedMessageId || newActivity.id,
           };
-          const finalActivities = updatedActivities.map(a => a.id === newActivity!.id ? sentActivity : a);
-          updateLeadData(selectedLead.id, {
-            activities: finalActivities,
-            updatedAt: new Date().toISOString().split('T')[0],
+          updateLeadActivity(selectedLead.id, newActivity.id, {
+            status: 'sent',
+            errorMessage: undefined,
+            messageId: returnedMessageId || newActivity.id,
           });
 
           if (isSupabaseConfigured) {
@@ -3243,9 +3275,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         const errMsg = err?.message || 'Falha ao conectar com o WhatsApp via UAZAPI';
         if (newActivity) {
           const failedActivity: LeadActivity = { ...newActivity, status: 'failed', errorMessage: errMsg };
-          const currentActivities = updatedActivities.map(a => a.id === newActivity!.id ? failedActivity : a);
-          updateLeadData(selectedLead.id, {
-            activities: currentActivities,
+          updateLeadActivity(selectedLead.id, newActivity.id, {
+            status: 'failed',
+            errorMessage: errMsg,
           });
 
           if (isSupabaseConfigured) {
@@ -6686,6 +6718,88 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 {formattedTime && <span style={{ opacity: 0.7, fontSize: '0.68rem', marginLeft: '4px' }}>• {formattedTime}</span>}
                               </div>
                               <div style={{ flex: 1, height: '1px', background: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
+                            </div>
+                          </React.Fragment>
+                        );
+                      }
+
+                      const isHandover = Boolean(
+                        (act.metadata as any)?.isHandover ||
+                        act.authorId === 'system_handover' ||
+                        act.title?.includes('Passagem de Bastão') ||
+                        act.text?.includes('PASSAGEM DE BASTÃO')
+                      );
+                      if (isHandover) {
+                        return (
+                          <React.Fragment key={act.id}>
+                            {renderDateDivider()}
+                            <div
+                              id={`msg-${act.id}`}
+                              style={{
+                                alignSelf: 'center',
+                                width: '100%',
+                                maxWidth: '520px',
+                                margin: '14px auto',
+                                borderRadius: '14px',
+                                background: isDarkMode
+                                  ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95))'
+                                  : 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
+                                border: isDarkMode ? '1.5px solid rgba(6, 182, 212, 0.4)' : '1.5px solid rgba(6, 182, 212, 0.5)',
+                                boxShadow: isDarkMode ? '0 8px 24px rgba(0, 0, 0, 0.35)' : '0 8px 20px rgba(0, 0, 0, 0.08)',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '10px 14px',
+                                background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(8, 145, 178, 0.25))',
+                                borderBottom: isDarkMode ? '1px solid rgba(6, 182, 212, 0.2)' : '1px solid rgba(6, 182, 212, 0.25)',
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '8px',
+                                    background: '#06B6D4',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#ffffff',
+                                  }}>
+                                    <ArrowRightLeft size={14} />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#06B6D4', letterSpacing: '0.5px' }}>
+                                      F5 SYSTEM • PASSAGEM DE BASTÃO
+                                    </div>
+                                    <div style={{ fontSize: '0.66rem', color: isDarkMode ? 'var(--adm-text-muted)' : '#64748b' }}>
+                                      Transição Oficial: Comercial ➔ Pós-Venda
+                                    </div>
+                                  </div>
+                                </div>
+                                <span style={{
+                                  fontSize: '0.62rem',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  background: 'rgba(6, 182, 212, 0.2)',
+                                  color: '#06B6D4',
+                                  border: '1px solid rgba(6, 182, 212, 0.35)',
+                                }}>
+                                  Venda Concluída
+                                </span>
+                              </div>
+                              <div style={{
+                                padding: '12px 14px',
+                                fontSize: '0.76rem',
+                                lineHeight: '1.5',
+                                whiteSpace: 'pre-wrap',
+                                color: isDarkMode ? 'var(--adm-text-title)' : '#1e293b',
+                              }}>
+                                {act.text}
+                              </div>
                             </div>
                           </React.Fragment>
                         );
