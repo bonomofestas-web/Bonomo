@@ -19,6 +19,12 @@ export const collaboratorService = {
         const rawPerms: string[] = Array.isArray(row.permissions) ? row.permissions : [];
         const jobTitlePerm = rawPerms.find(p => p.startsWith('job_title:'));
         const resolvedJobTitle = row.custom_job_title || row.job_title || (jobTitlePerm ? decodeURIComponent(jobTitlePerm.replace('job_title:', '')) : undefined);
+        const deptPerm = rawPerms.find(p => p.startsWith('dept:'))?.replace('dept:', '');
+        const sectorPerms = rawPerms.filter(p => p.startsWith('sector:')).map(p => p.replace('sector:', '')) as NonNullable<Collaborator['sectors']>;
+        const resolvedDepartment = row.department || deptPerm || undefined;
+        const resolvedSectors: Collaborator['sectors'] = (Array.isArray(row.sectors) && row.sectors.length > 0)
+          ? row.sectors
+          : (sectorPerms.length > 0 ? sectorPerms : (resolvedDepartment ? [resolvedDepartment as NonNullable<Collaborator['sectors']>[number]] : undefined));
 
         return {
           id: row.id,
@@ -35,8 +41,8 @@ export const collaboratorService = {
           lastLoginAt: row.last_login_at || undefined,
           password: row.password,
           customJobTitle: resolvedJobTitle,
-          department: row.department || undefined,
-          sectors: row.sectors || (row.department ? [row.department] : undefined),
+          department: resolvedDepartment,
+          sectors: resolvedSectors,
           isDev: Boolean(row.is_dev),
           masterId: row.master_id || undefined,
           permissions: rawPerms,
@@ -97,38 +103,71 @@ export const collaboratorService = {
         payload.permissions = perms;
       }
 
+      const stripOptionalColumns = (obj: Record<string, any>) => {
+        const safe = { ...obj };
+        delete safe.pinned_funnel_ids;
+        delete safe.custom_job_title;
+        delete safe.sectors;
+        delete safe.department;
+        return safe;
+      };
+
       // 1. Tenta atualizar por ID caso seja UUID
       if (isUuid && collab.id) {
-        const { data: updated, error: updateErr } = await supabase
+        let { data: updated, error: updateErr } = await supabase
           .from('collaborators')
           .update(payload)
           .eq('id', collab.id)
           .select('id');
+
+        if (updateErr) {
+          const retry = await supabase
+            .from('collaborators')
+            .update(stripOptionalColumns(payload))
+            .eq('id', collab.id)
+            .select('id');
+          updated = retry.data;
+          updateErr = retry.error;
+        }
 
         if (!updateErr && updated && updated.length > 0) {
           return true;
         }
       }
 
-      // 2. Se não encontrou por ID, mas tem e-mail, busca e atualiza pelo e-mail
+      // 2. Se não encontrou por ID, mas tem e-mail, busca e atualiza pelo e-mail (case-insensitive)
       if (collab.email) {
         const cleanEmail = collab.email.trim().toLowerCase();
-        const { data: updatedByEmail, error: emailErr } = await supabase
+        let { data: updatedByEmail, error: emailErr } = await supabase
           .from('collaborators')
           .update(payload)
-          .eq('email', cleanEmail)
+          .ilike('email', cleanEmail)
           .select('id');
+
+        if (emailErr) {
+          const retry = await supabase
+            .from('collaborators')
+            .update(stripOptionalColumns(payload))
+            .ilike('email', cleanEmail)
+            .select('id');
+          updatedByEmail = retry.data;
+          emailErr = retry.error;
+        }
 
         if (!emailErr && updatedByEmail && updatedByEmail.length > 0) {
           return true;
         }
       }
 
-      // 3. Se realmente não existe nem por ID nem por e-mail, insere novo
+      // 3. Se realmente não existe nem por ID nem por e-mail, insere novo (com fallback para colunas opcionais)
       if (isUuid && collab.id) {
         payload.id = collab.id;
       }
-      const { error: insertErr } = await supabase.from('collaborators').insert(payload);
+      let { error: insertErr } = await supabase.from('collaborators').insert(payload);
+      if (insertErr) {
+        const retryInsert = await supabase.from('collaborators').insert(stripOptionalColumns(payload));
+        insertErr = retryInsert.error;
+      }
       if (insertErr) {
         console.error('Erro ao inserir colaborador:', insertErr);
         return false;

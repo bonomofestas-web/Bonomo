@@ -1415,7 +1415,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     role: matched.role || prev.role,
                     avatarUrl: matched.avatarUrl !== undefined ? matched.avatarUrl : prev.avatarUrl,
                     phone: matched.phone !== undefined ? matched.phone : prev.phone,
-                    venueIds: matched.venueId === 'all' ? [] : (matched.venueIds || [matched.venueId]),
+                    venueIds: (matched.venueIds && matched.venueIds.length > 0) ? matched.venueIds : (matched.venueId === 'all' ? [] : [matched.venueId]),
                     isFirstAccess: Boolean(matched.isFirstAccess),
                     masterId: matched.masterId || prev.masterId,
                     permissions: matched.permissions || (prev as any).permissions,
@@ -2197,7 +2197,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       role: (optUser?.role || foundCollab.role) as any,
       avatarUrl: optUser?.avatarUrl !== undefined ? optUser.avatarUrl : foundCollab.avatarUrl,
       phone: foundCollab.phone,
-      venueIds: foundCollab.venueId === 'all' ? [] : (foundCollab.venueIds || [foundCollab.venueId]),
+      venueIds: (foundCollab.venueIds && foundCollab.venueIds.length > 0) ? foundCollab.venueIds : (foundCollab.venueId === 'all' ? [] : [foundCollab.venueId]),
       isFirstAccess: isFirst,
       lastLoginAt: nowIso,
       masterId: foundCollab.masterId,
@@ -2556,22 +2556,27 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [scopedMasterId, scopedVenues]);
 
-  // Colaboradores da Equipe do Tenant Ativo
+  // Colaboradores da Equipe do Tenant Ativo (Isolamento Absoluto por Master)
   const scopedCollaborators = useMemo(() => {
     if (!currentUser || !scopedMasterId) return [];
-    const masterVenueIds = new Set(scopedVenues.map(v => v.id));
+    const tenantVenueIds = new Set(
+      venues.filter(v => !v.masterId || v.masterId === scopedMasterId).map(v => v.id)
+    );
+    const masterVenueIds = new Set([...scopedVenues.map(v => v.id), ...tenantVenueIds]);
 
     return collaborators.filter(c => {
+      // Bloqueio absoluto: colaborador pertencente a outro Master NUNCA aparece
+      if (c.masterId && c.masterId !== scopedMasterId) return false;
       // 1. O próprio master
       if (c.id === scopedMasterId) return true;
       // 2. Colaborador vinculado diretamente ao master
       if (c.masterId && c.masterId === scopedMasterId) return true;
-      // 3. Fallback de resiliência: se o colaborador possui casas atribuídas pertencentes ao Master
+      // 3. Fallback de resiliência apenas para legados sem masterId cuja unidade pertence ao mesmo Master
       if (c.venueId && c.venueId !== 'all' && masterVenueIds.has(c.venueId)) return true;
       if (Array.isArray(c.venueIds) && c.venueIds.length > 0 && c.venueIds.some(vid => masterVenueIds.has(vid))) return true;
       return false;
     });
-  }, [collaborators, scopedMasterId, scopedVenues, currentUser]);
+  }, [collaborators, scopedMasterId, scopedVenues, venues, currentUser]);
 
   // Leads do Tenant Ativo (pertencem estritamente às casas ou master do tenant)
   const scopedLeads = useMemo(() => {
@@ -3127,10 +3132,17 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       (currentUser?.role === 'master' ? currentUser.id : currentUser?.masterId) ||
       targetVenue?.masterId ||
       scopedMasterId) || undefined;
+    const tenantVenueIds = venuesRef.current
+      .filter(v => !resolvedMasterId || v.masterId === resolvedMasterId)
+      .map(v => v.id);
+    const resolvedVenueIds = (Array.isArray(data.venueIds) && data.venueIds.length > 0)
+      ? data.venueIds
+      : (data.venueId && data.venueId !== 'all' ? [data.venueId] : tenantVenueIds);
     const newCollab: Collaborator = {
       ...data,
       id,
       masterId: resolvedMasterId,
+      venueIds: resolvedVenueIds,
       createdAt: new Date().toISOString().split('T')[0],
       isFirstAccess: data.isFirstAccess !== undefined ? data.isFirstAccess : true,
     };
@@ -3139,22 +3151,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(updated));
       return updated;
     });
-    collaboratorService.upsert(newCollab);
 
-    // Disparo automático e imediato do e-mail de convite oficial com metadados do tenant
-    if (newCollab.email) {
-      sendCollaboratorInvite(newCollab.email, newCollab.name, newCollab.role, {
-        masterId: resolvedMasterId,
-        venueId: newCollab.venueId,
-        venueIds: newCollab.venueIds,
-        sectors: newCollab.sectors,
-        department: newCollab.department,
-      }).then(res => {
-        console.log('[Auth] Convite automático enviado:', res);
-      }).catch(err => {
-        console.warn('[Auth] Falha no envio automático do convite:', err);
-      });
-    }
+    // Persiste primeiro na tabela collaborators antes do disparo de convite no Auth,
+    // evitando race condition com o trigger handle_new_auth_user
+    collaboratorService.upsert(newCollab).finally(() => {
+      if (newCollab.email) {
+        sendCollaboratorInvite(newCollab.email, newCollab.name, newCollab.role, {
+          masterId: resolvedMasterId,
+          venueId: newCollab.venueId,
+          venueIds: newCollab.venueIds,
+          sectors: newCollab.sectors,
+          department: newCollab.department,
+        }).then(res => {
+          console.log('[Auth] Convite automático enviado:', res);
+        }).catch(err => {
+          console.warn('[Auth] Falha no envio automático do convite:', err);
+        });
+      }
+    });
 
     return id;
   };

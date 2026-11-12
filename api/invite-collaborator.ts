@@ -131,29 +131,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 3. Blindagem de Persistência: Upsert garantido na tabela 'collaborators' com Service Role Key
     try {
-      // Verifica se o colaborador já existe por email
+      // Verifica se o colaborador já existe por email (case-insensitive)
       const { data: existingRows } = await supabase
         .from('collaborators')
-        .select('id, master_id, venue_ids')
-        .eq('email', cleanEmail)
+        .select('id, master_id, venue_ids, is_first_access, activated_at, permissions')
+        .ilike('email', cleanEmail)
         .limit(1);
 
       const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
       const targetId = existing?.id || authUserId || undefined;
+
+      const existingPerms: string[] = Array.isArray(existing?.permissions) ? [...existing.permissions] : [];
+      if (department && !existingPerms.includes(`dept:${department}`)) {
+        existingPerms.push(`dept:${department}`);
+      }
+      if (Array.isArray(sectors)) {
+        sectors.forEach((s: string) => {
+          if (s && !existingPerms.includes(`sector:${s}`)) existingPerms.push(`sector:${s}`);
+        });
+      }
 
       const payload: Record<string, any> = {
         name: cleanName,
         email: cleanEmail,
         role: finalRole,
         active: true,
-        is_first_access: true,
+        is_first_access: existing && (existing.is_first_access === false || existing.activated_at) ? false : true,
+        permissions: existingPerms,
         updated_at: new Date().toISOString(),
       };
 
-      let finalMasterId = masterId;
-      if (!finalMasterId && effectiveVenueId) {
+      let finalMasterId = masterId || existing?.master_id || undefined;
+      const lookupVenueId = effectiveVenueId || effectiveVenueIds[0];
+      if (!finalMasterId && lookupVenueId) {
         try {
-          const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', effectiveVenueId).maybeSingle();
+          const { data: vRow } = await supabase.from('venues').select('master_id').eq('id', lookupVenueId).maybeSingle();
           if (vRow?.master_id) finalMasterId = vRow.master_id;
         } catch {}
       }
@@ -164,10 +176,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (sectors && sectors.length > 0) payload.sectors = sectors;
       if (department) payload.department = department;
 
+      const stripOptionalCols = (obj: Record<string, any>) => {
+        const copy = { ...obj };
+        delete copy.sectors;
+        delete copy.department;
+        return copy;
+      };
+
       if (targetId) {
-        await supabase.from('collaborators').update(payload).eq('id', targetId);
+        const { error: upErr } = await supabase.from('collaborators').update(payload).eq('id', targetId);
+        if (upErr) {
+          await supabase.from('collaborators').update(stripOptionalCols(payload)).eq('id', targetId);
+        }
       } else {
-        await supabase.from('collaborators').insert(payload);
+        const { error: insErr } = await supabase.from('collaborators').insert(payload);
+        if (insErr) {
+          await supabase.from('collaborators').insert(stripOptionalCols(payload));
+        }
       }
     } catch (dbErr: any) {
       console.warn('[invite-collaborator] Erro ao sincronizar tabela collaborators:', dbErr);

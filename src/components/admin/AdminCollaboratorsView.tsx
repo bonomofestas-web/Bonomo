@@ -237,7 +237,10 @@ export const AdminCollaboratorsView: React.FC = () => {
       return;
     }
 
-    const primaryVenueId = formSelectedVenueIds.length === 1 ? formSelectedVenueIds[0] : 'all';
+    const isAllVenuesSelected = venues.length > 0 && formSelectedVenueIds.length >= venues.length;
+    const primaryVenueId = isAllVenuesSelected
+      ? 'all'
+      : (formSelectedVenueIds[0] || 'all');
 
     // Computa a role base para compatibilidade
     let computedRole: AdminRole = 'crm';
@@ -319,34 +322,151 @@ export const AdminCollaboratorsView: React.FC = () => {
     return '';
   };
 
-  const getRoleBadge = (role: AdminRole) => {
-    switch (role) {
-      case 'master':
-        return { label: 'Master', color: 'var(--adm-gold, #D4AF37)', bg: 'rgba(212, 175, 55, 0.15)' };
-      case 'dev':
-        return { label: 'Desenvolvedor', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
-      case 'admin':
-        return { label: 'Administrador', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)' };
-      case 'gerencia':
-        return { label: 'Gerente', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
-      case 'closer':
-        return { label: 'Closer', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.15)' };
-      case 'sdr':
-        return { label: 'SDR', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.15)' };
-      case 'pos_venda':
-        return { label: 'Pós-Venda', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
-      default:
-        return { label: role, color: 'var(--adm-text-muted)', bg: 'rgba(100, 116, 139, 0.15)' };
-    }
+  type SectorKey = 'gerencia' | 'comercial' | 'pos_venda' | 'financeiro';
+
+  const SECTOR_TAG_CONFIG: Record<SectorKey, { label: string; color: string; bg: string; border: string; icon?: boolean }> = {
+    gerencia: {
+      label: 'Gerência',
+      color: 'var(--adm-gold, #D4AF37)',
+      bg: 'rgba(212, 175, 55, 0.12)',
+      border: 'rgba(212, 175, 55, 0.35)',
+      icon: true,
+    },
+    comercial: {
+      label: 'Comercial',
+      color: '#14A9D7',
+      bg: 'rgba(20, 169, 215, 0.12)',
+      border: 'rgba(20, 169, 215, 0.35)',
+    },
+    pos_venda: {
+      label: 'Pós-Venda',
+      color: '#06B6D4',
+      bg: 'rgba(6, 182, 212, 0.12)',
+      border: 'rgba(6, 182, 212, 0.35)',
+    },
+    financeiro: {
+      label: 'Financeiro',
+      color: '#10B981',
+      bg: 'rgba(16, 185, 129, 0.12)',
+      border: 'rgba(16, 185, 129, 0.35)',
+    },
   };
 
-  const getCollabSectors = (collab: Collaborator): ('comercial' | 'pos_venda' | 'gerencia' | 'financeiro')[] => {
-    if (collab.sectors && collab.sectors.length > 0) return collab.sectors;
-    if (collab.role === 'master' || collab.role === 'admin' || collab.role === 'gerencia') {
-      return ['gerencia', 'comercial', 'pos_venda'];
+  const getCollabSectors = (collab: Collaborator): SectorKey[] => {
+    const validOrder: SectorKey[] = ['gerencia', 'comercial', 'pos_venda', 'financeiro'];
+    const found = new Set<SectorKey>();
+
+    if (Array.isArray(collab.sectors)) {
+      collab.sectors.forEach(s => {
+        if (validOrder.includes(s as SectorKey)) found.add(s as SectorKey);
+      });
     }
-    if (collab.role === 'pos_venda') return ['pos_venda'];
-    return ['comercial'];
+
+    if (Array.isArray(collab.permissions)) {
+      collab.permissions.forEach(p => {
+        if (typeof p === 'string' && p.startsWith('sector:')) {
+          const sec = p.replace('sector:', '') as SectorKey;
+          if (validOrder.includes(sec)) found.add(sec);
+        }
+      });
+    }
+
+    if (collab.department && validOrder.includes(collab.department as SectorKey)) {
+      found.add(collab.department as SectorKey);
+    }
+
+    if (collab.role === 'master' || collab.role === 'admin' || collab.role === 'gerencia') {
+      found.add('gerencia');
+      if (found.size === 1) {
+        found.add('comercial');
+        found.add('pos_venda');
+      }
+    } else if (collab.role === 'pos_venda') {
+      found.add('pos_venda');
+    } else if ((collab.role as string) === 'financeiro') {
+      found.add('financeiro');
+    } else if (found.size === 0) {
+      found.add('comercial');
+    }
+
+    return validOrder.filter(k => found.has(k));
+  };
+
+  const renderSectorTags = (collab: Collaborator) => {
+    const sectors = getCollabSectors(collab);
+    return sectors.map(sec => {
+      const cfg = SECTOR_TAG_CONFIG[sec];
+      return (
+        <span
+          key={sec}
+          style={{
+            background: cfg.bg,
+            color: cfg.color,
+            border: `1px solid ${cfg.border}`,
+            borderRadius: '6px',
+            padding: '2px 7px',
+            fontSize: '0.66rem',
+            fontWeight: 800,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {cfg.icon && <ShieldCheck size={11} />}
+          {cfg.label}
+        </span>
+      );
+    });
+  };
+
+  const getCollabVenueDisplay = (collab: Collaborator) => {
+    if (collab.role === 'master') {
+      return {
+        label: 'Todas as Unidades (Rede)',
+        title: 'Todas as Unidades (Rede)',
+        isAll: true,
+        matchedVenues: venues,
+      };
+    }
+
+    const explicitIds = Array.isArray(collab.venueIds) && collab.venueIds.length > 0
+      ? collab.venueIds
+      : (collab.venueId && collab.venueId !== 'all' ? [collab.venueId] : []);
+
+    const matchedVenues = explicitIds
+      .map(id => venues.find(v => v.id === id))
+      .filter((v): v is NonNullable<typeof v> => Boolean(v));
+
+    const coversAllVenues =
+      (venues.length > 0 && matchedVenues.length >= venues.length) ||
+      (collab.venueId === 'all' && explicitIds.length === 0);
+
+    if (coversAllVenues) {
+      return {
+        label: 'Todas as Unidades (Rede)',
+        title: venues.map(v => v.name).join(', ') || 'Todas as Unidades (Rede)',
+        isAll: true,
+        matchedVenues: venues,
+      };
+    }
+
+    if (matchedVenues.length > 0) {
+      const names = matchedVenues.map(v => v.name).join(', ');
+      return {
+        label: names,
+        title: names,
+        isAll: false,
+        matchedVenues,
+      };
+    }
+
+    return {
+      label: 'Nenhuma unidade vinculada',
+      title: 'Nenhuma unidade vinculada',
+      isAll: false,
+      matchedVenues: [],
+    };
   };
 
   const getCollabLeads = (collab: Collaborator) => {
@@ -1320,10 +1440,7 @@ export const AdminCollaboratorsView: React.FC = () => {
                     Colaborador & Função
                   </th>
                   <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Cargo Corporativo
-                  </th>
-                  <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Setores / Acesso
+                    Nível de Acesso
                   </th>
                   <th style={{ padding: '14px 16px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--adm-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Unidade(s)
@@ -1341,19 +1458,15 @@ export const AdminCollaboratorsView: React.FC = () => {
               </thead>
               <tbody>
                 {sortedCollaborators.map(collab => {
-                  const venue = venues.find(v => v.id === collab.venueId);
-                  const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
+                  const venueDisplay = getCollabVenueDisplay(collab);
                   const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
                   const isMasterRole = collab.role === 'master';
-                  const isManagerRole = isMasterRole || collab.role === 'admin' || collab.role === 'gerencia';
                   const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
                   const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
                   const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
                   const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
                   const collabLeads = getCollabLeads(collab);
                   const collabTasks = getCollabTasks(collab);
-                  const collabSectors = getCollabSectors(collab);
-                  const roleBadge = getRoleBadge(collab.role);
                   const roleTitle = getCollabRoleTitle(collab);
                   const isPending = isPendingFirstAccess(collab);
 
@@ -1413,84 +1526,19 @@ export const AdminCollaboratorsView: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* 2. Cargo Corporativo */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          padding: '3px 10px',
-                          borderRadius: '8px',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          background: roleBadge.bg,
-                          color: roleBadge.color,
-                          border: `1px solid ${roleBadge.color}35`,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {isMasterRole && <ShieldCheck size={12} />}
-                          {roleBadge.label}
-                        </span>
-                      </td>
-
-                      {/* 3. Setores */}
+                      {/* 2. Nível de Acesso */}
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                          {isManagerRole ? (
-                            <span style={{
-                              background: 'rgba(212, 175, 55, 0.12)',
-                              color: 'var(--adm-gold, #D4AF37)',
-                              border: '1px solid rgba(212, 175, 55, 0.35)',
-                              borderRadius: '6px',
-                              padding: '2px 7px',
-                              fontSize: '0.66rem',
-                              fontWeight: 800,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}>
-                              <ShieldCheck size={11} />
-                              Gerência
-                            </span>
-                          ) : (
-                            <>
-                              {collabSectors.includes('comercial') && (
-                                <span style={{
-                                  background: 'rgba(20, 169, 215, 0.12)',
-                                  color: '#14A9D7',
-                                  border: '1px solid rgba(20, 169, 215, 0.35)',
-                                  borderRadius: '6px',
-                                  padding: '2px 7px',
-                                  fontSize: '0.66rem',
-                                  fontWeight: 800,
-                                }}>
-                                  Comercial
-                                </span>
-                              )}
-                              {collabSectors.includes('pos_venda') && (
-                                <span style={{
-                                  background: 'rgba(6, 182, 212, 0.12)',
-                                  color: '#06B6D4',
-                                  border: '1px solid rgba(6, 182, 212, 0.35)',
-                                  borderRadius: '6px',
-                                  padding: '2px 7px',
-                                  fontSize: '0.66rem',
-                                  fontWeight: 800,
-                                }}>
-                                  Pós-Venda
-                                </span>
-                              )}
-                            </>
-                          )}
+                          {renderSectorTags(collab)}
                         </div>
                       </td>
 
-                      {/* 4. Unidades */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: 'var(--adm-text-title)' }}>
-                          <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                          <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {venueName}
+                      {/* 3. Unidades */}
+                      <td style={{ padding: '12px 16px' }} title={venueDisplay.title}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.76rem', color: 'var(--adm-text-title)', maxWidth: '240px' }}>
+                          <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                          <span style={{ lineHeight: 1.35, wordBreak: 'break-word' }}>
+                            {venueDisplay.label}
                           </span>
                         </div>
                       </td>
@@ -1704,18 +1752,15 @@ export const AdminCollaboratorsView: React.FC = () => {
           gap: '18px',
         }}>
           {sortedCollaborators.map(collab => {
-          const venue = venues.find(v => v.id === collab.venueId);
-          const venueName = collab.venueId === 'all' ? 'Todas as Unidades (Rede)' : (venue?.name || 'Unidade Especificada');
+          const venueDisplay = getCollabVenueDisplay(collab);
           const isSelf = collab.id === currentUser?.id || (currentUser?.email && collab.email.toLowerCase() === currentUser.email.toLowerCase());
           const isMasterRole = collab.role === 'master';
-          const isManagerRole = isMasterRole || collab.role === 'admin' || collab.role === 'gerencia';
           const isTargetManagerOrAbove = collab.role === 'admin' || collab.role === 'master' || collab.role === 'gerencia';
           const canToggle = !isSelf && !isMasterRole && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canEdit = !isSelf && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const canDelete = !isSelf && collab.role !== 'master' && (!isCurrentUserManager || !isTargetManagerOrAbove);
           const collabLeads = getCollabLeads(collab);
           const collabTasks = getCollabTasks(collab);
-          const collabSectors = getCollabSectors(collab);
 
           return (
             <div
@@ -1952,18 +1997,18 @@ export const AdminCollaboratorsView: React.FC = () => {
                 )}
 
                 {/* Casa / Unidade (Audio 1: Master é soberano de tudo) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }} title={venueDisplay.title}>
                   {isMasterRole ? (
                     <>
-                      <ShieldCheck size={13} color="var(--adm-gold, #D4AF37)" style={{ flexShrink: 0 }} />
+                      <ShieldCheck size={13} color="var(--adm-gold, #D4AF37)" style={{ flexShrink: 0, marginTop: '2px' }} />
                       <span style={{ color: 'var(--adm-gold, #D4AF37)', fontWeight: 700 }}>
                         Acesso Master (Todas as Unidades da Rede)
                       </span>
                     </>
                   ) : (
                     <>
-                      <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0 }} />
-                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{venueName}</span>
+                      <Building2 size={13} color="var(--adm-accent)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <span style={{ lineHeight: 1.35, wordBreak: 'break-word' }}>{venueDisplay.label}</span>
                     </>
                   )}
                 </div>
@@ -1985,57 +2030,12 @@ export const AdminCollaboratorsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Tags de Setores Vinculados (Audio 1: Posicionado mais abaixo) */}
+              {/* Tags de Nível de Acesso / Setores */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--adm-text-muted)', fontWeight: 600, marginRight: '2px' }}>
-                  Setores:
+                  Nível de Acesso:
                 </span>
-                {isManagerRole ? (
-                  <span style={{
-                    background: 'rgba(212, 175, 55, 0.12)',
-                    color: 'var(--adm-gold, #D4AF37)',
-                    border: '1px solid rgba(212, 175, 55, 0.35)',
-                    borderRadius: '8px',
-                    padding: '2px 8px',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}>
-                    <ShieldCheck size={11} />
-                    Gerência (Acesso Global)
-                  </span>
-                ) : (
-                  <>
-                    {collabSectors.includes('comercial') && (
-                      <span style={{
-                        background: 'rgba(20, 169, 215, 0.12)',
-                        color: '#14A9D7',
-                        border: '1px solid rgba(20, 169, 215, 0.35)',
-                        borderRadius: '8px',
-                        padding: '2px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                      }}>
-                        Comercial
-                      </span>
-                    )}
-                    {collabSectors.includes('pos_venda') && (
-                      <span style={{
-                        background: 'rgba(6, 182, 212, 0.12)',
-                        color: '#06B6D4',
-                        border: '1px solid rgba(6, 182, 212, 0.35)',
-                        borderRadius: '8px',
-                        padding: '2px 8px',
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                      }}>
-                        Pós-Venda
-                      </span>
-                    )}
-                  </>
-                )}
+                {renderSectorTags(collab)}
               </div>
 
               {/* Mini Faixa de Super Gestão: Leads e Tarefas Vinculadas (Audio 1) */}
