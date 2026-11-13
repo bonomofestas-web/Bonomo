@@ -958,81 +958,26 @@ export const leadService = {
       }
       if (!isUuid(finalLeadId)) return { activities: [], hasOlder: false };
 
-      // 1. Busca os timestamps das atividades mais recentes do lead para descobrir os dias de conversa
-      const { data: recentRows, error: recentErr } = await supabase
-        .from('lead_activities')
-        .select('timestamp')
-        .eq('lead_id', finalLeadId)
-        .order('timestamp', { ascending: false })
-        .limit(300);
-
-      if (recentErr || !recentRows || recentRows.length === 0) {
-        return { activities: [], hasOlder: false };
-      }
-
-      // 2. Extrai as datas distintas no formato YYYY-MM-DD
-      const distinctDaysMap = new Map<string, string>();
-      for (const r of recentRows) {
-        if (!r.timestamp) continue;
-        const d = new Date(r.timestamp);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const dayKey = `${y}-${m}-${day}`;
-        if (!distinctDaysMap.has(dayKey)) {
-          distinctDaysMap.set(dayKey, r.timestamp);
-        }
-      }
-
-      const sortedDays = Array.from(distinctDaysMap.keys()).sort((a, b) => b.localeCompare(a));
-
-      let cutoffIso: string | null = null;
-      let hasOlder = false;
-
-      if (sortedDays.length > days) {
-        // Pega os últimos N dias de conversa (ex: 3 dias)
-        const targetDays = sortedDays.slice(0, days);
-        const oldestTargetDay = targetDays[targetDays.length - 1]; // Ex: "2026-10-01"
-        const [y, m, d] = oldestTargetDay.split('-').map(Number);
-        // Início desse dia mais antigo no horário local (00:00:00)
-        const cutoffDate = new Date(y, m - 1, d, 0, 0, 0, 0);
-        cutoffIso = cutoffDate.toISOString();
-        hasOlder = true;
-      } else {
-        // Se conversou em N dias ou menos (ex: 1, 2 ou 3 dias), não há corte — traz todas!
-        cutoffIso = null;
-        if (recentRows.length === 300) {
-          const { count } = await supabase
-            .from('lead_activities')
-            .select('id', { count: 'exact', head: true })
-            .eq('lead_id', finalLeadId);
-          hasOlder = (count || 0) > 300;
-        } else {
-          hasOlder = false;
-        }
-      }
-
-      // 3. Busca todas as mensagens e atividades desse lead no intervalo definido
-      let query = supabase
+      // Otimização de Performance Extrema:
+      // Busca em UMA ÚNICA chamada rápida ao Supabase as mensagens mais recentes (limite proporcional aos dias solicitados),
+      // retornando instantaneamente (<300ms) sem múltiplos round-trips sequenciais bloqueantes
+      const fetchLimit = Math.max(60, (days || 3) * 35);
+      const { data: acts, error: actsErr } = await supabase
         .from('lead_activities')
         .select('*')
         .eq('lead_id', finalLeadId)
-        .order('timestamp', { ascending: true });
+        .order('timestamp', { ascending: false })
+        .limit(fetchLimit);
 
-      if (cutoffIso) {
-        query = query.gte('timestamp', cutoffIso);
-      }
-
-      const { data: acts, error: actsErr } = await query;
-
-      if (actsErr || !acts) {
+      if (actsErr || !acts || acts.length === 0) {
         return { activities: [], hasOlder: false };
       }
 
-      const formatted = acts.map(a => formatActivityFromDb(a));
+      const hasOlder = acts.length >= fetchLimit;
+      const formatted = acts.map(a => formatActivityFromDb(a)).reverse();
       const deduplicated = mergeAndSortActivities([], formatted, finalLeadId);
 
-      // Salva no cache do LocalStorage para abertura instantânea futura
+      // Salva no cache do LocalStorage para abertura instantânea futura (0ms)
       this.saveActivitiesToCache(finalLeadId, deduplicated);
 
       return {

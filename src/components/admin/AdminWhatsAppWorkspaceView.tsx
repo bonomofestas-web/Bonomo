@@ -4164,9 +4164,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return true;
     });
 
-    // Deduplicação inteligente de mensagens repetidas (por id e por conteúdo idêntico no mesmo minuto)
+    // Deduplicação estrita de mensagens (por ID da atividade e por messageId do WhatsApp)
+    // NUNCA descarta mensagens sequenciais com o mesmo texto se possuírem IDs distintos!
     const seenIds = new Set<string>();
-    const seenFingerprints = new Set<string>();
+    const seenMsgIds = new Set<string>();
     const deduped: LeadActivity[] = [];
 
     const sorted = [...filteredByChannel].sort((a, b) => {
@@ -4188,16 +4189,10 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (act.id && seenIds.has(act.id)) continue;
       if (act.id) seenIds.add(act.id);
 
-      const minuteBucket = Math.floor(new Date(act.timestamp || 0).getTime() / 60000);
-      const textKey = (act.text || act.title || '').trim().toLowerCase();
-      const authorKey = (act.authorName || '').trim().toLowerCase();
-      const fingerprint = `${act.type}_${minuteBucket}_${authorKey}_${textKey}`;
-
-      if (textKey && act.type === 'contact' && seenFingerprints.has(fingerprint)) {
-        continue;
-      }
-      if (textKey && act.type === 'contact') {
-        seenFingerprints.add(fingerprint);
+      const actMsgId = act.messageId || (act.metadata as any)?.messageId;
+      if (actMsgId) {
+        if (seenMsgIds.has(actMsgId)) continue;
+        seenMsgIds.add(actMsgId);
       }
 
       deduped.push(act);

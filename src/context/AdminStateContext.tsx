@@ -4622,32 +4622,24 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }));
       }
 
-      // 2. Busca do Supabase os 3 dias de conversa em que o lead efetivamente conversou
+      // 2. Busca do Supabase as mensagens mais recentes do lead de forma rápida e otimizada
       const res = await leadService.getLeadConversationDays(leadId, days);
       if (!res || !res.activities || res.activities.length === 0) return false;
 
       setLeads(prev => {
-        let changed = false;
-        const updated = prev.map(lead => {
+        return prev.map(lead => {
           if (lead.id !== leadId) return lead;
           const currentActs = lead.activities || [];
           const existingIds = new Set(currentActs.map(a => a.id));
-          const newActs = res.activities.filter(a => !existingIds.has(a.id));
-          if (newActs.length === 0) return lead;
+          const hasNew = res.activities.some(a => !existingIds.has(a.id));
+          if (!hasNew) return lead;
 
-          changed = true;
-          const merged = [...currentActs, ...newActs].sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
+          const merged = mergeAndSortActivities(currentActs, res.activities, lead.id);
           return {
             ...lead,
             activities: merged,
           };
         });
-        if (changed) {
-          safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
-        }
-        return updated;
       });
       return true;
     } catch (err) {
