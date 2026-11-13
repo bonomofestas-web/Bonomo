@@ -748,6 +748,44 @@ export const leadService = {
         ...(activity.instanceId ? { instanceId: activity.instanceId } : {}),
       };
 
+      // ── DEDUPLICAÇÃO E IDEMPOTÊNCIA DE ATIVIDADES NO SUPABASE ──────────────
+      // 1. Checa por messageId (wamid do WhatsApp)
+      const targetMsgId = meta.messageId || (activity as any).messageId;
+      if (targetMsgId) {
+        const { data: existingMsg } = await supabase
+          .from('lead_activities')
+          .select('id')
+          .eq('lead_id', finalLeadId)
+          .or(`metadata->>messageId.eq.${targetMsgId},metadata->>message_id.eq.${targetMsgId}`)
+          .limit(1);
+
+        if (existingMsg && existingMsg.length > 0) {
+          console.log(`[leadService.addActivity] Mensagem com messageId ${targetMsgId} já existente no lead ${finalLeadId}. Idempotente.`);
+          return true;
+        }
+      }
+
+      // 2. Checa por texto idêntico recente (<10s) para evitar duplicações concorrentes (SSE + Webhook)
+      if (storedText && storedText.length > 2) {
+        const actTime = new Date(activity.timestamp || Date.now()).getTime();
+        const tenSecsAgo = new Date(actTime - 10000).toISOString();
+        const tenSecsAfter = new Date(actTime + 10000).toISOString();
+        const { data: recentIdentical } = await supabase
+          .from('lead_activities')
+          .select('id, text')
+          .eq('lead_id', finalLeadId)
+          .gte('timestamp', tenSecsAgo)
+          .lte('timestamp', tenSecsAfter)
+          .limit(5);
+
+        const cleanCurrent = storedText.trim();
+        const hasDup = recentIdentical?.some(r => r.text === storedText || (cleanCurrent && r.text?.trim() === cleanCurrent));
+        if (hasDup) {
+          console.log(`[leadService.addActivity] Atividade recente idêntica descartada no lead ${finalLeadId}: "${cleanCurrent.slice(0, 30)}..."`);
+          return true;
+        }
+      }
+
       const insertPayload: Record<string, any> = {
         id: activityId,
         lead_id: finalLeadId,
@@ -857,10 +895,12 @@ export const leadService = {
 
       if (!data || data.length === 0) return [];
 
-      // Retorna em ordem cronológica crescente (mais antigas primeiro)
-      return data
+      // Retorna em ordem cronológica crescente (mais antigas primeiro) e deduplicada
+      const formatted = data
         .map(row => formatActivityFromDb(row))
         .reverse();
+
+      return mergeAndSortActivities([], formatted, finalLeadId);
     } catch (err) {
       console.error('Falha em getOlderActivitiesForLead:', err);
       return [];
@@ -1010,14 +1050,15 @@ export const leadService = {
       }
 
       const formatted = acts.map(a => formatActivityFromDb(a));
+      const deduplicated = mergeAndSortActivities([], formatted, finalLeadId);
 
       // Salva no cache do LocalStorage para abertura instantânea futura
-      this.saveActivitiesToCache(finalLeadId, formatted);
+      this.saveActivitiesToCache(finalLeadId, deduplicated);
 
       return {
-        activities: formatted,
+        activities: deduplicated,
         hasOlder,
-        oldestTimestamp: formatted.length > 0 ? formatted[0].timestamp : undefined,
+        oldestTimestamp: deduplicated.length > 0 ? deduplicated[0].timestamp : undefined,
       };
     } catch (err) {
       console.error('Falha em getLeadConversationDays:', err);

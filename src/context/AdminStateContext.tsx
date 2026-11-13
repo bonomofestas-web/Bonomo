@@ -6292,6 +6292,39 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       || candidateLeads.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
       || candidateLeads[0];
 
+    // ── BLINDAGEM DE CONCORRÊNCIA SUPREMA (WEBHOOK + SSE) ──────────
+    // Se não encontrou no cache local em memória (leadsRef), consulta diretamente o Supabase
+    // para verificar se outro processo (ex: webhook em background ou outra aba) acabou de criar o lead.
+    if (!existing && isSupabaseConfigured && cleanPhoneDigits && cleanPhoneDigits.length >= 8) {
+      const last8 = cleanPhoneDigits.slice(-8);
+      try {
+        const { data: dbMatches } = await supabase
+          .from('leads')
+          .select('*')
+          .or(`phone.ilike.%${last8}%,custom_field_values->>whatsappLid.eq.${cleanPhoneDigits}`)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (dbMatches && dbMatches.length > 0) {
+          const mappedMatches = dbMatches.map(row => formatLeadFromDb(row));
+          const tenantMatches = mappedMatches.filter(l => !scopedMasterId || !l.masterId || l.masterId === scopedMasterId);
+          if (tenantMatches.length > 0) {
+            const found = tenantMatches.find(l => incomingVenueId && l.venueId === incomingVenueId)
+              || tenantMatches.find(l => incomingFunnelId && l.funnelId === incomingFunnelId)
+              || tenantMatches[0];
+            if (found) {
+              existing = found;
+              // Sincroniza imediatamente o estado e ref para evitar que mensagens seguintes criem novos leads
+              setLeads(prev => prev.some(l => l.id === found.id) ? prev : [found, ...prev]);
+              leadsRef.current = [found, ...leadsRef.current.filter(l => l.id !== found.id)];
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[createLeadFromWhatsApp] Falha ao consultar duplicados concorrentes no Supabase:', err);
+      }
+    }
+
     // Auto-resolução automática de duplicados se configurado no Funil
     const targetFunnel = funnels.find(f => f.id === (incomingFunnelId || existing?.funnelId));
     if (candidateLeads.length > 1 && targetFunnel?.duplicateRuleConfig?.autoResolve) {
@@ -6627,17 +6660,34 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [sources, scopedVenues, scopedMasterId, currentUser]);
 
   const processedMessageIdsRef = React.useRef<Set<string>>(new Set());
+  const recentMessageContentMapRef = React.useRef<Map<string, number>>(new Map());
 
   // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
   useEffect(() => {
     const unsubscribe = uazapiSseService.onMessage(async (incoming) => {
-      // Deduplicação estrita de ID de mensagem (evita mensagens triplicadas por múltiplos canais/reconexões)
-      if (incoming.messageId) {
-        if (processedMessageIdsRef.current.has(incoming.messageId)) return;
-        processedMessageIdsRef.current.add(incoming.messageId);
+      // 1. Deduplicação estrita de ID de mensagem (cobre wamid e ids no payload)
+      const effectiveMessageId = incoming.messageId || incoming.rawPayload?.key?.id || incoming.rawPayload?.id || (incoming.rawPayload as any)?.messageId;
+      if (effectiveMessageId) {
+        if (processedMessageIdsRef.current.has(effectiveMessageId)) return;
+        processedMessageIdsRef.current.add(effectiveMessageId);
         if (processedMessageIdsRef.current.size > 1000) {
           const [first] = processedMessageIdsRef.current;
           processedMessageIdsRef.current.delete(first);
+        }
+      }
+
+      // 2. Deduplicação por conteúdo/instância em janela curta (<4s) para evitar ecos duplicados
+      const rawContentKey = `${incoming.instanceToken || ''}:${incoming.senderPhone}:${incoming.fromMe ? 'out' : 'in'}:${incoming.text?.trim() || incoming.mediaUrl || ''}`;
+      if (rawContentKey.length > 15) {
+        const prevTime = recentMessageContentMapRef.current.get(rawContentKey);
+        if (prevTime && (Date.now() - prevTime < 4000)) {
+          console.log(`[SSE Deduplication] Mensagem idêntica recente descartada (<4s): "${rawContentKey.slice(0, 45)}"`);
+          return;
+        }
+        recentMessageContentMapRef.current.set(rawContentKey, Date.now());
+        if (recentMessageContentMapRef.current.size > 300) {
+          const [firstKey] = recentMessageContentMapRef.current.keys();
+          recentMessageContentMapRef.current.delete(firstKey);
         }
       }
 
