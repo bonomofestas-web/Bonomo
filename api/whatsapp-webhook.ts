@@ -534,42 +534,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               console.log(`[Webhook] Mensagem com messageId ${waMessageId} já gravada no lead ${existingLead.id}, ignorando duplicata.`);
               continue;
             }
-          }
+          } else {
+            // Apenas para payloads raros sem waMessageId: deduplicação defensiva rápida
+            if (isAudio) {
+              const fifteenSecsAgo = new Date(Date.now() - 15000).toISOString();
+              const { data: recentAudio } = await supabase
+                .from('lead_activities')
+                .select('id')
+                .eq('lead_id', existingLead.id)
+                .gte('timestamp', fifteenSecsAgo)
+                .ilike('text', '%🎵%')
+                .limit(1);
 
-          // DEDUPLICAÇÃO TEMPORAL: Checa se áudio ou mensagem idêntica foi gravada nos últimos segundos
-          if (isAudio) {
-            const fortyFiveSecsAgo = new Date(Date.now() - 45000).toISOString();
-            const { data: recentAudio } = await supabase
-              .from('lead_activities')
-              .select('id')
-              .eq('lead_id', existingLead.id)
-              .gte('timestamp', fortyFiveSecsAgo)
-              .ilike('text', '%🎵%')
-              .limit(1);
-
-            if (recentAudio && recentAudio.length > 0) {
-              console.log(`[Webhook] Áudio recente já registrado no lead ${existingLead.id}, ignorando duplicata.`);
-              continue;
-            }
-          } else if (storedText) {
-            const thirtySecsAgo = new Date(Date.now() - 30000).toISOString();
-            const cleanTextForCheck = text.trim();
-            const { data: recentIdentical } = await supabase
-              .from('lead_activities')
-              .select('id, text')
-              .eq('lead_id', existingLead.id)
-              .gte('timestamp', thirtySecsAgo)
-              .limit(5);
-
-            const isDuplicate = recentIdentical?.some(r => {
-              if (r.text === storedText) return true;
-              if (cleanTextForCheck && r.text?.includes(cleanTextForCheck)) return true;
-              return false;
-            });
-
-            if (isDuplicate) {
-              console.log(`[Webhook] Mensagem idêntica recente ignorada no lead ${existingLead.id}: "${storedText.slice(0, 30)}..."`);
-              continue;
+              if (recentAudio && recentAudio.length > 0) {
+                console.log(`[Webhook] Áudio recente sem ID já registrado no lead ${existingLead.id}, ignorando duplicata.`);
+                continue;
+              }
             }
           }
 

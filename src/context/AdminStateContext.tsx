@@ -6660,12 +6660,11 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [sources, scopedVenues, scopedMasterId, currentUser]);
 
   const processedMessageIdsRef = React.useRef<Set<string>>(new Set());
-  const recentMessageContentMapRef = React.useRef<Map<string, number>>(new Map());
 
   // O listener SSE só é registrado UMA vez (deps vazias) e lê estado via refs
   useEffect(() => {
     const unsubscribe = uazapiSseService.onMessage(async (incoming) => {
-      // 1. Deduplicação estrita de ID de mensagem (cobre wamid e ids no payload)
+      // Deduplicação estrita de ID único de mensagem (evita duplicatas da mesma mensagem por reconexões)
       const effectiveMessageId = incoming.messageId || incoming.rawPayload?.key?.id || incoming.rawPayload?.id || (incoming.rawPayload as any)?.messageId;
       if (effectiveMessageId) {
         if (processedMessageIdsRef.current.has(effectiveMessageId)) return;
@@ -6673,21 +6672,6 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (processedMessageIdsRef.current.size > 1000) {
           const [first] = processedMessageIdsRef.current;
           processedMessageIdsRef.current.delete(first);
-        }
-      }
-
-      // 2. Deduplicação por conteúdo/instância em janela curta (<4s) para evitar ecos duplicados
-      const rawContentKey = `${incoming.instanceToken || ''}:${incoming.senderPhone}:${incoming.fromMe ? 'out' : 'in'}:${incoming.text?.trim() || incoming.mediaUrl || ''}`;
-      if (rawContentKey.length > 15) {
-        const prevTime = recentMessageContentMapRef.current.get(rawContentKey);
-        if (prevTime && (Date.now() - prevTime < 4000)) {
-          console.log(`[SSE Deduplication] Mensagem idêntica recente descartada (<4s): "${rawContentKey.slice(0, 45)}"`);
-          return;
-        }
-        recentMessageContentMapRef.current.set(rawContentKey, Date.now());
-        if (recentMessageContentMapRef.current.size > 300) {
-          const [firstKey] = recentMessageContentMapRef.current.keys();
-          recentMessageContentMapRef.current.delete(firstKey);
         }
       }
 

@@ -749,7 +749,8 @@ export const leadService = {
       };
 
       // ── DEDUPLICAÇÃO E IDEMPOTÊNCIA DE ATIVIDADES NO SUPABASE ──────────────
-      // 1. Checa por messageId (wamid do WhatsApp)
+      // Checa estritamente por messageId (wamid do WhatsApp) para evitar re-inserção da exata mesma mensagem.
+      // Se forem mensagens sequenciais iguais com IDs distintos (ex: dois "oi" ou dois "e"), ambas são salvas normalmente.
       const targetMsgId = meta.messageId || (activity as any).messageId;
       if (targetMsgId) {
         const { data: existingMsg } = await supabase
@@ -761,27 +762,6 @@ export const leadService = {
 
         if (existingMsg && existingMsg.length > 0) {
           console.log(`[leadService.addActivity] Mensagem com messageId ${targetMsgId} já existente no lead ${finalLeadId}. Idempotente.`);
-          return true;
-        }
-      }
-
-      // 2. Checa por texto idêntico recente (<10s) para evitar duplicações concorrentes (SSE + Webhook)
-      if (storedText && storedText.length > 2) {
-        const actTime = new Date(activity.timestamp || Date.now()).getTime();
-        const tenSecsAgo = new Date(actTime - 10000).toISOString();
-        const tenSecsAfter = new Date(actTime + 10000).toISOString();
-        const { data: recentIdentical } = await supabase
-          .from('lead_activities')
-          .select('id, text')
-          .eq('lead_id', finalLeadId)
-          .gte('timestamp', tenSecsAgo)
-          .lte('timestamp', tenSecsAfter)
-          .limit(5);
-
-        const cleanCurrent = storedText.trim();
-        const hasDup = recentIdentical?.some(r => r.text === storedText || (cleanCurrent && r.text?.trim() === cleanCurrent));
-        if (hasDup) {
-          console.log(`[leadService.addActivity] Atividade recente idêntica descartada no lead ${finalLeadId}: "${cleanCurrent.slice(0, 30)}..."`);
           return true;
         }
       }
@@ -1542,21 +1522,36 @@ export function mergeAndSortActivities(acts1: LeadActivity[] = [], acts2: LeadAc
   for (const act of allActs) {
     const isDuplicate = uniqueActs.some(existing => {
       if (existing.id && act.id && existing.id === act.id) return true;
+
       // Identificação por código único da mensagem no WhatsApp (wamid / messageId da API)
       const existingMsgId = existing.messageId || (existing.metadata as any)?.messageId;
       const actMsgId = act.messageId || (act.metadata as any)?.messageId;
+
+      // REGRA FUNDAMENTAL DO WHATSAPP:
+      // Se ambas as mensagens possuem messageId do WhatsApp:
+      // - Se os IDs forem IGUAIS, é a exata mesma mensagem (duplicata de eco) -> descarta
+      // - Se os IDs forem DIFERENTES, são DUAS MENSAGENS DISTINTAS (ex: envio sequencial de "oi", "e", links, etc.) -> NUNCA descarta!
       if (existingMsgId && actMsgId) {
         return existingMsgId === actMsgId;
       }
 
-      const isBothAudio = (existing.mediaType === 'audio' || existing.text?.includes('🎵') || existing.title?.toLowerCase().includes('voz')) &&
-                          (act.mediaType === 'audio' || act.text?.includes('🎵') || act.title?.toLowerCase().includes('voz'));
-      if (existing.type === act.type && (existing.text === act.text || isBothAudio)) {
+      // Reconciliação apenas quando uma das mensagens é local/otimista (ainda sem messageId do WhatsApp)
+      // e a outra é o eco retornado pela API/Webhook para a mesma mensagem enviada
+      const isExistingOpt = Boolean(existing.id?.startsWith('opt_') || (existing.metadata as any)?.isOptimistic);
+      const isActOpt = Boolean(act.id?.startsWith('opt_') || (act.metadata as any)?.isOptimistic);
+
+      if ((isExistingOpt || isActOpt) && existing.type === act.type && existing.text === act.text) {
         const t1 = new Date(existing.timestamp || 0).getTime();
         const t2 = new Date(act.timestamp || 0).getTime();
-        // Apenas deduplica se for eco quase instantâneo (menos de 3.5s) para conciliar envio otimista e retorno do webhook
-        if (Math.abs(t1 - t2) < 3500) return true;
+        if (Math.abs(t1 - t2) < 4000) {
+          if (actMsgId && !existingMsgId) {
+            existing.messageId = actMsgId;
+            if (existing.metadata) (existing.metadata as any).messageId = actMsgId;
+          }
+          return true;
+        }
       }
+
       return false;
     });
     if (!isDuplicate) {
