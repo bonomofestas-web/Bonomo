@@ -484,6 +484,9 @@ export interface Lead {
   id: string;
   masterId?: string;     // ID da conta Master proprietária deste lead
   code?: string;         // Código Único do Lead no formato LEAD-XXXXXX
+  commercialCode?: string; // Código alfanumérico Base36 exclusivo (LEAD-XXXXXXXX)
+  contactId?: string;    // ID do Contato Central vinculado (tabela contacts)
+  customFieldsData?: Record<string, any>; // Campos comerciais dinâmicos herdados do funil
   debutanteId: string;
   debutanteName: string;
   debutanteSlug: string;
@@ -1174,6 +1177,172 @@ export interface QuickMessage {
   updatedAt?: string;
   isActive: boolean;
 }
+
+// ==============================================================================
+// CENTRAL DE CONTATOS & CONTRATOS DE EVENTOS (F5 SYSTEM v1.2)
+// ==============================================================================
+
+export interface Contact {
+  id: string;
+  masterId: string;
+  code: string;                          // Código Base36 ex: 'CONT-4H8W2N9Q'
+  name: string;
+  nickname?: string;
+  primaryPhone: string;
+  secondaryPhone?: string;
+  email?: string;
+  cpf?: string;
+  rg?: string;
+  birthDate?: string;
+  profilePictureUrl?: string;
+
+  // Endereço
+  postalCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+
+  // Família e Metadados
+  familyGroupId?: string;
+  familyGroupName?: string;
+  relationshipRole?: string;             // ex: 'Titular', 'Mãe', 'Pai', 'Debutante', 'Noivo'
+  notes?: string;
+  customFields?: Record<string, any>;
+
+  // Relações e Indicadores
+  venueIds?: string[];                   // Casas de festas onde o contato possui histórico
+  dependents?: ContactDependent[];       // Dependentes / grupo familiar
+  activeLeadsCount?: number;
+  activeContractsCount?: number;
+
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+export interface ContactDependent {
+  id: string;
+  masterId: string;
+  parentContactId: string;
+  dependentContactId: string;
+  kinship: string;                       // ex: 'Filho(a) / Debutante', 'Cônjuge', 'Mãe', 'Pai'
+  createdAt: string;
+  dependentContact?: Contact;
+}
+
+export interface FamilyGroup {
+  id: string;
+  masterId: string;
+  name: string;                          // ex: 'Família Albuquerque Silva'
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  members?: Contact[];
+}
+
+export type ContractApprovalStatus = 
+  | 'pending_approval' // Aguardando Homologação do Gerente Comercial / Geral / Master
+  | 'approved'         // Aprovado e liberado para os funis de Pós-Venda
+  | 'rejected'         // Ajustes solicitados ao Comercial
+  | 'canceled'         // Contrato cancelado/distratado
+  | 'completed';       // Evento realizado com sucesso
+
+export interface Contract {
+  id: string;
+  masterId: string;
+  contractCode: string;                  // Código Base36 ex: 'CTR-2026-9BK7MZ'
+  contactId: string;
+  originLeadId?: string;
+  originFunnelId?: string;
+  venueId: string;                       // REGRA SUPREMA: UNIDADE ÚNICA
+  venueName?: string;
+
+  // Dados do Evento
+  eventType: string;                     // '15_anos' | 'casamento' | 'infantil' | 'corporativo'
+  eventTitle: string;                    // ex: '15 Anos Manuella Albuquerque'
+  eventDate?: string;
+  eventTime?: string;
+  guestCount?: number;
+  packageName?: string;
+
+  // Snapshots Imutáveis (Blindagem Unilateral e Jurídica)
+  clientSnapshot: {
+    name: string;
+    phone: string;
+    email?: string;
+    cpf?: string;
+    address?: string;
+    neighborhood?: string;
+    city?: string;
+    birthdayPersonName?: string;
+    [key: string]: any;
+  };
+  commercialFieldsSnapshot: Record<string, any>; // Perguntas e respostas preenchidas no funil comercial
+
+  // Valores e Condições
+  totalAmount: number;
+  paymentTerms?: Record<string, any> | string;
+
+  // Responsáveis Eternos (Preservados mesmo se o usuário for deletado)
+  sdrId?: string;
+  sdrName: string;
+  sdrEmail?: string;
+  closerId?: string;
+  closerName: string;
+  closerEmail?: string;
+
+  // Mesa de Homologação & Governança
+  approvalStatus: ContractApprovalStatus;
+  submittedBy?: string;
+  submittedAt: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedByRole?: string;               // 'gerente_comercial' | 'gerente_geral' | 'master'
+  approvedAt?: string;
+  rejectionReason?: string;
+
+  // Destino Pós-Venda (Mesma Unidade)
+  targetPosSaleFunnelIds?: string[];
+  placements?: ContractFunnelPlacement[];
+
+  // App de Convidados e Documentação
+  debutanteId?: string | null;
+  debutanteSlug?: string | null;
+  handoverNotes?: string;
+  contractFileUrl?: string;
+  attachments?: Array<{ name: string; url: string; size?: number; type?: string }>;
+  notes?: string;
+
+  // Dados do Contato Vinculado (Join em tempo de execução)
+  contact?: Contact;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContractFunnelPlacement {
+  id: string;
+  masterId: string;
+  contractId: string;
+  funnelId: string;
+  funnelName?: string;
+  stageId: string;
+  stageName?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  status: 'in_progress' | 'completed' | 'on_hold';
+  completedAt?: string;
+  notes?: string;
+  orderIndex?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 
 
 
