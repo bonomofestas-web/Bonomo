@@ -1,7 +1,7 @@
 # F5 System • Plano de Ação Arquitetural: Central de Contatos, Leads Multi-Funil & Gestão Unificada de Contratos
 
 > **Documento de Especificação Técnica & Executiva**  
-> **Versão:** 1.1.0 • **Data:** Novembro de 2026  
+> **Versão:** 1.2.0 • **Data:** Novembro de 2026  
 > **Status:** Em Planejamento Aprovado (`/goal`)  
 > **Alinhamento:** [F5_SYSTEM_MASTER.md](file:///c:/Users/--/OneDrive/Documents/Codex%20Projetos/Bonomo%20Festas%202/F5_SYSTEM_MASTER.md) • Regra Suprema de Isolamento Master (`master_id`) & Multi-Casas (`venues`).
 
@@ -13,10 +13,11 @@ Este plano de ação estabelece a reestruturação arquitetural do **F5 System**
 
 Historicamente, o sistema tratava cada entrada de telefone diretamente como um registro na tabela `leads`. Na conversão de venda, esse lead era **duplicado** para a tabela `clients`, gerando quebra de histórico, redundância de dados cadastrais, perda de rastreabilidade e impossibilidade de atender clientes recorrentes ou gerenciar múltiplos funis de pós-venda de forma coesa.
 
-### Os Três Pilares da Nova Arquitetura
-1. **Entidade Pessoa Única (`contacts`):** O número de telefone ou documento pertence a um **Contato**. O contato armazena todos os dados cadastrais (nome, telefone(s), e-mail, CPF, endereço, foto e grupo familiar/dependentes). Qualquer atualização cadastral reflete em tempo real em todas as frentes.
-2. **Ativos Comerciais Independentes (`leads`):** O contato pode ser um lead em um ou múltiplos funis comerciais simultaneamente, carregando um código próprio (`LEAD-XXXXXXXX`), respostas de qualificação e campos comerciais dinâmicos daquele funil. **Regra de Ouro:** cada lead pertence a **uma única unidade (`venue_id`)**.
-3. **Ativos Pós-Venda por Contrato (`contracts`):** A conversão comercial não cria um "cliente duplicado", mas sim homologa um **Contrato de Evento** (`CTR-AAAA-XXXXXX`). Um mesmo contato pode ter múltiplos contratos ao longo dos anos. Cada contrato pertence a **uma única unidade (`venue_id`)**, mas pode ser distribuído para múltiplos funis de pós-venda (Financeiro, Decoração, Alinhamento Técnico, Cerimonial) daquela mesma unidade.
+### Os Quatro Pilares da Nova Arquitetura
+1. **Entidade Pessoa Única (`contacts`):** O número de telefone ou documento pertence a um **Contato**. O contato armazena dados cadastrais vivos (nome, telefone(s), e-mail, CPF, endereço, foto e grupo familiar/dependentes).
+2. **Ativos Comerciais Independentes (`leads`):** O contato pode ser um lead em um ou múltiplos funis comerciais simultaneamente, carregando um código próprio (`LEAD-XXXXXXXX`), respostas de qualificação e campos comerciais dinâmicos. **Regra de Ouro:** cada lead pertence a **uma única unidade (`venue_id`)**.
+3. **Ativos Pós-Venda por Contrato (`contracts`):** A conversão comercial homologa um **Contrato de Evento** (`CTR-AAAA-XXXXXX`). Um mesmo contato pode ter múltiplos contratos ao longo dos anos. Cada contrato pertence a **uma única unidade (`venue_id`)**, mas pode ser distribuído para múltiplos funis de pós-venda daquela casa.
+4. **Princípio de Imutabilidade e Snapshot Eterno do Contrato:** O contrato é um documento jurídico fechado e blindado. No instante da aprovação, é gerado um **congelamento unilateral** dos dados: responsáveis (SDR, Closer, Gerente Aprovador), dados cadastrais do cliente e campos comerciais herdados são salvos de forma permanente. **Nada do que for alterado ou excluído futuramente na Central de Contatos ou nos Funis afetará o Contrato**.
 
 ```mermaid
 flowchart TD
@@ -37,8 +38,8 @@ flowchart TD
         LeadA -- "Venda Concluída (Closer)" --> ApprovalTable["Mesa de Aprovação Comercial\n(Status: Aguardando Aprovação)\nRevisores: Gerente Comercial, Geral ou Master\n- Conferência Cadastral + Campos Comerciais\n- Seleção dos Funis Pós-Venda da Mesma Unidade"]
     end
 
-    subgraph ContratoPosVenda["5. Ativo de Pós-Venda (Contrato Oficial)"]
-        ApprovalTable -- "Homologado" --> ContractEntity["Contrato Oficial (CTR-2026-9BK7MZ)\n- Unidade Única: Venue A\n- Histórico Comercial & Campos Herdados\n- Passagem de Bastão no Chat"]
+    subgraph ContratoPosVenda["5. Ativo de Pós-Venda (Contrato Oficial & Blindado)"]
+        ApprovalTable -- "Homologado" --> ContractEntity["Contrato Oficial (CTR-2026-9BK7MZ)\n- Snapshot Eterno: SDR, Closer, Aprovador\n- Snapshot Cadastral e Campos Comerciais\n- Blindagem Unilateral (Nunca Apaga)"]
         
         ContractEntity --> PosFunnel1["Funil Pós-Venda: Alinhamento Técnico (Venue A)"]
         ContractEntity --> PosFunnel2["Funil Pós-Venda: Decoração & Cenografia (Venue A)"]
@@ -48,9 +49,29 @@ flowchart TD
 
 ---
 
-## 1. Regras de Capacidade dos Identificadores (Escalabilidade Quase Infinita)
+## 1. Regra de Ouro: Imutabilidade, Snapshot Eterno & Blindagem do Contrato
 
-Para garantir que o F5 System **nunca atinja limites numéricos ou sofra estouro de sequencial**, todos os identificadores públicos utilizam codificação **alfanumérica de alta entropia** (base36 maiúscula: dígitos `0-9` e letras `A-Z`, gerados com checagem de unicidade por tenant):
+### 1.1. Comunicação Unilateral (Lead/Contato $\longrightarrow$ Contrato)
+* A comunicação entre a base viva (Contatos e Leads) e os Contratos é **estritamente unilateral**:
+  - No momento da homologação, o contrato "tira uma foto" (snapshot) completa dos dados cadastrais do cliente e dos campos dinâmicos preenchidos no funil.
+  - A partir desse momento, o contrato **desconecta suas informações de atualizações posteriores**.
+  - Se um usuário alterar o e-mail do contato, apagar o campo "Profissão" das configurações do funil ou até mesmo arquivar o contato, **o Contrato permanece 100% inalterado**, garantindo integridade jurídica e auditoria eterna.
+
+### 1.2. Registro Eterno dos Responsáveis da Venda
+No fechamento do contrato, o sistema grava não apenas as chaves de relacionamento (`UUID`), mas também os **dados literais textuais** dos colaboradores:
+* **SDR Responsável:** `sdr_id`, `sdr_name`, `sdr_email`
+* **Closer Responsável:** `closer_id`, `closer_name`, `closer_email`
+* **Aprovador (Gerente Comercial, Geral ou Master):** `approved_by_id`, `approved_by_name`, `approved_by_role`, `approved_at`
+
+> 🛡️ **Comportamento Visual e de Integridade:**  
+> - Se o colaborador estiver **ativo no sistema**: a interface carrega dinamicamente seu avatar, cargo atual e status.  
+> - Se o colaborador for **desativado ou excluído do banco** (`ON DELETE SET NULL`): a interface recorre automaticamente aos campos literais congelados (`sdr_name`, `closer_name`, `approved_by_name`). **O nome do responsável nunca desaparece do contrato.**
+
+---
+
+## 2. Regras de Capacidade dos Identificadores (Escalabilidade Quase Infinita)
+
+Para garantir que o F5 System **nunca atinja limites numéricos ou sofra estouro de sequencial**, todos os identificadores públicos utilizam codificação **alfanumérica de alta entropia** (base36 maiúscula: dígitos `0-9` e letras `A-Z`):
 
 | Entidade | Padrão do Código | Exemplo Real | Capacidade / Combinações Possíveis |
 | :--- | :--- | :--- | :--- |
@@ -58,29 +79,12 @@ Para garantir que o F5 System **nunca atinja limites numéricos ou sofra estouro
 | **Lead** | `LEAD-XXXXXXXX` | `LEAD-7F3K9M2P` | **$36^8 \approx 2,82$ trilhões de leads** por Master |
 | **Contato** | `CONT-XXXXXXXX` | `CONT-4H8W2N9Q` | **$36^8 \approx 2,82$ trilhões de contatos** por Master |
 
-> 🔒 **Garantia Técnica:** Mesmo redes com milhões de atendimentos simultâneos jamais esgotarão os códigos. A geração é feita por função de banco com fallback criptográfico e índice de unicidade estrito (`UNIQUE (master_id, code)`).
-
----
-
-## 2. Diagnóstico do Modelo Atual vs. Novo Modelo F5 System
-
-| Aspecto | Modelo Anterior (Legado) | Novo Modelo Arquitetural (F5 System) |
-| :--- | :--- | :--- |
-| **Ponto Central** | Tabela `leads` era a raiz de tudo. | Tabela `contacts` é a raiz de identidade da pessoa. |
-| **Conversão de Venda** | Duplicação de registro de `leads` para `clients` com novo ID arbitrário. | Conversão gera um **Contrato** (`contracts`) vinculado ao contato. Zero duplicação. |
-| **Campos Comerciais** | Campos fixos ou engessados que se perdiam no pós-venda. | **Campos Dinâmicos por Funil:** Os campos preenchidos no funil comercial acompanham integralmente o contrato fechado. |
-| **Pós-Venda** | Um único funil de pós-venda amarrado ao `clients.stage_id`. | Distribuição do mesmo contrato para **múltiplos funis de pós-venda** (`contract_funnel_placements`), selecionados na aprovação. |
-| **Grupo Familiar** | Nenhum suporte; mãe e debutante eram leads separados sem conexão. | Suporte nativo a grupos familiares e dependentes (`family_groups` e `contact_dependents`). Mensagens de familiares são reconhecidas no contexto do contrato. |
-| **Mesa de Aprovação** | O próprio Closer convertia e mandava direto pro pós-venda sem conferência. | **Aba "Aguardando Aprovação" na Central de Contratos:** Exclusiva para `gerente_comercial`, `gerente_geral` e `master`. |
-| **Escopo de Unidade** | Ambiguidade em leads multi-casas. | **Regra Estrita de Unidade Única:** Lead e Contrato pertencem a **uma única unidade**. Transferência possui fluxo assistido. |
-
 ---
 
 ## 3. Especificação do Banco de Dados (PostgreSQL / Supabase)
 
 ### 3.1. Função de Geração de Códigos Alfanuméricos
 ```sql
--- Gerador seguro de código alfanumérico base36
 CREATE OR REPLACE FUNCTION public.generate_alphanumeric_code(prefix TEXT, length INT)
 RETURNS TEXT AS $$
 DECLARE
@@ -97,13 +101,11 @@ $$ LANGUAGE plpgsql;
 ```
 
 ### 3.2. Tabela: `contacts` (Central de Contatos)
-Raiz única para dados pessoais do indivíduo no tenant Master.
-
 ```sql
 CREATE TABLE public.contacts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     master_id UUID NOT NULL REFERENCES public.masters(id) ON DELETE RESTRICT,
-    code TEXT NOT NULL, -- Ex: "CONT-4H8W2N9Q" (8 caracteres alfanuméricos)
+    code TEXT NOT NULL, -- Ex: "CONT-4H8W2N9Q"
     name TEXT NOT NULL,
     nickname TEXT,
     primary_phone TEXT NOT NULL,
@@ -125,7 +127,7 @@ CREATE TABLE public.contacts (
 
     -- Família e Metadados
     family_group_id UUID REFERENCES public.family_groups(id) ON DELETE SET NULL,
-    relationship_role TEXT, -- Ex: "Pai", "Mãe", "Debutante", "Noivo", "Contratante", "Titular"
+    relationship_role TEXT,
     notes TEXT,
     custom_fields JSONB DEFAULT '{}'::jsonb,
     
@@ -137,7 +139,6 @@ CREATE TABLE public.contacts (
     deleted_at TIMESTAMPTZ
 );
 
--- Índices de Performance e Unicidade
 CREATE UNIQUE INDEX idx_contacts_master_primary_phone ON public.contacts (master_id, primary_phone) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_contacts_master_code ON public.contacts (master_id, code);
 CREATE INDEX idx_contacts_master_cpf ON public.contacts (master_id, cpf) WHERE deleted_at IS NULL;
@@ -145,8 +146,6 @@ CREATE INDEX idx_contacts_master_name ON public.contacts (master_id, name);
 ```
 
 ### 3.3. Tabela: `contact_venue_access` (Isolamento Multi-Casas de Contatos)
-Mapeia a quais casas de festa (`venues`) o contato pertence por histórico de atendimento.
-
 ```sql
 CREATE TABLE public.contact_venue_access (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -164,13 +163,11 @@ CREATE INDEX idx_contact_venue_venue_id ON public.contact_venue_access (venue_id
 ```
 
 ### 3.4. Tabelas: `family_groups` & `contact_dependents` (Grupo Familiar)
-Permite conectar mãe, debutante, pai e patrocinador sob o mesmo grupo familiar.
-
 ```sql
 CREATE TABLE public.family_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     master_id UUID NOT NULL REFERENCES public.masters(id) ON DELETE CASCADE,
-    name TEXT NOT NULL, -- Ex: "Família Albuquerque Silva"
+    name TEXT NOT NULL,
     primary_contact_id UUID REFERENCES public.contacts(id) ON DELETE SET NULL,
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
@@ -181,31 +178,25 @@ CREATE TABLE public.contact_dependents (
     master_id UUID NOT NULL REFERENCES public.masters(id) ON DELETE CASCADE,
     parent_contact_id UUID NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
     dependent_contact_id UUID NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
-    kinship TEXT NOT NULL, -- "Filho(a) / Debutante", "Cônjuge", "Mãe", "Pai", "Responsável Financeiro"
+    kinship TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     CONSTRAINT uq_contact_dependent UNIQUE (parent_contact_id, dependent_contact_id)
 );
 ```
 
 ### 3.5. Atualização da Tabela: `leads` (Ativos Comerciais com Unidade Única)
-A tabela `leads` ganha referência obrigatória ao `contact_id`, código alfanumérico e unidade única estrita (`venue_id NOT NULL`).
-
 ```sql
--- Alteração incremental na tabela leads existente
 ALTER TABLE public.leads
     ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES public.contacts(id) ON DELETE RESTRICT,
     ADD COLUMN IF NOT EXISTS commercial_code TEXT, -- Ex: "LEAD-7F3K9M2P"
     ADD COLUMN IF NOT EXISTS custom_fields_data JSONB DEFAULT '{}'::jsonb;
 
--- Garantia de código único alfanumérico
 CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_master_commercial_code ON public.leads (master_id, commercial_code);
 CREATE INDEX IF NOT EXISTS idx_leads_contact_id ON public.leads (contact_id);
 CREATE INDEX IF NOT EXISTS idx_leads_venue_id ON public.leads (venue_id);
 ```
 
-### 3.6. Tabela: `contracts` (Ativos Contratuais com Unidade Única & Campos Comerciais Herdados)
-Formaliza o contrato de prestação de serviços com seus campos comerciais herdados dinamicamente do funil de origem.
-
+### 3.6. Tabela: `contracts` (Ativos Contratuais Blindados com Snapshot Eterno)
 ```sql
 CREATE TABLE public.contracts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -217,25 +208,38 @@ CREATE TABLE public.contracts (
     venue_id UUID NOT NULL REFERENCES public.venues(id) ON DELETE RESTRICT, -- REGRA: UNIDADE ÚNICA
     
     -- Dados do Evento
-    event_type TEXT NOT NULL, -- "15_anos", "casamento", "infantil", "corporativo"
-    event_title TEXT NOT NULL, -- Ex: "15 Anos Manuella Albuquerque"
+    event_type TEXT NOT NULL,
+    event_title TEXT NOT NULL,
     event_date DATE,
     guest_count INTEGER,
     package_name TEXT,
     
-    -- Campos Comerciais Dinâmicos Herdados do Funil de Origem
-    commercial_fields JSONB DEFAULT '{}'::jsonb, -- Guarda todos os campos preenchidos no funil
+    -- SNAPSHOT IMUTÁVEL: Dados Pessoais do Cliente no Fechamento (Blindagem Unilateral)
+    client_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    
+    -- SNAPSHOT IMUTÁVEL: Campos Comerciais do Funil Herdados (Nunca são apagados)
+    commercial_fields_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
     
     -- Valores Financeiros do Contrato
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     payment_terms JSONB DEFAULT '{}'::jsonb,
     
+    -- RESPONSÁVEIS ETERNOS DA VENDA (Preservados mesmo se o usuário for deletado)
+    sdr_id UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
+    sdr_name TEXT NOT NULL, -- Snapshot eterno do nome
+    sdr_email TEXT,
+
+    closer_id UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
+    closer_name TEXT NOT NULL, -- Snapshot eterno do nome
+    closer_email TEXT,
+
     -- Mesa de Aprovação & Governança (Exclusiva para Gerente Comercial, Geral ou Master)
     approval_status TEXT NOT NULL DEFAULT 'pending_approval', 
-    -- 'pending_approval' | 'approved' | 'rejected' | 'canceled' | 'completed'
     submitted_by UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     approved_by UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
+    approved_by_name TEXT, -- Snapshot eterno do nome do aprovador
+    approved_by_role TEXT, -- Ex: "gerente_comercial", "gerente_geral", "master"
     approved_at TIMESTAMPTZ,
     rejection_reason TEXT,
     
@@ -258,8 +262,6 @@ CREATE INDEX idx_contracts_approval_status ON public.contracts (master_id, appro
 ```
 
 ### 3.7. Tabela: `contract_funnel_placements` (Multi-Funil Pós-Venda na Mesma Unidade)
-Registra a presença do contrato nos funis de pós-venda homologados na aprovação.
-
 ```sql
 CREATE TABLE public.contract_funnel_placements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -268,7 +270,7 @@ CREATE TABLE public.contract_funnel_placements (
     funnel_id UUID NOT NULL REFERENCES public.commercial_funnels(id) ON DELETE RESTRICT,
     stage_id UUID NOT NULL REFERENCES public.funnel_stages(id) ON DELETE RESTRICT,
     assigned_to UUID REFERENCES public.collaborators(id) ON DELETE SET NULL,
-    status TEXT NOT NULL DEFAULT 'in_progress', -- 'in_progress' | 'completed' | 'on_hold'
+    status TEXT NOT NULL DEFAULT 'in_progress',
     completed_at TIMESTAMPTZ,
     notes TEXT,
     order_index INTEGER DEFAULT 0,
@@ -284,8 +286,6 @@ CREATE INDEX idx_contract_placements_assigned ON public.contract_funnel_placemen
 ---
 
 ## 4. Matriz de Cargos, Governança & Regras de Acesso (RBAC)
-
-Para atender à operação comercial, supervisão de contratos e pós-venda, a matriz de perfis é estruturada da seguinte forma:
 
 | Cargo (`role`) | Central de Contatos | Leads / CRM Comercial | Mesa de Aprovação de Contratos | Funis Pós-Venda | Exclusão de Contatos |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -303,108 +303,54 @@ Para atender à operação comercial, supervisão de contratos e pós-venda, a m
 ### 5.1. Regra de Unidade Única e Transferência de Leads entre Unidades
 1. **Unidade Única:** Todo lead pertence estritamente a uma única unidade (`venue_id`).
 2. **Transferência de Unidade:**
-   - O operador ou gerente aciona a ação **"Transferir Unidade do Lead"**:
-     1. O sistema solicita a escolha da **Unidade de Destino**.
-     2. **Verificação de Permissões do Usuário:**
-        - **Cenário A (Usuário tem acesso aos funis da unidade de destino):** O modal exibe os funis comerciais disponíveis naquela unidade para que o usuário escolha exatamente o funil e a etapa de entrada.
-        - **Cenário B (Usuário NÃO tem acesso aos funis da unidade de destino):** O sistema exibe aviso informativo e transfere o lead automaticamente para o **primeiro funil de entrada padrão** daquela unidade, atribuindo o lead à fila geral de triagem daquela casa.
-     3. O histórico comercial anterior, anotações e atividades são preservados. O contato ganha o vínculo da nova casa em `contact_venue_access`.
+   - O operador ou gerente aciona **"Transferir Unidade do Lead"**:
+     1. Escolhe a **Unidade de Destino**.
+     2. Se o usuário **tem permissão** nos funis de destino: seleciona diretamente o funil e etapa.
+     3. Se o usuário **não tem permissão** nos funis de destino: o sistema transfere o lead para o **primeiro funil de entrada padrão** daquela unidade com notificação para a gerência local.
 
 ### 5.2. Tela de Contratos & Mesa de Aprovação Gerencial (`/admin/contratos`)
-A tela de Contratos é unificada em **duas abas principais**:
-
-```
-+---------------------------------------------------------------------------------------------------------------+
-| [Gestão de Contratos]               [Filtro: Todas as Casas v] [Buscar CTR-..., Cliente, CPF]  [+ Novo Contrato] |
-+---------------------------------------------------------------------------------------------------------------+
-|  (Badge: 3) Contratos para Aprovação  |   Contratos Aprovados (Vigentes)                                      |
-+---------------------------------------------------------------------------------------------------------------+
-```
+A tela de Contratos opera com **duas abas principais**:
+- **Aba 1: Contratos para Aprovação (Pendentes)**
+- **Aba 2: Contratos Aprovados (Vigentes)**
 
 #### Modal de Homologação de Contrato (Aprovação por Gerente Comercial, Geral ou Master):
-Ao abrir um contrato pendente de aprovação, o modal exibe 3 blocos analíticos:
-1. **Dados Cadastrais do Contato/Cliente:**
-   - Nome completo, Telefones, CPF, RG, Endereço completo, e-mail.
-2. **Dados Comerciais & Campos Dinâmicos Herdados do Funil:**
-   - Exibe todos os dados preenchidos pelo Closer durante a negociação no funil comercial de origem.
-   - Os campos personalizados configurados no funil (ex: data do evento, profissão, estilo de buffet, perguntas customizadas) são exibidos dinamicamente com seus valores preenchidos.
-3. **Distribuição para Funis de Pós-Venda:**
-   - **Regra Rígida de Unidade:** O contrato só pode ser distribuído para funis de pós-venda **da mesma unidade física (`venue_id`) do contrato**.
-   - É renderizada uma listagem interativa de múltipla seleção:
-     - `[X] Funil de Alinhamento Técnico & Debutante (Espaço Rio Lounge)`
-     - `[X] Funil de Decoração & Cenografia (Espaço Rio Lounge)`
-     - `[X] Funil Financeiro & Pagamentos (Espaço Rio Lounge)`
-   - O gerente pode marcar ou desmarcar quais funis receberão o contrato.
-4. **Ações de Decisão:**
-   - `[Homologar Contrato e Liberar Pós-Venda]` (visível apenas para `gerente_comercial`, `gerente_geral` ou `master`).
-   - `[Solicitar Ajuste ao Comercial]` (retorna o card para o Closer com anotação do que corrigir).
+1. **Dados Cadastrais do Cliente (Snapshot Inicial):** Nome completo, Telefones, CPF, RG, Endereço completo.
+2. **Campos Comerciais Herdados:** Exibição dinâmica de todas as perguntas e respostas preenchidas durante a venda no funil comercial.
+3. **Responsáveis:** Identificação de SDR e Closer responsáveis.
+4. **Distribuição Pós-Venda Restrita à Mesma Unidade:** Lista com checkboxes dos funis de pós-venda disponíveis **apenas para aquela unidade (`venue_id`)**.
+5. **Ação de Homologação:** Ao clicar em `Homologar Contrato`:
+   - Grava `approved_by_name`, `approved_by_role` e timestamp permanente.
+   - Congela `client_snapshot` e `commercial_fields_snapshot`.
+   - Gera os registros em `contract_funnel_placements` para os funis de pós-venda selecionados.
 
 ---
 
 ## 6. Especificação de Telas (UI/UX)
 
 ### 6.1. Central de Contatos (`/admin/contatos`)
-Layout bilateral (split view responsivo):
-- **Coluna Esquerda:** Lista indexada de contatos com busca rápida, avatar, telefones e tags de unidades e contratos ativos.
-- **Coluna Direita (Ficha do Contato):**
-  - **Bloco Superior:** Perfil completo, dados pessoais, endereço e grupo familiar (dependentes vinculados com suas relações de parentesco).
-  - **Abas de Ativos:**
-    - `Oportunidades Comerciais`: Histórico de leads em funis comerciais (com código `LEAD-XXXXXXXX`, unidade e status).
-    - `Contratos de Eventos`: Contratos assinados (com código `CTR-AAAA-XXXXXX`, valores, datas e links diretos para os funis de pós-venda).
-    - `Histórico e Linha do Tempo`: Atividades unificadas e mensagens de WhatsApp.
+- **Layout Bilateral (Split View):**
+  - Esquerda: Lista de contatos pesquisável com chips de status e unidades.
+  - Direita: Ficha de contato, dados cadastrais, grupo familiar e abas de Oportunidades Comerciais, Contratos Assinados e Timeline de Atividades.
 
 ### 6.2. Barra de Pesquisa Universal Overlay (`Ctrl + K`)
-- Modal amplo centralizado na **Área de Conteúdo**.
-- Busca instantânea e unificada em tempo real por:
-  - 👤 **Contatos:** Código `CONT-XXXXXXXX`, Nome, Telefone, CPF.
-  - 📋 **Contratos:** Código `CTR-AAAA-XXXXXX`, Nome do Evento, Homenageado.
-  - 🎯 **Leads:** Código `LEAD-XXXXXXXX`, Nome da Oportunidade.
-  - 👨‍👩‍👧 **Dependentes:** Nome do dependente ou participante do grupo familiar.
+- Atalho global no topo da Área de Conteúdo.
+- Busca unificada e categorizada por Contatos (`CONT-XXXXXXXX`), Contratos (`CTR-AAAA-XXXXXX`), Leads (`LEAD-XXXXXXXX`) e Familiares.
 
 ---
 
-## 7. Estratégia de Migração de Dados (Zero-Downtime & Backfill)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant DB as Banco Supabase
-    participant Leads as Tabela leads
-    participant Clients as Tabela clients
-    participant Contacts as Nova Tabela contacts
-    participant Contracts as Nova Tabela contracts
-
-    Note over DB: Fase 1: Criação de Funções Alfanuméricas e Tabelas
-    DB->>Contacts: Cria tabela contacts com RLS e gerador de CONT-XXXXXXXX
-    DB->>Contracts: Cria tabela contracts com RLS e gerador de CTR-AAAA-XXXXXX
-
-    Note over DB: Fase 2: Backfill de Contatos Únicos
-    DB->>Contacts: INSERT DISTINCT (master_id, phone, name, email) deduplicado
-    
-    Note over DB: Fase 3: Amarração de Leads e Unidades
-    DB->>Leads: Atualiza contact_id e gera commercial_code (LEAD-XXXXXXXX)
-    DB->>DB: Popula contact_venue_access com base nos venues dos leads
-
-    Note over DB: Fase 4: Conversão de Clientes para Contratos
-    DB->>Contracts: Transposição de clients para contracts herdando venue_id único
-    DB->>DB: Criação dos contract_funnel_placements para os funis de pós-venda
-```
-
----
-
-## 8. Cronograma Fatiado em Fases (Sprints de Entrega)
+## 7. Cronograma Fatiado em Fases (Sprints de Entrega)
 
 ```mermaid
 gantt
     title Cronograma de Implementação: Central de Contatos & Contratos F5
     dateFormat  YYYY-MM-DD
     section Fase 1: Banco & Tipagem
-    DDL Supabase, RLS & Funções Base36 :done,    des1, 2026-11-15, 2d
+    DDL Supabase, Snapshots & Base36   :done,    des1, 2026-11-15, 2d
     Backfill de Dados Legados          :active,  des2, 2026-11-17, 2d
     Tipos TypeScript & Interfaces      :         des3, 2026-11-19, 2d
     section Fase 2: Serviços & Lógica
     ContactService & Multi-Venues      :         srv1, 2026-11-21, 3d
-    ContractService & Aprovação        :         srv2, 2026-11-24, 3d
+    ContractService & Snapshots        :         srv2, 2026-11-24, 3d
     Transferência de Unidade de Leads  :         srv3, 2026-11-27, 2d
     section Fase 3: Interfaces
     Central de Contatos (/contatos)    :         ui1,  2026-11-29, 4d
@@ -418,16 +364,15 @@ gantt
 
 ---
 
-## 9. Critérios de Aceite e Validação de Sucesso
+## 8. Critérios de Aceite e Validação de Sucesso
 
-1. **Escalabilidade Alfanumérica:** Códigos gerados seguem `CONT-XXXXXXXX`, `LEAD-XXXXXXXX` e `CTR-AAAA-XXXXXX` em base36 com garantia de não esgotamento.
-2. **Unidade Única:** Todo lead e todo contrato pertencem estritamente a um único `venue_id`.
-3. **Distribuição Pós-Venda Restrita à Unidade:** O modal de aprovação só permite selecionar funis de pós-venda da mesma unidade física do contrato.
-4. **Campos Dinâmicos Herdados:** Todos os campos preenchidos durante a qualificação no funil comercial acompanham o contrato aprovado.
-5. **Permissão Estrita de Homologação:** Apenas `gerente_comercial`, `gerente_geral` e `master` conseguem aprovar contratos e enviá-los ao pós-venda.
-6. **Transferência de Leads Inteligente:** Se o usuário não tem acesso aos funis da unidade de destino, o lead cai automaticamente no primeiro funil de entrada daquela casa.
-7. **Isolamento Absoluto Master:** Zero vazamento entre tenants (`master_id`).
-8. **UI Sem Emojis:** Interface elegante utilizando exclusivamente ícones da biblioteca `lucide-react`.
+1. **Snapshot Eterno dos Responsáveis:** SDR, Closer e Gerente Aprovador possuem nomes congelados no contrato, garantindo exibição vitalícia mesmo após exclusão de colaboradores.
+2. **Blindagem Unilateral:** Exclusões ou alterações cadastrais ou de campos no CRM não alteram os dados de contratos já fechados.
+3. **Escalabilidade Alfanumérica:** Códigos Base36 garantem que limites numéricos nunca sejam atingidos.
+4. **Unidade Única:** Lead e Contrato pertencem a um único `venue_id`.
+5. **Pós-Venda Restrito:** Funis de pós-venda selecionáveis na aprovação pertencem estritamente à mesma casa do contrato.
+6. **Alçada Gerencial:** Apenas `gerente_comercial`, `gerente_geral` e `master` homologam contratos.
+7. **Isolamento Absoluto:** Zero vazamento entre tenants (`master_id`).
 
 ---
 *Documento homologado para execução no F5 System.*
