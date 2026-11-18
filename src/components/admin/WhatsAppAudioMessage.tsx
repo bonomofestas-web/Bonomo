@@ -12,6 +12,8 @@ interface WhatsAppAudioMessageProps {
   isDarkMode?: boolean;
   status?: 'sent' | 'delivered' | 'read' | 'failed';
   onSyncR2Url?: (newUrl: string) => void;
+  /** Chamado quando o arquivo nao carrega ou nao toca (ex.: URL expirada, arquivo vazio) */
+  onBroken?: () => void;
 }
 
 const parseDurationText = (text?: string): number => {
@@ -63,6 +65,7 @@ export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
   isDarkMode = false,
   status = 'read',
   onSyncR2Url,
+  onBroken,
 }) => {
   const normalizedSrc = cleanAudioSrc(src);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -82,6 +85,11 @@ export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
   useEffect(() => {
     setActiveSrc(cleanAudioSrc(src));
   }, [src]);
+
+  // Sem arquivo para tocar: em vez de um player falso de 1 segundo, pede a recuperacao da midia
+  useEffect(() => {
+    if (!normalizedSrc) onBroken?.();
+  }, [normalizedSrc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [realPeaks, setRealPeaks] = useState<number[]>(() => {
     if (normalizedSrc && AUDIO_PEAKS_CACHE.has(normalizedSrc)) {
@@ -205,13 +213,16 @@ export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    const handleError = () => onBroken?.();
+    audio.addEventListener('error', handleError);
 
     return () => {
+      audio.removeEventListener('error', handleError);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [activeSrc, duration]);
+  }, [activeSrc, duration, onBroken]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -234,7 +245,7 @@ export const WhatsAppAudioMessage: React.FC<WhatsAppAudioMessageProps> = ({
             })
             .catch(() => {});
         }
-      }).catch(() => setIsPlaying(false));
+      }).catch(() => { setIsPlaying(false); onBroken?.(); });
     }
   };
 

@@ -2301,6 +2301,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Etapa atual do download híbrido (API -> celular) e último motivo de falha, por mensagem, para o card mostrar o que acontece
   const [mediaStageById, setMediaStageById] = useState<Record<string, string>>({});
   const [mediaFailNoteById, setMediaFailNoteById] = useState<Record<string, string>>({});
+  // Audios/imagens que nao carregam (URL expirada, arquivo vazio): viram o cartao "toque para sincronizar"
+  const [brokenMediaIds, setBrokenMediaIds] = useState<Set<string>>(new Set());
+  const markMediaBroken = React.useCallback((id: string) => {
+    setBrokenMediaIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
 
   const handleManualDownloadMedia = async (act: LeadActivity) => {
     if (!selectedLead || downloadingMediaIds.has(act.id)) return;
@@ -2378,6 +2383,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         });
 
         updateLeadData(selectedLead.id, { activities: updatedActivities });
+        setBrokenMediaIds(prev => { const n = new Set(prev); n.delete(act.id); return n; });
         mediaStorageService.register({
           masterId: currentUser?.masterId || currentUser?.id || '',
           venueId: selectedLead.venueId,
@@ -7586,6 +7592,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                         ))
                       );
 
+                      // Audio/foto sem arquivo utilizavel (nao baixado, URL expirada ou que falhou ao carregar): mostra o
+                      // cartao de sincronizacao (API e, se preciso, celular) em vez de um player falso de 1 segundo
+                      const needsMediaRecovery = Boolean(
+                        needsManualDownload ||
+                        brokenMediaIds.has(act.id) ||
+                        (isIncoming && (isAudioMsg || effectiveMediaType === 'image') && !effectiveMediaUrl && resolveMediaMessageIds(act.metadata).length > 0)
+                      );
+
                       if (isIncoming) {
                         // Balão à Esquerda (Lead / Cliente)
                         return (
@@ -7707,9 +7721,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   )}
 
                                   {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
-                                  {needsManualDownload ? (
+                                  {needsMediaRecovery ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                      <div style={{
+                                      <div onClick={() => handleManualDownloadMedia(act)} title="Toque para sincronizar (API e celular)" style={{ cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
@@ -7747,7 +7761,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                           type="button"
                                           onClick={() => handleManualDownloadMedia(act)}
                                           disabled={downloadingMediaIds.has(act.id)}
-                                          title="Salvar mídia"
+                                          title="Sincronizar mídia (API e celular)"
                                           style={{
                                             width: '32px',
                                             height: '32px',
@@ -7824,6 +7838,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                     <WhatsAppAudioMessage
                                       src={effectiveMediaUrl}
                                       durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
+                                      onBroken={() => markMediaBroken(act.id)}
                                       isIncoming={true}
                                       authorName={selectedLead.name}
                                       avatarUrl={(selectedLead as any)?.avatarUrl || (selectedLead as any)?.profilePicUrl}
@@ -7837,7 +7852,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                         style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
                                         onClick={() => setLightboxMedia({ url: effectiveMediaUrl!, type: 'image', title: act.text || 'Foto' })}
                                       >
-                                        <img
+                                        <img onError={() => markMediaBroken(act.id)}
                                           src={effectiveMediaUrl}
                                           alt={act.text || 'Foto'}
                                           style={{
@@ -8297,9 +8312,9 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 )}
 
                                 {/* Conteúdo: Instagram Card, Áudio Player, Foto, Vídeo, Documento ou Texto */}
-                                {needsManualDownload ? (
+                                {needsMediaRecovery ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                    <div style={{
+                                    <div onClick={() => handleManualDownloadMedia(act)} title="Toque para sincronizar (API e celular)" style={{ cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'space-between',
@@ -8420,6 +8435,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                   <WhatsAppAudioMessage
                                     src={effectiveMediaUrl}
                                     durationText={effectiveText?.includes('(') ? effectiveText.match(/\((.*?)\)/)?.[1] : undefined}
+                                    onBroken={() => markMediaBroken(act.id)}
                                     isIncoming={false}
                                     authorName={authorName}
                                     avatarUrl={authorAvatar}
@@ -8433,7 +8449,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
                                       onClick={() => setLightboxMedia({ url: (act.mediaUrl || effectiveMediaUrl)!, type: 'image', title: act.text || 'Foto' })}
                                     >
-                                      <img
+                                      <img onError={() => markMediaBroken(act.id)}
                                         src={act.mediaUrl || effectiveMediaUrl}
                                         alt={act.text || 'Foto'}
                                         style={{
