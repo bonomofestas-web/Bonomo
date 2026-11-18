@@ -14,7 +14,8 @@ import { AdminWhatsAppSyncModal } from './AdminWhatsAppSyncModal';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { uazapiService } from '../../services/uazapiService';
 import { SmartVenueLogo } from '../common/SmartVenueLogo';
-import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
+import { ChannelAvatar } from './ChannelBadge';
+import { channelOfSource } from '../../utils/channels';
 import { contactsOfSource, countByDay, getSourceConnection, leadsOfSource, type LiveSourceStatus } from '../../utils/sourceMetrics';
 import type { Source } from '../../types/sources';
 import type { Venue } from '../../types/admin';
@@ -430,13 +431,15 @@ export const AdminSourcesView: React.FC = () => {
                           >
                             <td style={{ padding: '13px 18px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                {conn.avatar ? (
-                                  <img src={conn.avatar} alt="" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                                ) : (
-                                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    {isWa ? <WhatsAppBrandIcon size={18} color="#10B981" /> : source.type === 'form' ? <FileText size={17} color="var(--adm-accent)" /> : <Gift size={17} color="#8B5CF6" />}
-                                  </div>
-                                )}
+                                <ChannelAvatar size={36} channel={channelOfSource(source)}>
+                                  {conn.avatar ? (
+                                    <img src={conn.avatar} alt="" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {isWa ? <Compass size={17} color="var(--adm-text-muted)" /> : source.type === 'form' ? <FileText size={17} color="var(--adm-accent)" /> : <Gift size={17} color="#8B5CF6" />}
+                                    </div>
+                                  )}
+                                </ChannelAvatar>
                                 <div style={{ minWidth: 0 }}>
                                   <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }} title={source.name}>
                                     {source.name}

@@ -54,6 +54,8 @@ import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
+import { ChannelAvatar } from './ChannelBadge';
+import { channelOfLead } from '../../utils/channels';
 import { funnelSenders, lastSystemSentSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
@@ -5737,12 +5739,14 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     </div>
                   )}
 
-                  {/* Lead Avatar */}
-                  <SafeAvatar
-                    src={lead.avatarUrl}
-                    name={displayName}
-                    size={38}
-                  />
+                  {/* Lead Avatar com o selo do canal (WhatsApp hoje; Instagram, Facebook... quando conectados) */}
+                  <ChannelAvatar size={38} channel={channelOfLead(lead, sources || [])}>
+                    <SafeAvatar
+                      src={lead.avatarUrl}
+                      name={displayName}
+                      size={38}
+                    />
+                  </ChannelAvatar>
 
                   {/* Info Column */}
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>

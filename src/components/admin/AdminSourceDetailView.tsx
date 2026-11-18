@@ -7,7 +7,8 @@ import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, 
 import { useAdminState } from '../../context/AdminStateContext';
 import { sourceService } from '../../services/sourceService';
 import { SmartVenueLogo } from '../common/SmartVenueLogo';
-import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
+import { ChannelAvatar } from './ChannelBadge';
+import { channelOfSource } from '../../utils/channels';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { getSendDisabledIds } from '../../utils/senderResolver';
 import {
@@ -156,13 +157,15 @@ export const AdminSourceDetailView: React.FC<Props> = ({
 
       <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-          {conn.avatar ? (
-            <img src={conn.avatar} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #10B981' }} />
-          ) : (
-            <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {isWhatsApp ? <WhatsAppBrandIcon size={24} color="#10B981" /> : source.type === 'form' ? <FileText size={22} color="var(--adm-accent)" /> : source.type === 'referral' ? <Gift size={22} color="#8B5CF6" /> : <Compass size={22} />}
-            </div>
-          )}
+          <ChannelAvatar size={52} channel={channelOfSource(source)}>
+            {conn.avatar ? (
+              <img src={conn.avatar} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isWhatsApp ? <Compass size={22} color="var(--adm-text-muted)" /> : source.type === 'form' ? <FileText size={22} color="var(--adm-accent)" /> : source.type === 'referral' ? <Gift size={22} color="#8B5CF6" /> : <Compass size={22} />}
+              </div>
+            )}
+          </ChannelAvatar>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{source.name}</div>
             <div style={{ fontSize: '0.84rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>{subtitle}</div>
@@ -170,7 +173,7 @@ export const AdminSourceDetailView: React.FC<Props> = ({
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 800, color: statusPill.color, background: `${statusPill.color}1F`, border: `1px solid ${statusPill.color}55` }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: statusPill.color }} /> {statusPill.text}
               </span>
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>{typeLabel}</span>
+              {!isWhatsApp && <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>{typeLabel}</span>}
               {venue && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
                   <SmartVenueLogo src={venue.logoUrl || (venue as any).logo_url} alt={venue.name} size={18} borderRadius={5} /> {venue.name}
