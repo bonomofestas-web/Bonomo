@@ -180,10 +180,10 @@ export const AdminSourcesView: React.FC = () => {
     return out;
   }, [filteredSources, leads]);
 
-  // Classificacao pelo FUNIL de origem: funil de pos-venda = Pos-venda; todo o resto (inclusive formulario, indicacao e
-  // origem sem funil) entra como lead para fim comercial = Comercial.
-  type VenueGroup = { venueId: string; venue: Venue | null; venueName: string; sources: Source[]; contacts: number };
-  const sections = useMemo(() => {
+  // Uma lista so, por casa. Dentro de cada casa, as origens se dividem pelo FUNIL de origem: funil de pos-venda = Pos-venda;
+  // todo o resto (inclusive formulario, indicacao e origem sem funil) entra como lead para fim comercial = Comercial.
+  type VenueGroup = { venueId: string; venue: Venue | null; venueName: string; commercial: Source[]; postSale: Source[]; total: number; contacts: number };
+  const venueGroups = useMemo(() => {
     const relevantVenues = venues.filter(v => {
       if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') return v.id === activeVenueId;
       return true;
@@ -192,27 +192,22 @@ export const AdminSourcesView: React.FC = () => {
     const sortSources = (list: Source[]) => [...list].sort((a, b) => typeOrder(a) - typeOrder(b) || a.name.localeCompare(b.name));
     const isPostSaleSource = (s: Source) => isPostSaleFunnel(funnels.find(f => f.id === s.funnelId) || (s.funnelId === 'post_sale_default' ? { id: s.funnelId, isPostSale: true } : undefined));
 
-    const groupByVenue = (list: Source[]): VenueGroup[] => {
-      const groups: VenueGroup[] = [];
-      for (const v of relevantVenues) {
-        const vSources = list.filter(s => s.venueId === v.id);
-        if (vSources.length > 0) {
-          groups.push({ venueId: v.id, venue: v, venueName: v.name, sources: sortSources(vSources), contacts: vSources.reduce((acc, s) => acc + (movement[s.id]?.total || 0), 0) });
-        }
-      }
-      const unassigned = list.filter(s => !s.venueId || s.venueId === 'all' || !venues.some(v => v.id === s.venueId));
-      if (unassigned.length > 0) {
-        groups.push({ venueId: 'unassigned', venue: null, venueName: 'Origens gerais', sources: sortSources(unassigned), contacts: unassigned.reduce((acc, s) => acc + (movement[s.id]?.total || 0), 0) });
-      }
-      return groups;
-    };
+    const build = (venueId: string, venue: Venue | null, venueName: string, list: Source[]): VenueGroup => ({
+      venueId, venue, venueName,
+      commercial: sortSources(list.filter(s => !isPostSaleSource(s))),
+      postSale: sortSources(list.filter(isPostSaleSource)),
+      total: list.length,
+      contacts: list.reduce((acc, s) => acc + (movement[s.id]?.total || 0), 0),
+    });
 
-    const commercial = filteredSources.filter(s => !isPostSaleSource(s));
-    const postSale = filteredSources.filter(isPostSaleSource);
-    return [
-      { key: 'commercial', label: 'Comercial', postSale: false, hint: 'Tudo que entra como lead nos funis comerciais (inclui formulários e indicações).', count: commercial.length, groups: groupByVenue(commercial) },
-      { key: 'post_sale', label: 'Pós-venda', postSale: true, hint: 'Números ligados a funis de pós-venda: entram como contato e contrato.', count: postSale.length, groups: groupByVenue(postSale) },
-    ].filter(sec => sec.count > 0);
+    const groups: VenueGroup[] = [];
+    for (const v of relevantVenues) {
+      const vSources = filteredSources.filter(s => s.venueId === v.id);
+      if (vSources.length > 0) groups.push(build(v.id, v, v.name, vSources));
+    }
+    const unassigned = filteredSources.filter(s => !s.venueId || s.venueId === 'all' || !venues.some(v => v.id === s.venueId));
+    if (unassigned.length > 0) groups.push(build('unassigned', null, 'Origens gerais', unassigned));
+    return groups;
   }, [filteredSources, venues, funnels, activeVenueId, movement]);
 
   const connectedCount = filteredSources.filter(s => s.type === 'whatsapp_api' && getSourceConnection(s, liveStatuses[s.id]).isConnected).length;
@@ -366,8 +361,8 @@ export const AdminSourcesView: React.FC = () => {
         </div>
       </div>
 
-      {filteredSources.length === 0 ? (
-        <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', overflow: 'hidden' }}>
+      <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', overflow: 'hidden' }}>
+        {filteredSources.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--adm-text-muted)' }}>
             <Compass size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--adm-text-title)' }}>Nenhuma origem encontrada</div>
@@ -382,135 +377,131 @@ export const AdminSourcesView: React.FC = () => {
               <Plus size={16} /> Cadastrar primeira origem
             </button>
           </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
-          {sections.map(section => (
-            <div key={section.key}>
-              {/* Divisao por funil, no mesmo estilo dos grupos do menu lateral */}
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', margin: '0 4px 10px 4px' }}>
-                <span style={{ width: '30px', height: '30px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: section.postSale ? 'rgba(236, 72, 153, 0.14)' : 'rgba(20, 169, 215, 0.14)' }}>
-                  <FunnelKindIcon postSale={section.postSale} size={16} color={section.postSale ? '#EC4899' : '#14A9D7'} />
-                </span>
-                <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{section.label}</span>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--adm-text-muted)' }}>
-                  {section.count} {section.count === 1 ? 'origem' : 'origens'}
-                </span>
-                <span style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>{section.hint}</span>
-              </div>
-
-              <div className="saas-card" style={{ background: 'var(--adm-bg-card)', border: '1px solid var(--adm-border)', borderRadius: '18px', overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
-                        <th style={th}>Origem</th>
-                        <th style={th}>Funil de origem</th>
-                        <th style={th}>Situação</th>
-                        <th style={th}>Últimos 7 dias</th>
-                        <th style={{ ...th, width: '36px' }} />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--adm-bg-input)', borderBottom: '1px solid var(--adm-border)' }}>
+                  <th style={th}>Origem</th>
+                  <th style={th}>Funil de origem</th>
+                  <th style={th}>Situação</th>
+                  <th style={th}>Últimos 7 dias</th>
+                  <th style={{ ...th, width: '36px' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {venueGroups.map((group, groupIndex) => {
+                  const groupLogo = group.venue ? (group.venue.logoUrl || (group.venue as any)?.logo_url) : undefined;
+                  return (
+                    <React.Fragment key={group.venueId}>
+                      {/* Casa de festa: logo, nome e total */}
+                      <tr style={{ background: 'var(--adm-bg-input)', borderTop: groupIndex > 0 ? '2px solid var(--adm-border)' : 'none', borderBottom: '1px solid var(--adm-border)' }}>
+                        <td colSpan={5} style={{ padding: '10px 18px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <SmartVenueLogo src={groupLogo} alt={group.venueName} size={34} borderRadius={9} />
+                              <span style={{ fontSize: '0.92rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{group.venueName}</span>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                                {group.total} {group.total === 1 ? 'origem' : 'origens'}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
+                              {group.contacts} {group.contacts === 1 ? 'contato' : 'contatos'}
+                            </span>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {section.groups.map((group, groupIndex) => {
-                        const groupLogo = group.venue ? (group.venue.logoUrl || (group.venue as any)?.logo_url) : undefined;
-                        return (
-                          <React.Fragment key={group.venueId}>
-                            {/* Casa de festa: logo, nome e total */}
-                            <tr style={{ background: 'var(--adm-bg-input)', borderTop: groupIndex > 0 ? '2px solid var(--adm-border)' : 'none', borderBottom: '1px solid var(--adm-border)' }}>
-                              <td colSpan={5} style={{ padding: '10px 18px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <SmartVenueLogo src={groupLogo} alt={group.venueName} size={34} borderRadius={9} />
-                                    <span style={{ fontSize: '0.92rem', fontWeight: 900, color: 'var(--adm-text-title)' }}>{group.venueName}</span>
-                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                      {group.sources.length} {group.sources.length === 1 ? 'origem' : 'origens'}
+
+                      {[
+                        { key: 'commercial', label: 'Comercial', postSale: false, list: group.commercial },
+                        { key: 'post_sale', label: 'Pós-venda', postSale: true, list: group.postSale },
+                      ].filter(part => part.list.length > 0).map(part => (
+                        <React.Fragment key={part.key}>
+                          {/* Rotulo discreto do tipo de funil */}
+                          <tr>
+                            <td colSpan={5} style={{ padding: '7px 18px 3px 18px' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--adm-text-muted)', opacity: 0.75 }}>
+                                <FunnelKindIcon postSale={part.postSale} size={11} /> {part.label}
+                              </span>
+                            </td>
+                          </tr>
+
+                          {part.list.map(source => {
+                            const conn = getSourceConnection(source, liveStatuses[source.id]);
+                            const funnel = funnels.find(f => f.id === source.funnelId);
+                            const mv = movement[source.id] || { total: 0, perDay: new Array(7).fill(0), last7: 0 };
+                            const isWa = source.type === 'whatsapp_api';
+                            const needsAttention = isWa && !conn.isChecking && !conn.isConnected;
+                            const subtitle = isWa
+                              ? (conn.rawPhone ? (formatPhone(conn.rawPhone) || conn.rawPhone) : 'Sem número conectado')
+                              : source.type === 'form' ? `/f/${source.slug || ''}` : source.type === 'referral' ? 'Indicações do app' : 'Link rastreável';
+                            const fColor = funnel ? (funnel.badgeColor || (funnel as any)?.color || '#D4AF37') : '#F59E0B';
+
+                            return (
+                              <tr
+                                key={source.id}
+                                onClick={() => openDetail(source)}
+                                style={{ borderBottom: '1px solid var(--adm-border)', cursor: 'pointer', transition: 'background 0.15s ease', boxShadow: needsAttention ? 'inset 3px 0 0 #EF4444' : 'none' }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <td style={{ padding: '13px 18px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                    <ChannelAvatar size={36} channel={channelOfSource(source)}>
+                                      {conn.avatar ? (
+                                        <img src={conn.avatar} alt="" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                                      ) : (
+                                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          {isWa ? <Compass size={17} color="var(--adm-text-muted)" /> : source.type === 'form' ? <FileText size={17} color="var(--adm-accent)" /> : <Gift size={17} color="#8B5CF6" />}
+                                        </div>
+                                      )}
+                                    </ChannelAvatar>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }} title={source.name}>
+                                        {source.name}
+                                      </div>
+                                      <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>{subtitle}</div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td style={{ padding: '13px 18px' }}>
+                                  {funnel ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.78rem', color: fColor }}>
+                                      <FunnelKindIcon postSale={isPostSaleFunnel(funnel)} size={13} /> {funnel.name}
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#F59E0B' }}>Sem funil</span>
+                                  )}
+                                </td>
+
+                                <td style={{ padding: '13px 18px' }}>{renderStatusPill(source)}</td>
+
+                                <td style={{ padding: '13px 18px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <SourceSparkline values={mv.perDay} />
+                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: mv.last7 > 0 ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
+                                      {mv.last7 > 0 ? `+${mv.last7}` : '0'}
                                     </span>
                                   </div>
-                                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--adm-text-muted)' }}>
-                                    {group.contacts} {group.contacts === 1 ? 'contato' : 'contatos'}
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
+                                </td>
 
-                            {group.sources.map(source => {
-                              const conn = getSourceConnection(source, liveStatuses[source.id]);
-                              const funnel = funnels.find(f => f.id === source.funnelId);
-                              const mv = movement[source.id] || { total: 0, perDay: new Array(7).fill(0), last7: 0 };
-                              const isWa = source.type === 'whatsapp_api';
-                              const needsAttention = isWa && !conn.isChecking && !conn.isConnected;
-                              const subtitle = isWa
-                                ? (conn.rawPhone ? (formatPhone(conn.rawPhone) || conn.rawPhone) : 'Sem número conectado')
-                                : source.type === 'form' ? `/f/${source.slug || ''}` : source.type === 'referral' ? 'Indicações do app' : 'Link rastreável';
-                              const fColor = funnel ? (funnel.badgeColor || (funnel as any)?.color || '#D4AF37') : '#F59E0B';
-
-                              return (
-                                <tr
-                                  key={source.id}
-                                  onClick={() => openDetail(source)}
-                                  style={{ borderBottom: '1px solid var(--adm-border)', cursor: 'pointer', transition: 'background 0.15s ease', boxShadow: needsAttention ? 'inset 3px 0 0 #EF4444' : 'none' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--adm-bg-input)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                  <td style={{ padding: '13px 18px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                                      <ChannelAvatar size={36} channel={channelOfSource(source)}>
-                                        {conn.avatar ? (
-                                          <img src={conn.avatar} alt="" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                                        ) : (
-                                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--adm-bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            {isWa ? <Compass size={17} color="var(--adm-text-muted)" /> : source.type === 'form' ? <FileText size={17} color="var(--adm-accent)" /> : <Gift size={17} color="#8B5CF6" />}
-                                          </div>
-                                        )}
-                                      </ChannelAvatar>
-                                      <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontWeight: 800, color: 'var(--adm-text-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '300px' }} title={source.name}>
-                                          {source.name}
-                                        </div>
-                                        <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>{subtitle}</div>
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  <td style={{ padding: '13px 18px' }}>
-                                    {funnel ? (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.78rem', color: fColor }}>
-                                        <FunnelKindIcon postSale={isPostSaleFunnel(funnel)} size={13} /> {funnel.name}
-                                      </span>
-                                    ) : (
-                                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#F59E0B' }}>Sem funil</span>
-                                    )}
-                                  </td>
-
-                                  <td style={{ padding: '13px 18px' }}>{renderStatusPill(source)}</td>
-
-                                  <td style={{ padding: '13px 18px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                      <SourceSparkline values={mv.perDay} />
-                                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: mv.last7 > 0 ? 'var(--adm-text-title)' : 'var(--adm-text-muted)', whiteSpace: 'nowrap' }}>
-                                        {mv.last7 > 0 ? `+${mv.last7}` : '0'}
-                                      </span>
-                                    </div>
-                                  </td>
-
-                                  <td style={{ padding: '13px 12px', textAlign: 'right' }}>
-                                    <ChevronRight size={16} color="var(--adm-text-muted)" />
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                                <td style={{ padding: '13px 12px', textAlign: 'right' }}>
+                                  <ChevronRight size={16} color="var(--adm-text-muted)" />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {modals}
     </div>
