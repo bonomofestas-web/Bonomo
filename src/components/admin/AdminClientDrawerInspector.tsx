@@ -14,7 +14,7 @@ import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { relationshipLabel, eventTypeLabels } from '../../utils/roleLabels';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
-import { AdminLeadInspector } from './AdminLeadInspector';
+import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { ClientVenueEventsCard } from './ClientVenueEventsCard';
 import { contractService } from '../../services/contractService';
 import type { Lead, ClientStage, LeadContact, ContractFunnelPlacement } from '../../types/admin';
@@ -2625,13 +2625,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
 
       {/* Modal de Visualização da Ficha Comercial em Modo Espectador */}
       {previewLeadId && commercialLead && (
-        <AdminLeadInspector
-          lead={commercialLead}
-          onClose={() => setPreviewLeadId(null)}
-          onStageChange={() => {}}
-          readOnly={true}
-          isModal={true}
-        />
+        <AdminLeadReadOnlyModal lead={commercialLead} onClose={() => setPreviewLeadId(null)} />
       )}
     </div>
   );

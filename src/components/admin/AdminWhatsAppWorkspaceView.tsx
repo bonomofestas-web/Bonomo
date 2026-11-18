@@ -49,6 +49,7 @@ import { mediaStorageService } from '../../services/mediaStorageService';
 import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
+import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
@@ -1148,6 +1149,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Side Drawer: Lead Inspector (Ficha do Lead / Contrato)
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(isOpenedFromCrmOrKanban);
+  const [isReadOnlyModalOpen, setIsReadOnlyModalOpen] = useState(false);
   const [highlightMissingFields, setHighlightMissingFields] = useState<boolean>(false);
 
   // Coluna Lateral de Conversas: Recuada por padrão ao abrir pelo CRM / Kanban (Modo Foco)
@@ -6850,8 +6852,21 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 color: 'var(--adm-text-muted)',
               }}>
                 <Eye size={14} color="var(--adm-accent)" />
-                <span><strong>Modo Espectador:</strong> Este lead pertence a <strong>{selectedLead.assignedTo || 'outro colaborador'}</strong>. Apenas visualização permitida.</span>
+                <span style={{ flex: 1 }}><strong>Modo Espectador:</strong> Este lead pertence a <strong>{selectedLead.assignedTo || 'outro colaborador'}</strong>. Apenas visualização permitida.</span>
+                <button
+                  type="button"
+                  onClick={() => setIsReadOnlyModalOpen(true)}
+                  style={{
+                    background: 'var(--adm-accent-bg)', border: '1px solid var(--adm-accent)', borderRadius: '6px',
+                    color: 'var(--adm-accent)', padding: '4px 10px', fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  Visualizar ficha
+                </button>
               </div>
+            )}
+            {isReadOnlyModalOpen && selectedLead && (
+              <AdminLeadReadOnlyModal lead={selectedLead} onClose={() => setIsReadOnlyModalOpen(false)} />
             )}
 
             {/* ── BARRA DE CANAIS DE CONTATO CONECTADOS (PÓS-VENDA) ── */}
