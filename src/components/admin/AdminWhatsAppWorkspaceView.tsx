@@ -1132,7 +1132,19 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   // Focus / Drawer behavior based on entry point
-  const isOpenedFromCrmOrKanban = Boolean(isEmbeddedInFunnel || isPostSale || isPostSaleFunnel);
+  // Somente quando embutido no Kanban (funil comercial ou pos-venda) a ficha abre por padrao.
+  // No modo WhatsApp (menu Mensagens) a conversa fica aberta e a ficha fechada, como no WhatsApp.
+  const isOpenedFromCrmOrKanban = Boolean(isEmbeddedInFunnel);
+
+  // Conversas de terceiros: so master/gerencia/admin/dev veem a aba "Todos" no modo WhatsApp.
+  // Demais usuarios veem apenas leads proprios ou sem responsavel.
+  const canSeeAllConversations = Boolean(
+    isEmbeddedInFunnel ||
+    currentUser?.role === 'gerencia' ||
+    (currentUser as any)?.role === 'admin' ||
+    (currentUser as any)?.role === 'master' ||
+    (currentUser as any)?.isDev
+  );
 
   // Side Drawer: Lead Inspector (Ficha do Lead / Contrato)
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(isOpenedFromCrmOrKanban);
@@ -1992,6 +2004,22 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
             ));
           if (!isMyLead && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
         }
+      } else if (!canSeeAllConversations) {
+        // "Todos" para usuario comum: apenas leads proprios ou ainda sem responsavel
+        const targetUserId = effectiveUser?.id || currentUser?.id;
+        const targetUserName = (effectiveUser?.name || currentUser?.name || '').trim().toLowerCase();
+        const hasAssignee = Boolean(
+          lead.assignedTo || lead.sdrId || lead.closerId ||
+          (lead.sdrName && lead.sdrName.trim()) || (lead.closerName && lead.closerName.trim())
+        );
+        const isMine =
+          Boolean(targetUserId && (lead.sdrId === targetUserId || lead.closerId === targetUserId || lead.assignedTo === targetUserId)) ||
+          Boolean(targetUserName && (
+            (lead.assignedTo && lead.assignedTo.trim().toLowerCase() === targetUserName) ||
+            (lead.sdrName && lead.sdrName.trim().toLowerCase() === targetUserName) ||
+            (lead.closerName && lead.closerName.trim().toLowerCase() === targetUserName)
+          ));
+        if (hasAssignee && !isMine && lead.id !== selectedLeadId && lead.id !== initialLeadId) return false;
       }
 
       // 3. Specific venue filter
@@ -2077,7 +2105,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       }
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
-  }, [sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
+  }, [canSeeAllConversations, sourceLeads, activeFunnel, selectedFunnelId, postSaleFunnels, funnels, activeVenueId, isPostSaleFunnel, quickFilter, leadOwnershipFilter, sortBy, localSortBy, filterVenueId, filterStage, filterCollaboratorId, filterTemperature, searchTerm, searchQuery, currentUser, effectiveUser, viewingAsCollaborator, selectedLeadId, initialLeadId, isEmbeddedInFunnel, collabIds]);
 
   const lastInitialLeadIdRef = useRef<string | undefined>(initialLeadId);
 
@@ -5209,6 +5237,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 >
                   {isPostSaleFunnel ? 'Meus Clientes' : 'Meus Leads'}
                 </button>
+                {canSeeAllConversations && (
                 <button
                   type="button"
                   onClick={() => handleUpdateQuickFilter('all')}
@@ -5227,6 +5256,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                 >
                   Todos
                 </button>
+                )}
               </div>
 
               {/* Search + Filter Button with Gear/Icon */}
