@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { FunnelMultiSelect } from './FunnelMultiSelect';
 import { 
   ArrowLeft, Compass, PhoneCall, FileText,
   Plus, Trash2, Tag,
@@ -79,7 +80,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   }, []);
 
   // WhatsApp Specifics
-  const [whatsappDisplayName, setWhatsappDisplayName] = useState('');
   const [whatsappInstanceId, setWhatsappInstanceId] = useState('');
   const [subSources, setSubSources] = useState<WhatsAppSubSource[]>([]);
   const [isAddSubModalOpen, setIsAddSubModalOpen] = useState(false);
@@ -146,7 +146,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       setStatus(sourceToEdit.status || 'active');
 
       const config = (sourceToEdit.configuration as any) || {};
-      setWhatsappDisplayName(config.whatsappDisplayName || sourceToEdit.name || '');
       setSubSources(config.subSources || []);
       setConnectedPhone(config.connectedPhone || '');
       setConnectedProfileName(config.connectedProfileName || '');
@@ -174,7 +173,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       setVenueId(defaultVenue);
       setType('whatsapp_api');
       setFunnelId(availableFunnels[0]?.id || 'comercial');
-      setWhatsappDisplayName('');
       setWhatsappInstanceId('');
       setSlug('');
       setStatus('active');
@@ -309,7 +307,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
 
     if (newType === 'whatsapp_api') {
       setSlug('');
-      setWhatsappDisplayName(name);
     } else if (newType === 'form') {
       const generated = name
         .toLowerCase()
@@ -324,9 +321,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
   // Auto-slug para formulários
   const handleNameChange = (val: string) => {
     setName(val);
-    if (!whatsappDisplayName) {
-      setWhatsappDisplayName(val);
-    }
     if (!currentSourceId && type === 'form') {
       const generated = val
         .toLowerCase()
@@ -369,7 +363,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
 
       const configuration = {
         ...(type === 'whatsapp_api' ? {
-          whatsappDisplayName: whatsappDisplayName.trim() || name.trim(),
+          whatsappDisplayName: name.trim(),
           instanceName: whatsappInstanceId,
           connectedPhone,
           connectedProfileName,
@@ -443,7 +437,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
       updateSource(currentSourceId, {
         whatsappInstanceId: undefined,
         configuration: {
-          whatsappDisplayName: whatsappDisplayName.trim() || name.trim(),
+          whatsappDisplayName: name.trim(),
           instanceName: '',
           connectedPhone: '',
           connectedProfileName: '',
@@ -787,7 +781,11 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
               required
             />
             <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '5px' }}>
-              Nome identificador para sua equipe comercial saber por onde o lead chegou.
+              {type === 'whatsapp_api'
+                ? (connectedPhone
+                    ? <>Número conectado: <strong style={{ color: 'var(--adm-text-title)' }}>{formatPhone(connectedPhone) || connectedPhone}</strong>. Ele aparece sozinho junto ao nome em todo o sistema.</>
+                    : 'Escolha um nome claro. O número do WhatsApp conectado aparece sozinho depois de conectar.')
+                : 'Nome para sua equipe saber por onde o contato chegou.'}
             </div>
           </div>
 
@@ -1283,32 +1281,16 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                 Funis que também podem enviar mensagens por este número
               </label>
               <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginBottom: '8px' }}>
-                O funil de origem acima sempre pode enviar. Marque os outros funis (etapas do atendimento) que vão responder o cliente por este mesmo número. Dentro de cada funil dá para desabilitar o envio deste número.
+                O funil de origem sempre pode enviar. Marque os outros funis (etapas do atendimento) que vão responder o cliente por este mesmo número. Dentro de cada funil dá para desabilitar o envio deste número.
               </div>
-              {availableVenueFunnels.filter(f => f.id !== funnelId).length === 0 ? (
-                <div style={{ fontSize: '0.74rem', color: 'var(--adm-text-muted)' }}>Nenhum outro funil disponível para esta casa.</div>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {availableVenueFunnels.filter(f => f.id !== funnelId).map(f => {
-                    const checked = senderFunnelIds.includes(f.id);
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setSenderFunnelIds(prev => (prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]))}
-                        style={{
-                          padding: '6px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700,
-                          border: checked ? '1.5px solid #10B981' : '1px solid var(--adm-border)',
-                          background: checked ? 'rgba(16, 185, 129, 0.15)' : 'var(--adm-bg-input)',
-                          color: checked ? '#10B981' : 'var(--adm-text-muted)',
-                        }}
-                      >
-                        {checked ? '✓ ' : ''}{f.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <FunnelMultiSelect
+                options={availableVenueFunnels.map(f => ({ id: f.id, name: f.name }))}
+                value={senderFunnelIds}
+                onChange={setSenderFunnelIds}
+                lockedIds={funnelId ? [funnelId] : []}
+                lockedLabel="Origem"
+                placeholder="Selecionar funis"
+              />
             </div>
           )}
 
@@ -1399,7 +1381,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                   3. Configurações do WhatsApp
                 </h2>
                 <div style={{ fontSize: '0.78rem', color: 'var(--adm-text-muted)', marginTop: '2px' }}>
-                  Defina o apelido do WhatsApp no sistema e cadastre sub-origens por palavra-chave.
+                  O nome da origem identifica este número em todo o sistema. Aqui você só cadastra sub-origens por palavra-chave.
                 </div>
               </div>
             </div>
@@ -1422,32 +1404,6 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                 <span>{connectionStatus === 'connected' ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}</span>
               </div>
             )}
-          </div>
-
-          {/* 1. Nome/Apelido do WhatsApp */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 800, color: 'var(--adm-text-title)', marginBottom: '8px' }}>
-              Apelido do WhatsApp no Sistema *
-            </label>
-            <input
-              type="text"
-              value={whatsappDisplayName}
-              onChange={(e) => setWhatsappDisplayName(e.target.value)}
-              placeholder="Ex: WhatsApp Comercial Principal, WhatsApp Recepção"
-              className="adm-input"
-              style={{
-                width: '100%',
-                maxWidth: '500px',
-                height: '44px',
-                borderRadius: '10px',
-                fontSize: '0.84rem',
-                padding: '0 14px',
-                boxSizing: 'border-box',
-              }}
-            />
-            <div style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)', marginTop: '4px' }}>
-              Como esse canal será exibido nas conversas do chat e nos relatórios.
-            </div>
           </div>
 
           {/* 2. Sub-origens Inteligentes (Modal Popup) */}
@@ -1611,7 +1567,7 @@ export const AdminSourceEditorView: React.FC<AdminSourceEditorViewProps> = ({
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--adm-text-title)' }}>
-                          {connectedProfileName || whatsappDisplayName || name || 'WhatsApp Oficial'}
+                          {connectedProfileName || name || 'WhatsApp Oficial'}
                         </div>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: '#10B981', color: '#FFF' }}>
                           <ShieldCheck size={11} /> Conectado

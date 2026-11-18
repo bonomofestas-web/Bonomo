@@ -6,6 +6,48 @@ import { uazapiService } from './uazapiService';
 
 export const sourceService = {
   /**
+   * Mensagens RECEBIDAS por esta origem nos ultimos dias (so o horario, para o grafico do detalhe).
+   * Consulta pontual ao abrir o detalhe; colunas minimas e janela curta para respeitar o egress.
+   */
+  async getReceivedMessageTimes(sourceId: string, days = 7): Promise<string[]> {
+    if (!isSupabaseConfigured || !sourceId) return [];
+    try {
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('timestamp')
+        .eq('type', 'contact')
+        .ilike('title', '%recebid%')
+        .gte('timestamp', since)
+        .or(`metadata->>senderSourceId.eq.${sourceId},metadata->>sourceId.eq.${sourceId}`)
+        .limit(5000);
+      if (error) { console.warn('Erro ao buscar mensagens da origem:', error.message); return []; }
+      return (data || []).map((r: any) => r.timestamp as string).filter(Boolean);
+    } catch (err) {
+      console.warn('Falha ao buscar mensagens da origem:', err);
+      return [];
+    }
+  },
+
+  /** Contratos gerados por leads desta origem (escopado por Master; contrato guarda source_id). */
+  async getContractsBySource(sourceId: string, masterId: string): Promise<{ id: string; contactId?: string; status: string; total: number; createdAt: string }[]> {
+    if (!isSupabaseConfigured || !sourceId || !masterId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('contracts')
+        .select('id, contact_id, approval_status, total_amount, created_at')
+        .eq('source_id', sourceId)
+        .eq('master_id', masterId)
+        .neq('approval_status', 'canceled');
+      if (error) { console.warn('Erro ao buscar contratos da origem:', error.message); return []; }
+      return (data || []).map((r: any) => ({ id: r.id, contactId: r.contact_id || undefined, status: r.approval_status, total: Number(r.total_amount || 0), createdAt: r.created_at }));
+    } catch (err) {
+      console.warn('Falha ao buscar contratos da origem:', err);
+      return [];
+    }
+  },
+
+  /**
    * Busca todas as origens com contadores de eventos agregados
    */
   async getAll(): Promise<Source[]> {

@@ -472,6 +472,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     return () => window.removeEventListener('admin_switch_tab', handleSwitchTab);
   }, [handleOpenLeadInWhatsApp]);
 
+  // Abrir um lead no funil a partir de telas filhas (ex.: detalhe da origem)
+  useEffect(() => {
+    const onOpenLead = (e: any) => {
+      if (e.detail?.leadId) handleOpenLeadInFunnel(e.detail.leadId, e.detail.funnelId);
+    };
+    window.addEventListener('admin_open_lead', onOpenLead);
+    return () => window.removeEventListener('admin_open_lead', onOpenLead);
+  }); // sem dependencias: handleOpenLeadInFunnel e recriado a cada render
+
   // Selected announcement to view/re-read from notifications
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState<import('../../types/admin').SystemAnnouncement | null>(null);
 
