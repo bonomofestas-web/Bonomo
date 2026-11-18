@@ -52,7 +52,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { contactService } from '../../services/contactService';
 import { contractService } from '../../services/contractService';
 import { formatPhone } from '../../utils/phoneFormatter';
-import type { Contact, Lead, Contract, AdminTabType } from '../../types/admin';
+import type { Contact, Lead, Contract, ContractFunnelPlacement, AdminTabType } from '../../types/admin';
 
 interface AdminGlobalSearchProps {
   activeTab: AdminTabType;
@@ -94,6 +94,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
   // Resultados assíncronos de contatos e contratos
   const [contactsResults, setContactsResults] = useState<Contact[]>([]);
   const [contractsResults, setContractsResults] = useState<Contract[]>([]);
+  // Atendimentos de pos-venda (placements) dos contratos encontrados
+  const [placementsResults, setPlacementsResults] = useState<ContractFunnelPlacement[]>([]);
   const [loadingAsync, setLoadingAsync] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +168,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
     if (!isOpen || !searchQuery.trim() || searchQuery.trim().length < 2) {
       setContactsResults([]);
       setContractsResults([]);
+      setPlacementsResults([]);
       return;
     }
 
@@ -187,6 +190,8 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
 
         setContactsResults(cList);
         setContractsResults(ctrList);
+        const approvedIds = ctrList.filter(c => c.approvalStatus === 'approved').map(c => c.id);
+        setPlacementsResults(await contractService.getPlacementsByContracts(approvedIds, scopedMasterId));
       } catch (err) {
         console.error('[Kommo Search] Erro na busca remota:', err);
       } finally {
@@ -798,13 +803,23 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                                   {matchedLeads.length > 0 && (
                                     <div style={{ marginTop: '4px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                       {matchedLeads.map(l => (
-                                        <span key={l.id} style={{
+                                        <span key={l.id}
+                                          role="button"
+                                          title="Abrir este lead no funil"
+                                          onClick={(e) => {
+                                            // O chip abre o LEAD no funil; o restante do card abre o contato
+                                            e.stopPropagation();
+                                            onOpenLead(l.id, l.funnelId);
+                                            handleClose();
+                                          }}
+                                          style={{
                                           fontSize: '0.66rem',
                                           padding: '1px 6px',
                                           borderRadius: '4px',
                                           backgroundColor: 'rgba(16, 185, 129, 0.15)',
                                           color: '#34D399',
                                           fontWeight: 600,
+                                          cursor: 'pointer',
                                         }}>
                                           Lead: {funnels.find(f => f.id === l.funnelId)?.name || 'Comercial'} ({getStageRealName(l)})
                                         </span>
@@ -948,7 +963,7 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                         letterSpacing: '0.5px',
                       }}>
                         <FileText size={14} />
-                        Contratos ({displayContracts.length})
+                        Contratos - documento ({displayContracts.length})
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
@@ -1032,6 +1047,60 @@ export const AdminGlobalSearch: React.FC<AdminGlobalSearchProps> = ({
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. ATENDIMENTO PÓS-VENDA (placements: funil, etapa e responsável) */}
+                  {(activeCategory === 'all' || activeCategory === 'contracts') && placementsResults.length > 0 && (
+                    <div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px',
+                        color: '#06B6D4', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px',
+                      }}>
+                        <Briefcase size={14} />
+                        Atendimento pós-venda ({placementsResults.length})
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '8px' }}>
+                        {placementsResults.map(p => {
+                          const ctr = contractsResults.find(c => c.id === p.contractId);
+                          const funnel = funnels.find(f => f.id === p.funnelId);
+                          const stageName = funnel?.stages?.find(s => s.id === p.stageId)?.name || p.stageId;
+                          const owner = collaborators?.find(c => c.id === p.assignedTo)?.name;
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                onNavigateTab('post-sale-crm', p.funnelId, { clientId: ctr?.clientId });
+                                handleClose();
+                              }}
+                              style={{
+                                padding: '12px 14px', borderRadius: '8px', cursor: 'pointer',
+                                backgroundColor: isLight ? '#F8FAFC' : '#162238',
+                                border: `1px solid ${isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <strong style={{ color: isLight ? '#0F172A' : '#FFFFFF', fontSize: '0.84rem' }}>
+                                    {ctr?.clientSnapshot?.name || ctr?.contact?.name || 'Cliente'}
+                                  </strong>
+                                  {ctr?.contractCode && (
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: isLight ? '#B45309' : '#D4AF37' }}>{ctr.contractCode}</span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: isLight ? '#64748B' : '#94A3B8', marginTop: '3px' }}>
+                                  {p.funnelName} • Etapa: {stageName}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', marginTop: '2px', color: owner ? '#06B6D4' : '#F59E0B', fontWeight: 600 }}>
+                                  Responsável: {owner || 'Sem responsável'}
+                                </div>
+                              </div>
+                              <ChevronRight size={16} color="#06B6D4" style={{ flexShrink: 0 }} />
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

@@ -1135,6 +1135,41 @@ export const contractService = {
   },
 
   /**
+   * Colocacoes de varios contratos de uma vez (busca global), sempre escopado por master_id.
+   */
+  async getPlacementsByContracts(
+    contractIds: string[],
+    masterId: string
+  ): Promise<ContractFunnelPlacement[]> {
+    if (!isSupabaseConfigured || contractIds.length === 0 || !masterId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('contract_funnel_placements')
+        .select('id, master_id, contract_id, funnel_id, stage_id, status, assigned_to, order_index, created_at, updated_at, funnel:commercial_funnels(id, name)')
+        .in('contract_id', contractIds)
+        .eq('master_id', masterId)
+        .order('order_index', { ascending: true });
+      if (error || !data) return [];
+      return data.map((p: any) => ({
+        id: p.id,
+        masterId: p.master_id,
+        contractId: p.contract_id,
+        funnelId: p.funnel_id,
+        funnelName: p.funnel?.name || 'Funil Pós-Venda',
+        stageId: p.stage_id,
+        status: p.status,
+        assignedTo: p.assigned_to,
+        orderIndex: p.order_index,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+      }));
+    } catch (err) {
+      console.error('Exceção em getPlacementsByContracts:', err);
+      return [];
+    }
+  },
+
+  /**
    * Colocações (funis de pós-venda) do(s) contrato(s) ligados a um client legado.
    * Sempre escopado por master_id.
    */

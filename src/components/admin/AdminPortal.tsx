@@ -259,6 +259,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Abertura direta de contrato (documento) e de contrato na esteira (cliente no funil de pos-venda)
   const [openContractId, setOpenContractId] = useState<string | null>(null);
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
   const [openClientId, setOpenClientId] = useState<string | null>(null);
 
   const handleSelectTab = (tab: AdminTabType, funnelId?: string | null) => {
@@ -703,6 +704,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       case 'contacts':
         return (
           <AdminContactsView
+            initialContactId={openContactId}
+            onInitialContactOpened={() => setOpenContactId(null)}
             onNavigateTab={(tab, params) => {
               if (tab === 'whatsapp' && params?.phone) {
                 setActiveWhatsAppSearchQuery(params.phone);
@@ -1305,10 +1308,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 handleOpenLeadInFunnel(leadId, funnelId);
               }}
               onOpenContact={(contactId) => {
-                try {
-                  localStorage.setItem('f5_selected_contact_id', contactId);
-                } catch { }
-                setActiveTab('contacts');
+                setOpenContactId(contactId);
+                handleSelectTab('contacts');
               }}
               onFilterFunnelLeads={(query) => {
                 if (typeof window !== 'undefined') {

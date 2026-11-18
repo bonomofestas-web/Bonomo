@@ -15,6 +15,8 @@ import type { Contact, ContactDependent, Lead, Contract, AdminTabType } from '..
 interface AdminContactsViewProps {
   onNavigateTab?: (tab: AdminTabType, params?: any) => void;
   onOpenLead?: (leadId: string, funnelId?: string) => void;
+  initialContactId?: string | null; // Contato a abrir (vindo da busca global)
+  onInitialContactOpened?: () => void;
 }
 
 // Sanitização de nomes na UI para remover emojis gráficos de cadastros externos
@@ -26,6 +28,8 @@ function cleanDisplayName(name?: string): string {
 export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   onNavigateTab,
   onOpenLead,
+  initialContactId,
+  onInitialContactOpened,
 }) => {
   const {
     currentUser,
@@ -41,6 +45,8 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const selectedContactRef = React.useRef<Contact | null>(null);
+  selectedContactRef.current = selectedContact;
   const [loading, setLoading] = useState(true);
   const [localSearch, setLocalSearch] = useState('');
 
@@ -148,6 +154,9 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
       setContacts(res);
       setHasMore(res.length === CONTACTS_PAGE_SIZE);
 
+      // Selecao vinda da busca global (ou ja feita pelo usuario) nunca e sobrescrita pelo recarregamento da lista
+      if (selectedContactRef.current) return;
+
       // Checa se há um contato selecionado vindo da busca global
       const savedContactId = typeof window !== 'undefined' ? localStorage.getItem('f5_selected_contact_id') : null;
       if (savedContactId) {
@@ -174,6 +183,24 @@ export const AdminContactsView: React.FC<AdminContactsViewProps> = ({
   useEffect(() => {
     loadContacts();
   }, [loadContacts]);
+
+  // Abre o contato escolhido na busca global, mesmo fora da primeira pagina da lista
+  useEffect(() => {
+    if (!initialContactId || !scopedMasterId) return;
+    let cancelled = false;
+    (async () => {
+      const found = await contactService.getContactById(initialContactId, scopedMasterId);
+      if (cancelled) return;
+      if (found) {
+        setLocalSearch('');
+        setSelectedContact(found);
+      } else {
+        toast.error('Contato não encontrado.');
+      }
+      onInitialContactOpened?.();
+    })();
+    return () => { cancelled = true; };
+  }, [initialContactId, scopedMasterId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listener para evento de novo contato disparado pela barra superior
   useEffect(() => {
