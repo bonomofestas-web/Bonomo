@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, Pencil, QrCode, History, X, Copy, Check, Code, Power, Users, MessageCircle, FileSignature, Target, Crown,
+  ArrowLeft, Pencil, QrCode, History, X, Copy, Check, Code, Power, Users, MessageCircle, FileSignature, Target,
   Compass, FileText, Gift, AlertTriangle,
 } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -8,6 +8,7 @@ import { useAdminState } from '../../context/AdminStateContext';
 import { sourceService } from '../../services/sourceService';
 import { SmartVenueLogo } from '../common/SmartVenueLogo';
 import { ChannelAvatar } from './ChannelBadge';
+import { FunnelKindIcon } from './FunnelKindIcon';
 import { channelOfSource } from '../../utils/channels';
 import { formatPhone } from '../../utils/phoneFormatter';
 import { getSendDisabledIds } from '../../utils/senderResolver';
@@ -180,7 +181,7 @@ export const AdminSourceDetailView: React.FC<Props> = ({
                 </span>
               )}
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 700, color: originFunnel ? 'var(--adm-text-title)' : '#F59E0B' }}>
-                {originFunnel?.isPostSale ? <Crown size={13} /> : <Target size={13} />} {originFunnel ? `Origem: ${originFunnel.name}` : 'Sem funil de origem'}
+                <FunnelKindIcon postSale={Boolean(originFunnel?.isPostSale)} size={13} /> {originFunnel ? `Origem: ${originFunnel.name}` : 'Sem funil de origem'}
               </span>
             </div>
           </div>
@@ -195,7 +196,7 @@ export const AdminSourceDetailView: React.FC<Props> = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
           {kpi(<Users size={13} />, 'Contatos', people.people.length, `7 dias: +${newPeople7} · 30 dias: +${newPeople30}`, 'var(--adm-accent)')}
           {kpi(<Target size={13} />, 'Leads comerciais', people.commercialLeads, 'Cards em funis comerciais')}
-          {(isPostSaleOrigin || people.clients > 0) && kpi(<Crown size={13} />, 'Clientes', people.clients, 'Atendimento de pós-venda')}
+          {(isPostSaleOrigin || people.clients > 0) && kpi(<FunnelKindIcon postSale size={13} />, 'Clientes', people.clients, 'Atendimento de pós-venda')}
           {kpi(<FileSignature size={13} />, 'Contratos', contracts === null ? '...' : contracts.length, contracts === null ? undefined : brl(contractsTotal), '#8B5CF6')}
           {isWhatsApp && kpi(<MessageCircle size={13} />, 'Mensagens (7 dias)', messageTimes === null ? '...' : messages7, 'Recebidas por este número', '#10B981')}
         </div>
