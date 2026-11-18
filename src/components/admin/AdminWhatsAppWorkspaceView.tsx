@@ -54,6 +54,7 @@ import { WhatsAppFormattingToolbar } from './WhatsAppFormattingToolbar';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { AdminClientDrawerInspector } from './AdminClientDrawerInspector';
 import { AdminLeadReadOnlyModal } from './AdminLeadReadOnlyModal';
+import { funnelSenders, lastSystemSentSourceId, recommendSender, readManualSender, saveManualSender } from '../../utils/senderResolver';
 import { AdminNewLeadModal } from './AdminNewLeadModal';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminTaskDetailModal, renderTaskTypeLucideIcon } from './AdminTaskDetailModal';
@@ -2916,30 +2917,33 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     setQuickFollowupNote('');
   };
 
-  // WhatsApp Sender Selection isolado e vinculado estritamente à Casa de Festa do Lead (REGRA DE OURO F5 SYSTEM: VAZAMENTO ZERO ENTRE UNIDADES)
+  // Instancias disponiveis para responder: as do FUNIL ATUAL do lead/contrato, com envio habilitado (check do funil).
+  // Uma instancia pertence a um unico funil; lead transferido de funil so enxerga as instancias do funil novo.
+  const senderFunnelId = selectedLead?.funnelId || (selectedLead?.isClient ? (activeFunnelId || undefined) : undefined);
   const venueSenderSources = useMemo(() => {
     const allWhatsappSources = (sources || []).filter(
       s => s.type === 'whatsapp_api' &&
         Boolean(getSourceInstanceToken(s) || (s.configuration as any)?.connectedPhone)
     );
 
-    // 1. Se o Lead possui unidade definida, ele SÓ PODE ser respondido por instâncias desta unidade
+    // Isolamento por unidade continua valendo (vazamento zero entre unidades)
     const leadVenueId = selectedLead?.venueId;
-    if (leadVenueId && leadVenueId !== 'all' && leadVenueId !== 'multi') {
-      return allWhatsappSources.filter(s => s.venueId === leadVenueId);
-    }
+    const byVenue = allWhatsappSources.filter(s => {
+      if (leadVenueId && leadVenueId !== 'all' && leadVenueId !== 'multi') return s.venueId === leadVenueId;
+      if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') return s.venueId === activeVenueId;
+      return true;
+    });
 
-    // 2. Se o lead não possui unidade definida mas há uma unidade ativa no painel
-    if (activeVenueId && activeVenueId !== 'all' && activeVenueId !== 'multi') {
-      return allWhatsappSources.filter(s => s.venueId === activeVenueId);
-    }
-
-    // 3. Apenas para visão global irrestrita (leads multiunidades sem sede física fixa)
-    return allWhatsappSources;
-  }, [sources, selectedLead?.venueId, activeVenueId]);
+    // Lead sem funil (funil e opcional): vale a regra por casa, respeitando apenas o check de envio
+    if (!senderFunnelId) return byVenue.filter(s => s.sendEnabled !== false);
+    return funnelSenders(byVenue, senderFunnelId, () => true);
+  }, [sources, selectedLead?.venueId, senderFunnelId, activeVenueId, getSourceInstanceToken]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
   const manuallySelectedSenderLeadIdRef = useRef<string | null>(null);
+
+  // Chip da ultima mensagem enviada PELO SISTEMA para este lead
+  const lastSentSourceId = useMemo(() => lastSystemSentSourceId(selectedLead?.activities), [selectedLead?.activities]);
 
   useEffect(() => {
     if (!selectedLead) {
@@ -2947,88 +2951,17 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       manuallySelectedSenderLeadIdRef.current = null;
       return;
     }
-
-    // Se o usuário selecionou manualmente a instância para este lead, preserva a escolha do usuário
-    if (manuallySelectedSenderLeadIdRef.current === selectedLead.id && selectedSenderSourceId) {
-      if (venueSenderSources.some(s => s.id === selectedSenderSourceId)) {
-        return;
-      }
-    }
-
-    const leadVenueId = selectedLead.venueId;
-    const funnelPriorities = (activeFunnel as any)?.priorityWhatsappPerVenue as Record<string, string> | undefined;
-
-    // 1. Regra Oficial F5 System: Se nós já enviamos mensagem para este lead anteriormente,
-    // prioriza a instância que disparou a ÚLTIMA mensagem enviada por nós (desde que esteja online)
-    const outgoingActivities = (selectedLead.activities || [])
-      .filter(a => {
-        const isFromMe = (a.type === 'contact' && a.authorId !== 'lead') || a.status === 'sent' || (a.metadata as any)?.direction === 'outgoing';
-        const instId = a.instanceId || (a.metadata as any)?.instanceId || (a.metadata as any)?.sourceId;
-        return isFromMe && instId;
-      })
-      .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-
-    const lastOutboundInstanceId = outgoingActivities[0]?.instanceId ||
-      (outgoingActivities[0]?.metadata as any)?.instanceId ||
-      (outgoingActivities[0]?.metadata as any)?.sourceId;
-
-    if (lastOutboundInstanceId) {
-      const foundLastSender = venueSenderSources.find(s => s.id === lastOutboundInstanceId);
-      if (foundLastSender && isSourceOnline(foundLastSender)) {
-        setSelectedSenderSourceId(lastOutboundInstanceId);
-        return;
-      }
-    }
-
-    // 2. Número Principal / Prioritário configurado no Funil para a Casa de Festa deste Lead
-    if (leadVenueId && funnelPriorities?.[leadVenueId]) {
-      const targetId = funnelPriorities[leadVenueId];
-      const targetSource = venueSenderSources.find(s => s.id === targetId);
-      if (targetSource && isSourceOnline(targetSource)) {
-        setSelectedSenderSourceId(targetId);
-        return;
-      } else if (targetSource) {
-        setSelectedSenderSourceId(targetId);
-        return;
-      }
-    }
-
-    // 3. WhatsApp Padrão do Funil (Número Principal Global do Funil)
-    const funnelDefaultId = (activeFunnel as any)?.defaultWhatsAppSourceId || (activeFunnel as any)?.defaultWhatsappSourceId;
-    if (funnelDefaultId) {
-      const foundDef = venueSenderSources.find(s => s.id === funnelDefaultId);
-      if (foundDef && isSourceOnline(foundDef)) {
-        setSelectedSenderSourceId(funnelDefaultId);
-        return;
-      } else if (foundDef) {
-        setSelectedSenderSourceId(funnelDefaultId);
-        return;
-      }
-    }
-
-    // 4. Número pelo qual o Lead veio (sourceId do lead, se for WhatsApp e estiver online)
-    if (selectedLead.sourceId) {
-      const foundSource = venueSenderSources.find(s => s.id === selectedLead.sourceId);
-      if (foundSource && isSourceOnline(foundSource)) {
-        setSelectedSenderSourceId(selectedLead.sourceId);
-        return;
-      }
-    }
-
-    // 5. Primeiro WhatsApp conectado ONLINE disponível para a Casa de Festa deste Lead
-    const firstOnline = venueSenderSources.find(s => isSourceOnline(s));
-    if (firstOnline) {
-      setSelectedSenderSourceId(firstOnline.id);
-      return;
-    }
-
-    // 6. Fallback geral
-    if (venueSenderSources.length > 0) {
-      setSelectedSenderSourceId(venueSenderSources[0].id);
-    } else {
-      setSelectedSenderSourceId('');
-    }
-  }, [selectedLead?.id, selectedLead?.venueId, selectedLead?.sourceId, activeFunnel, venueSenderSources]);
+    // Escolha manual (desta sessao ou salva): vale enquanto o chip continuar disponivel no funil atual do lead
+    const manualId = (manuallySelectedSenderLeadIdRef.current === selectedLead.id && selectedSenderSourceId)
+      ? selectedSenderSourceId
+      : readManualSender(selectedLead.id);
+    const rec = recommendSender(venueSenderSources.map(s => s.id), {
+      manualId,
+      lastSentId: lastSentSourceId,
+      originId: selectedLead.sourceId,
+    });
+    setSelectedSenderSourceId(rec?.id || '');
+  }, [selectedLead?.id, selectedLead?.sourceId, lastSentSourceId, venueSenderSources]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const baseSenderSource = useMemo(() => {
     return venueSenderSources.find(s => s.id === selectedSenderSourceId) || venueSenderSources[0] || null;
@@ -3051,14 +2984,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return venueSenderSources.find(s => s.id !== activeSenderSource?.id && isSourceOnline(s)) || null;
   }, [venueSenderSources, activeSenderSource]);
 
-  const activeSenderToken = useMemo(() => {
-    if (activeSenderSource) {
-      const tok = getSourceInstanceToken(activeSenderSource);
-      if (tok) return tok;
+  const activeSenderToken = useMemo(
+    () => (activeSenderSource ? getSourceInstanceToken(activeSenderSource) : ''),
+    [activeSenderSource, getSourceInstanceToken],
+  );
+
+  // Garantia antes de qualquer envio: precisa haver chip habilitado no funil e ele precisa estar conectado.
+  // Nunca troca de numero sozinho; quem decide e o usuario.
+  const ensureSenderReady = useCallback((): boolean => {
+    if (!activeSenderSource || !activeSenderToken) {
+      toast.warning('Nenhum WhatsApp habilitado para envio neste funil. Habilite um número nas configurações do funil.');
+      return false;
     }
-    const anyWa = (sources || []).find(s => s.type === 'whatsapp_api' && getSourceInstanceToken(s));
-    return getSourceInstanceToken(anyWa);
-  }, [activeSenderSource, sources]);
+    if (isSenderDisconnected) {
+      toast.error(`O WhatsApp ${activeSenderSource.name} está desconectado. Reconecte ou escolha outro número do funil.`);
+      return false;
+    }
+    return true;
+  }, [activeSenderSource, activeSenderToken, isSenderDisconnected]);
 
   // Sincronização de foto de perfil do WhatsApp via UAZAPI:
   // - Trigger: quando a conversa é aberta E avatar_refreshed_at > 7 dias ou null
@@ -3282,9 +3225,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Obtém metadados enriquecidos da origem / WhatsApp que disparou a mensagem internamente
   const getAppSenderMetadata = useCallback(() => {
-    const effectiveSender = (channelExclusiveSource || !isSenderDisconnected || !connectedAlternativeSource)
-      ? activeSenderSource
-      : connectedAlternativeSource;
+    const effectiveSender = activeSenderSource;
     const cleanInfo = effectiveSender ? getSourceCleanLabel(effectiveSender) : null;
     const avatar = effectiveSender ? getSourceAvatar(effectiveSender) : undefined;
     const rawPhone = (effectiveSender?.configuration as any)?.connectedPhone || (effectiveSender?.configuration as any)?.whatsappNumber || effectiveSender?.whatsappInstanceId || '';
@@ -3293,6 +3234,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
     return {
       sentFromApp: true,
+      instanceId: effectiveSender?.id,
       senderSourceId: effectiveSender?.id,
       senderSourceName: senderName,
       senderPhone: rawPhone,
@@ -3301,11 +3243,12 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       channelId: (activePostSaleChannelId !== 'geral') ? activePostSaleChannelId : undefined,
       channelName: isChannelActive ? activePostSaleChannel?.name : undefined,
     };
-  }, [channelExclusiveSource, isSenderDisconnected, connectedAlternativeSource, activeSenderSource, getSourceCleanLabel, getSourceAvatar, activePostSaleChannel, activePostSaleChannelId]);
+  }, [activeSenderSource, getSourceCleanLabel, getSourceAvatar, activePostSaleChannel, activePostSaleChannelId]);
 
   // Envio do anexo pendente no chat (ex: comprovante de agendamento compartilhado)
   const handleSendPendingAttachment = async (customCaption?: string) => {
     if (!pendingAttachment || !selectedLead || isLeadSpectator) return;
+    if (!ensureSenderReady()) return;
     const attachmentToSend = pendingAttachment;
     setPendingAttachment(null);
 
@@ -3471,6 +3414,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       return;
     }
 
+    if (!ensureSenderReady()) return;
+
     newActivity = {
       id: generateUuid(),
       leadId: selectedLead.id,
@@ -3503,15 +3448,6 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     let targetPhone = selectedRecipientPhone || selectedLead.phone;
     let effectiveToken = activeSenderToken;
 
-    // Se o remetente atual estiver desconectado mas houver outro online, auto-chaveia APENAS se NÃO for canal setorial com chip exclusivo
-    if (!channelExclusiveSource && isSenderDisconnected && connectedAlternativeSource) {
-      const altToken = getSourceInstanceToken(connectedAlternativeSource);
-      if (altToken) {
-        effectiveToken = altToken;
-        setSelectedSenderSourceId(connectedAlternativeSource.id);
-        manuallySelectedSenderLeadIdRef.current = selectedLead.id;
-      }
-    }
 
     if (targetPhone && effectiveToken) {
       // Limpa presença de digitando imediatamente para liberar a entrega
@@ -3623,6 +3559,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   // Reenviar mensagem que falhou
   const handleRetryMessage = async (activity: LeadActivity) => {
     if (!selectedLead || !activity || retryingMessageId) return;
+    if (!ensureSenderReady()) return;
 
     const targetPhone = selectedRecipientPhone || selectedLead.phone;
     if (!activeSenderToken || !targetPhone) {
@@ -4039,6 +3976,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   ) => {
     const fileList = e.target.files ? Array.from(e.target.files) : [];
     if (fileList.length === 0 || !selectedLead) return;
+    if (!ensureSenderReady()) { e.target.value = ''; return; }
 
     // Reseta o valor do input imediatamente
     e.target.value = '';
@@ -4165,6 +4103,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
 
   // Envio de Figurinha / Sticker no WhatsApp
   const handleSendSticker = async (stickerUrl: string) => {
+    if (!ensureSenderReady()) return;
     if (!selectedLead || isLeadSpectator || !stickerUrl) return;
     setIsEmojiPickerOpen(false);
 
@@ -4336,6 +4275,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   const stopAndSendAudio = () => {
+    if (!ensureSenderReady()) return;
     if (!selectedLead) return;
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
 
@@ -12219,6 +12159,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                       setSelectedSenderSourceId(src.id);
                                       if (selectedLead) {
                                         manuallySelectedSenderLeadIdRef.current = selectedLead.id;
+                                        saveManualSender(selectedLead.id, src.id);
                                       }
                                       setIsSenderDropdownOpen(false);
                                     }}
@@ -12627,6 +12568,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                                 type="button"
                                 onClick={() => {
                                   setSelectedSenderSourceId(connectedAlternativeSource.id);
+                                  if (selectedLead) saveManualSender(selectedLead.id, connectedAlternativeSource.id);
                                   if (selectedLead) {
                                     manuallySelectedSenderLeadIdRef.current = selectedLead.id;
                                   }

@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { AdminTransferLeadVenueModal } from './AdminTransferLeadVenueModal';
 import { AdminDuplicateLeadModal } from './AdminDuplicateLeadModal';
 import { canChangeLeadVenue } from '../../utils/accessPermissions';
+import { lastSystemSentSourceId } from '../../utils/senderResolver';
 import { validateLeadForWon, getMissingLeadFieldKeys } from '../../utils/leadValidation';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
@@ -1013,6 +1014,9 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
 
   const leadVenue = venues.find(v => v.id === lead.venueId);
   const leadSource = lead.sourceId ? sources.find(s => s.id === lead.sourceId) : undefined;
+  // Chip da ultima mensagem enviada pelo sistema: so e destacado quando difere do chip da origem
+  const lastSentSourceId = lastSystemSentSourceId(lead.activities);
+  const lastSentSource = lastSentSourceId && lastSentSourceId !== lead.sourceId ? sources.find(s => s.id === lastSentSourceId) : undefined;
   const sdrCollab = lead.sdrId ? collaborators.find(c => c.id === lead.sdrId) : undefined;
 
   const canAccessPostSale = effectiveUser?.role === 'master' || effectiveUser?.role === 'admin' || effectiveUser?.role === 'pos_venda' || (effectiveUser as any)?.sectors?.includes('pos_venda');
@@ -5890,6 +5894,15 @@ const AdminLeadInspectorComponent: React.FC<AdminLeadInspectorProps> = ({
                   ? `Lead captado através da origem rastreada "${leadSource.name}".`
                   : 'Lead inserido diretamente pela equipe ou formulário institucional.'}
               </div>
+
+              {lastSentSource && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--adm-text-muted)' }}>Número usado na última mensagem:</span>
+                  <strong style={{ fontSize: '0.80rem', color: 'var(--adm-text-title)' }}>
+                    {lastSentSource.name}{(lastSentSource.configuration as any)?.connectedPhone ? ` (${(lastSentSource.configuration as any).connectedPhone})` : ''}
+                  </strong>
+                </div>
+              )}
 
               {/* Informações de Origem em Layout Vertical (Uma abaixo da outra) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--adm-border)' }}>

@@ -254,6 +254,8 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
   const [defaultWhatsAppSourceId, setDefaultWhatsAppSourceId] = useState<string>('');
   const [priorityWhatsappPerVenue, setPriorityWhatsappPerVenue] = useState<Record<string, string>>({});
   const [enabledWhatsAppSourceIds, setEnabledWhatsAppSourceIds] = useState<string[]>([]);
+  // Check "enviar mensagens" por instancia: desmarcado = so recebe (continua entrando no funil, nao aparece para responder)
+  const [sendEnabledBySource, setSendEnabledBySource] = useState<Record<string, boolean>>({});
   
   // Custom Funnel Data: Packages, Payments, Tags & Custom Fields
   const [packageOptions, setPackageOptions] = useState<string[]>([]);
@@ -562,11 +564,18 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
             return;
           }
           const isChecked = enabledWhatsAppSourceIds.includes(src.id);
+          const patch: Record<string, any> = {};
           if (isChecked && src.funnelId !== activeFunnel.id) {
-            updateSource(src.id, { funnelId: activeFunnel.id, status: 'active' });
+            patch.funnelId = activeFunnel.id;
+            patch.status = 'active';
           } else if (!isChecked && src.funnelId === activeFunnel.id) {
-            updateSource(src.id, { funnelId: '' });
+            patch.funnelId = '';
           }
+          const wantsSend = sendEnabledBySource[src.id];
+          if (isChecked && wantsSend !== undefined && wantsSend !== (src.sendEnabled !== false)) {
+            patch.sendEnabled = wantsSend;
+          }
+          if (Object.keys(patch).length > 0) updateSource(src.id, patch);
         }
       });
 
@@ -1733,24 +1742,19 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                 WhatsApps Vinculados ao Funil
                               </span>
                               <span style={{ fontSize: '0.60rem', color: 'var(--adm-text-muted)' }}>
-                                Marque para habilitar
+                                Marque para vincular. "Envia mensagens" liga/desliga o envio.
                               </span>
                             </div>
 
                             {venueWhatsappSources.length > 0 ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                 {(() => {
-                                  const onlineWhatsappSources = venueWhatsappSources.filter(s => isSourceOnline(s));
-                                  const storedPriorityId = priorityWhatsappPerVenue[venue.id] || venueConfig.priorityWhatsappSourceId;
-                                  const isStoredOnline = onlineWhatsappSources.some(s => s.id === storedPriorityId);
-                                  const effectivePriorityId = isStoredOnline ? storedPriorityId : (onlineWhatsappSources[0]?.id || null);
-
                                   return venueWhatsappSources.map(src => {
                                     const isOnline = isSourceOnline(src);
                                     const isClaimedByOtherFunnel = Boolean(src.funnelId && activeFunnel?.id && src.funnelId !== activeFunnel.id);
                                     const otherFunnel = isClaimedByOtherFunnel ? funnels.find(f => f.id === src.funnelId) : null;
                                     const isEnabled = !isClaimedByOtherFunnel && (enabledWhatsAppSourceIds.includes(src.id) || (src.funnelId === activeFunnel.id));
-                                    const isPriority = isOnline && isEnabled && effectivePriorityId === src.id;
+                                    const canSend = sendEnabledBySource[src.id] ?? (src.sendEnabled !== false);
                                     const rawPhone = src.whatsappInstanceId || (src.configuration && (src.configuration.connectedPhone || src.configuration.targetPhone)) || '';
                                     const phoneDisplay = rawPhone ? formatPhone(rawPhone) : null;
 
@@ -1761,13 +1765,11 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                           background: !isOnline 
                                             ? 'rgba(239, 68, 68, 0.08)' 
                                             : isEnabled
-                                              ? (isPriority ? 'rgba(16, 185, 129, 0.12)' : 'rgba(59, 130, 246, 0.08)')
+                                              ? 'rgba(59, 130, 246, 0.08)'
                                               : 'var(--adm-bg-card)',
                                           border: !isOnline 
                                             ? '1.5px solid rgba(239, 68, 68, 0.4)' 
-                                            : isPriority 
-                                              ? '1.5px solid #10B981' 
-                                              : isEnabled
+                                            : isEnabled
                                                 ? '1px solid var(--adm-accent)'
                                                 : '1px solid var(--adm-border)',
                                           borderRadius: '8px',
@@ -1831,46 +1833,25 @@ export const AdminFunnelSettingsView: React.FC<AdminFunnelSettingsViewProps> = (
                                           </div>
                                         </div>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                                          {!isOnline ? (
-                                              <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                                <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#EF4444' }} /> Offline
-                                              </span>
-                                          ) : isEnabled ? (
-                                            isPriority ? (
-                                              <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#10B981', color: '#FFF' }}>
-                                                Principal
-                                              </span>
-                                            ) : (
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setPriorityWhatsappPerVenue(prev => ({
-                                                    ...prev,
-                                                    [venue.id]: src.id,
-                                                  }));
-                                                  setVenueDistributionConfig(prev => ({
-                                                    ...prev,
-                                                    [venue.id]: {
-                                                      ...(prev[venue.id] || {}),
-                                                      priorityWhatsappSourceId: src.id,
-                                                    },
-                                                  }));
-                                                }}
-                                                style={{
-                                                  background: 'var(--adm-bg-input)',
-                                                  border: '1px solid var(--adm-border)',
-                                                  borderRadius: '4px',
-                                                  padding: '2px 6px',
-                                                  fontSize: '0.55rem',
-                                                  fontWeight: 700,
-                                                  color: 'var(--adm-text-muted)',
-                                                  cursor: 'pointer',
-                                                }}
-                                              >
-                                                Definir Principal
-                                              </button>
-                                            )
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                          {!isOnline && (
+                                            <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.25)', color: '#EF4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                              <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#EF4444' }} /> Offline
+                                            </span>
+                                          )}
+                                          {isEnabled ? (
+                                            <label
+                                              title="Desmarque para este número apenas RECEBER mensagens (continuam entrando no funil, mas ele não aparece para responder o cliente)"
+                                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 700, color: canSend ? '#10B981' : '#F59E0B' }}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={canSend}
+                                                onChange={(e) => setSendEnabledBySource(prev => ({ ...prev, [src.id]: e.target.checked }))}
+                                                style={{ width: '13px', height: '13px', accentColor: '#10B981', cursor: 'pointer' }}
+                                              />
+                                              {canSend ? 'Envia mensagens' : 'Só recebe'}
+                                            </label>
                                           ) : (
                                             <span style={{ fontSize: '0.55rem', fontWeight: 600, color: 'var(--adm-text-muted)', opacity: 0.6 }}>
                                               Inativo

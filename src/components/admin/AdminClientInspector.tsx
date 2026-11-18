@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAdminState } from '../../context/AdminStateContext';
 import { formatPhone } from '../../utils/phoneFormatter';
+import { funnelSenders } from '../../utils/senderResolver';
 import { uazapiService } from '../../services/uazapiService';
 import { whatsappMediaService } from '../../services/whatsappMediaService';
 import { AdminConfirmModal } from './AdminConfirmModal';
@@ -401,9 +402,12 @@ export const AdminClientInspector: React.FC<AdminClientInspectorProps> = ({
   };
 
   // WhatsApp Sender Selection para Pós-Venda
+  // Regra: so instancias do FUNIL atual do cliente com envio habilitado (cliente sem funil: por casa, respeitando o check de envio)
   const connectedSenderSources = useMemo(() => {
-    return (sources || []).filter(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.connectedPhone || s.whatsappInstanceId));
-  }, [sources]);
+    const base = (sources || []).filter(s => s.type === 'whatsapp_api' && s.status === 'active' && ((s.configuration as any)?.connectedPhone || s.whatsappInstanceId));
+    const funnelId = (client as any)?.funnelId as string | undefined;
+    return funnelId ? funnelSenders(base, funnelId, () => true) : base.filter(s => s.sendEnabled !== false);
+  }, [sources, (client as any)?.funnelId]);
 
   const [selectedSenderSourceId, setSelectedSenderSourceId] = useState<string>('');
 

@@ -61,6 +61,7 @@ export interface Source {
   type: SourceType;
   funnelId?: string; // Funil de destino opcional (se vazio, leads chegam sem funil)
   whatsappInstanceId?: string;
+  sendEnabled?: boolean; // Check "enviar mensagens" no funil (padrao: ativado). Desativada = so recebe.
   status: 'active' | 'inactive';
   slug?: string;
   configuration: SourceConfiguration;
