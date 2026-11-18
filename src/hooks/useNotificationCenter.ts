@@ -43,6 +43,24 @@ export function useNotificationCenter(
     void notificationService.markDelivered([n.id]);
   }, []);
 
+  // Avisos ao vivo (mensagem do WhatsApp, lead novo): pop-up + som, sem passar pelo banco.
+  // Varias mensagens do mesmo lead atualizam o mesmo pop-up em vez de empilhar.
+  useEffect(() => {
+    if (!userId) return;
+    const onLive = (e: Event) => {
+      const n = (e as CustomEvent<AdminNotification>).detail;
+      if (!n || n.recipientId !== userId) return;
+      const p = prefsRef.current;
+      if (p.mutedTypes.includes(n.type)) return;
+      const toastId = `live-${n.type}-${n.entityId || n.id}`;
+      const shown = showNotificationToast(n, x => onOpenRef.current(x), toastId);
+      if (shown && p.soundEnabled) playNotificationTone(n.type);
+      logNotif('exibir', `Aviso ao vivo ${shown ? 'exibido' : 'já exibido'} (${n.type}): ${n.title}`);
+    };
+    window.addEventListener('f5:live-alert', onLive);
+    return () => window.removeEventListener('f5:live-alert', onLive);
+  }, [userId]);
+
   // Carrega a caixa de entrada. O que caiu enquanto o usuario estava fora (pendente) vira UM aviso resumido e e marcado como entregue.
   const reload = useCallback(async () => {
     if (!userId) return;

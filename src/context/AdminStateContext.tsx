@@ -79,8 +79,9 @@ import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
 import { notificationService, type NewNotification } from '../services/notificationService';
 import { logNotif } from '../utils/notificationDiag';
+import { getLeadNotificationRecipientIds } from '../utils/funnelResponsibility';
 import { eventsOnDay, VENUE_DAY_TAKEN } from '../utils/venueEventDay';
-import { buildNewOpportunity, buildInboundMessage, buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
+import { buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -781,6 +782,43 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       void notificationService.createMany(rows);
     } catch (err) {
       console.error('[notifications] emit', err);
+    }
+  };
+
+  // Aviso AO VIVO de mensagem recebida / lead novo: pop-up + som para quem esta com o sistema aberto, sem gravar no banco.
+  // O indicador que permanece e o contador de nao lidas do proprio WhatsApp. So avisa o dono do lead (ou quem poderia ser).
+  const emitLiveAlert = (kind: 'message' | 'new_opportunity', lead: Lead, text: string, key: string) => {
+    try {
+      const user = currentUserRef.current;
+      if (!user || lead.isClient) return;
+      const masterId = user.masterId || user.id;
+      const collaborators = collaboratorsRef.current.filter(c => c.id === masterId || c.masterId === masterId);
+      const funnel = funnelsRef.current.find(f => f.id === lead.funnelId && (!f.masterId || f.masterId === masterId));
+      const stage = funnel?.stages?.find(s => s.id === lead.stage);
+      const recipients = getLeadNotificationRecipientIds(funnel, stage, lead, collaborators, { masterId });
+      if (!recipients.includes(user.id)) {
+        logNotif('detectar', `${kind === 'message' ? 'Mensagem' : 'Lead novo'} de ${lead.name}: não é para você (${recipients.length} destinatário(s))`);
+        return;
+      }
+      const preview = (text || '').replace(/^\[media:[^\]]*\]\s*/i, '').replace(/\s+/g, ' ').trim();
+      window.dispatchEvent(new CustomEvent('f5:live-alert', {
+        detail: {
+          id: `live:${key}`,
+          masterId,
+          recipientId: user.id,
+          type: kind,
+          title: kind === 'message' ? (lead.name || 'Nova mensagem') : 'Nova oportunidade',
+          body: kind === 'message' ? (preview.length > 110 ? `${preview.slice(0, 109)}…` : preview) || 'Mensagem recebida' : [lead.name, lead.sourceName].filter(Boolean).join(' · '),
+          entityType: 'lead',
+          entityId: lead.id,
+          payload: { leadId: lead.id, leadName: lead.name, avatarUrl: lead.avatarUrl, funnelId: lead.funnelId },
+          dedupeKey: `live:${key}`,
+          deliveryStatus: 'delivered',
+          createdAt: new Date().toISOString(),
+        },
+      }));
+    } catch (err) {
+      console.error('[notifications] aviso ao vivo', err);
     }
   };
 
@@ -1790,8 +1828,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           });
           // Lead novo que chegou por mensagem do cliente (historico importado nasce com 0 nao lidas e nao notifica)
           if ((freshLead.unreadCount || 0) > 0) {
-            logNotif('detectar', `Lead novo: ${freshLead.name}`);
-            emitNotifications(ctx => buildNewOpportunity(freshLead, ctx));
+            emitLiveAlert('new_opportunity', freshLead, '', `opp:${freshLead.id}`);
           }
           return;
         }
@@ -1908,16 +1945,16 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         // Mensagem recebida do cliente. Historico importado tem horario antigo e fica de fora.
         if (eventType === 'INSERT' && newRow && newRow.type === 'contact' && /recebid/i.test(newRow.title || '')) {
+          // Mensagem antiga (historico, sincronizacao) nao avisa: so o que acabou de chegar
           const ageMs = Date.now() - new Date(newRow.timestamp || Date.now()).getTime();
           const targetLead = leadsRef.current.find(l => l.id === newRow.lead_id);
-          if (ageMs < 10 * 60 * 1000) {
+          if (ageMs < 2 * 60 * 1000) {
             if (!targetLead) {
               logNotif('detectar', 'Mensagem recebida de um lead que não está carregado neste navegador', false);
             } else {
               const waId = newRow.metadata?.messageId || newRow.metadata?.waId || newRow.message_id;
               const messageKey = waId ? String(waId).split(':').pop() as string : newRow.id;
-              logNotif('detectar', `Mensagem recebida de ${targetLead.name}`);
-              emitNotifications(ctx => buildInboundMessage(targetLead, messageKey, newRow.text || '', ctx));
+              emitLiveAlert('message', targetLead, newRow.text || '', `msg:${messageKey}`);
             }
           }
         }

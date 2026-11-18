@@ -7,101 +7,6 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_S
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── Notificações (mensagem recebida e nova oportunidade) ──────────────────────
-// Geradas AQUI (servidor) para existirem mesmo com o sistema fechado: ficam no sino e ao entrar depois.
-// O pop-up e o som aparecem só para quem está online (Realtime em `notifications`, no app).
-// Regras espelham src/utils/funnelResponsibility.ts (funções serverless não importam de src/).
-const NOTIF_MANAGER_ROLES = ['master', 'admin', 'gerencia', 'dev'];
-const NOTIF_COMMERCIAL_ROLES = ['comercial', 'crm', 'sdr', 'closer'];
-const NOTIF_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function resolveLeadNotification(leadId: string) {
-  const { data: lead } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
-  if (!lead || !lead.master_id || lead.is_client) return null;
-  const masterId: string = lead.master_id;
-
-  let funnel: any = null;
-  if (lead.funnel_id && NOTIF_UUID.test(String(lead.funnel_id))) {
-    const { data } = await supabase.from('commercial_funnels').select('*').eq('id', lead.funnel_id).maybeSingle();
-    funnel = data;
-  }
-  const stages: any[] = Array.isArray(funnel?.stages) ? funnel.stages : [];
-  const stage = stages.find(st => st?.id === lead.stage);
-  const resp: string = stage?.responsibility || 'both';
-
-  const { data: collabRows } = await supabase
-    .from('collaborators')
-    .select('id, role, active, venue_id, venue_ids, master_id, permissions')
-    .or(`master_id.eq.${masterId},id.eq.${masterId}`);
-  const collabs: any[] = collabRows || [];
-
-  // 1) Dono do lead (SDR/Closer conforme a responsabilidade da etapa)
-  const owners: string[] = [];
-  if (resp !== 'closer' && lead.sdr_id) owners.push(lead.sdr_id);
-  if (resp !== 'sdr' && lead.closer_id) owners.push(lead.closer_id);
-  if (owners.length > 0) {
-    const inactive = new Set(collabs.filter(c => c.active === false).map(c => c.id));
-    return { lead, masterId, recipients: owners.filter(id => !inactive.has(id)), reason: 'dono' };
-  }
-
-  // 2) Sem dono: equipe comercial elegível (acesso à unidade, ao funil e à etapa)
-  const sdrIds = new Set<string>([...(funnel?.team_member_ids || []), ...(funnel?.assigned_sdr_ids || [])]);
-  const closerIds = new Set<string>(funnel?.closer_ids || funnel?.duplicate_rule_config?._closerIds || []);
-  const hasTeam = sdrIds.size > 0 || closerIds.size > 0;
-  const allowedFunnel: string[] = funnel?.allowed_collaborator_ids || [];
-  const allowedStage: string[] = stage?.allowedCollaboratorIds || [];
-
-  const recipients = collabs.filter(c => {
-    if (c.active === false || NOTIF_MANAGER_ROLES.includes(c.role)) return false;
-    const perms: string[] = c.permissions || [];
-    const commercial = NOTIF_COMMERCIAL_ROLES.includes(c.role) || perms.includes('sector:comercial') || perms.includes('dept:comercial');
-    if (!commercial) return false;
-    const venues: string[] = (c.venue_ids && c.venue_ids.length > 0) ? c.venue_ids : (c.venue_id ? [c.venue_id] : []);
-    if (lead.venue_id && c.venue_id !== 'all' && venues.length > 0 && !venues.includes(lead.venue_id)) return false;
-    if (allowedFunnel.length > 0 && !allowedFunnel.includes(c.id)) return false;
-    if (allowedStage.length > 0) return allowedStage.includes(c.id);
-    const roles = hasTeam
-      ? { sdr: sdrIds.has(c.id), closer: closerIds.has(c.id) }
-      : c.role === 'sdr' ? { sdr: true, closer: false } : c.role === 'closer' ? { sdr: false, closer: true } : { sdr: true, closer: true };
-    if (stage?.visibility === 'sdr' && !roles.sdr) return false;
-    if (stage?.visibility === 'closer' && !roles.closer) return false;
-    return resp === 'both' ? (roles.sdr || roles.closer) : roles[resp as 'sdr' | 'closer'];
-  }).map(c => c.id as string);
-
-  return { lead, masterId, recipients, reason: 'equipe elegível' };
-}
-
-async function notifyLead(kind: 'message' | 'new_opportunity', leadId: string, opts: { messageKey?: string; preview?: string; sourceName?: string } = {}) {
-  try {
-    const r = await resolveLeadNotification(leadId);
-    if (!r) return;
-    if (r.recipients.length === 0) {
-      console.warn(`[Webhook] Notificação sem destinatários (lead ${leadId}, ${r.reason}). Verifique SDR/Closer e a equipe do funil.`);
-      return;
-    }
-    const { lead, masterId } = r;
-    const avatar = lead.custom_field_values?.avatarUrl || lead.avatar_url || lead.photo_url || undefined;
-    const rows = r.recipients.map(recipientId => ({
-      master_id: masterId,
-      venue_id: lead.venue_id || null,
-      recipient_id: recipientId,
-      type: kind,
-      title: kind === 'message' ? (lead.name || 'Nova mensagem') : 'Nova oportunidade',
-      body: kind === 'message'
-        ? (opts.preview || 'Mensagem recebida')
-        : [lead.name, opts.sourceName].filter(Boolean).join(' · '),
-      entity_type: 'lead',
-      entity_id: leadId,
-      payload: { leadId, leadName: lead.name, avatarUrl: avatar, funnelId: lead.funnel_id, sourceName: opts.sourceName },
-      dedupe_key: kind === 'message' ? `msg:${opts.messageKey}` : `opp:${leadId}`,
-    }));
-    const { error } = await supabase.from('notifications').upsert(rows, { onConflict: 'recipient_id,dedupe_key', ignoreDuplicates: true });
-    if (error) console.error('[Webhook] Erro ao gravar notificações:', error.message);
-  } catch (err: any) {
-    console.error('[Webhook] Falha ao gerar notificação:', err?.message || err);
-  }
-}
-
 // ── Política de armazenamento de mídia (R2 Free: 10 GB) ───────────────────────
 // Mantenha em sincronia com src/utils/mediaStoragePolicy.ts (funções serverless não importam de src/).
 const MB = 1024 * 1024;
@@ -953,11 +858,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Histórico antigo só grava a mensagem: não mexe em não-lidas, prévia nem horário do lead
           if (isHistory) continue;
 
-          // Mensagem recebida do cliente: avisa o dono do lead (ou quem poderia ser) e grava no sino
-          if (!isFromMe && !actErr) {
-            await notifyLead('message', existingLead.id, { messageKey: waMessageId ? String(waMessageId).split(':').pop() : activityId, preview: previewText, sourceName: matchedSource?.name });
-          }
-
           const updatePayload: Record<string, any> = {
             updated_at: new Date().toISOString(),
             last_interaction_at: new Date().toISOString(),
@@ -1193,11 +1093,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               sourceId: matchedSource?.id, instanceToken, baseUrl: mediaBaseUrl, messageIds: mediaMessageIds,
               mediaType, storedText: creationStoredText, ingestNow: !isHistory,
             });
-          }
-
-          // Lead novo vindo do cliente (não histórico): nova oportunidade para quem enxerga a etapa de entrada
-          if (!leadErr && !isFromMe && !isHistory) {
-            await notifyLead('new_opportunity', leadId, { sourceName: matchedSource?.name });
           }
 
           if (matchedSource?.id) {

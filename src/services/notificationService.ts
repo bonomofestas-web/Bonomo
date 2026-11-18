@@ -73,6 +73,8 @@ export const notificationService = {
       .from('notifications')
       .select(COLUMNS)
       .eq('recipient_id', recipientId)
+      // Mensagem e lead novo sao avisos ao vivo (nao ficam na central); a central guarda tarefa, contrato, compromisso etc.
+      .not('type', 'in', '(message,new_opportunity)')
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) { console.error('[notifications] list', error.message); return []; }

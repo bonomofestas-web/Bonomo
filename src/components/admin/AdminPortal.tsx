@@ -332,7 +332,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Central de notificações: clique marca como lida e leva ao destino resolvido pelo estado atual
   const openNotification = (n: AdminNotification) => {
-    void notificationService.markRead([n.id]);
+    if (!n.id.startsWith('live:')) void notificationService.markRead([n.id]);
     const leadId: string | undefined = n.payload?.leadId || (n.entityType === 'lead' ? n.entityId : undefined);
     switch (n.type) {
       case 'new_opportunity':

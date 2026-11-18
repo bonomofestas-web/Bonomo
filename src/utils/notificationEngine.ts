@@ -1,9 +1,9 @@
-import type { Collaborator, CommercialFunnel, Lead } from '../types/admin';
+import type { Collaborator, CommercialFunnel } from '../types/admin';
 import type { NewNotification } from '../services/notificationService';
-import { getLeadNotificationRecipientIds, isManagerLike } from './funnelResponsibility';
+import { isManagerLike } from './funnelResponsibility';
 
-// Mensagem recebida e nova oportunidade tambem sao geradas pelo servidor (api/whatsapp-webhook.ts) para existirem com o
-// sistema fechado; aqui cobrimos o caso em que a mensagem entra pelo navegador (SSE). A chave de dedupe e a mesma nos dois lados.
+// Notificacoes de ACOES do usuario (contrato, tarefa, compromisso). Mensagem recebida e nova oportunidade
+// sao geradas no servidor (api/whatsapp-webhook.ts), pois nascem no WhatsApp e precisam existir mesmo com o sistema fechado.
 // Funcoes puras: quem grava e o notificationService.
 // Todas recebem apenas colaboradores/funis do Master ativo (scoped) e carimbam master_id.
 // Chaves de dedupe tornam a geracao idempotente (varios clientes podem processar o mesmo evento).
@@ -18,60 +18,6 @@ const toRows = (
   recipientIds: string[],
   base: Omit<NewNotification, 'recipientId'>,
 ): NewNotification[] => Array.from(new Set(recipientIds)).map(recipientId => ({ ...base, recipientId }));
-
-const preview = (text?: string, max = 110) => {
-  const t = (text || '').replace(/\s+/g, ' ').trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-};
-
-const leadPayload = (lead: Lead) => ({
-  leadId: lead.id,
-  leadName: lead.name,
-  avatarUrl: lead.avatarUrl,
-  funnelId: lead.funnelId,
-  sourceName: lead.sourceName,
-});
-
-const resolveLeadRecipients = (lead: Lead, ctx: Ctx): string[] => {
-  const funnel = ctx.funnels.find(f => f.id === lead.funnelId);
-  const stage = funnel?.stages?.find(s => s.id === lead.stage);
-  return getLeadNotificationRecipientIds(funnel, stage, lead, ctx.collaborators, { masterId: ctx.masterId });
-};
-
-/** Nova oportunidade (lead novo vindo do cliente). Mesma chave do servidor (`opp:<lead>`): quem chegar primeiro grava. */
-export function buildNewOpportunity(lead: Lead, ctx: Ctx): NewNotification[] {
-  if (lead.isClient) return [];
-  return toRows(resolveLeadRecipients(lead, ctx), {
-    masterId: ctx.masterId,
-    venueId: lead.venueId,
-    type: 'new_opportunity',
-    title: 'Nova oportunidade',
-    body: [lead.name, lead.sourceName].filter(Boolean).join(' · '),
-    entityType: 'lead',
-    entityId: lead.id,
-    payload: leadPayload(lead),
-    dedupeKey: `opp:${lead.id}`,
-  });
-}
-
-/**
- * Mensagem recebida: so o dono do lead (ou quem poderia ser, se nao ha dono).
- * messageKey = id curto da mensagem do WhatsApp; o servidor usa a mesma chave (`msg:<id>`), entao nao duplica.
- */
-export function buildInboundMessage(lead: Lead, messageKey: string, text: string, ctx: Ctx): NewNotification[] {
-  if (lead.isClient) return [];
-  return toRows(resolveLeadRecipients(lead, ctx), {
-    masterId: ctx.masterId,
-    venueId: lead.venueId,
-    type: 'message',
-    title: lead.name || 'Nova mensagem',
-    body: preview(text) || 'Mensagem recebida',
-    entityType: 'lead',
-    entityId: lead.id,
-    payload: leadPayload(lead),
-    dedupeKey: `msg:${messageKey}`,
-  });
-}
 
 const hasVenue = (c: Collaborator, venueId?: string): boolean => {
   if (!venueId || c.venueId === 'all') return true;

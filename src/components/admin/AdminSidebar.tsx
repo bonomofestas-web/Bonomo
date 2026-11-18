@@ -8,10 +8,11 @@ import {
   Sparkles, Radio, Compass,
   ShieldCheck, Star, X, AlertTriangle, Sliders, Headset,
   Eye, RotateCcw, Gift, Calendar, CalendarCheck2, GripVertical, UserCheck, Clock, Zap,
-  Contact as ContactIcon, FileCheck2, LogOut, MessageSquare
+  Contact as ContactIcon, FileCheck2, LogOut
 } from 'lucide-react';
 import { SafeAvatar } from './SafeAvatar';
 import { NotificationBell } from './notifications/NotificationBell';
+import { MessagesNavIcon } from './notifications/MessagesNavIcon';
 import { IcpTargetUserIcon } from './IcpTargetUserIcon';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
 import { useAdminState } from '../../context/AdminStateContext';
@@ -297,7 +298,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Comunicação: WhatsApp, Mensagens Rápidas e Central de Contatos
   const communicationItems: { id: AdminTabType; label: string; icon: React.ReactNode; roles: string[]; alertBadge?: boolean }[] = [
-    { id: 'whatsapp', label: 'Mensagens', icon: <MessageSquare size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
+    { id: 'whatsapp', label: 'Mensagens', icon: <MessagesNavIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'quick-messages', label: 'Mensagens Rápidas', icon: <Zap size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
     { id: 'contacts', label: 'Contatos', icon: <ContactIcon size={15} />, roles: ['master', 'admin', 'crm', 'sdr', 'closer', 'pos_venda'] },
   ];

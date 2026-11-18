@@ -45,7 +45,7 @@ export const NotificationBadge: React.FC<{ n: AdminNotification; size?: number }
 const shownKeys = new Set<string>();
 
 /** Retorna false (sem exibir) quando este mesmo evento ja foi mostrado. */
-export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNotification) => void): boolean {
+export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNotification) => void, toastId?: string): boolean {
   if (n.dedupeKey) {
     if (shownKeys.has(n.dedupeKey)) return false;
     shownKeys.add(n.dedupeKey);
@@ -78,6 +78,6 @@ export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNot
         )}
       </div>
     </div>
-  ), { duration: n.type === 'message' ? 6000 : 8000, position: 'top-right' });
+  ), { id: toastId, duration: n.type === 'message' ? 6000 : 8000, position: 'top-right' });
   return true;
 }
