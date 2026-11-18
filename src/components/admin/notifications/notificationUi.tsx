@@ -41,7 +41,16 @@ export const NotificationBadge: React.FC<{ n: AdminNotification; size?: number }
 };
 
 /** Pop-up: mensagem estilo WhatsApp (foto, nome, previa); demais tipos com icone e cor proprios. */
-export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNotification) => void) {
+// Chaves ja exibidas: o pop-up local (imediato) e o evento Realtime do mesmo dedupeKey nao duplicam.
+const shownKeys = new Set<string>();
+
+/** Retorna false (sem exibir) quando este mesmo evento ja foi mostrado. */
+export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNotification) => void): boolean {
+  if (n.dedupeKey) {
+    if (shownKeys.has(n.dedupeKey)) return false;
+    shownKeys.add(n.dedupeKey);
+    if (shownKeys.size > 500) shownKeys.delete(shownKeys.values().next().value as string);
+  }
   const meta = NOTIFICATION_META[n.type];
   toast.custom((id) => (
     <div
@@ -70,4 +79,5 @@ export function showNotificationToast(n: AdminNotification, onOpen: (n: AdminNot
       </div>
     </div>
   ), { duration: n.type === 'message' ? 6000 : 8000, position: 'top-right' });
+  return true;
 }

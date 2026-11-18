@@ -25,6 +25,26 @@ export function useNotificationCenter(
   onOpenRef.current = onOpen;
   const seenRef = useRef<Set<string>>(new Set());
 
+  // Pop-up + som respeitando as preferencias; ignora evento ja exibido (dedupeKey)
+  const deliver = useCallback((n: AdminNotification) => {
+    const p = prefsRef.current;
+    if (p.mutedTypes.includes(n.type)) return;
+    if (showNotificationToast(n, x => onOpenRef.current(x)) && p.soundEnabled) playNotificationTone(n.type);
+  }, []);
+
+  // Notificacoes geradas por este proprio cliente chegam na hora, sem esperar o round-trip do banco
+  useEffect(() => {
+    if (!userId) return;
+    const onLocal = (e: Event) => {
+      const n = (e as CustomEvent<AdminNotification>).detail;
+      if (!n || n.recipientId !== userId) return;
+      setItems(prev => (n.dedupeKey && prev.some(p => p.dedupeKey === n.dedupeKey) ? prev : [n, ...prev]));
+      deliver(n);
+    };
+    window.addEventListener('f5:local-notification', onLocal);
+    return () => window.removeEventListener('f5:local-notification', onLocal);
+  }, [userId, deliver]);
+
   useEffect(() => {
     if (!userId) { setItems([]); return; }
     let cancelled = false;
@@ -44,11 +64,9 @@ export function useNotificationCenter(
           const n = mapNotification(payload.new);
           if (seenRef.current.has(n.id)) return;
           seenRef.current.add(n.id);
-          setItems(prev => [n, ...prev.filter(p => p.id !== n.id)]);
-          const p = prefsRef.current;
-          if (p.mutedTypes.includes(n.type)) return;
-          showNotificationToast(n, x => onOpenRef.current(x));
-          if (p.soundEnabled) playNotificationTone(n.type);
+          // Substitui a copia local (id provisorio) do mesmo evento pela linha real do banco
+          setItems(prev => [n, ...prev.filter(p => p.id !== n.id && !(n.dedupeKey && p.dedupeKey === n.dedupeKey))]);
+          deliver(n);
         } else if (payload.eventType === 'UPDATE' && payload.new?.id) {
           const n = mapNotification(payload.new);
           setItems(prev => prev.map(p => (p.id === n.id ? n : p)));

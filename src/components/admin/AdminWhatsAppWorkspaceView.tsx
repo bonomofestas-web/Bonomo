@@ -2160,10 +2160,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   }, [sourceLeads, selectedLeadId]);
 
   useEffect(() => {
-    if ((isPostSaleWorkspace || (selectedLead && (selectedLead as any).isClient)) && selectedLeadId) {
+    // Modo foco (lista recolhida) so quando embutido no Kanban; no menu Mensagens a lista fica sempre aberta
+    if (isOpenedFromCrmOrKanban && (isPostSaleWorkspace || (selectedLead && (selectedLead as any).isClient)) && selectedLeadId) {
       setIsConversationsCollapsed(true);
     }
-  }, [selectedLeadId, isPostSaleWorkspace, selectedLead]);
+  }, [selectedLeadId, isPostSaleWorkspace, selectedLead, isOpenedFromCrmOrKanban]);
 
   // ── ABAS SETORIAIS DE WHATSAPP (COMERCIAL E PÓS-VENDA) ─────────────────────────────
   const isPostSaleChat = Boolean(isPostSaleFunnel || selectedLead?.isClient);
@@ -2424,7 +2425,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
   };
 
   // Lista de destinatários disponíveis na ficha com prioridade máxima para o Decisor
-  const availableRecipients = useMemo(() => {
+  const allRecipientsWithInfo = useMemo(() => {
     if (!selectedLead) return [];
     const list: Array<{
       key: string;
@@ -2436,6 +2437,7 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       isDecisor: boolean;
       isMain: boolean;
       avatarUrl?: string;
+      noPhone?: boolean;
     }> = [];
     const seenPhones = new Set<string>();
     const leadAny = selectedLead as any;
@@ -2450,6 +2452,8 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
       if (low === 'copayer' || low === 'copagante') return 'Copagante';
       if (low === 'dependent' || low === 'dependente') return 'Dependente Familiar';
       if (low === 'responsible' || low === 'responsavel' || low === 'responsável') return 'Contratante Pagante';
+      if (low === 'guardian') return 'Responsável';
+      if (low === 'self') return 'Próprio';
       if (low === 'other' || low === 'outro') return 'Contato';
       return r;
     };
@@ -2545,6 +2549,20 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
         isMain: false,
         avatarUrl: undefined,
       });
+    } else if (!debutantePhone && debName && debName.toLowerCase() !== cleanMainName.toLowerCase()) {
+      // Homenageada sem telefone proprio: aparece apenas como informacao (chip desabilitado), sem canal de envio
+      list.push({
+        key: `protagonist-nophone-${debName}`,
+        phone: '',
+        name: debName,
+        label: debName,
+        role: 'Protagonista',
+        roleBadge: 'Protagonista do Evento',
+        isDecisor: false,
+        isMain: false,
+        avatarUrl: undefined,
+        noPhone: true,
+      });
     }
     // Regra: so existe canal de conversa para pessoa com telefone PROPRIO cadastrado.
     // (Antes criava um item "protagonista" reutilizando o telefone do contratante, o que
@@ -2589,20 +2607,24 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
     return list;
   }, [selectedLead]);
 
+  // Apenas quem tem telefone proprio pode receber mensagem; os demais so aparecem como chip informativo
+  const availableRecipients = useMemo(() => allRecipientsWithInfo.filter(r => !r.noPhone), [allRecipientsWithInfo]);
+
   const [selectedRecipientKey, setSelectedRecipientKey] = useState<string>('');
   const [selectedRecipientPhone, setSelectedRecipientPhone] = useState<string>('');
 
   const activeRecipient = useMemo(() => {
-    if (!availableRecipients || availableRecipients.length === 0) return null;
+    const sendable = (availableRecipients || []).filter(r => !r.noPhone);
+    if (sendable.length === 0) return null;
     if (selectedRecipientKey) {
-      const found = availableRecipients.find(r => r.key === selectedRecipientKey);
+      const found = sendable.find(r => r.key === selectedRecipientKey);
       if (found) return found;
     }
     if (selectedRecipientPhone) {
-      const found = availableRecipients.find(r => r.phone === selectedRecipientPhone);
+      const found = sendable.find(r => r.phone === selectedRecipientPhone);
       if (found) return found;
     }
-    return availableRecipients[0];
+    return sendable[0];
   }, [availableRecipients, selectedRecipientKey, selectedRecipientPhone]);
 
   useEffect(() => {
@@ -6856,12 +6878,11 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                     fontWeight: 800,
                     textTransform: 'uppercase',
                     letterSpacing: '0.4px',
-                  }}>
-                    <Users size={12} color="var(--adm-accent, #06B6D4)" />
-                    <span>Canais:</span>
+                  }} title="Conversar com" aria-label="Conversar com">
+                    <MessageSquare size={14} color="var(--adm-accent, #06B6D4)" />
                   </div>
 
-                  {(availableRecipients.length > 0 ? availableRecipients : [{
+                  {(availableRecipients.length > 0 ? allRecipientsWithInfo : [{
                     key: 'default-contractor',
                     phone: selectedLead?.phone || '',
                     name: selectedLead?.name || 'Contratante',
@@ -6884,12 +6905,15 @@ export const AdminWhatsAppWorkspaceView: React.FC<AdminWhatsAppWorkspaceViewProp
                       <button
                         key={rec.key || `${rec.name}-${rec.roleBadge}-${rec.phone}`}
                         type="button"
+                        disabled={rec.noPhone}
                         onClick={() => {
+                          if (rec.noPhone) return;
                           if (rec.key) setSelectedRecipientKey(rec.key);
                           if (rec.phone) setSelectedRecipientPhone(rec.phone);
                         }}
-                        title={`Conversar com ${rec.name} (${rec.roleBadge})${rec.phone ? ` • ${formatPhone(rec.phone)}` : ''}`}
+                        title={rec.noPhone ? `${rec.name} (${rec.roleBadge}) - sem telefone cadastrado` : `Conversar com ${rec.name} (${rec.roleBadge})${rec.phone ? ` • ${formatPhone(rec.phone)}` : ''}`}
                         style={{
+                          opacity: rec.noPhone ? 0.55 : 1,
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '6px',

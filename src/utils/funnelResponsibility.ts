@@ -104,8 +104,10 @@ export function getLeadNotificationRecipientIds(
 ): string[] {
   const owners = getStageOwnerIds(stage, lead);
   if (owners.length > 0) {
-    const active = new Set(collaborators.filter(c => c.active !== false).map(c => c.id));
-    return owners.filter(id => active.has(id));
+    // Dono explicito do lead sempre e notificado, exceto se for um colaborador sabidamente inativo.
+    // (a lista local pode nao conter o proprio Master; a RLS de INSERT valida o pertencimento ao tenant)
+    const inactive = new Set(collaborators.filter(c => c.active === false).map(c => c.id));
+    return owners.filter(id => !inactive.has(id));
   }
   const venueId = lead.venueId;
   const venueDist = venueId ? funnel?.venueDistributionConfig?.[venueId] : undefined;

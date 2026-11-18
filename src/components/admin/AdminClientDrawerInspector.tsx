@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useAdminState } from '../../context/AdminStateContext';
 import { maskPhoneInput, formatPhone } from '../../utils/phoneFormatter';
 import { renderFunnelOrStageIcon } from '../../utils/funnelIconLibrary';
+import { relationshipLabel, eventTypeLabels } from '../../utils/roleLabels';
 import { WhatsAppBrandIcon } from './WhatsAppBrandIcon';
 import { AdminLeadInspector } from './AdminLeadInspector';
 import { ClientVenueEventsCard } from './ClientVenueEventsCard';
@@ -182,6 +183,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
   const client = useMemo(() => {
     return clients.find(c => c.id === lead.id || c.commercialLeadId === lead.id) || null;
   }, [clients, lead.id]);
+  const eventLabels = eventTypeLabels(client?.eventType || lead.eventType);
 
   // Lead Comercial Original
   const commercialLead = useMemo(() => {
@@ -630,14 +632,14 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 </span>
               </div>
               <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#3B82F6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                {client?.payerRelationship || 'Responsável'}
+                {relationshipLabel(client?.payerRelationship)}
               </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--adm-text-muted)' }}>
-                  {client?.eventType === 'Casamento' ? 'Noivos:' : client?.eventType === '15 Anos' ? 'Debutante:' : 'Homenageado(a):'}
+                  {eventLabels.personLabel}
                 </span>
                 <input
                   type="text"
@@ -649,8 +651,8 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                       updateClient(client.id, { birthdayPersonName: newName });
                     }
                   }}
-                  placeholder={client?.eventType === 'Casamento' ? 'Nome dos noivos...' : client?.eventType === '15 Anos' ? 'Nome da aniversariante...' : 'Nome do(a) homenageado(a)...'}
-                  title={client?.eventType === 'Casamento' ? 'Clique para editar o nome dos noivos' : client?.eventType === '15 Anos' ? 'Clique para editar o nome da debutante' : 'Clique para editar o nome do(a) homenageado(a)'}
+                  placeholder={eventLabels.personPlaceholder}
+                  title={eventLabels.personTitle}
                   style={{
                     ...seamlessInputStyle,
                     fontSize: '0.80rem',
@@ -662,7 +664,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
                 />
               </div>
               <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.12)', color: '#EC4899', border: '1px solid rgba(236, 72, 153, 0.3)' }}>
-                {client?.eventType || lead.eventType || 'Evento'}
+                {eventLabels.tag}
               </span>
             </div>
           </div>
@@ -1946,7 +1948,7 @@ export const AdminClientDrawerInspector: React.FC<AdminClientDrawerInspectorProp
             {((client?.contacts || lead.contacts || [])).filter(c => c.name !== client?.payerName).map((cnt, idx) => {
               const isCopayer = cnt.role === 'copayer' || cnt.isPrimaryDecisionMaker;
               const isDependent = cnt.role === 'dependent';
-              const roleLabel = isCopayer ? 'Copagante / Decisor' : (isDependent ? 'Dependente Familiar' : (cnt.role === 'mother' ? 'Mãe' : cnt.role === 'father' ? 'Pai' : 'Contato'));
+              const roleLabel = isCopayer ? 'Copagante / Decisor' : (isDependent ? 'Dependente Familiar' : relationshipLabel(cnt.role, 'Contato'));
 
               return (
                 <div

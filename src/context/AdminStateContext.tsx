@@ -775,7 +775,14 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const collaborators = collaboratorsRef.current.filter(c => c.id === masterId || c.masterId === masterId);
       const funnels = funnelsRef.current.filter(f => !f.masterId || f.masterId === masterId);
       const rows = build({ masterId, collaborators, funnels });
-      if (rows.length > 0) void notificationService.createMany(rows);
+      if (rows.length === 0) { console.debug('[notifications] nenhum destinatario para o evento'); return; }
+      // Pop-up imediato para o proprio usuario (o Realtime do banco confirma depois, sem duplicar)
+      rows.filter(r => r.recipientId === user?.id).forEach(r => {
+        window.dispatchEvent(new CustomEvent('f5:local-notification', {
+          detail: { ...r, id: `local:${r.dedupeKey}`, payload: r.payload || {}, createdAt: new Date().toISOString() },
+        }));
+      });
+      void notificationService.createMany(rows);
     } catch (err) {
       console.error('[notifications] emit', err);
     }
