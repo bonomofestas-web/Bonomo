@@ -77,6 +77,8 @@ import { createMonogramAvatar } from '../utils/avatarUtils';
 import { generateLeadCode, generateClientCode, buildHandoverActivity } from '../utils/leadUtils';
 import { isUuid } from '../utils/uuid';
 import { getLeadPendingWaitingTime } from '../utils/leadSorting';
+import { notificationService, type NewNotification } from '../services/notificationService';
+import { buildNewOpportunity, buildInboundMessage, buildContractNotifications, buildTaskNotifications, buildAppointmentNotifications } from '../utils/notificationEngine';
 
 const STORAGE_KEY_USER = 'bonomo_admin_user_v7';
 const STORAGE_KEY_COLLABORATORS = 'bonomo_admin_collaborators_v7';
@@ -758,6 +760,26 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const clientsRef = React.useRef<Client[]>([]);
   const sourcesRef = React.useRef<Source[]>([]);
   const venuesRef = React.useRef<Venue[]>([]);
+  const funnelsRef = React.useRef<CommercialFunnel[]>([]);
+  const collaboratorsRef = React.useRef<Collaborator[]>([]);
+
+  // Gera notificacoes (idempotente por dedupeKey) apenas com dados do Master ativo.
+  // So usa refs: seguro dentro dos handlers Realtime registrados uma unica vez.
+  const emitNotifications = (
+    build: (ctx: { masterId: string; collaborators: Collaborator[]; funnels: CommercialFunnel[] }) => NewNotification[],
+  ) => {
+    try {
+      const user = currentUserRef.current;
+      const masterId = user?.masterId || user?.id;
+      if (!masterId) return;
+      const collaborators = collaboratorsRef.current.filter(c => c.id === masterId || c.masterId === masterId);
+      const funnels = funnelsRef.current.filter(f => !f.masterId || f.masterId === masterId);
+      const rows = build({ masterId, collaborators, funnels });
+      if (rows.length > 0) void notificationService.createMany(rows);
+    } catch (err) {
+      console.error('[notifications] emit', err);
+    }
+  };
 
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_LEADS);
@@ -1184,7 +1206,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_COLLABORATORS, JSON.stringify(collaborators));
+    collaboratorsRef.current = collaborators;
   }, [collaborators]);
+
+  useEffect(() => {
+    funnelsRef.current = funnels;
+  }, [funnels]);
 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEY_VENUES, JSON.stringify(venues));
@@ -1758,6 +1785,7 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             safeLocalStorageSet(STORAGE_KEY_LEADS, JSON.stringify(updated));
             return updated;
           });
+          emitNotifications(ctx => buildNewOpportunity(freshLead, ctx));
           return;
         }
 
@@ -1813,7 +1841,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, async (payload: any) => {
+        if (payload?.new?.id && (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')) {
+          emitNotifications(ctx => buildAppointmentNotifications(payload.new, ctx));
+        }
         // Agendamento criado, atualizado ou cancelado (visitas e degustações)
         triggerDebouncedSync(async () => {
           const [updatedApps, updatedDebs] = await Promise.all([
@@ -1850,7 +1881,10 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_tasks' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_tasks' }, async (payload: any) => {
+        if (payload?.new?.id && (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')) {
+          emitNotifications(ctx => buildTaskNotifications(payload.new, ctx));
+        }
         const updated = await taskService.getAll();
         if (isMounted) {
           const filtered = updated.filter(t => !deletedTaskIdsRef.current.has(t.id));
@@ -1864,6 +1898,15 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newRow = payload.new;
         const oldRow = payload.old;
         const targetLeadId = newRow?.lead_id || oldRow?.lead_id;
+
+        // Notificacao de mensagem recebida (ignora historico importado: so eventos recentes)
+        if (eventType === 'INSERT' && newRow && newRow.type === 'contact' && /recebid/i.test(newRow.title || '')) {
+          const ageMs = Date.now() - new Date(newRow.timestamp || Date.now()).getTime();
+          const targetLead = leadsRef.current.find(l => l.id === newRow.lead_id);
+          if (targetLead && ageMs < 2 * 60 * 1000) {
+            emitNotifications(ctx => buildInboundMessage(targetLead, newRow.id, newRow.text || '', ctx));
+          }
+        }
 
         if (targetLeadId) {
           setLeads(prev => {
@@ -2020,9 +2063,12 @@ export const AdminStateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           safeLocalStorageSet(STORAGE_KEY_CLIENTS, JSON.stringify(updated));
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts' }, (payload: any) => {
         // Tempo real de contratos: telas (Contratos, Dashboard) refazem a busca silenciosamente
         window.dispatchEvent(new CustomEvent('f5:contracts-changed'));
+        if (payload?.new?.id && (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')) {
+          emitNotifications(ctx => buildContractNotifications(payload.new, ctx));
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contract_funnel_placements' }, () => {
         window.dispatchEvent(new CustomEvent('f5:contracts-changed'));
